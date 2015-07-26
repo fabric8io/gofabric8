@@ -1,8 +1,8 @@
 SHELL := /bin/bash
 tag := $(shell cat .openshift-version)
 
-build:
-	godep go build -o go-fabric8 -a *.go
+build: *.go */*.go
+	godep go build -o build/gofabric8 gofabric8.go
 
 update-deps:
 	echo $(tag) > .openshift-version && \
@@ -11,5 +11,5 @@ update-deps:
 		git checkout -B $(tag) refs/tags/$(tag) && \
 		godep restore && \
 		popd && \
-		godep save && \
+		godep save ./... && \
 		godep update ...
