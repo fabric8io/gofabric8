@@ -518,7 +518,9 @@ func (o *Buffer) dec_string(p *Properties, base structPointer) error {
 	if err != nil {
 		return err
 	}
-	*structPointer_String(base, p.field) = &s
+	sp := new(string)
+	*sp = s
+	*structPointer_String(base, p.field) = sp
 	return nil
 }
 
@@ -727,14 +729,8 @@ func (o *Buffer) dec_new_map(p *Properties, base structPointer) error {
 			return fmt.Errorf("proto: bad map data tag %d", raw[0])
 		}
 	}
-	keyelem, valelem := keyptr.Elem(), valptr.Elem()
-	if !keyelem.IsValid() || !valelem.IsValid() {
-		// We did not decode the key or the value in the map entry.
-		// Either way, it's an invalid map entry.
-		return fmt.Errorf("proto: bad map data: missing key/val")
-	}
 
-	v.SetMapIndex(keyelem, valelem)
+	v.SetMapIndex(keyptr.Elem(), valptr.Elem())
 	return nil
 }
 

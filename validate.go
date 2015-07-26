@@ -3,7 +3,6 @@ package main
 import (
 	"strings"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/spf13/cobra"
 )
@@ -14,18 +13,7 @@ func newCmdValidate(f *util.Factory) *cobra.Command {
 		Short: "Validate your Kubernetes or OpenShift environment",
 		Long:  `validate your Kubernetes or OpenShift environment`,
 		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			k8sConfig, err = f.ClientConfig()
-			if err != nil {
-				fatalf("Could not initialise a client config: %v", err)
-			}
-			k8sClient, err = client.New(k8sConfig)
-			if err != nil {
-				fatalf("Could not initialise a client: %v", err)
-			}
-
-			discoverInstallationType()
-
+			newClient(f)
 			infof("Validating your ")
 			success(string(typeOfMaster))
 			infof(" installation at ")

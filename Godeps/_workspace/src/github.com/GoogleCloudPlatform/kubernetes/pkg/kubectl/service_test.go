@@ -26,225 +26,10 @@ import (
 
 func TestGenerateService(t *testing.T) {
 	tests := []struct {
-		generator Generator
-		params    map[string]string
-		expected  api.Service
+		params   map[string]string
+		expected api.Service
 	}{
 		{
-			generator: ServiceGeneratorV2{},
-			params: map[string]string{
-				"selector":       "foo=bar,baz=blah",
-				"name":           "test",
-				"port":           "80",
-				"protocol":       "TCP",
-				"container-port": "1234",
-			},
-			expected: api.Service{
-				ObjectMeta: api.ObjectMeta{
-					Name: "test",
-				},
-				Spec: api.ServiceSpec{
-					Selector: map[string]string{
-						"foo": "bar",
-						"baz": "blah",
-					},
-					Ports: []api.ServicePort{
-						{
-							Port:       80,
-							Protocol:   "TCP",
-							TargetPort: util.NewIntOrStringFromInt(1234),
-						},
-					},
-				},
-			},
-		},
-		{
-
-			generator: ServiceGeneratorV2{},
-			params: map[string]string{
-				"selector":       "foo=bar,baz=blah",
-				"name":           "test",
-				"port":           "80",
-				"protocol":       "UDP",
-				"container-port": "foobar",
-			},
-			expected: api.Service{
-				ObjectMeta: api.ObjectMeta{
-					Name: "test",
-				},
-				Spec: api.ServiceSpec{
-					Selector: map[string]string{
-						"foo": "bar",
-						"baz": "blah",
-					},
-					Ports: []api.ServicePort{
-						{
-							Port:       80,
-							Protocol:   "UDP",
-							TargetPort: util.NewIntOrStringFromString("foobar"),
-						},
-					},
-				},
-			},
-		},
-		{
-			generator: ServiceGeneratorV2{},
-			params: map[string]string{
-				"selector":       "foo=bar,baz=blah",
-				"labels":         "key1=value1,key2=value2",
-				"name":           "test",
-				"port":           "80",
-				"protocol":       "TCP",
-				"container-port": "1234",
-			},
-			expected: api.Service{
-				ObjectMeta: api.ObjectMeta{
-					Name: "test",
-					Labels: map[string]string{
-						"key1": "value1",
-						"key2": "value2",
-					},
-				},
-				Spec: api.ServiceSpec{
-					Selector: map[string]string{
-						"foo": "bar",
-						"baz": "blah",
-					},
-					Ports: []api.ServicePort{
-						{
-							Port:       80,
-							Protocol:   "TCP",
-							TargetPort: util.NewIntOrStringFromInt(1234),
-						},
-					},
-				},
-			},
-		},
-		{
-			generator: ServiceGeneratorV2{},
-			params: map[string]string{
-				"selector":       "foo=bar,baz=blah",
-				"name":           "test",
-				"port":           "80",
-				"protocol":       "UDP",
-				"container-port": "foobar",
-				"public-ip":      "1.2.3.4",
-			},
-			expected: api.Service{
-				ObjectMeta: api.ObjectMeta{
-					Name: "test",
-				},
-				Spec: api.ServiceSpec{
-					Selector: map[string]string{
-						"foo": "bar",
-						"baz": "blah",
-					},
-					Ports: []api.ServicePort{
-						{
-							Port:       80,
-							Protocol:   "UDP",
-							TargetPort: util.NewIntOrStringFromString("foobar"),
-						},
-					},
-					DeprecatedPublicIPs: []string{"1.2.3.4"},
-				},
-			},
-		},
-		{
-			generator: ServiceGeneratorV2{},
-			params: map[string]string{
-				"selector":                      "foo=bar,baz=blah",
-				"name":                          "test",
-				"port":                          "80",
-				"protocol":                      "UDP",
-				"container-port":                "foobar",
-				"public-ip":                     "1.2.3.4",
-				"create-external-load-balancer": "true",
-			},
-			expected: api.Service{
-				ObjectMeta: api.ObjectMeta{
-					Name: "test",
-				},
-				Spec: api.ServiceSpec{
-					Selector: map[string]string{
-						"foo": "bar",
-						"baz": "blah",
-					},
-					Ports: []api.ServicePort{
-						{
-							Port:       80,
-							Protocol:   "UDP",
-							TargetPort: util.NewIntOrStringFromString("foobar"),
-						},
-					},
-					Type:                api.ServiceTypeLoadBalancer,
-					DeprecatedPublicIPs: []string{"1.2.3.4"},
-				},
-			},
-		},
-		{
-			generator: ServiceGeneratorV2{},
-			params: map[string]string{
-				"selector":       "foo=bar,baz=blah",
-				"name":           "test",
-				"port":           "80",
-				"protocol":       "UDP",
-				"container-port": "foobar",
-				"type":           string(api.ServiceTypeNodePort),
-			},
-			expected: api.Service{
-				ObjectMeta: api.ObjectMeta{
-					Name: "test",
-				},
-				Spec: api.ServiceSpec{
-					Selector: map[string]string{
-						"foo": "bar",
-						"baz": "blah",
-					},
-					Ports: []api.ServicePort{
-						{
-							Port:       80,
-							Protocol:   "UDP",
-							TargetPort: util.NewIntOrStringFromString("foobar"),
-						},
-					},
-					Type: api.ServiceTypeNodePort,
-				},
-			},
-		},
-		{
-			generator: ServiceGeneratorV2{},
-			params: map[string]string{
-				"selector":                      "foo=bar,baz=blah",
-				"name":                          "test",
-				"port":                          "80",
-				"protocol":                      "UDP",
-				"container-port":                "foobar",
-				"create-external-load-balancer": "true", // ignored when type is present
-				"type": string(api.ServiceTypeNodePort),
-			},
-			expected: api.Service{
-				ObjectMeta: api.ObjectMeta{
-					Name: "test",
-				},
-				Spec: api.ServiceSpec{
-					Selector: map[string]string{
-						"foo": "bar",
-						"baz": "blah",
-					},
-					Ports: []api.ServicePort{
-						{
-							Port:       80,
-							Protocol:   "UDP",
-							TargetPort: util.NewIntOrStringFromString("foobar"),
-						},
-					},
-					Type: api.ServiceTypeNodePort,
-				},
-			},
-		},
-		{
-			generator: ServiceGeneratorV1{},
 			params: map[string]string{
 				"selector":       "foo=bar,baz=blah",
 				"name":           "test",
@@ -272,9 +57,194 @@ func TestGenerateService(t *testing.T) {
 				},
 			},
 		},
+		{
+			params: map[string]string{
+				"selector":       "foo=bar,baz=blah",
+				"name":           "test",
+				"port":           "80",
+				"protocol":       "UDP",
+				"container-port": "foobar",
+			},
+			expected: api.Service{
+				ObjectMeta: api.ObjectMeta{
+					Name: "test",
+				},
+				Spec: api.ServiceSpec{
+					Selector: map[string]string{
+						"foo": "bar",
+						"baz": "blah",
+					},
+					Ports: []api.ServicePort{
+						{
+							Name:       "default",
+							Port:       80,
+							Protocol:   "UDP",
+							TargetPort: util.NewIntOrStringFromString("foobar"),
+						},
+					},
+				},
+			},
+		},
+		{
+			params: map[string]string{
+				"selector":       "foo=bar,baz=blah",
+				"labels":         "key1=value1,key2=value2",
+				"name":           "test",
+				"port":           "80",
+				"protocol":       "TCP",
+				"container-port": "1234",
+			},
+			expected: api.Service{
+				ObjectMeta: api.ObjectMeta{
+					Name: "test",
+					Labels: map[string]string{
+						"key1": "value1",
+						"key2": "value2",
+					},
+				},
+				Spec: api.ServiceSpec{
+					Selector: map[string]string{
+						"foo": "bar",
+						"baz": "blah",
+					},
+					Ports: []api.ServicePort{
+						{
+							Name:       "default",
+							Port:       80,
+							Protocol:   "TCP",
+							TargetPort: util.NewIntOrStringFromInt(1234),
+						},
+					},
+				},
+			},
+		},
+		{
+			params: map[string]string{
+				"selector":       "foo=bar,baz=blah",
+				"name":           "test",
+				"port":           "80",
+				"protocol":       "UDP",
+				"container-port": "foobar",
+				"public-ip":      "1.2.3.4",
+			},
+			expected: api.Service{
+				ObjectMeta: api.ObjectMeta{
+					Name: "test",
+				},
+				Spec: api.ServiceSpec{
+					Selector: map[string]string{
+						"foo": "bar",
+						"baz": "blah",
+					},
+					Ports: []api.ServicePort{
+						{
+							Name:       "default",
+							Port:       80,
+							Protocol:   "UDP",
+							TargetPort: util.NewIntOrStringFromString("foobar"),
+						},
+					},
+					DeprecatedPublicIPs: []string{"1.2.3.4"},
+				},
+			},
+		},
+		{
+			params: map[string]string{
+				"selector":                      "foo=bar,baz=blah",
+				"name":                          "test",
+				"port":                          "80",
+				"protocol":                      "UDP",
+				"container-port":                "foobar",
+				"public-ip":                     "1.2.3.4",
+				"create-external-load-balancer": "true",
+			},
+			expected: api.Service{
+				ObjectMeta: api.ObjectMeta{
+					Name: "test",
+				},
+				Spec: api.ServiceSpec{
+					Selector: map[string]string{
+						"foo": "bar",
+						"baz": "blah",
+					},
+					Ports: []api.ServicePort{
+						{
+							Name:       "default",
+							Port:       80,
+							Protocol:   "UDP",
+							TargetPort: util.NewIntOrStringFromString("foobar"),
+						},
+					},
+					Type:                api.ServiceTypeLoadBalancer,
+					DeprecatedPublicIPs: []string{"1.2.3.4"},
+				},
+			},
+		},
+		{
+			params: map[string]string{
+				"selector":       "foo=bar,baz=blah",
+				"name":           "test",
+				"port":           "80",
+				"protocol":       "UDP",
+				"container-port": "foobar",
+				"type":           string(api.ServiceTypeNodePort),
+			},
+			expected: api.Service{
+				ObjectMeta: api.ObjectMeta{
+					Name: "test",
+				},
+				Spec: api.ServiceSpec{
+					Selector: map[string]string{
+						"foo": "bar",
+						"baz": "blah",
+					},
+					Ports: []api.ServicePort{
+						{
+							Name:       "default",
+							Port:       80,
+							Protocol:   "UDP",
+							TargetPort: util.NewIntOrStringFromString("foobar"),
+						},
+					},
+					Type: api.ServiceTypeNodePort,
+				},
+			},
+		},
+		{
+			params: map[string]string{
+				"selector":                      "foo=bar,baz=blah",
+				"name":                          "test",
+				"port":                          "80",
+				"protocol":                      "UDP",
+				"container-port":                "foobar",
+				"create-external-load-balancer": "true", // ignored when type is present
+				"type": string(api.ServiceTypeNodePort),
+			},
+			expected: api.Service{
+				ObjectMeta: api.ObjectMeta{
+					Name: "test",
+				},
+				Spec: api.ServiceSpec{
+					Selector: map[string]string{
+						"foo": "bar",
+						"baz": "blah",
+					},
+					Ports: []api.ServicePort{
+						{
+							Name:       "default",
+							Port:       80,
+							Protocol:   "UDP",
+							TargetPort: util.NewIntOrStringFromString("foobar"),
+						},
+					},
+					Type: api.ServiceTypeNodePort,
+				},
+			},
+		},
 	}
+	generator := ServiceGenerator{}
 	for _, test := range tests {
-		obj, err := test.generator.Generate(test.params)
+		obj, err := generator.Generate(test.params)
 		if !reflect.DeepEqual(obj, &test.expected) {
 			t.Errorf("expected:\n%#v\ngot\n%#v\n", &test.expected, obj)
 		}

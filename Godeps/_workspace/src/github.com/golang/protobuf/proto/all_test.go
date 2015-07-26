@@ -44,8 +44,8 @@ import (
 	"testing"
 	"time"
 
+	. "./testdata"
 	. "github.com/golang/protobuf/proto"
-	. "github.com/golang/protobuf/proto/testdata"
 )
 
 var globalO *Buffer
@@ -1252,8 +1252,7 @@ func TestProto1RepeatedGroup(t *testing.T) {
 	}
 
 	o := old()
-	err := o.Marshal(pb)
-	if err == nil || !strings.Contains(err.Error(), "repeated field Message has nil") {
+	if err := o.Marshal(pb); err != ErrRepeatedHasNil {
 		t.Fatalf("unexpected or no error when marshaling: %v", err)
 	}
 }
@@ -1436,17 +1435,6 @@ func TestSetDefaultsWithRepeatedSubMessage(t *testing.T) {
 			Port: Int32(4000),
 		}},
 	}
-	SetDefaults(m)
-	if !Equal(m, expected) {
-		t.Errorf("\n got %v\nwant %v", m, expected)
-	}
-}
-
-func TestSetDefaultWithRepeatedNonMessage(t *testing.T) {
-	m := &MyMessage{
-		Pet: []string{"turtle", "wombat"},
-	}
-	expected := Clone(m)
 	SetDefaults(m)
 	if !Equal(m, expected) {
 		t.Errorf("\n got %v\nwant %v", m, expected)

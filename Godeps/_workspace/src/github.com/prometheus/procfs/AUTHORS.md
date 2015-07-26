@@ -8,5 +8,4 @@ Maintainers of this repository:
 The following individuals have contributed code to this repository
 (listed in alphabetical order):
 
-* Ji-Hoon, Seol <jihoon.seol@gmail.com>
-* Tobias Schmidt <tobidt@gmail.com>
+* Tobias Schmidt <ts@soundcloud.com>

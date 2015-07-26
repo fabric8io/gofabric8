@@ -12,7 +12,7 @@ func infof(msg string, args ...interface{}) {
 }
 
 func info(msg string) {
-	ct.Foreground(ct.Blue, false)
+	ct.ChangeColor(ct.Blue, false, ct.None, false)
 	fmt.Print(msg)
 	ct.ResetColor()
 }
@@ -26,14 +26,16 @@ func fatalf(msg string, args ...interface{}) {
 }
 
 func fatal(msg string) {
-	ct.Foreground(ct.Red, true)
+	ct.ChangeColor(ct.Red, true, ct.None, false)
 	fmt.Print(msg)
+	ct.ResetColor()
 	os.Exit(1)
 }
 
 func success(msg string) {
-	ct.Foreground(ct.Green, false)
+	ct.ChangeColor(ct.Green, false, ct.None, false)
 	fmt.Print(msg)
+	ct.ResetColor()
 }
 
 func successf(msg string, args ...interface{}) {
@@ -41,8 +43,9 @@ func successf(msg string, args ...interface{}) {
 }
 
 func failure(msg string) {
-	ct.Foreground(ct.Red, false)
+	ct.ChangeColor(ct.Red, false, ct.None, false)
 	fmt.Print(msg)
+	ct.ResetColor()
 }
 
 func failuref(msg string, args ...interface{}) {

@@ -34,7 +34,7 @@ func printOptions(out *bytes.Buffer, cmd *Command, name string) {
 	parentFlags := cmd.InheritedFlags()
 	parentFlags.SetOutput(out)
 	if parentFlags.HasFlags() {
-		fmt.Fprintf(out, "### Options inherrited from parent commands\n\n```\n")
+		fmt.Fprintf(out, "### Options inherited from parent commands\n\n```\n")
 		parentFlags.PrintDefaults()
 		fmt.Fprintf(out, "```\n\n")
 	}
@@ -47,6 +47,10 @@ func (s byName) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s byName) Less(i, j int) bool { return s[i].Name() < s[j].Name() }
 
 func GenMarkdown(cmd *Command, out *bytes.Buffer) {
+	GenMarkdownCustom(cmd, out, func(s string) string { return s })
+}
+
+func GenMarkdownCustom(cmd *Command, out *bytes.Buffer, linkHandler func(string) string) {
 	name := cmd.CommandPath()
 
 	short := cmd.Short
@@ -78,17 +82,20 @@ func GenMarkdown(cmd *Command, out *bytes.Buffer) {
 			pname := parent.CommandPath()
 			link := pname + ".md"
 			link = strings.Replace(link, " ", "_", -1)
-			fmt.Fprintf(out, "* [%s](%s)\t - %s\n", pname, link, parent.Short)
+			fmt.Fprintf(out, "* [%s](%s)\t - %s\n", pname, linkHandler(link), parent.Short)
 		}
 
 		children := cmd.Commands()
 		sort.Sort(byName(children))
 
 		for _, child := range children {
+			if len(child.Deprecated) > 0 {
+				continue
+			}
 			cname := name + " " + child.Name()
 			link := cname + ".md"
 			link = strings.Replace(link, " ", "_", -1)
-			fmt.Fprintf(out, "* [%s](%s)\t - %s\n", cname, link, child.Short)
+			fmt.Fprintf(out, "* [%s](%s)\t - %s\n", cname, linkHandler(link), child.Short)
 		}
 		fmt.Fprintf(out, "\n")
 	}
@@ -97,13 +104,18 @@ func GenMarkdown(cmd *Command, out *bytes.Buffer) {
 }
 
 func GenMarkdownTree(cmd *Command, dir string) {
-	for _, c := range cmd.Commands() {
-		GenMarkdownTree(c, dir)
-	}
+	identity := func(s string) string { return s }
+	emptyStr := func(s string) string { return "" }
+	GenMarkdownTreeCustom(cmd, dir, emptyStr, identity)
+}
 
+func GenMarkdownTreeCustom(cmd *Command, dir string, filePrepender func(string) string, linkHandler func(string) string) {
+	for _, c := range cmd.Commands() {
+		GenMarkdownTreeCustom(c, dir, filePrepender, linkHandler)
+	}
 	out := new(bytes.Buffer)
 
-	GenMarkdown(cmd, out)
+	GenMarkdownCustom(cmd, out, linkHandler)
 
 	filename := cmd.CommandPath()
 	filename = dir + strings.Replace(filename, " ", "_", -1) + ".md"
@@ -113,6 +125,11 @@ func GenMarkdownTree(cmd *Command, dir string) {
 		os.Exit(1)
 	}
 	defer outFile.Close()
+	_, err = outFile.WriteString(filePrepender(filename))
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 	_, err = outFile.Write(out.Bytes())
 	if err != nil {
 		fmt.Println(err)

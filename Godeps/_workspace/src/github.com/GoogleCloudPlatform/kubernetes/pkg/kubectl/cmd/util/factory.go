@@ -97,8 +97,7 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 
 	generators := map[string]kubectl.Generator{
 		"run/v1":     kubectl.BasicReplicationController{},
-		"service/v1": kubectl.ServiceGeneratorV1{},
-		"service/v2": kubectl.ServiceGeneratorV2{},
+		"service/v1": kubectl.ServiceGenerator{},
 	}
 
 	clientConfig := optionalClientConfig
@@ -163,11 +162,11 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 				}
 				return kubectl.MakeLabels(t.Spec.Selector), nil
 			default:
-				_, kind, err := api.Scheme.ObjectVersionAndKind(object)
+				kind, err := meta.NewAccessor().Kind(object)
 				if err != nil {
 					return "", err
 				}
-				return "", fmt.Errorf("cannot extract pod selector from %s", kind)
+				return "", fmt.Errorf("it is not possible to get a pod selector from %s", kind)
 			}
 		},
 		PortsForObject: func(object runtime.Object) ([]string, error) {
@@ -178,13 +177,11 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) *Factory {
 			case *api.Pod:
 				return getPorts(t.Spec), nil
 			default:
-				// TODO: support extracting ports from service:
-				// https://github.com/GoogleCloudPlatform/kubernetes/issues/11392
-				_, kind, err := api.Scheme.ObjectVersionAndKind(object)
+				kind, err := meta.NewAccessor().Kind(object)
 				if err != nil {
 					return nil, err
 				}
-				return nil, fmt.Errorf("cannot extract ports from %s", kind)
+				return nil, fmt.Errorf("it is not possible to get ports from %s", kind)
 			}
 		},
 		LabelsForObject: func(object runtime.Object) (map[string]string, error) {

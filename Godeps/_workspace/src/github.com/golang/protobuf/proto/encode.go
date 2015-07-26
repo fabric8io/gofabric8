@@ -60,9 +60,9 @@ func (e *RequiredNotSetError) Error() string {
 }
 
 var (
-	// errRepeatedHasNil is the error returned if Marshal is called with
+	// ErrRepeatedHasNil is the error returned if Marshal is called with
 	// a struct with a repeated field containing a nil element.
-	errRepeatedHasNil = errors.New("proto: repeated field has nil element")
+	ErrRepeatedHasNil = errors.New("proto: repeated field has nil element")
 
 	// ErrNil is the error returned if Marshal is called with nil.
 	ErrNil = errors.New("proto: Marshal called with nil")
@@ -939,7 +939,7 @@ func (o *Buffer) enc_slice_struct_message(p *Properties, base structPointer) err
 	for i := 0; i < l; i++ {
 		structp := s.Index(i)
 		if structPointer_IsNil(structp) {
-			return errRepeatedHasNil
+			return ErrRepeatedHasNil
 		}
 
 		// Can the object marshal itself?
@@ -958,7 +958,7 @@ func (o *Buffer) enc_slice_struct_message(p *Properties, base structPointer) err
 		err := o.enc_len_struct(p.sprop, structp, &state)
 		if err != nil && !state.shouldContinue(err, nil) {
 			if err == ErrNil {
-				return errRepeatedHasNil
+				return ErrRepeatedHasNil
 			}
 			return err
 		}
@@ -1001,7 +1001,7 @@ func (o *Buffer) enc_slice_struct_group(p *Properties, base structPointer) error
 	for i := 0; i < l; i++ {
 		b := s.Index(i)
 		if structPointer_IsNil(b) {
-			return errRepeatedHasNil
+			return ErrRepeatedHasNil
 		}
 
 		o.EncodeVarint(uint64((p.Tag << 3) | WireStartGroup))
@@ -1010,7 +1010,7 @@ func (o *Buffer) enc_slice_struct_group(p *Properties, base structPointer) error
 
 		if err != nil && !state.shouldContinue(err, nil) {
 			if err == ErrNil {
-				return errRepeatedHasNil
+				return ErrRepeatedHasNil
 			}
 			return err
 		}
@@ -1128,12 +1128,10 @@ func size_new_map(p *Properties, base structPointer) int {
 		keycopy.Set(key)
 		valcopy.Set(val)
 
-		// Tag codes for key and val are the responsibility of the sub-sizer.
-		keysize := p.mkeyprop.size(p.mkeyprop, keybase)
-		valsize := p.mvalprop.size(p.mvalprop, valbase)
-		entry := keysize + valsize
-		// Add on tag code and length of map entry itself.
-		n += len(p.tagcode) + sizeVarint(uint64(entry)) + entry
+		// Tag codes are two bytes per map entry.
+		n += 2
+		n += p.mkeyprop.size(p.mkeyprop, keybase)
+		n += p.mvalprop.size(p.mvalprop, valbase)
 	}
 	return n
 }
@@ -1186,9 +1184,6 @@ func (o *Buffer) enc_struct(prop *StructProperties, base structPointer) error {
 					if p.Required && state.err == nil {
 						state.err = &RequiredNotSetError{p.Name}
 					}
-				} else if err == errRepeatedHasNil {
-					// Give more context to nil values in repeated fields.
-					return errors.New("repeated field " + p.OrigName + " has nil element")
 				} else if !state.shouldContinue(err, p) {
 					return err
 				}

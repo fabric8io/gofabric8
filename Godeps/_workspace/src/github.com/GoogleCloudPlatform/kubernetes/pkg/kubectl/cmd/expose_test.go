@@ -25,7 +25,6 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 )
 
 func TestRunExposeService(t *testing.T) {
@@ -127,17 +126,17 @@ func TestRunExposeService(t *testing.T) {
 				Spec: api.ServiceSpec{
 					Ports: []api.ServicePort{
 						{
-							Name:       "default",
-							Protocol:   api.Protocol("UDP"),
-							Port:       14,
-							TargetPort: util.NewIntOrStringFromInt(14),
+							Name:     "default",
+							Protocol: api.Protocol("UDP"),
+							Port:     14,
 						},
 					},
 					Selector: map[string]string{"func": "stream"},
 					Type:     api.ServiceTypeLoadBalancer,
 				},
 			},
-			status: 200,
+			expected: "you will also need to explicitly open a firewall",
+			status:   200,
 		},
 	}
 

@@ -36,9 +36,9 @@ import (
 	"reflect"
 	"testing"
 
+	proto3pb "./proto3_proto"
+	. "./testdata"
 	. "github.com/golang/protobuf/proto"
-	proto3pb "github.com/golang/protobuf/proto/proto3_proto"
-	. "github.com/golang/protobuf/proto/testdata"
 )
 
 type UnmarshalTextTest struct {
@@ -462,8 +462,7 @@ func TestProto3TextParsing(t *testing.T) {
 func TestMapParsing(t *testing.T) {
 	m := new(MessageWithMap)
 	const in = `name_mapping:<key:1234 value:"Feist"> name_mapping:<key:1 value:"Beatles">` +
-		`msg_mapping:<key:-4, value:<f: 2.0>,>` + // separating commas are okay
-		`msg_mapping<key:-2 value<f: 4.0>>` + // no colon after "value"
+		`msg_mapping:<key:-4 value:<f: 2.0>>` +
 		`byte_mapping:<key:true value:"so be it">`
 	want := &MessageWithMap{
 		NameMapping: map[int32]string{
@@ -472,7 +471,6 @@ func TestMapParsing(t *testing.T) {
 		},
 		MsgMapping: map[int64]*FloatingPoint{
 			-4: {F: Float64(2.0)},
-			-2: {F: Float64(4.0)},
 		},
 		ByteMapping: map[bool][]byte{
 			true: []byte("so be it"),

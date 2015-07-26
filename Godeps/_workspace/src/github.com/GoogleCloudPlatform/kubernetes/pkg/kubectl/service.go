@@ -25,29 +25,9 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 )
 
-// The only difference between ServiceGeneratorV1 and V2 is that the service port is named "default" in V1, while it is left unnamed in V2.
-type ServiceGeneratorV1 struct{}
+type ServiceGenerator struct{}
 
-func (ServiceGeneratorV1) ParamNames() []GeneratorParam {
-	return paramNames()
-}
-
-func (ServiceGeneratorV1) Generate(params map[string]string) (runtime.Object, error) {
-	params["port-name"] = "default"
-	return generate(params)
-}
-
-type ServiceGeneratorV2 struct{}
-
-func (ServiceGeneratorV2) ParamNames() []GeneratorParam {
-	return paramNames()
-}
-
-func (ServiceGeneratorV2) Generate(params map[string]string) (runtime.Object, error) {
-	return generate(params)
-}
-
-func paramNames() []GeneratorParam {
+func (ServiceGenerator) ParamNames() []GeneratorParam {
 	return []GeneratorParam{
 		{"default-name", true},
 		{"name", false},
@@ -60,11 +40,10 @@ func paramNames() []GeneratorParam {
 		{"protocol", false},
 		{"container-port", false}, // alias of target-port
 		{"target-port", false},
-		{"port-name", false},
 	}
 }
 
-func generate(params map[string]string) (runtime.Object, error) {
+func (ServiceGenerator) Generate(params map[string]string) (runtime.Object, error) {
 	selectorString, found := params["selector"]
 	if !found || len(selectorString) == 0 {
 		return nil, fmt.Errorf("'selector' is a required parameter.")
@@ -98,11 +77,6 @@ func generate(params map[string]string) (runtime.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-	servicePortName, found := params["port-name"]
-	if !found {
-		// Leave the port unnamed.
-		servicePortName = ""
-	}
 	service := api.Service{
 		ObjectMeta: api.ObjectMeta{
 			Name:   name,
@@ -112,7 +86,7 @@ func generate(params map[string]string) (runtime.Object, error) {
 			Selector: selector,
 			Ports: []api.ServicePort{
 				{
-					Name:     servicePortName,
+					Name:     "default",
 					Port:     port,
 					Protocol: api.Protocol(params["protocol"]),
 				},

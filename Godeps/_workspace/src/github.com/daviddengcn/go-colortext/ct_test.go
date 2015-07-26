@@ -14,7 +14,7 @@ func TestChangeColor(t *testing.T) {
 		ChangeColor(Color(i/2%8)+Black, i%2 == 1, Color((i+2)/2%8)+Black, false)
 		fmt.Print(string(c))
 		i++
-	}
+	} // for c
 	fmt.Println()
 	ChangeColor(Red, true, White, false)
 	fmt.Println("Before reset.")
@@ -23,62 +23,4 @@ func TestChangeColor(t *testing.T) {
 	ResetColor()
 	fmt.Println("After reset.")
 	fmt.Println("After reset.")
-}
-
-func TestForeground(t *testing.T) {
-	ResetColor()
-	defer ResetColor()
-
-	fmt.Println("Please check the words under the following text shows with the corresponding front color:")
-
-	colorToText := [...]string{
-		Black:   "black",
-		Red:     "red",
-		Green:   "green",
-		Yellow:  "yellow",
-		Blue:    "blue",
-		Magenta: "magenta",
-		Cyan:    "cyan",
-		White:   "white",
-	}
-
-	for i := range colorToText {
-		cl := Color(i)
-		if cl != None {
-			Foreground(cl, false)
-			fmt.Print(colorToText[i], ",")
-			Foreground(cl, true)
-			fmt.Print(colorToText[i], ",")
-		}
-	}
-	fmt.Println()
-}
-
-func TestBackground(t *testing.T) {
-	ResetColor()
-	defer ResetColor()
-
-	fmt.Println("Please check the words under the following text shows with the corresponding background color:")
-
-	colorToText := [...]string{
-		Black:   "black",
-		Red:     "red",
-		Green:   "green",
-		Yellow:  "yellow",
-		Blue:    "blue",
-		Magenta: "magenta",
-		Cyan:    "cyan",
-		White:   "white",
-	}
-
-	for i := range colorToText {
-		cl := Color(i)
-		if cl != None {
-			Background(cl, false)
-			fmt.Print(colorToText[i], ",")
-			Background(cl, true)
-			fmt.Print(colorToText[i], ",")
-		}
-	}
-	fmt.Println()
 }
