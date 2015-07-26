@@ -1,0 +1,18 @@
+{
+	"ImportPath": "github.com/fabric8io/go-fabric8",
+	"GoVersion": "go1.4.2",
+	"Deps": [
+		{
+			"ImportPath": "github.com/inconshreveable/mousetrap",
+			"Rev": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
+		},
+		{
+			"ImportPath": "github.com/spf13/cobra",
+			"Rev": "3c187e904540cd62f0a197cddd6da02645a7cc5a"
+		},
+		{
+			"ImportPath": "github.com/spf13/pflag",
+			"Rev": "8730624c6c03fa1c5b8ae471cb5e4d735784d32a"
+		}
+	]
+}
