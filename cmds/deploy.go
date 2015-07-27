@@ -81,10 +81,22 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			} else {
 				uri := fmt.Sprintf(baseConsoleUrl, v)
 				cmd.Flags().String("filename", uri, "")
+				cmd.Flags().String("value", "", "")
 				cmd.Flags().Bool("parameters", false, "")
+				cmd.Flags().String("labels", "", "")
+
+				cmd.Flags().String("output", "json", "")
+				cmd.Flags().Bool("raw", false, "")
+				cmd.Flags().String("output-version", "", "")
+				cmd.Flags().String("template", "", "")
 
 				of := clientcmd.NewFactory(clientcmd.DefaultClientConfig(cmd.Flags()))
-				ocmd.RunProcess(of, os.Stdout, cmd, nil)
+				err := ocmd.RunProcess(of, os.Stdout, cmd, nil)
+				if err != nil {
+					printResult("fabric8 console", Failure, err)
+				} else {
+					printResult("fabric8 console", Success, nil)
+				}
 			}
 		},
 	}
