@@ -16,10 +16,21 @@
 package cmds
 
 import (
+	"encoding/xml"
+	"io/ioutil"
+	"net/http"
+
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
+)
+
+const (
+	consoleMetadataUrl           = "https://repo1.maven.org/maven2/io/fabric8/apps/base/maven-metadata.xml"
+	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/apps/base/%s/base-%s-kubernetes.json"
+	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
+	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%s/console-kubernetes-%s-kubernetes.json"
 )
 
 func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
@@ -42,8 +53,57 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			if !cont {
 				util.Fatal("Cancelled...\n")
 			}
+
+			v := cmd.Flags().Lookup("version").Value.String()
+
+			v = f8Version(v, util.TypeOfMaster(c))
+
+			util.Warnf("\nStarting deployment of %s...\n\n", v)
 		},
 	}
 
 	return cmd
+}
+
+func f8Version(v string, typeOfMaster util.MasterType) string {
+	metadataUrl := consoleMetadataUrl
+	if typeOfMaster == util.Kubernetes {
+		metadataUrl = consoleKubernetesMetadataUrl
+	}
+
+	resp, err := http.Get(metadataUrl)
+	if err != nil {
+		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
+	}
+	defer resp.Body.Close()
+	// read xml http response
+	xmlData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
+	}
+
+	type Metadata struct {
+		Release  string   `xml:"versioning>release"`
+		Versions []string `xml:"versioning>versions>version"`
+	}
+
+	var m Metadata
+	err = xml.Unmarshal(xmlData, &m)
+	if err != nil {
+		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
+	}
+
+	if v == "latest" {
+		return m.Release
+	}
+
+	for _, version := range m.Versions {
+		if v == version {
+			return version
+		}
+	}
+
+	util.Errorf("\nUnknown version: %s\n", v)
+	util.Fatalf("Valid versions: %v\n", append(m.Versions, "latest"))
+	return ""
 }

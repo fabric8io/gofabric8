@@ -24,6 +24,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	fabric8Version string
+)
+
 func runHelp(cmd *cobra.Command, args []string) {
 	cmd.Help()
 }
@@ -43,6 +47,8 @@ func main() {
 
 	f := cmdutil.NewFactory(nil)
 	f.BindFlags(cmds.PersistentFlags())
+
+	cmds.PersistentFlags().StringVarP(&fabric8Version, "version", "v", "latest", "fabric8 version")
 
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))
@@ -98,5 +104,4 @@ const fabric8AsciiArt = `
                   ZZ   ZZZZZZZ ZZ   ZZ ZZZ    ZZ ZZ      ZZ   ZZZ
                   ZZ   ZZ  ZZZ ZZ   ZZ ZZZ    ZZ ZZ      ZZ   ZZZ
                   ZZ   ZZZZZZZ ZZZZZZZ ZZZ    ZZ ZZZZZZZ ZZZZZZZZ
-
 `
