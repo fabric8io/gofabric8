@@ -25,6 +25,7 @@ import (
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
+	ocmd "github.com/openshift/origin/pkg/cmd/cli/cmd"
 	"github.com/spf13/cobra"
 )
 
@@ -63,14 +64,19 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 			util.Warnf("\nStarting deployment of %s...\n\n", v)
 
-			uri := fmt.Sprintf(baseConsoleKubernetesUrl, v)
-			filenames := []string{uri}
+			if typeOfMaster == util.OpenShift {
+				uri := fmt.Sprintf(baseConsoleKubernetesUrl, v)
+				filenames := []string{uri}
 
-			err := kcmd.RunCreate(f, ioutil.Discard, filenames)
-			if err != nil {
-				printResult("fabric8 console", Failure, err)
+				err := kcmd.RunCreate(f, ioutil.Discard, filenames)
+				if err != nil {
+					printResult("fabric8 console", Failure, err)
+				} else {
+					printResult("fabric8 console", Success, nil)
+				}
 			} else {
-				printResult("fabric8 console", Success, nil)
+				uri := fmt.Sprintf(baseConsoleUrl, v)
+				ocmd.RunProcess()
 			}
 		},
 	}
