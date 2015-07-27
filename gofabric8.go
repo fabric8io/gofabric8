@@ -45,6 +45,7 @@ func main() {
 	f.BindFlags(cmds.PersistentFlags())
 
 	cmds.AddCommand(commands.NewCmdValidate(f))
+	cmds.AddCommand(commands.NewCmdDeploy(f))
 
 	cmds.Execute()
 }

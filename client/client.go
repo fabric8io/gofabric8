@@ -19,6 +19,7 @@ import (
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/fabric8io/gofabric8/util"
+	oclient "github.com/openshift/origin/pkg/client"
 )
 
 func NewClient(f *cmdutil.Factory) (*client.Client, *client.Config) {
@@ -31,6 +32,15 @@ func NewClient(f *cmdutil.Factory) (*client.Client, *client.Config) {
 	c, err := client.New(cfg)
 	if err != nil {
 		util.Fatalf("Could not initialise a client: %v", err)
+	}
+
+	return c, cfg
+}
+
+func NewOpenShiftClient(cfg *client.Config) (*oclient.Client, *client.Config) {
+	c, err := oclient.New(cfg)
+	if err != nil {
+		util.Fatalf("Could not initialise an OpenShift client: %v", err)
 	}
 
 	return c, cfg

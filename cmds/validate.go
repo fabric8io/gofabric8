@@ -22,6 +22,7 @@ import (
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
+	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,7 @@ const (
 )
 
 type validateFunc func(c *k8sclient.Client, f *cmdutil.Factory) (Result, error)
+type oValidateFunc func(c *oclient.Client, f *cmdutil.Factory) (Result, error)
 
 func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -47,10 +49,18 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 			util.Info(" installation at ")
 			util.Success(cfg.Host)
 			util.Info(" in namespace ")
-			util.Success(ns)
-			util.Blank()
-			util.Blank()
+			util.Successf("%s\n\n", ns)
 			printValidationResult("Service account", validateServiceAccount, c, f)
+			printValidationResult("Console", validateConsoleDeployment, c, f)
+
+			if util.TypeOfMaster(c) == util.Kubernetes {
+				printValidationResult("Templates", validateTemplateService, c, f)
+			}
+
+			if util.TypeOfMaster(c) == util.OpenShift {
+				oc, _ := client.NewOpenShiftClient(cfg)
+				printOValidationResult("Templates", validateTemplates, oc, f)
+			}
 		},
 	}
 
@@ -59,19 +69,24 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 
 func printValidationResult(check string, v validateFunc, c *k8sclient.Client, f *cmdutil.Factory) {
 	r, err := v(c, f)
+	printResult(check, r, err)
+}
+
+func printOValidationResult(check string, v oValidateFunc, c *oclient.Client, f *cmdutil.Factory) {
+	r, err := v(c, f)
+	printResult(check, r, err)
+}
+
+func printResult(check string, r Result, err error) {
 	if err != nil {
 		r = Failure
 	}
 	util.Infof("%s%s", check, strings.Repeat(".", 24-len(check)))
 	if r == Failure {
-		util.Failuref("%-2s", r)
+		util.Failuref("%-2s\n", r)
 	} else {
-		util.Successf("%-2s", r)
+		util.Successf("%-2s\n", r)
 	}
-	if err != nil {
-		util.Errorf("%v", err)
-	}
-	util.Blank()
 }
 
 func validateServiceAccount(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
@@ -81,6 +96,42 @@ func validateServiceAccount(c *k8sclient.Client, f *cmdutil.Factory) (Result, er
 	}
 	sa, err := c.ServiceAccounts(ns).Get("fabric8")
 	if sa != nil {
+		return Success, err
+	}
+	return Failure, err
+}
+
+func validateConsoleDeployment(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+	rc, err := c.ReplicationControllers(ns).Get("fabric8")
+	if rc != nil {
+		return Success, err
+	}
+	return Failure, err
+}
+
+func validateTemplateService(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+	rc, err := c.Services(ns).Get("templates")
+	if rc != nil {
+		return Success, err
+	}
+	return Failure, err
+}
+
+func validateTemplates(c *oclient.Client, f *cmdutil.Factory) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+	rc, err := c.Templates(ns).Get("fabric8")
+	if rc != nil {
 		return Success, err
 	}
 	return Failure, err
