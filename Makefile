@@ -20,7 +20,7 @@ VERSION=$(shell cat VERSION)
 OPENSHIFT_TAG := $(shell cat .openshift-version)
 
 build: *.go */*.go
-	godep go build -o build/$(NAME) -a gofabric8.go
+	CGO_ENABLED=0 godep go build -o build/$(NAME) -a gofabric8.go
 
 install: *.go */*.go
 	GOBIN=${GOPATH}/bin godep go install -a gofabric8.go
@@ -37,13 +37,13 @@ update-deps:
 
 release:
 	rm -rf build release && mkdir build release
-	for os in linux freebsd darwin ; do \
-		GOOS=$$os ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$$os-amd64 ; \
+	for os in linux darwin ; do \
+		CGO_ENABLED=0 GOOS=$$os ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$$os-amd64 -a gofabric8.go ; \
 		tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$(VERSION)-$$os-amd64.tar.gz build/$(NAME)-$$os-amd64 README.md LICENSE ; \
 	done
-	GOOS=windows ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$(VERSION)-windows-amd64.exe
-	zip release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE && \
-		echo -e "@ build/$(NAME)-$(VERSION)-windows-amd64.exe\n@=$(NAME).exe"  | zipnote -w release/$(NAME)-$(VERSION)-windows-amd64.zip
+	#CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a gofabric8.go
+	#zip release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE && \
+	#	echo -e "@ build/$(NAME)-$(VERSION)-windows-amd64.exe\n@=$(NAME).exe"  | zipnote -w release/$(NAME)-$(VERSION)-windows-amd64.zip
 	go get github.com/progrium/gh-release/...
 	gh-release create fabric8io/$(NAME) $(VERSION) \
 		$(shell git rev-parse --abbrev-ref HEAD) $(VERSION)
