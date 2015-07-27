@@ -1,7 +1,23 @@
+/**
+ * Copyright (C) 2015 Red Hat, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package util
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/daviddengcn/go-colortext"
@@ -12,9 +28,7 @@ func Infof(msg string, args ...interface{}) {
 }
 
 func Info(msg string) {
-	ct.ChangeColor(ct.Blue, false, ct.None, false)
 	fmt.Print(msg)
-	ct.ResetColor()
 }
 
 func Blank() {
@@ -27,7 +41,7 @@ func Fatalf(msg string, args ...interface{}) {
 
 func Fatal(msg string) {
 	ct.ChangeColor(ct.Red, true, ct.None, false)
-	fmt.Print(msg)
+	log.Fatal(msg)
 	ct.ResetColor()
 	os.Exit(1)
 }
