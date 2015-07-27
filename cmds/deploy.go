@@ -17,9 +17,11 @@ package cmds
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 
+	kcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd"
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -28,9 +30,9 @@ import (
 
 const (
 	consoleMetadataUrl           = "https://repo1.maven.org/maven2/io/fabric8/apps/base/maven-metadata.xml"
-	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/apps/base/%s/base-%s-kubernetes.json"
+	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/apps/base/%[1]s/base-%[1]s-kubernetes.json"
 	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
-	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%s/console-kubernetes-%s-kubernetes.json"
+	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
 )
 
 func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
@@ -56,9 +58,20 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 			v := cmd.Flags().Lookup("version").Value.String()
 
-			v = f8Version(v, util.TypeOfMaster(c))
+			typeOfMaster := util.TypeOfMaster(c)
+			v = f8Version(v, typeOfMaster)
 
 			util.Warnf("\nStarting deployment of %s...\n\n", v)
+
+			uri := fmt.Sprintf(baseConsoleKubernetesUrl, v)
+			filenames := []string{uri}
+
+			err := kcmd.RunCreate(f, ioutil.Discard, filenames)
+			if err != nil {
+				printResult("fabric8 console", Failure, err)
+			} else {
+				printResult("fabric8 console", Success, nil)
+			}
 		},
 	}
 

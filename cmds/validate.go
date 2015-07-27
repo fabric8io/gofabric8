@@ -83,10 +83,14 @@ func printResult(check string, r Result, err error) {
 	}
 	util.Infof("%s%s", check, strings.Repeat(".", 24-len(check)))
 	if r == Failure {
-		util.Failuref("%-2s\n", r)
+		util.Failuref("%-2s", r)
 	} else {
-		util.Successf("%-2s\n", r)
+		util.Successf("%-2s", r)
 	}
+	if err != nil {
+		util.Failuref("%v", err)
+	}
+	util.Blank()
 }
 
 func validateServiceAccount(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
