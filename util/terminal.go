@@ -17,7 +17,6 @@ package util
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/daviddengcn/go-colortext"
@@ -35,13 +34,33 @@ func Blank() {
 	fmt.Println()
 }
 
+func Warnf(msg string, args ...interface{}) {
+	Warn(fmt.Sprintf(msg, args...))
+}
+
+func Warn(msg string) {
+	ct.ChangeColor(ct.Yellow, false, ct.None, false)
+	fmt.Print(msg)
+	ct.ResetColor()
+}
+
+func Errorf(msg string, args ...interface{}) {
+	Error(fmt.Sprintf(msg, args...))
+}
+
+func Error(msg string) {
+	ct.ChangeColor(ct.Red, true, ct.None, false)
+	fmt.Print(msg)
+	ct.ResetColor()
+}
+
 func Fatalf(msg string, args ...interface{}) {
 	Fatal(fmt.Sprintf(msg, args...))
 }
 
 func Fatal(msg string) {
 	ct.ChangeColor(ct.Red, true, ct.None, false)
-	log.Fatal(msg)
+	fmt.Print(msg)
 	ct.ResetColor()
 	os.Exit(1)
 }

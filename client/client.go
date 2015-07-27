@@ -25,7 +25,8 @@ func NewClient(f *cmdutil.Factory) (*client.Client, *client.Config) {
 	var err error
 	cfg, err := f.ClientConfig()
 	if err != nil {
-		util.Fatalf("Could not initialise a client config: %v", err)
+		util.Error("Could not initialise a client - is your server setting correct?\n\n")
+		util.Fatalf("%v", err)
 	}
 	c, err := client.New(cfg)
 	if err != nil {
