@@ -101,6 +101,11 @@
 			"Rev": "cd821444dcf3e1e237b5f3579721440624c9c4fa"
 		},
 		{
+			"ImportPath": "github.com/GoogleCloudPlatform/kubernetes/third_party/golang/netutil",
+			"Comment": "v1.0.0",
+			"Rev": "cd821444dcf3e1e237b5f3579721440624c9c4fa"
+		},
+		{
 			"ImportPath": "github.com/beorn7/perks/quantile",
 			"Rev": "b965b613227fddccbfffe13eae360ed3fa822f8d"
 		},
@@ -113,7 +118,22 @@
 			"Rev": "b5c0891944c2f150ccc9d02aecf51b76c14c2948"
 		},
 		{
+			"ImportPath": "github.com/docker/distribution/digest",
+			"Comment": "v2.0.0",
+			"Rev": "62b70f951f30a711a8a81df1865d0afeeaaa0169"
+		},
+		{
 			"ImportPath": "github.com/docker/docker/pkg/mount",
+			"Comment": "v1.4.1-4045-g2b27fe1",
+			"Rev": "2b27fe17a1b3fb8472fde96d768fa70996adf201"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/tarsum",
+			"Comment": "v1.4.1-4045-g2b27fe1",
+			"Rev": "2b27fe17a1b3fb8472fde96d768fa70996adf201"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/term",
 			"Comment": "v1.4.1-4045-g2b27fe1",
 			"Rev": "2b27fe17a1b3fb8472fde96d768fa70996adf201"
 		},
@@ -133,6 +153,10 @@
 			"Rev": "ae812bdca78084dc322037225d170e1883521d87"
 		},
 		{
+			"ImportPath": "github.com/docker/spdystream",
+			"Rev": "83ae67e694a4ab5cbaee4d3126f25118712b26e6"
+		},
+		{
 			"ImportPath": "github.com/emicklei/go-restful",
 			"Comment": "v1.1.3-54-gbdfb7d4",
 			"Rev": "bdfb7d41639a84ea7c36df648e5865cd9fbf21e2"
@@ -140,6 +164,10 @@
 		{
 			"ImportPath": "github.com/evanphx/json-patch",
 			"Rev": "7dd4489c2eb6073e5a9d7746c3274c5b5f0387df"
+		},
+		{
+			"ImportPath": "github.com/fsouza/go-dockerclient",
+			"Rev": "2f1ad24900b2777139b5becee93eb63a75b00617"
 		},
 		{
 			"ImportPath": "github.com/ghodss/yaml",
@@ -172,12 +200,81 @@
 			"Rev": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
 		},
 		{
+			"ImportPath": "github.com/jlhawn/go-crypto",
+			"Rev": "cd738dde20f0b3782516181b0866c9bb9db47401"
+		},
+		{
 			"ImportPath": "github.com/juju/ratelimit",
 			"Rev": "772f5c38e468398c4511514f4f6aa9a4185bc0a0"
 		},
 		{
 			"ImportPath": "github.com/matttproud/golang_protobuf_extensions/pbutil",
 			"Rev": "fc2b8d3a73c4867e51861bbdd5ae3c1f0869dd6a"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/authorization/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/build/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/client",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/deploy/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/image/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/oauth/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/project/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/route/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/sdn/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/template/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/user/api",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
+		},
+		{
+			"ImportPath": "github.com/openshift/origin/pkg/version",
+			"Comment": "v1.0.3",
+			"Rev": "169546163c30fbea531271b0ddbe6f464a9bd6be"
 		},
 		{
 			"ImportPath": "github.com/prometheus/client_golang/model",
@@ -217,6 +314,10 @@
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
+			"Rev": "cbcac7bb8415db9b6cb4d1ebab1dc9afbd688b97"
+		},
+		{
+			"ImportPath": "golang.org/x/net/spdy",
 			"Rev": "cbcac7bb8415db9b6cb4d1ebab1dc9afbd688b97"
 		},
 		{
