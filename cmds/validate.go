@@ -18,6 +18,7 @@ package cmds
 import (
 	"strings"
 
+	k8sclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -31,6 +32,8 @@ const (
 	Failure Result = "✘"
 )
 
+type validateFunc func(c *k8sclient.Client, f *cmdutil.Factory) (Result, error)
+
 func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate",
@@ -38,27 +41,47 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 		Long:  `validate your Kubernetes or OpenShift environment`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c, cfg := client.NewClient(f)
-			util.Infof("Validating your ")
+			ns, _, _ := f.DefaultNamespace()
+			util.Info("Validating your ")
 			util.Success(string(util.TypeOfMaster(c)))
-			util.Infof(" installation at ")
+			util.Info(" installation at ")
 			util.Success(cfg.Host)
+			util.Info(" in namespace ")
+			util.Success(ns)
 			util.Blank()
 			util.Blank()
-			validateResult("Hello", Success)
-			validateResult("Goodbye", Failure)
-			util.Blank()
+			printValidationResult("Service account", validateServiceAccount, c, f)
 		},
 	}
 
 	return cmd
 }
 
-func validateResult(check string, r Result) {
+func printValidationResult(check string, v validateFunc, c *k8sclient.Client, f *cmdutil.Factory) {
+	r, err := v(c, f)
+	if err != nil {
+		r = Failure
+	}
 	util.Infof("%s%s", check, strings.Repeat(".", 24-len(check)))
 	if r == Failure {
-		util.Failuref("%s", r)
+		util.Failuref("%-2s", r)
 	} else {
-		util.Successf("%s", r)
+		util.Successf("%-2s", r)
+	}
+	if err != nil {
+		util.Errorf("%v", err)
 	}
 	util.Blank()
+}
+
+func validateServiceAccount(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+	sa, err := c.ServiceAccounts(ns).Get("fabric8")
+	if sa != nil {
+		return Success, err
+	}
+	return Failure, err
 }

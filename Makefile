@@ -32,3 +32,6 @@ update-deps:
 		popd && \
 		godep save ./... && \
 		godep update ...
+
+clean:
+	rm -rf build gofabric8
