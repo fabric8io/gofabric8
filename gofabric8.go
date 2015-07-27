@@ -24,10 +24,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	fabric8Version string
-)
-
 func runHelp(cmd *cobra.Command, args []string) {
 	cmd.Help()
 }
@@ -38,9 +34,9 @@ func main() {
 	ct.ResetColor()
 
 	cmds := &cobra.Command{
-		Use:   "fabric8",
-		Short: "fabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment",
-		Long: `fabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment
+		Use:   "gofabric8",
+		Short: "gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment",
+		Long: `gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment
 								Find more information at http://fabric8.io.`,
 		Run: runHelp,
 	}
@@ -48,7 +44,8 @@ func main() {
 	f := cmdutil.NewFactory(nil)
 	f.BindFlags(cmds.PersistentFlags())
 
-	cmds.PersistentFlags().StringVarP(&fabric8Version, "version", "v", "latest", "fabric8 version")
+	cmds.PersistentFlags().StringP("version", "v", "latest", "fabric8 version")
+	cmds.PersistentFlags().BoolP("yes", "y", false, "assume yes")
 
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))

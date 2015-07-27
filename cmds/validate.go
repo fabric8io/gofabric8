@@ -122,8 +122,8 @@ func validateTemplateService(c *k8sclient.Client, f *cmdutil.Factory) (Result, e
 	if err != nil {
 		return Failure, err
 	}
-	rc, err := c.Services(ns).Get("templates")
-	if rc != nil {
+	svc, err := c.Services(ns).Get("templates")
+	if svc != nil {
 		return Success, err
 	}
 	return Failure, err

@@ -20,12 +20,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 
 	kcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd"
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	ocmd "github.com/openshift/origin/pkg/cmd/cli/cmd"
+	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	"github.com/spf13/cobra"
 )
 
@@ -51,10 +53,12 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			util.Info(" in namespace ")
 			util.Successf("%s\n\n", ns)
 
-			util.Info("Continue? [Y/n] ")
-			cont := util.AskForConfirmation(true)
-			if !cont {
-				util.Fatal("Cancelled...\n")
+			if cmd.Flags().Lookup("yes").Value.String() == "false" {
+				util.Info("Continue? [Y/n] ")
+				cont := util.AskForConfirmation(true)
+				if !cont {
+					util.Fatal("Cancelled...\n")
+				}
 			}
 
 			v := cmd.Flags().Lookup("version").Value.String()
@@ -64,7 +68,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 			util.Warnf("\nStarting deployment of %s...\n\n", v)
 
-			if typeOfMaster == util.OpenShift {
+			if typeOfMaster == util.Kubernetes {
 				uri := fmt.Sprintf(baseConsoleKubernetesUrl, v)
 				filenames := []string{uri}
 
@@ -76,7 +80,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				}
 			} else {
 				uri := fmt.Sprintf(baseConsoleUrl, v)
-				ocmd.RunProcess()
+				cmd.Flags().String("filename", uri, "")
+				cmd.Flags().Bool("parameters", false, "")
+
+				of := clientcmd.NewFactory(clientcmd.DefaultClientConfig(cmd.Flags()))
+				ocmd.RunProcess(of, os.Stdout, cmd, nil)
 			}
 		},
 	}
