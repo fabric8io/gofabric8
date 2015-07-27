@@ -16,18 +16,25 @@
 package cmds
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
-	"os"
+	"strings"
+	"time"
 
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	kcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd"
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
-	ocmd "github.com/openshift/origin/pkg/cmd/cli/cmd"
-	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	"github.com/openshift/origin/pkg/template"
+	tapi "github.com/openshift/origin/pkg/template/api"
+	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
+	"github.com/openshift/origin/pkg/template/generator"
 	"github.com/spf13/cobra"
 )
 
@@ -80,18 +87,67 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				}
 			} else {
 				uri := fmt.Sprintf(baseConsoleUrl, v)
-				cmd.Flags().String("filename", uri, "")
-				cmd.Flags().String("value", "", "")
-				cmd.Flags().Bool("parameters", false, "")
-				cmd.Flags().String("labels", "", "")
+				resp, err := http.Get(uri)
+				if err != nil {
+					util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+				}
+				defer resp.Body.Close()
+				jsonData, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+				}
+				var v1tmpl tapiv1.Template
+				err = json.Unmarshal(jsonData, &v1tmpl)
+				if err != nil {
+					util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+				}
+				var tmpl tapi.Template
 
-				cmd.Flags().String("output", "json", "")
-				cmd.Flags().Bool("raw", false, "")
-				cmd.Flags().String("output-version", "", "")
-				cmd.Flags().String("template", "", "")
+				err = api.Scheme.Convert(&v1tmpl, &tmpl)
+				if err != nil {
+					util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+				}
 
-				of := clientcmd.NewFactory(clientcmd.DefaultClientConfig(cmd.Flags()))
-				err := ocmd.RunProcess(of, os.Stdout, cmd, nil)
+				generators := map[string]generator.Generator{
+					"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
+				}
+				p := template.NewProcessor(generators)
+
+				tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
+					Name:  "DOMAIN",
+					Value: cmd.Flags().Lookup("domain").Value.String(),
+				})
+
+				p.Process(&tmpl)
+
+				for _, o := range tmpl.Objects {
+					switch o := o.(type) {
+					case *runtime.Unstructured:
+						var b []byte
+						b, err = json.Marshal(o.Object)
+						if err != nil {
+							break
+						}
+						req := c.Post().Body(b)
+						if o.Kind != "OAuthClient" {
+							req.Namespace(ns).Resource(strings.ToLower(o.TypeMeta.Kind + "s"))
+						} else {
+							req.AbsPath("oapi", "v1", strings.ToLower(o.TypeMeta.Kind+"s"))
+						}
+						res := req.Do()
+						if res.Error() != nil {
+							err = res.Error()
+							break
+						}
+						var statusCode int
+						res.StatusCode(&statusCode)
+						if statusCode != http.StatusCreated {
+							err = fmt.Errorf("Failed to create %s: %d", o.TypeMeta.Kind, statusCode)
+							break
+						}
+					}
+				}
+
 				if err != nil {
 					printResult("fabric8 console", Failure, err)
 				} else {
@@ -100,6 +156,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			}
 		},
 	}
+
+	cmd.Flags().String("domain", "vagrant.f8", "The domain name to append to the service name to access web applications")
 
 	return cmd
 }
