@@ -15,23 +15,40 @@
 #
 
 SHELL := /bin/bash
-tag := $(shell cat .openshift-version)
+NAME=gofabric8
+VERSION=$(shell cat VERSION)
+OPENSHIFT_TAG := $(shell cat .openshift-version)
 
 build: *.go */*.go
-	godep go build -o build/gofabric8 -a gofabric8.go
+	godep go build -o build/$(NAME) -a gofabric8.go
 
 install: *.go */*.go
 	GOBIN=${GOPATH}/bin godep go install -a gofabric8.go
 
 update-deps:
-	echo $(tag) > .openshift-version && \
+	echo $(OPENSHIFT_TAG) > .openshift-version && \
 		pushd $(GOPATH)/src/github.com/openshift/origin && \
 		git fetch origin && \
-		git checkout -B $(tag) refs/tags/$(tag) && \
+		git checkout -B $(OPENSHIFT_TAG) refs/tags/$(OPENSHIFT_TAG) && \
 		godep restore && \
 		popd && \
 		godep save ./... && \
 		godep update ...
 
+release:
+	rm -rf build release && mkdir build release
+	for os in linux freebsd darwin ; do \
+		GOOS=$$os ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$$os-amd64 ; \
+		tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$(VERSION)-$$os-amd64.tar.gz build/$(NAME)-$$os-amd64 README.md LICENSE ; \
+	done
+	GOOS=windows ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$(VERSION)-windows-amd64.exe
+	zip release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE && \
+		echo -e "@ build/$(NAME)-$(VERSION)-windows-amd64.exe\n@=$(NAME).exe"  | zipnote -w release/$(NAME)-$(VERSION)-windows-amd64.zip
+	go get github.com/progrium/gh-release/...
+	gh-release create fabric8io/$(NAME) $(VERSION) \
+		$(shell git rev-parse --abbrev-ref HEAD) $(VERSION)
+
 clean:
-	rm -rf build gofabric8
+		rm -rf build release
+
+.PHONY: release clean
