@@ -156,9 +156,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			}
 		},
 	}
-
-	cmd.Flags().String("domain", "vagrant.f8", "The domain name to append to the service name to access web applications")
-
 	return cmd
 }
 
