@@ -27,6 +27,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	kcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd"
+	k8sclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 	"github.com/fabric8io/gofabric8/client"
@@ -44,6 +45,8 @@ const (
 	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
 	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
 )
+
+type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
 
 func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -153,6 +156,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				} else {
 					printResult("fabric8 console", Success, nil)
 				}
+
+				printFunctionResult("jenkins", createSecret, c, f)
 			}
 		},
 	}
@@ -200,4 +205,31 @@ func f8Version(v string, typeOfMaster util.MasterType) string {
 	util.Errorf("\nUnknown version: %s\n", v)
 	util.Fatalf("Valid versions: %v\n", append(m.Versions, "latest"))
 	return ""
+}
+
+func createSecret(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error) {
+	var secret = secret(name)
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+
+	rs, err := c.Secrets(ns).Create(&secret)
+	if rs != nil {
+		return Success, err
+	}
+	return Failure, err
+}
+
+func printFunctionResult(name string, v createFunc, c *k8sclient.Client, f *cmdutil.Factory) {
+	r, err := v(c, f, name)
+	printResult(name + " secret", r, err)
+}
+
+func secret(name string) api.Secret {
+	return api.Secret{
+		ObjectMeta: api.ObjectMeta{
+			Name:      name,
+		},
+	}
 }

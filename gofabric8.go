@@ -20,7 +20,7 @@ import (
 
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/daviddengcn/go-colortext"
-	commands "github.com/fabric8io/gofabric8/cmds"
+	commands "./cmds"
 	"github.com/spf13/cobra"
 )
 
