@@ -81,7 +81,7 @@ func printResult(check string, r Result, err error) {
 	if err != nil {
 		r = Failure
 	}
-	util.Infof("%s%s", check, strings.Repeat(".", 24-len(check)))
+	util.Infof("%s%s", check, strings.Repeat(".", 32-len(check)))
 	if r == Failure {
 		util.Failuref("%-2s", r)
 	} else {

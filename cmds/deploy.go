@@ -156,8 +156,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				} else {
 					printResult("fabric8 console", Success, nil)
 				}
-
-				printFunctionResult("jenkins", createSecret, c, f)
 			}
 		},
 	}
@@ -205,31 +203,4 @@ func f8Version(v string, typeOfMaster util.MasterType) string {
 	util.Errorf("\nUnknown version: %s\n", v)
 	util.Fatalf("Valid versions: %v\n", append(m.Versions, "latest"))
 	return ""
-}
-
-func createSecret(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error) {
-	var secret = secret(name)
-	ns, _, err := f.DefaultNamespace()
-	if err != nil {
-		return Failure, err
-	}
-
-	rs, err := c.Secrets(ns).Create(&secret)
-	if rs != nil {
-		return Success, err
-	}
-	return Failure, err
-}
-
-func printFunctionResult(name string, v createFunc, c *k8sclient.Client, f *cmdutil.Factory) {
-	r, err := v(c, f, name)
-	printResult(name + " secret", r, err)
-}
-
-func secret(name string) api.Secret {
-	return api.Secret{
-		ObjectMeta: api.ObjectMeta{
-			Name:      name,
-		},
-	}
 }
