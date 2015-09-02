@@ -23,7 +23,10 @@ import (
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
+	kutil "github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 	"github.com/spf13/cobra"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
 )
 
 type Result string
@@ -51,6 +54,7 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 			util.Info(" in namespace ")
 			util.Successf("%s\n\n", ns)
 			printValidationResult("Service account", validateServiceAccount, c, f)
+			printValidationResult("Router", validateRouter, c, f)
 			printValidationResult("Console", validateConsoleDeployment, c, f)
 
 			if util.TypeOfMaster(c) == util.Kubernetes {
@@ -61,6 +65,9 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 				oc, _ := client.NewOpenShiftClient(cfg)
 				printOValidationResult("Templates", validateTemplates, oc, f)
 			}
+
+			printValidationResult("PersistentVolumeClaims", validatePersistenceVolumeClaims, c, f)
+			printValidationResult("SecurityContextConstraints", validateSecurityContextConstraints, c, f)
 		},
 	}
 
@@ -81,7 +88,12 @@ func printResult(check string, r Result, err error) {
 	if err != nil {
 		r = Failure
 	}
-	util.Infof("%s%s", check, strings.Repeat(".", 32-len(check)))
+	padLen := 44 - len(check)
+	pad := ""
+	if padLen > 0 {
+		pad = strings.Repeat(".", padLen)
+	}
+	util.Infof("%s%s", check, pad)
 	if r == Failure {
 		util.Failuref("%-2s", r)
 	} else {
@@ -111,6 +123,95 @@ func validateConsoleDeployment(c *k8sclient.Client, f *cmdutil.Factory) (Result,
 		return Failure, err
 	}
 	rc, err := c.ReplicationControllers(ns).Get("fabric8")
+	if rc != nil {
+		return Success, err
+	}
+	return Failure, err
+}
+
+func validatePersistenceVolumeClaims(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+	rc, err := c.PersistentVolumeClaims(ns).List(labels.Everything(), fields.Everything())
+	if err != nil {
+		util.Fatalf("Failed to get PersistentVolumeClaims, %s in namespace %s\n", err, ns)
+	}
+	if rc != nil {
+		items := rc.Items
+		pendingClaimNames := make([]string, 0, len(items))
+		for _, item := range items {
+			status := item.Status.Phase
+			if status != "Bound" {
+				pendingClaimNames = append(pendingClaimNames, item.ObjectMeta.Name)
+			}
+		}
+		if len(pendingClaimNames) > 0 {
+			util.Failuref("PersistentVolumeClaim not Bound for: %s. You need to create a PersistentVolume!\n", strings.Join(pendingClaimNames, ", "))
+			util.Info(`
+to generate a single node PersistentVolume then type something like this:
+
+
+cat <<EOF | oc create -f -
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: fabric8
+spec:
+  accessModes:
+    - ReadWrite
+  capacity:
+    storage: 1000
+  hostPath:
+    path: /opt/fabric8-data
+EOF
+
+
+`)
+			return Failure, err
+		}
+		return Success, err
+	}
+	return Failure, err
+}
+
+func validateRouter(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+	requirement, err := labels.NewRequirement("router", labels.EqualsOperator, kutil.NewStringSet("router"))
+	if err != nil {
+		return Failure, err
+	}
+	label := labels.LabelSelector{*requirement}
+
+	rc, err := c.ReplicationControllers(ns).List(label)
+	if err != nil {
+		util.Fatalf("Failed to get PersistentVolumeClaims, %s in namespace %s\n", err, ns)
+	}
+	if rc != nil {
+		items := rc.Items
+		if len(items) > 0 {
+			return Success, err
+		}
+	}
+	util.Fatalf("No router running in namespace!\n", err, ns)
+	// TODO lets create a router
+	return Failure, err
+}
+
+func validateSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+	rc, err := c.SecurityContextConstraints().Get("fabric8")
+	if err != nil {
+		util.Fatalf("Failed to get SecurityContextConstraints, %s in namespace %s\n", err, ns)
+	}
 	if rc != nil {
 		return Success, err
 	}
