@@ -38,7 +38,9 @@ func NewClient(f *cmdutil.Factory) (*client.Client, *client.Config) {
 }
 
 func NewOpenShiftClient(cfg *client.Config) (*oclient.Client, *client.Config) {
-	c, err := oclient.New(cfg)
+	ocfg := *cfg
+	ocfg.Prefix = ""
+	c, err := oclient.New(&ocfg)
 	if err != nil {
 		util.Fatalf("Could not initialise an OpenShift client: %v", err)
 	}
