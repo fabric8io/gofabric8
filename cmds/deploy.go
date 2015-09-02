@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	kcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd"
 	k8sclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
@@ -35,6 +36,7 @@ import (
 	"github.com/openshift/origin/pkg/template"
 	tapi "github.com/openshift/origin/pkg/template/api"
 	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
+	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
 	"github.com/openshift/origin/pkg/template/generator"
 	"github.com/spf13/cobra"
 )
@@ -89,6 +91,13 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printResult("fabric8 console", Success, nil)
 				}
 			} else {
+				_, err := deploySecurityContextConstraints(c, f)
+				if err != nil {
+					printResult("fabric8 SecurityContextConstraints", Failure, err)
+				} else {
+					printResult("fabric8 SecurityContextConstraints", Success, nil)
+				}
+
 				uri := fmt.Sprintf(baseConsoleUrl, v)
 				resp, err := http.Get(uri)
 				if err != nil {
@@ -160,6 +169,70 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// SCC
+const (
+	PrivilegedSCC = "privileged"
+	RestrictedSCC = "restricted"
+)
+
+func deploySecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	privileged := kapi.SecurityContextConstraints{
+		ObjectMeta: kapi.ObjectMeta{
+			Name: PrivilegedSCC,
+		},
+		AllowPrivilegedContainer: true,
+		AllowHostDirVolumePlugin: true,
+		SELinuxContext: kapi.SELinuxContextStrategyOptions{
+			Type: kapi.SELinuxStrategyRunAsAny,
+		},
+		RunAsUser: kapi.RunAsUserStrategyOptions{
+			Type: kapi.RunAsUserStrategyRunAsAny,
+		},
+		Users:  []string{"system:serviceaccount:openshift-infra:build-controller", "system:serviceaccount:default:default", "system:serviceaccount:default:fabric8", "system:serviceaccount:default:jenkins", "system:serviceaccount:default:router"},
+		Groups: []string{bootstrappolicy.ClusterAdminGroup, bootstrappolicy.NodesGroup},
+	}
+	r, err := recreateSecurityContextConstraints(c, f, PrivilegedSCC, &privileged)
+	if err != nil {
+		return r, err
+	}
+	restricted := kapi.SecurityContextConstraints{
+		ObjectMeta: kapi.ObjectMeta{
+			Name: RestrictedSCC,
+		},
+		SELinuxContext: kapi.SELinuxContextStrategyOptions{
+			Type: kapi.SELinuxStrategyMustRunAs,
+		},
+		RunAsUser: kapi.RunAsUserStrategyOptions{
+			Type: kapi.RunAsUserStrategyRunAsAny,
+		},
+		Groups: []string{bootstrappolicy.AuthenticatedGroup},
+	}
+	return recreateSecurityContextConstraints(c, f, RestrictedSCC, &restricted)
+}
+
+func recreateSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory, name string, scc *kapi.SecurityContextConstraints) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		util.Fatal("No default namespace")
+		return Failure, err
+	}
+	_, err = c.SecurityContextConstraints().Get(name)
+	if err == nil {
+		err = c.SecurityContextConstraints().Delete(name)
+		if err != nil {
+			return Failure, err
+		}
+	}
+	_, err = c.SecurityContextConstraints().Create(scc)
+	if err != nil {
+		util.Fatalf("Cannot create SecurityContextConstraints: %v\n", err)
+		util.Fatalf("Failed to create SecurityContextConstraints %v in namespace %s: %v\n", scc, ns, err)
+		return Failure, err
+	}
+	util.Infof("Created the SecurityContextConstraints %s\n", name)
+	return Success, err
 }
 
 func f8Version(v string, typeOfMaster util.MasterType) string {
