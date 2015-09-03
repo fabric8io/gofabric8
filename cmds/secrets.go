@@ -17,30 +17,30 @@ package cmds
 
 import (
 	"io/ioutil"
-	"net/http"
-	"encoding/json"
-	"math/rand"
-	"time"
 	"strings"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	k8sclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	tapi "github.com/openshift/origin/pkg/template/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
-	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
+	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
-	"github.com/openshift/origin/pkg/template"
-	"github.com/openshift/origin/pkg/template/generator"
+	flag "github.com/spf13/pflag"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
 )
 
-const (
-	testUrl               = "https://gist.githubusercontent.com/jstrachan/ffad63dd5dcd369c9498/raw/cecceb677c9af12e0b3b762d4256565bac90fcfd/jenkins.k8s.json"
-)
-
-type createSec func(c *k8sclient.Client, f *cmdutil.Factory, name string, secretType string) (Result, error)
+type Keypair struct {
+	pub []byte
+	priv []byte
+}
 
 func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -65,59 +65,38 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 				}
 			}
 
-			resp, err := http.Get(testUrl)
-			if err != nil {
-				util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-			}
-			defer resp.Body.Close()
-			jsonData, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-			}
-			var v1tmpl tapiv1.Template
-			err = json.Unmarshal(jsonData, &v1tmpl)
-			if err != nil {
-				util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-			}
-			var tmpl tapi.Template
+			typeOfMaster := util.TypeOfMaster(c)
 
-			err = api.Scheme.Convert(&v1tmpl, &tmpl)
-			if err != nil {
-				util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-			}
+			if typeOfMaster == util.Kubernetes {
+				util.Fatal("Support for Kubernetes not yet available...\n")
+			} else {
+				oc, _ := client.NewOpenShiftClient(cfg)
+				t := getTemplates(oc, ns)
 
-			generators := map[string]generator.Generator{
-				"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
-			}
-			p := template.NewProcessor(generators)
-			p.Process(&tmpl)
-
-			for _, o := range tmpl.Objects {
-				switch o := o.(type) {
-				case *runtime.Unstructured:
-					if o.Kind == "ReplicationController" {
-						var (
-							b []byte
-							rc api.ReplicationController
-						)
-						b, err = json.Marshal(o.Object)
-						err := json.Unmarshal(b, &rc)
-						if err != nil {
-							break
-						}
-						for secretType, secretDataIdentifiers := range rc.Spec.Template.Annotations {
-							printSecretResult(secretDataIdentifiers, secretType, createSecret, c, f)
+				// get all the Templates and find the annotations on any Pods
+				for _, i := range t.Items {
+					// convert TemplateList.Objects to Kubernetes resources
+					_ = runtime.DecodeList(i.Objects, api.Scheme, runtime.UnstructuredJSONScheme)
+					for _, rc := range i.Objects {
+						switch rc := rc.(type) {
+						case *api.ReplicationController:
+							for secretType, secretDataIdentifiers := range rc.Spec.Template.Annotations {
+								cerateAndPrintSecrets(secretDataIdentifiers, secretType, c, f, cmd.Flags())
+							}
 						}
 					}
 				}
 			}
 		},
 	}
+	cmd.PersistentFlags().BoolP("print-import-folder-structure", "", true, "Prints the folder structures that are being used by the template annotations to import secrets")
+	cmd.PersistentFlags().BoolP("print-generated-keys", "", false, "Print any generated secrets to the console")
+	cmd.PersistentFlags().BoolP("generate-secrets-data", "g", true, "Generate secrets data if secrets cannot be found on the local filesystem")
 	return cmd
 }
 
-func createSecret(c *k8sclient.Client, f *cmdutil.Factory, secretDataIdentifiers string, secretType string) (Result, error) {
-	var secret = secret(secretDataIdentifiers, secretType)
+func createSecret(c *k8sclient.Client, f *cmdutil.Factory, flags *flag.FlagSet, secretDataIdentifiers string, secretType string, keysNames []string) (Result, error) {
+	var secret = secret(secretDataIdentifiers, secretType, keysNames, flags)
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
@@ -129,28 +108,60 @@ func createSecret(c *k8sclient.Client, f *cmdutil.Factory, secretDataIdentifiers
 	return Failure, err
 }
 
-func printSecretResult(secretDataIdentifiers string, secretType string, v createSec, c *k8sclient.Client, f *cmdutil.Factory) {
-	var items = strings.Split(secretDataIdentifiers, ",")
-	for i := range items {
-		var name = items[i]
-		r, err := v(c, f, name, secretType)
-		printResult(name + " secret", r, err)
+func cerateAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k8sclient.Client, fa *cmdutil.Factory, flags *flag.FlagSet) {
+	// check to see if multiple public and private keys are needed
+	var dataType = strings.Split(secretType, "/")
+	switch dataType[1] {
+	case "secret-ssh-key":
+		items := strings.Split(secretDataIdentifiers, ",")
+		for i := range items {
+			var name = items[i]
+			r, err := createSecret(c, fa, flags, name, secretType, nil)
+			printResult(name + " secret", r, err)
+		}
+	case "secret-ssh-public-key":
+		// if this is just a public key then the secret name is at the start of the string
+		f := func(c rune) bool {
+			return c == ',' || c == '[' || c == ']'
+		}
+		secrets := strings.FieldsFunc(secretDataIdentifiers, f)
+		numOfSecrets := len(secrets)
+
+		var keysNames []string
+		if numOfSecrets > 0 {
+			// if multiple secrets
+			for i := 1; i < numOfSecrets; i++ {
+				keysNames = append(keysNames, secrets[i])
+			}
+		} else {
+			// only single secret required
+			keysNames[0] ="ssh-key.pub"
+		}
+
+		r, err := createSecret(c, fa, flags, secrets[0], secretType, keysNames)
+
+		printResult(secrets[0] + " secret", r, err)
+
+	default:
+		gpgKeyName := []string{"secring.gpg"}
+		r, err := createSecret(c, fa, flags, secretDataIdentifiers, secretType, gpgKeyName)
+		printResult(secretDataIdentifiers + " secret", r, err)
 	}
 }
 
-func secret(name string, secretType string) api.Secret {
+func secret(name string, secretType string, keysNames []string, flags *flag.FlagSet) api.Secret {
 	return api.Secret{
 		ObjectMeta: api.ObjectMeta{
 			Name:      name,
 		},
 		Type:      api.SecretType(secretType),
-		Data:	getSecretData(secretType, name),
+		Data:	getSecretData(secretType, name, keysNames, flags),
 	}
 }
 
 func check(e error) {
 	if e != nil {
-		util.Warnf("Error file %s\n", e)
+		util.Warnf("Warning: %s\n", e)
 	}
 }
 
@@ -158,38 +169,139 @@ func logSecretImport(file string){
 	util.Infof("Importing secret: %s\n", file)
 }
 
-func getSecretData(secretType string, name string) map[string][]byte {
+func getSecretData(secretType string, name string, keysNames []string, flags *flag.FlagSet) map[string][]byte {
 	var dataType = strings.Split(secretType, "/")
 	var data = make(map[string][]byte)
 
+
 	switch dataType[1] {
 	case "secret-ssh-key":
-		logSecretImport(name +"/id_rsa")
-		idrsa, err := ioutil.ReadFile(name +"/id_rsa")
-		check(err)
-		logSecretImport(name +"/id_rsa.pub")
-		idrsaPub, err := ioutil.ReadFile(name +"/id_rsa.pub")
-		check(err)
+		if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
+			logSecretImport(name +"/ssh-key")
+			logSecretImport(name +"/ssh-key.pub")
+		}
 
-		data["id-rsa"] = idrsa
-		data["id-rsa.pub"] = idrsaPub
+		sshKey, err1 := ioutil.ReadFile(name +"/ssh-key")
+		sshKeyPub, err2 := ioutil.ReadFile(name +"/ssh-key.pub")
+
+		// if we cant find the public and private key to import, and generation flag is set then lets generate the keys
+		if (err1 != nil && err2 != nil) && flags.Lookup("generate-secrets-data").Value.String() == "true" {
+			util.Info("No secrets found on local filesystem, generating SSH public and private key pair\n")
+			keypair := generateSshKeyPair(flags.Lookup("print-generated-keys").Value.String())
+			data["ssh-key"] = keypair.priv
+			data["ssh-key.pub"] = keypair.pub
+
+		} else if (err1 != nil || err2 != nil) && flags.Lookup("generate-secrets-data").Value.String() == "true" {
+			util.Infof("Found some keys to import but with errors so unable to generate SSH public and private key pair. %s\n", name)
+			check(err1)
+			check(err2)
+		} else {
+			// if we're not generating the keys and there's an error importing them then still create the secret but with empty data
+			check(err1)
+			check(err2)
+
+			data["ssh-key"] = sshKey
+			data["ssh-key.pub"] = sshKeyPub
+		}
+		return data
 
 	case "secret-ssh-public-key":
-		logSecretImport(name +"/id_rsa.pub")
-		idrsaPub, err := ioutil.ReadFile(name +"/id_rsa.pub")
-		check(err)
 
-		data["id-rsa.pub"] = idrsaPub
+		for i := 0; i < len(keysNames); i++ {
+			if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
+				logSecretImport(name + "/" + keysNames[i])
+			}
+
+			sshPub, err := ioutil.ReadFile(name + "/" + keysNames[i])
+			// if we cant find the public key to import and generation flag is set then lets generate the key
+			if (err != nil) && flags.Lookup("generate-secrets-data").Value.String() == "true" {
+				util.Info("No secrets found on local filesystem, generating SSH public key\n")
+				keypair := generateSshKeyPair(flags.Lookup("print-generated-keys").Value.String())
+				data[keysNames[i]] = keypair.pub
+
+			} else {
+				// if we're not generating the keys and there's an error importing them then still create the secret but with empty data
+				check(err)
+				data[keysNames[i]] = sshPub
+			}
+		}
+		return data
 
 	case "secret-gpg-key":
-		logSecretImport(name +"/secring.gpg")
-		gpg, err := ioutil.ReadFile(name +"/secring.gpg")
+		if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
+			logSecretImport(name +"/" + keysNames[0])
+		}
+		gpg, err := ioutil.ReadFile(name +"/" + keysNames[0])
 		check(err)
 
-		data["gpg"] = gpg
+		data[keysNames[0]] = gpg
 
 	default :
 		util.Fatalf("No matching data type %s\n", dataType)
 	}
 	return data
 }
+
+func generateSshKeyPair(logGeneratedKeys string) (Keypair){
+
+	priv, err := rsa.GenerateKey(rand.Reader, 2014)
+	if err != nil {
+		util.Fatalf("Error generating key", err)
+	}
+	err = priv.Validate()
+	if err != nil {
+		util.Fatalf("Validation failed.", err)
+	}
+
+	// Get der format. priv_der []byte
+	priv_der := x509.MarshalPKCS1PrivateKey(priv)
+
+	// pem.Block
+	// blk pem.Block
+	priv_blk := pem.Block{
+	Type:    "RSA PRIVATE KEY",
+	Headers: nil,
+		Bytes:   priv_der,
+	}
+
+	// Resultant private key in PEM format.
+	// priv_pem string
+	priv_pem := string(pem.EncodeToMemory(&priv_blk))
+
+	if logGeneratedKeys == "true" {
+		util.Infof(priv_pem)
+	}
+
+
+	// Public Key generation
+	pub := priv.PublicKey
+	pub_der, err := x509.MarshalPKIXPublicKey(&pub)
+	if err != nil {
+		util.Fatalf("Failed to get der format for PublicKey.", err)
+	}
+
+	pub_blk := pem.Block{
+	Type:    "PUBLIC KEY",
+	Headers: nil,
+	Bytes:   pub_der,
+	}
+	pub_pem := string(pem.EncodeToMemory(&pub_blk))
+	if logGeneratedKeys == "true" {
+		util.Infof(pub_pem)
+	}
+
+	return Keypair {
+		pub: []byte(pub_pem),
+		priv: []byte(priv_pem),
+	}
+}
+
+func getTemplates(c *oclient.Client, ns string) *tapi.TemplateList {
+
+	rc, err := c.Templates(ns).List(labels.Everything(), fields.Everything())
+	if err != nil {
+		util.Fatalf("No Templates found in namespace %s\n", ns)
+	}
+	return rc
+}
+

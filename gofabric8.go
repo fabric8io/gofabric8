@@ -45,7 +45,6 @@ func main() {
 	f.BindFlags(cmds.PersistentFlags())
 
 	cmds.PersistentFlags().StringP("version", "v", "latest", "fabric8 version")
-	cmds.PersistentFlags().StringP("domain", "d", "vagrant.f8", "The domain name to append to the service name to access web applications")
 	cmds.PersistentFlags().BoolP("yes", "y", false, "assume yes")
 
 	cmds.AddCommand(commands.NewCmdValidate(f))
