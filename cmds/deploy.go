@@ -16,14 +16,18 @@
 package cmds
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"os"
 	"strings"
 	"time"
+
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -48,6 +52,7 @@ const (
 	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/apps/base/%[1]s/base-%[1]s-kubernetes.json"
 	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
 	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
+	templatesDistroUrl           = "https://repo1.maven.org/maven2/io/fabric8/apps/distro/%[1]s/distro-%[1]s-templates.zip"
 
 	Fabric8SCC    = "fabric8"
 	PrivilegedSCC = "privileged"
@@ -111,6 +116,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				printAddServiceAccount(c, f, "metrics")
 				printAddServiceAccount(c, f, "router")
+
+				printError("Install templates", installTemplates(oc, f, v))
 
 				uri := fmt.Sprintf(baseConsoleUrl, v)
 				resp, err := http.Get(uri)
@@ -184,6 +191,87 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd.PersistentFlags().StringP("domain", "d", "vagrant.f8", "The domain name to append to the service name to access web applications")
 	return cmd
+}
+
+func installTemplates(c *oclient.Client, fac *cmdutil.Factory, v string) error {
+	ns, _, err := fac.DefaultNamespace()
+	if err != nil {
+		util.Fatal("No default namespace")
+		return err
+	}
+	templates := c.Templates(ns)
+
+	util.Infof("Downloading templates for fabric8 version %v\n", v)
+	uri := fmt.Sprintf(templatesDistroUrl, v)
+	resp, err := http.Get(uri)
+	if err != nil {
+		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+	}
+	defer resp.Body.Close()
+
+	tmpFileName := "/tmp/fabric8-template-distros.tar.gz"
+	t, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	if err != nil {
+		return err
+	}
+	defer t.Close()
+
+	_, err = io.Copy(t, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	r, err := zip.OpenReader(tmpFileName)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		mode := f.FileHeader.Mode()
+		if mode.IsDir() {
+			continue
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+
+		util.Infof("Loading template %s\n", f.Name)
+		jsonData, err := ioutil.ReadAll(rc)
+		if err != nil {
+			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+		}
+		var v1tmpl tapiv1.Template
+		err = json.Unmarshal(jsonData, &v1tmpl)
+		if err != nil {
+			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+		}
+		var tmpl tapi.Template
+
+		err = api.Scheme.Convert(&v1tmpl, &tmpl)
+		if err != nil {
+			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+			return err
+		}
+
+		name := tmpl.ObjectMeta.Name
+		_, err = templates.Get(name)
+		if err == nil {
+			err = templates.Delete(name)
+			if err != nil {
+				util.Errorf("Could not delete template %s due to: %v\n", name, err)
+			}
+		}
+		_, err = templates.Create(&tmpl)
+		if err != nil {
+			util.Fatalf("Failed to create template %v", err)
+			return err
+		}
+	}
+	return nil
 }
 
 func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {

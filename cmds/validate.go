@@ -84,6 +84,14 @@ func printOValidationResult(check string, v oValidateFunc, c *oclient.Client, f 
 	printResult(check, r, err)
 }
 
+func printError(check string, err error) {
+	r := Success
+	if err != nil {
+		r = Failure
+	}
+	printResult(check, r, err)
+}
+
 func printResult(check string, r Result, err error) {
 	if err != nil {
 		r = Failure
