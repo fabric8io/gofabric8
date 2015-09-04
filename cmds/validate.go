@@ -198,7 +198,7 @@ func validateRouter(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
 			return Success, err
 		}
 	}
-	util.Fatalf("No router running in namespace!\n", err, ns)
+	//util.Fatalf("No router running in namespace %s\n", ns)
 	// TODO lets create a router
 	return Failure, err
 }

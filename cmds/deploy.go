@@ -104,9 +104,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				r, err = deployFabric8SecurityContextConstraints(c, f)
 				printResult("SecurityContextConstraints fabric8", r, err)
 
-				printAddClusterRoleToUser(oc, f, "cluster-admin", "admin")
 				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:default:fabric8")
 				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:default:metrics")
+
+				printAddServiceAccount(c, f, "metrics")
+				printAddServiceAccount(c, f, "router")
 
 				uri := fmt.Sprintf(baseConsoleUrl, v)
 				resp, err := http.Get(uri)
@@ -257,6 +259,7 @@ func verifyRestrictedSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.
 	}
 	// lets check that the restricted is configured corectly
 	if kapi.RunAsUserStrategyRunAsAny != rc.RunAsUser.Type {
+		rc.RunAsUser.Type = kapi.RunAsUserStrategyRunAsAny
 		_, err = c.SecurityContextConstraints().Update(rc)
 		if err != nil {
 			util.Fatalf("Failed to update SecurityContextConstraints %v in namespace %s: %v\n", rc, ns, err)
@@ -269,6 +272,35 @@ func verifyRestrictedSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.
 	return Success, err
 }
 
+func printAddServiceAccount(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error) {
+	r, err := addServiceAccount(c, f, name)
+	message := fmt.Sprintf("addServiceAccount %s", name)
+	printResult(message, r, err)
+	return r, err
+}
+
+func addServiceAccount(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error) {
+	ns, _, e := f.DefaultNamespace()
+	if e != nil {
+		util.Fatal("No default namespace")
+		return Failure, e
+	}
+	sas := c.ServiceAccounts(ns)
+	_, err := sas.Get(name)
+	if err != nil {
+		sa := kapi.ServiceAccount{
+			ObjectMeta: kapi.ObjectMeta{
+				Name: name,
+			},
+		}
+		_, err = sas.Create(&sa)
+	}
+	r := Success
+	if err != nil {
+		r = Failure
+	}
+	return r, err
+}
 
 func printAddClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) (Result, error) {
 	err := addClusterRoleToUser(c, f, roleName, userName)
@@ -283,13 +315,14 @@ func printAddClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName s
 
 // simulates: oadm policy add-cluster-role-to-user roleName userName
 func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) (error) {
-	roleBindingNamespace, _, err := f.DefaultNamespace()
+	namespace, _, err := f.DefaultNamespace()
 	if err != nil {
+		util.Info("No namespace!'\n")
 		return err
 	}
 	options := policy.RoleModificationOptions{
 		RoleName: roleName,
-		RoleBindingAccessor: policy.NewLocalRoleBindingAccessor(roleBindingNamespace, c),
+		RoleBindingAccessor: policy.NewLocalRoleBindingAccessor(namespace, c),
 		Users: []string{userName},
 	}
 	return options.AddRole();
