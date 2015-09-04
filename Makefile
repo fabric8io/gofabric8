@@ -25,7 +25,7 @@ build: *.go */*.go
 install: *.go */*.go
 	GOBIN=${GOPATH}/bin godep go install -a gofabric8.go
 
-update-deps:
+update-deps-old:
 	echo $(OPENSHIFT_TAG) > .openshift-version && \
 		pushd $(GOPATH)/src/github.com/openshift/origin && \
 		git fetch origin && \
@@ -34,6 +34,19 @@ update-deps:
 		popd && \
 		godep save ./... && \
 		godep update ...
+
+update-deps:
+	echo $(OPENSHIFT_TAG) > .openshift-version && \
+		pushd $(GOPATH)/src/github.com/openshift/origin && \
+		git fetch origin && \
+		git checkout -B $(OPENSHIFT_TAG) refs/tags/$(OPENSHIFT_TAG) && \
+		godep restore && \
+		popd && \
+		godep save cmd/generate/generate.go && \
+		godep update ... && \
+		rm -rf Godeps/_workspace/src/github.com/GoogleCloudPlatform/kubernetes && \
+		cp -r $(GOPATH)/src/github.com/openshift/origin/Godeps/_workspace/src/github.com/GoogleCloudPlatform/kubernetes Godeps/_workspace/src/github.com/GoogleCloudPlatform/kubernetes
+
 
 release:
 	rm -rf build release && mkdir build release
