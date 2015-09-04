@@ -88,7 +88,7 @@ func printResult(check string, r Result, err error) {
 	if err != nil {
 		r = Failure
 	}
-	padLen := 44 - len(check)
+	padLen := 78 - len(check)
 	pad := ""
 	if padLen > 0 {
 		pad = strings.Repeat(".", padLen)

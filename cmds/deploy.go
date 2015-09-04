@@ -34,9 +34,11 @@ import (
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/openshift/origin/pkg/template"
+	oclient "github.com/openshift/origin/pkg/client"
 	tapi "github.com/openshift/origin/pkg/template/api"
 	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	"github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/template/generator"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +48,10 @@ const (
 	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/apps/base/%[1]s/base-%[1]s-kubernetes.json"
 	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
 	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
+
+	Fabric8SCC = "fabric8"
+	PrivilegedSCC = "privileged"
+	RestrictedSCC = "restricted"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -91,12 +97,16 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printResult("fabric8 console", Success, nil)
 				}
 			} else {
-				_, err := deploySecurityContextConstraints(c, f)
-				if err != nil {
-					printResult("fabric8 SecurityContextConstraints", Failure, err)
-				} else {
-					printResult("fabric8 SecurityContextConstraints", Success, nil)
-				}
+				oc, _ := client.NewOpenShiftClient(cfg)
+
+				r, err := verifyRestrictedSecurityContextConstraints(c, f)
+				printResult("SecurityContextConstraints restricted", r, err)
+				r, err = deployFabric8SecurityContextConstraints(c, f)
+				printResult("SecurityContextConstraints fabric8", r, err)
+
+				printAddClusterRoleToUser(oc, f, "cluster-admin", "admin")
+				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:default:fabric8")
+				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:default:metrics")
 
 				uri := fmt.Sprintf(baseConsoleUrl, v)
 				resp, err := http.Get(uri)
@@ -172,16 +182,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-// SCC
-const (
-	PrivilegedSCC = "privileged"
-	RestrictedSCC = "restricted"
-)
-
-func deploySecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
-	privileged := kapi.SecurityContextConstraints{
+func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	name := Fabric8SCC
+	scc := kapi.SecurityContextConstraints{
 		ObjectMeta: kapi.ObjectMeta{
-			Name: PrivilegedSCC,
+			Name: name,
 		},
 		AllowPrivilegedContainer: true,
 		AllowHostDirVolumePlugin: true,
@@ -194,26 +199,6 @@ func deploySecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (
 		Users:  []string{"system:serviceaccount:openshift-infra:build-controller", "system:serviceaccount:default:default", "system:serviceaccount:default:fabric8", "system:serviceaccount:default:jenkins", "system:serviceaccount:default:router"},
 		Groups: []string{bootstrappolicy.ClusterAdminGroup, bootstrappolicy.NodesGroup},
 	}
-	r, err := recreateSecurityContextConstraints(c, f, PrivilegedSCC, &privileged)
-	if err != nil {
-		return r, err
-	}
-	restricted := kapi.SecurityContextConstraints{
-		ObjectMeta: kapi.ObjectMeta{
-			Name: RestrictedSCC,
-		},
-		SELinuxContext: kapi.SELinuxContextStrategyOptions{
-			Type: kapi.SELinuxStrategyMustRunAs,
-		},
-		RunAsUser: kapi.RunAsUserStrategyOptions{
-			Type: kapi.RunAsUserStrategyRunAsAny,
-		},
-		Groups: []string{bootstrappolicy.AuthenticatedGroup},
-	}
-	return recreateSecurityContextConstraints(c, f, RestrictedSCC, &restricted)
-}
-
-func recreateSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory, name string, scc *kapi.SecurityContextConstraints) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		util.Fatal("No default namespace")
@@ -226,14 +211,88 @@ func recreateSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory,
 			return Failure, err
 		}
 	}
-	_, err = c.SecurityContextConstraints().Create(scc)
+	_, err = c.SecurityContextConstraints().Create(&scc)
 	if err != nil {
 		util.Fatalf("Cannot create SecurityContextConstraints: %v\n", err)
 		util.Fatalf("Failed to create SecurityContextConstraints %v in namespace %s: %v\n", scc, ns, err)
 		return Failure, err
 	}
-	util.Infof("Created the SecurityContextConstraints %s\n", name)
+	util.Infof("SecurityContextConstraints %s is setup correctly\n", name)
 	return Success, err
+}
+
+// Ensure that the `restricted` SecurityContextConstraints has the RunAsUser set to RunAsAny
+//
+// if `restricted does not exist lets create it
+// otherwise if needed lets modify the RunAsUser
+func verifyRestrictedSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	name := RestrictedSCC
+	ns, _, e := f.DefaultNamespace()
+	if e != nil {
+		util.Fatal("No default namespace")
+		return Failure, e
+	}
+	rc, err := c.SecurityContextConstraints().Get(name)
+	if err != nil {
+		scc := kapi.SecurityContextConstraints{
+			ObjectMeta: kapi.ObjectMeta{
+				Name: RestrictedSCC,
+			},
+			SELinuxContext: kapi.SELinuxContextStrategyOptions{
+				Type: kapi.SELinuxStrategyMustRunAs,
+			},
+			RunAsUser: kapi.RunAsUserStrategyOptions{
+				Type: kapi.RunAsUserStrategyRunAsAny,
+			},
+			Groups: []string{bootstrappolicy.AuthenticatedGroup},
+		}
+
+		_, err = c.SecurityContextConstraints().Create(&scc)
+		if err != nil {
+			return Failure, err
+		} else {
+			util.Infof("SecurityContextConstraints %s created\n", name)
+			return Success, err
+		}
+	}
+	// lets check that the restricted is configured corectly
+	if kapi.RunAsUserStrategyRunAsAny != rc.RunAsUser.Type {
+		_, err = c.SecurityContextConstraints().Update(rc)
+		if err != nil {
+			util.Fatalf("Failed to update SecurityContextConstraints %v in namespace %s: %v\n", rc, ns, err)
+			return Failure, err
+		}
+		util.Infof("SecurityContextConstraints %s is updated to enable fabric8\n", name)
+	} else {
+		util.Infof("SecurityContextConstraints %s is configured correctly\n", name)
+	}
+	return Success, err
+}
+
+
+func printAddClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) (Result, error) {
+	err := addClusterRoleToUser(c, f, roleName, userName)
+	message := fmt.Sprintf("addClusterRoleToUser %s %s", roleName, userName)
+	r := Success
+	if err != nil {
+		r = Failure
+	}
+	printResult(message, r, err)
+	return r, err
+}
+
+// simulates: oadm policy add-cluster-role-to-user roleName userName
+func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) (error) {
+	roleBindingNamespace, _, err := f.DefaultNamespace()
+	if err != nil {
+		return err
+	}
+	options := policy.RoleModificationOptions{
+		RoleName: roleName,
+		RoleBindingAccessor: policy.NewLocalRoleBindingAccessor(roleBindingNamespace, c),
+		Users: []string{userName},
+	}
+	return options.AddRole();
 }
 
 func f8Version(v string, typeOfMaster util.MasterType) string {
