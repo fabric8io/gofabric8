@@ -193,6 +193,7 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 			Name: name,
 		},
 		AllowPrivilegedContainer: true,
+		AllowHostPorts: true,
 		AllowHostDirVolumePlugin: true,
 		SELinuxContext: kapi.SELinuxContextStrategyOptions{
 			Type: kapi.SELinuxStrategyRunAsAny,
@@ -259,7 +260,8 @@ func verifyRestrictedSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.
 			return Success, err
 		}
 	}
-	// lets check that the restricted is configured corectly
+
+	// lets check that the restricted is configured correctly
 	if kapi.RunAsUserStrategyRunAsAny != rc.RunAsUser.Type {
 		rc.RunAsUser.Type = kapi.RunAsUserStrategyRunAsAny
 		_, err = c.SecurityContextConstraints().Update(rc)
