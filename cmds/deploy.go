@@ -29,6 +29,7 @@ import (
 	"time"
 
 
+	"k8s.io/kubernetes/pkg/labels"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
@@ -37,6 +38,7 @@ import (
 	"github.com/openshift/origin/pkg/template"
 	tapi "github.com/openshift/origin/pkg/template/api"
 	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
+	rapi "github.com/openshift/origin/pkg/route/api"
 	"github.com/openshift/origin/pkg/template/generator"
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
@@ -57,6 +59,8 @@ const (
 	Fabric8SCC    = "fabric8"
 	PrivilegedSCC = "privileged"
 	RestrictedSCC = "restricted"
+
+	DefaultDomain = "vagrant.f8"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -117,7 +121,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				printAddServiceAccount(c, f, "metrics")
 				printAddServiceAccount(c, f, "router")
 
-				printError("Install templates", installTemplates(oc, f, v))
 
 				uri := fmt.Sprintf(baseConsoleUrl, v)
 				resp, err := http.Get(uri)
@@ -186,6 +189,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				} else {
 					printResult("fabric8 console", Success, nil)
 				}
+
+				printError("Install templates", installTemplates(oc, f, v))
+				printError("Create routes", createRoutes(c, oc, f))
 			}
 		},
 	}
@@ -269,6 +275,49 @@ func installTemplates(c *oclient.Client, fac *cmdutil.Factory, v string) error {
 		if err != nil {
 			util.Fatalf("Failed to create template %v", err)
 			return err
+		}
+	}
+	return nil
+}
+
+func createRoutes(c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory) error {
+	ns, _, err := fac.DefaultNamespace()
+	if err != nil {
+		util.Fatal("No default namespace")
+		return err
+	}
+	rc, err := c.Services(ns).List(labels.Everything())
+	if err != nil {
+		util.Errorf("Failed to load services in namespace %s with error %v", ns, err)
+		return err
+	}
+	items := rc.Items
+	domain := os.Getenv("KUBERNETES_DOMAIN")
+	if domain == "" {
+		domain = DefaultDomain
+	}
+	for _, service := range items {
+		// TODO use the external load balancer as a way to know if we should create a route?
+		name := service.ObjectMeta.Name
+		if name != "kubernetes" {
+			routes := oc.Routes(ns)
+			_, err = routes.Get(name)
+			if err != nil {
+				hostName := name + "." + domain
+				route := rapi.Route{
+					ObjectMeta: kapi.ObjectMeta{
+						Name: name,
+					},
+					Host: hostName,
+					ServiceName: name,
+				}
+				// lets create the route
+				_, err = routes.Create(&route)
+				if err != nil {
+					util.Errorf("Failed to create the route %s with error %v", name, err)
+					return err
+				}
+			}
 		}
 	}
 	return nil
