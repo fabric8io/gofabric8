@@ -91,7 +91,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				filenames := []string{uri}
 
 				createCmd := cobra.Command{}
-				createCmd.Flags().StringSlice("filenames", filenames, "")
+				createCmd.Flags().StringSlice("filename", filenames, "")
 				err := kcmd.RunCreate(f, &createCmd, ioutil.Discard)
 				if err != nil {
 					printResult("fabric8 console", Failure, err)
