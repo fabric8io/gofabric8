@@ -3,28 +3,23 @@ package scaler
 import (
 	"time"
 
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	kclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/util/wait"
+	kapi "k8s.io/kubernetes/pkg/api"
+	kclient "k8s.io/kubernetes/pkg/client"
+	"k8s.io/kubernetes/pkg/kubectl"
+	"k8s.io/kubernetes/pkg/util/wait"
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/deploy/util"
 )
 
+// NewDeploymentConfigScaler returns a new scaler for deploymentConfigs
+func NewDeploymentConfigScaler(oc *client.Client, kc *kclient.Client) kubectl.Scaler {
+	return &DeploymentConfigScaler{c: NewScalerClient(oc, kc)}
+}
+
 // DeploymentConfigScaler is a wrapper for the kubectl Scaler client
 type DeploymentConfigScaler struct {
 	c kubectl.ScalerClient
-}
-
-// ScalerFor returns the appropriate Scaler client depending on the provided
-// kind of resource (Replication controllers and deploymentConfigs supported)
-func ScalerFor(kind string, oc client.Interface, kc kclient.Interface) (kubectl.Scaler, error) {
-	if kind != "DeploymentConfig" {
-		return kubectl.ScalerFor(kind, kubectl.NewScalerClient(kc))
-
-	}
-	return &DeploymentConfigScaler{NewScalerClient(oc, kc)}, nil
 }
 
 // Scale updates a replication controller created by the DeploymentConfig with the provided namespace/name,

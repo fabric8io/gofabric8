@@ -16,29 +16,29 @@
 package cmds
 
 import (
-	"io/ioutil"
-	"strings"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"io/ioutil"
+	"strings"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	k8sclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
-	tapi "github.com/openshift/origin/pkg/template/api"
-	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
+	oclient "github.com/openshift/origin/pkg/client"
+	tapi "github.com/openshift/origin/pkg/template/api"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/api"
+	k8sclient "k8s.io/kubernetes/pkg/client"
+	"k8s.io/kubernetes/pkg/fields"
+	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/runtime"
 )
 
 type Keypair struct {
-	pub []byte
+	pub  []byte
 	priv []byte
 }
 
@@ -117,7 +117,7 @@ func cerateAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k
 		for i := range items {
 			var name = items[i]
 			r, err := createSecret(c, fa, flags, name, secretType, nil)
-			printResult(name + " secret", r, err)
+			printResult(name+" secret", r, err)
 		}
 	case "secret-ssh-public-key":
 		// if this is just a public key then the secret name is at the start of the string
@@ -135,27 +135,27 @@ func cerateAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k
 			}
 		} else {
 			// only single secret required
-			keysNames[0] ="ssh-key.pub"
+			keysNames[0] = "ssh-key.pub"
 		}
 
 		r, err := createSecret(c, fa, flags, secrets[0], secretType, keysNames)
 
-		printResult(secrets[0] + " secret", r, err)
+		printResult(secrets[0]+" secret", r, err)
 
 	default:
 		gpgKeyName := []string{"secring.gpg"}
 		r, err := createSecret(c, fa, flags, secretDataIdentifiers, secretType, gpgKeyName)
-		printResult(secretDataIdentifiers + " secret", r, err)
+		printResult(secretDataIdentifiers+" secret", r, err)
 	}
 }
 
 func secret(name string, secretType string, keysNames []string, flags *flag.FlagSet) api.Secret {
 	return api.Secret{
 		ObjectMeta: api.ObjectMeta{
-			Name:      name,
+			Name: name,
 		},
-		Type:      api.SecretType(secretType),
-		Data:	getSecretData(secretType, name, keysNames, flags),
+		Type: api.SecretType(secretType),
+		Data: getSecretData(secretType, name, keysNames, flags),
 	}
 }
 
@@ -165,7 +165,7 @@ func check(e error) {
 	}
 }
 
-func logSecretImport(file string){
+func logSecretImport(file string) {
 	util.Infof("Importing secret: %s\n", file)
 }
 
@@ -173,16 +173,15 @@ func getSecretData(secretType string, name string, keysNames []string, flags *fl
 	var dataType = strings.Split(secretType, "/")
 	var data = make(map[string][]byte)
 
-
 	switch dataType[1] {
 	case "secret-ssh-key":
 		if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
-			logSecretImport(name +"/ssh-key")
-			logSecretImport(name +"/ssh-key.pub")
+			logSecretImport(name + "/ssh-key")
+			logSecretImport(name + "/ssh-key.pub")
 		}
 
-		sshKey, err1 := ioutil.ReadFile(name +"/ssh-key")
-		sshKeyPub, err2 := ioutil.ReadFile(name +"/ssh-key.pub")
+		sshKey, err1 := ioutil.ReadFile(name + "/ssh-key")
+		sshKeyPub, err2 := ioutil.ReadFile(name + "/ssh-key.pub")
 
 		// if we cant find the public and private key to import, and generation flag is set then lets generate the keys
 		if (err1 != nil && err2 != nil) && flags.Lookup("generate-secrets-data").Value.String() == "true" {
@@ -229,20 +228,20 @@ func getSecretData(secretType string, name string, keysNames []string, flags *fl
 
 	case "secret-gpg-key":
 		if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
-			logSecretImport(name +"/" + keysNames[0])
+			logSecretImport(name + "/" + keysNames[0])
 		}
-		gpg, err := ioutil.ReadFile(name +"/" + keysNames[0])
+		gpg, err := ioutil.ReadFile(name + "/" + keysNames[0])
 		check(err)
 
 		data[keysNames[0]] = gpg
 
-	default :
+	default:
 		util.Fatalf("No matching data type %s\n", dataType)
 	}
 	return data
 }
 
-func generateSshKeyPair(logGeneratedKeys string) (Keypair){
+func generateSshKeyPair(logGeneratedKeys string) Keypair {
 
 	priv, err := rsa.GenerateKey(rand.Reader, 2014)
 	if err != nil {
@@ -259,8 +258,8 @@ func generateSshKeyPair(logGeneratedKeys string) (Keypair){
 	// pem.Block
 	// blk pem.Block
 	priv_blk := pem.Block{
-	Type:    "RSA PRIVATE KEY",
-	Headers: nil,
+		Type:    "RSA PRIVATE KEY",
+		Headers: nil,
 		Bytes:   priv_der,
 	}
 
@@ -272,7 +271,6 @@ func generateSshKeyPair(logGeneratedKeys string) (Keypair){
 		util.Infof(priv_pem)
 	}
 
-
 	// Public Key generation
 	pub := priv.PublicKey
 	pub_der, err := x509.MarshalPKIXPublicKey(&pub)
@@ -281,17 +279,17 @@ func generateSshKeyPair(logGeneratedKeys string) (Keypair){
 	}
 
 	pub_blk := pem.Block{
-	Type:    "PUBLIC KEY",
-	Headers: nil,
-	Bytes:   pub_der,
+		Type:    "PUBLIC KEY",
+		Headers: nil,
+		Bytes:   pub_der,
 	}
 	pub_pem := string(pem.EncodeToMemory(&pub_blk))
 	if logGeneratedKeys == "true" {
 		util.Infof(pub_pem)
 	}
 
-	return Keypair {
-		pub: []byte(pub_pem),
+	return Keypair{
+		pub:  []byte(pub_pem),
 		priv: []byte(priv_pem),
 	}
 }
@@ -304,4 +302,3 @@ func getTemplates(c *oclient.Client, ns string) *tapi.TemplateList {
 	}
 	return rc
 }
-

@@ -25,22 +25,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	kcmd "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd"
-	k8sclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
-	"github.com/openshift/origin/pkg/template"
 	oclient "github.com/openshift/origin/pkg/client"
+	"github.com/openshift/origin/pkg/cmd/admin/policy"
+	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	"github.com/openshift/origin/pkg/template"
 	tapi "github.com/openshift/origin/pkg/template/api"
 	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
-	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
-	"github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/template/generator"
 	"github.com/spf13/cobra"
+	"k8s.io/kubernetes/pkg/api"
+	kapi "k8s.io/kubernetes/pkg/api"
+	k8sclient "k8s.io/kubernetes/pkg/client"
+	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
+	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/runtime"
 )
 
 const (
@@ -49,7 +49,7 @@ const (
 	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
 	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
 
-	Fabric8SCC = "fabric8"
+	Fabric8SCC    = "fabric8"
 	PrivilegedSCC = "privileged"
 	RestrictedSCC = "restricted"
 )
@@ -90,7 +90,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				uri := fmt.Sprintf(baseConsoleKubernetesUrl, v)
 				filenames := []string{uri}
 
-				err := kcmd.RunCreate(f, ioutil.Discard, filenames)
+				createCmd := cobra.Command{}
+				createCmd.Flags().StringSlice("filenames", filenames, "")
+				err := kcmd.RunCreate(f, &createCmd, ioutil.Discard)
 				if err != nil {
 					printResult("fabric8 console", Failure, err)
 				} else {
@@ -314,18 +316,18 @@ func printAddClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName s
 }
 
 // simulates: oadm policy add-cluster-role-to-user roleName userName
-func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) (error) {
+func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) error {
 	namespace, _, err := f.DefaultNamespace()
 	if err != nil {
 		util.Info("No namespace!'\n")
 		return err
 	}
 	options := policy.RoleModificationOptions{
-		RoleName: roleName,
+		RoleName:            roleName,
 		RoleBindingAccessor: policy.NewLocalRoleBindingAccessor(namespace, c),
-		Users: []string{userName},
+		Users:               []string{userName},
 	}
-	return options.AddRole();
+	return options.AddRole()
 }
 
 func f8Version(v string, typeOfMaster util.MasterType) string {

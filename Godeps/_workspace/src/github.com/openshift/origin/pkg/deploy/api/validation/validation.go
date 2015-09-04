@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/validation"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/util/fielderrors"
+	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/validation"
+	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/fielderrors"
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
@@ -87,7 +87,7 @@ func validateDeploymentStrategy(strategy *deployapi.DeploymentStrategy) fielderr
 		}
 	}
 
-	// TODO: validate resource requirements (prereq: https://github.com/GoogleCloudPlatform/kubernetes/pull/7059)
+	// TODO: validate resource requirements (prereq: https://github.com/kubernetes/kubernetes/pull/7059)
 
 	return errs
 }
@@ -178,6 +178,13 @@ func validateRollingParams(params *deployapi.RollingDeploymentStrategyParams) fi
 
 	if params.TimeoutSeconds != nil && *params.TimeoutSeconds < 1 {
 		errs = append(errs, fielderrors.NewFieldInvalid("timeoutSeconds", *params.TimeoutSeconds, "must be >0"))
+	}
+
+	if params.UpdatePercent != nil {
+		p := *params.UpdatePercent
+		if p == 0 || p < -100 || p > 100 {
+			errs = append(errs, fielderrors.NewFieldInvalid("updatePercent", *params.UpdatePercent, "must be between 1 and 100 or between -1 and -100 (inclusive)"))
+		}
 	}
 
 	if params.Pre != nil {

@@ -1,7 +1,7 @@
 package v1
 
 import (
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api/v1"
+	kapi "k8s.io/kubernetes/pkg/api/v1"
 )
 
 // DeploymentPhase describes the possible states a deployment can be in.
@@ -115,6 +115,10 @@ type RollingDeploymentStrategyParams struct {
 	// TimeoutSeconds is the time to wait for updates before giving up. If the
 	// value is nil, a default will be used.
 	TimeoutSeconds *int64 `json:"timeoutSeconds,omitempty" description:"the time to wait for updates before giving up"`
+	// UpdatePercent is the percentage of replicas to scale up or down each
+	// interval. If nil, one replica will be scaled up and down each interval.
+	// If negative, the scale order will be down/up instead of up/down.
+	UpdatePercent *int `json:"updatePercent,omitempty" description:"the percentage of replicas to scale up or down each interval (negative value switches scale order to down/up instead of up/down)"`
 	// Pre is a lifecycle hook which is executed before the deployment process
 	// begins. All LifecycleHookFailurePolicy values are supported.
 	Pre *LifecycleHook `json:"pre,omitempty" description:"a hook executed before the strategy starts the deployment"`
@@ -253,7 +257,7 @@ type DeploymentTriggerImageChangeParams struct {
 	// Kind may be left blank, in which case it defaults to "ImageStreamTag". The "Name" is
 	// the only required subfield - if Namespace is blank, the namespace of the current deployment
 	// trigger will be used.
-	From kapi.ObjectReference `json:"from" description:"a reference to an ImageRepository, ImageStream, or ImageStreamTag to watch for changes`
+	From kapi.ObjectReference `json:"from" description:"a reference to an ImageRepository, ImageStream, or ImageStreamTag to watch for changes"`
 	// LastTriggeredImage is the last image to be triggered.
 	LastTriggeredImage string `json:"lastTriggeredImage,omitempty" description:"the last image to be triggered"`
 }

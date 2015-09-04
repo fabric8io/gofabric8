@@ -4,24 +4,19 @@ import (
 	"fmt"
 	"time"
 
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	kerrors "github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
-	kclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl"
 	"github.com/golang/glog"
+	kapi "k8s.io/kubernetes/pkg/api"
+	kerrors "k8s.io/kubernetes/pkg/api/errors"
+	kclient "k8s.io/kubernetes/pkg/client"
+	"k8s.io/kubernetes/pkg/kubectl"
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/deploy/util"
 )
 
-// ReaperFor returns the appropriate Reaper client depending on the provided
-// kind of resource (Replication controllers, pods, services, and deploymentConfigs
-// supported)
-func ReaperFor(kind string, oc *client.Client, kc *kclient.Client) (kubectl.Reaper, error) {
-	if kind != "DeploymentConfig" {
-		return kubectl.ReaperFor(kind, kc)
-	}
-	return &DeploymentConfigReaper{oc: oc, kc: kc, pollInterval: kubectl.Interval, timeout: kubectl.Timeout}, nil
+// NewDeploymentConfigReaper returns a new reaper for deploymentConfigs
+func NewDeploymentConfigReaper(oc *client.Client, kc *kclient.Client) kubectl.Reaper {
+	return &DeploymentConfigReaper{oc: oc, kc: kc, pollInterval: kubectl.Interval, timeout: kubectl.Timeout}
 }
 
 // DeploymentConfigReaper implements the Reaper interface for deploymentConfigs

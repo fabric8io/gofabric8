@@ -3,16 +3,18 @@ package describe
 import (
 	"fmt"
 	"io"
+	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	kclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
-	utilerrors "github.com/GoogleCloudPlatform/kubernetes/pkg/util/errors"
-	"github.com/gonum/graph/topo"
+	kapi "k8s.io/kubernetes/pkg/api"
+	kapierrors "k8s.io/kubernetes/pkg/api/errors"
+	kclient "k8s.io/kubernetes/pkg/client"
+	"k8s.io/kubernetes/pkg/fields"
+	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/util"
+	utilerrors "k8s.io/kubernetes/pkg/util/errors"
 
 	osgraph "github.com/openshift/origin/pkg/api/graph"
 	"github.com/openshift/origin/pkg/api/graph/graphview"
@@ -21,6 +23,7 @@ import (
 	kubegraph "github.com/openshift/origin/pkg/api/kubegraph/nodes"
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	buildedges "github.com/openshift/origin/pkg/build/graph"
+	buildanalysis "github.com/openshift/origin/pkg/build/graph/analysis"
 	buildgraph "github.com/openshift/origin/pkg/build/graph/nodes"
 	"github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
@@ -34,13 +37,16 @@ import (
 	"github.com/openshift/origin/pkg/util/parallel"
 )
 
+const ForbiddenListWarning = "Forbidden"
+
 // ProjectStatusDescriber generates extended information about a Project
 type ProjectStatusDescriber struct {
-	K kclient.Interface
-	C client.Interface
+	K      kclient.Interface
+	C      client.Interface
+	Server string
 }
 
-func (d *ProjectStatusDescriber) MakeGraph(namespace string) (osgraph.Graph, error) {
+func (d *ProjectStatusDescriber) MakeGraph(namespace string) (osgraph.Graph, util.StringSet, error) {
 	g := osgraph.New()
 
 	loaders := []GraphLoader{
@@ -49,6 +55,8 @@ func (d *ProjectStatusDescriber) MakeGraph(namespace string) (osgraph.Graph, err
 		&secretLoader{namespace: namespace, lister: d.K},
 		&rcLoader{namespace: namespace, lister: d.K},
 		&podLoader{namespace: namespace, lister: d.K},
+		// TODO check swagger for feature enablement and selectively add bcLoader and buildLoader
+		// then remove tolerateNotFoundErrors method.
 		&bcLoader{namespace: namespace, lister: d.C},
 		&buildLoader{namespace: namespace, lister: d.C},
 		&isLoader{namespace: namespace, lister: d.C},
@@ -59,8 +67,23 @@ func (d *ProjectStatusDescriber) MakeGraph(namespace string) (osgraph.Graph, err
 		loadingFuncs = append(loadingFuncs, loader.Load)
 	}
 
+	forbiddenResources := util.StringSet{}
 	if errs := parallel.Run(loadingFuncs...); len(errs) > 0 {
-		return g, utilerrors.NewAggregate(errs)
+		actualErrors := []error{}
+		for _, err := range errs {
+			if kapierrors.IsForbidden(err) {
+				forbiddenErr := err.(*kapierrors.StatusError)
+				if (forbiddenErr.Status().Details != nil) && (len(forbiddenErr.Status().Details.Kind) > 0) {
+					forbiddenResources.Insert(forbiddenErr.Status().Details.Kind)
+				}
+				continue
+			}
+			actualErrors = append(actualErrors, err)
+		}
+
+		if len(actualErrors) > 0 {
+			return g, forbiddenResources, utilerrors.NewAggregate(actualErrors)
+		}
 	}
 
 	for _, loader := range loaders {
@@ -79,12 +102,12 @@ func (d *ProjectStatusDescriber) MakeGraph(namespace string) (osgraph.Graph, err
 	deployedges.AddAllDeploymentEdges(g)
 	imageedges.AddAllImageStreamRefEdges(g)
 
-	return g, nil
+	return g, forbiddenResources, nil
 }
 
 // Describe returns the description of a project
 func (d *ProjectStatusDescriber) Describe(namespace, name string) (string, error) {
-	g, err := d.MakeGraph(namespace)
+	g, forbiddenResources, err := d.MakeGraph(namespace)
 	if err != nil {
 		return "", err
 	}
@@ -110,7 +133,7 @@ func (d *ProjectStatusDescriber) Describe(namespace, name string) (string, error
 
 	return tabbedString(func(out *tabwriter.Writer) error {
 		indent := "  "
-		fmt.Fprintf(out, "In project %s\n", projectapi.DisplayNameAndNameForProject(project))
+		fmt.Fprintf(out, describeProjectAndServer(project, d.Server))
 
 		for _, service := range services {
 			fmt.Fprintln(out)
@@ -158,25 +181,39 @@ func (d *ProjectStatusDescriber) Describe(namespace, name string) (string, error
 			printLines(out, indent, 0, describeRCInServiceGroup(standaloneRC.RC)...)
 		}
 
-		// always output warnings
-		fmt.Fprintln(out)
+		allMarkers := osgraph.Markers{}
+		allMarkers = append(allMarkers, createForbiddenMarkers(forbiddenResources)...)
+		for _, scanner := range getMarkerScanners() {
+			allMarkers = append(allMarkers, scanner(g)...)
+		}
 
-		if hasUnresolvedImageStreamTag(g) {
-			fmt.Fprintln(out, "Warning: Some of your builds are pointing to image streams, but the administrator has not configured the integrated Docker registry (oadm registry).")
+		if len(allMarkers) > 0 {
+			fmt.Fprintln(out)
 		}
-		if hasCircularDependencies(g) {
-			fmt.Fprintln(out, "Warning: Some of your build configurations have circular dependencies.")
+
+		sort.Stable(osgraph.ByKey(allMarkers))
+		sort.Stable(osgraph.ByNodeID(allMarkers))
+		if errorMarkers := allMarkers.BySeverity(osgraph.ErrorSeverity); len(errorMarkers) > 0 {
+			fmt.Fprintln(out, "Errors:")
+			for _, marker := range errorMarkers {
+				fmt.Fprintln(out, indent+marker.Message)
+			}
 		}
-		if lines, _ := describeBadPodSpecs(out, g); len(lines) > 0 {
-			fmt.Fprintln(out, strings.Join(lines, "\n"))
+		if warningMarkers := allMarkers.BySeverity(osgraph.WarningSeverity); len(warningMarkers) > 0 {
+			fmt.Fprintln(out, "Warnings:")
+			for _, marker := range warningMarkers {
+				fmt.Fprintln(out, indent+marker.Message)
+			}
 		}
+
+		fmt.Fprintln(out)
 
 		if (len(services) == 0) && (len(standaloneDCs) == 0) && (len(standaloneImages) == 0) {
 			fmt.Fprintln(out, "You have no services, deployment configs, or build configs.")
 			fmt.Fprintln(out, "Run 'oc new-app' to create an application.")
 
 		} else {
-			fmt.Fprintln(out, "To see more, use 'oc describe service <name>' or 'oc describe dc <name>'.")
+			fmt.Fprintln(out, "To see more, use 'oc describe <resource>/<name>'.")
 			fmt.Fprintln(out, "You can use 'oc get all' to see a list of other objects.")
 		}
 
@@ -184,77 +221,26 @@ func (d *ProjectStatusDescriber) Describe(namespace, name string) (string, error
 	})
 }
 
-// hasUnresolvedImageStreamTag checks all build configs that will output to an IST backed by an ImageStream and checks to make sure their builds can push.
-func hasUnresolvedImageStreamTag(g osgraph.Graph) bool {
-	for _, bcNode := range g.NodesByKind(buildgraph.BuildConfigNodeKind) {
-		for _, istNode := range g.SuccessorNodesByEdgeKind(bcNode, buildedges.BuildOutputEdgeKind) {
-			for _, uncastImageStreamNode := range g.SuccessorNodesByEdgeKind(istNode, imageedges.ReferencedImageStreamGraphEdgeKind) {
-				imageStreamNode := uncastImageStreamNode.(*imagegraph.ImageStreamNode)
-				if len(imageStreamNode.Status.DockerImageRepository) == 0 {
-					return true
-				}
-			}
-		}
+func createForbiddenMarkers(forbiddenResources util.StringSet) []osgraph.Marker {
+	markers := []osgraph.Marker{}
+	for forbiddenResource := range forbiddenResources {
+		markers = append(markers, osgraph.Marker{
+			Severity: osgraph.WarningSeverity,
+			Key:      ForbiddenListWarning,
+			Message:  fmt.Sprintf("Unable to list %s resources.  Not all status relationships can be established.", forbiddenResource),
+		})
 	}
-
-	return false
+	return markers
 }
 
-func hasCircularDependencies(g osgraph.Graph) bool {
-	// Filter out all but ImageStreamTag and BuildConfig nodes
-	nodeFn := osgraph.NodesOfKind(imagegraph.ImageStreamTagNodeKind, buildgraph.BuildConfigNodeKind)
-	// Filter out all but BuildInputImage and BuildOutput edges
-	edgeFn := osgraph.EdgesOfKind(buildedges.BuildInputImageEdgeKind, buildedges.BuildOutputEdgeKind)
-
-	// Create desired subgraph
-	sub := g.Subgraph(nodeFn, edgeFn)
-
-	// Check for cycles
-	return len(topo.CyclesIn(sub)) != 0
-}
-
-func describeBadPodSpecs(out io.Writer, g osgraph.Graph) ([]string, []*kubegraph.SecretNode) {
-	allMissingSecrets := []*kubegraph.SecretNode{}
-	lines := []string{}
-
-	for _, uncastPodSpec := range g.NodesByKind(kubegraph.PodSpecNodeKind) {
-		podSpecNode := uncastPodSpec.(*kubegraph.PodSpecNode)
-		unmountableSecrets, missingSecrets := kubeanalysis.CheckMountedSecrets(g, podSpecNode)
-		containingNode := osgraph.GetTopLevelContainerNode(g, podSpecNode)
-
-		allMissingSecrets = append(allMissingSecrets, missingSecrets...)
-
-		unmountableNames := []string{}
-		for _, secret := range unmountableSecrets {
-			unmountableNames = append(unmountableNames, secret.ResourceString())
-		}
-
-		missingNames := []string{}
-		for _, secret := range missingSecrets {
-			missingNames = append(missingNames, secret.ResourceString())
-		}
-
-		containingNodeName := g.GraphDescriber.Name(containingNode)
-		if resourceNode, ok := containingNode.(osgraph.ResourceNode); ok {
-			containingNodeName = resourceNode.ResourceString()
-		}
-
-		switch {
-		case len(unmountableSecrets) > 0 && len(missingSecrets) > 0:
-			lines = append(lines, fmt.Sprintf("\t%s is not allowed to mount %s and wants to mount these missing secrets %s", containingNodeName, strings.Join(unmountableNames, ","), strings.Join(missingNames, ",")))
-		case len(unmountableSecrets) > 0:
-			lines = append(lines, fmt.Sprintf("\t%s is not allowed to mount %s", containingNodeName, strings.Join(unmountableNames, ",")))
-		case len(unmountableSecrets) > 0 && len(missingSecrets) > 0:
-			lines = append(lines, fmt.Sprintf("\t%s wants to mount these missing secrets %s", containingNodeName, strings.Join(missingNames, ",")))
-		}
+func getMarkerScanners() []osgraph.MarkerScanner {
+	return []osgraph.MarkerScanner{
+		kubeanalysis.FindDuelingReplicationControllers,
+		kubeanalysis.FindUnmountableSecrets,
+		kubeanalysis.FindMissingSecrets,
+		buildanalysis.FindUnpushableBuildConfigs,
+		buildanalysis.FindCircularBuilds,
 	}
-
-	// if we had any failures, prepend the warning line
-	if len(lines) > 0 {
-		return append([]string{"Warning: some requested secrets are not allowed:"}, lines...), allMissingSecrets
-	}
-
-	return []string{}, allMissingSecrets
 }
 
 func printLines(out io.Writer, indent string, depth int, lines ...string) {
@@ -267,24 +253,41 @@ func printLines(out io.Writer, indent string, depth int, lines ...string) {
 	}
 }
 
+func indentLines(indent string, lines ...string) []string {
+	ret := make([]string, 0, len(lines))
+	for _, line := range lines {
+		ret = append(ret, indent+line)
+	}
+
+	return ret
+}
+
+func describeProjectAndServer(project *projectapi.Project, server string) string {
+	if server != "" {
+		return fmt.Sprintf("In project %s on server %s\n", projectapi.DisplayNameAndNameForProject(project), server)
+	} else {
+		return fmt.Sprintf("In project %s\n", projectapi.DisplayNameAndNameForProject(project))
+	}
+}
+
 func describeDeploymentInServiceGroup(deploy graphview.DeploymentConfigPipeline) []string {
 	includeLastPass := deploy.ActiveDeployment == nil
 	if len(deploy.Images) == 1 {
-		lines := []string{fmt.Sprintf("%s deploys %s %s", deploy.Deployment.Name, describeImageInPipeline(deploy.Images[0], deploy.Deployment.Namespace), describeDeploymentConfigTrigger(deploy.Deployment.DeploymentConfig))}
+		lines := []string{fmt.Sprintf("dc/%s deploys %s %s", deploy.Deployment.Name, describeImageInPipeline(deploy.Images[0], deploy.Deployment.Namespace), describeDeploymentConfigTrigger(deploy.Deployment.DeploymentConfig))}
 		if len(lines[0]) > 120 && strings.Contains(lines[0], " <- ") {
 			segments := strings.SplitN(lines[0], " <- ", 2)
 			lines[0] = segments[0] + " <-"
 			lines = append(lines, segments[1])
 		}
-		lines = append(lines, describeAdditionalBuildDetail(deploy.Images[0].Build, deploy.Images[0].LastSuccessfulBuild, deploy.Images[0].LastUnsuccessfulBuild, deploy.Images[0].ActiveBuilds, deploy.Images[0].DestinationResolved, includeLastPass)...)
+		lines = append(lines, indentLines("  ", describeAdditionalBuildDetail(deploy.Images[0].Build, deploy.Images[0].LastSuccessfulBuild, deploy.Images[0].LastUnsuccessfulBuild, deploy.Images[0].ActiveBuilds, deploy.Images[0].DestinationResolved, includeLastPass)...)...)
 		lines = append(lines, describeDeployments(deploy.Deployment, deploy.ActiveDeployment, deploy.InactiveDeployments, 3)...)
 		return lines
 	}
 
-	lines := []string{fmt.Sprintf("%s deploys: %s", deploy.Deployment.Name, describeDeploymentConfigTrigger(deploy.Deployment.DeploymentConfig))}
+	lines := []string{fmt.Sprintf("dc/%s deploys: %s", deploy.Deployment.Name, describeDeploymentConfigTrigger(deploy.Deployment.DeploymentConfig))}
 	for _, image := range deploy.Images {
 		lines = append(lines, describeImageInPipeline(image, deploy.Deployment.Namespace))
-		lines = append(lines, describeAdditionalBuildDetail(image.Build, image.LastSuccessfulBuild, image.LastUnsuccessfulBuild, image.ActiveBuilds, image.DestinationResolved, includeLastPass)...)
+		lines = append(lines, indentLines("  ", describeAdditionalBuildDetail(image.Build, image.LastSuccessfulBuild, image.LastUnsuccessfulBuild, image.ActiveBuilds, image.DestinationResolved, includeLastPass)...)...)
 		lines = append(lines, describeDeployments(deploy.Deployment, deploy.ActiveDeployment, deploy.InactiveDeployments, 3)...)
 	}
 	return lines
@@ -327,7 +330,7 @@ func describeDeploymentConfigTrigger(dc *deployapi.DeploymentConfig) string {
 func describeStandaloneBuildGroup(pipeline graphview.ImagePipeline, namespace string) []string {
 	switch {
 	case pipeline.Build != nil:
-		lines := []string{fmt.Sprintf("%s %s", pipeline.Build.BuildConfig.Name, describeBuildInPipeline(pipeline.Build.BuildConfig, pipeline.BaseImage))}
+		lines := []string{fmt.Sprintf("bc/%s %s", pipeline.Build.BuildConfig.Name, describeBuildInPipeline(pipeline.Build.BuildConfig, pipeline.BaseImage))}
 		if pipeline.Image != nil {
 			lines = append(lines, fmt.Sprintf("pushes to %s", describeImageTagInPipeline(pipeline.Image, namespace)))
 		}
@@ -358,7 +361,7 @@ func describeImageTagInPipeline(image graphview.ImageTagLocation, namespace stri
 		if t.ImageStreamTag.Namespace != namespace {
 			return image.ImageSpec()
 		}
-		return t.ImageStreamTag.Name
+		return "istag/" + t.ImageStreamTag.Name
 	default:
 		return image.ImageSpec()
 	}
@@ -370,26 +373,26 @@ func describeBuildInPipeline(build *buildapi.BuildConfig, baseImage graphview.Im
 		// TODO: handle case where no source repo
 		source, ok := describeSourceInPipeline(&build.Spec.Source)
 		if !ok {
-			return "docker build; no source set"
+			return fmt.Sprintf("unconfigured docker build bc/%s - no source set", build.Name)
 		}
-		return fmt.Sprintf("docker build of %s", source)
+		return fmt.Sprintf("docker build of %s through bc/%s", source, build.Name)
 	case buildapi.SourceBuildStrategyType:
 		source, ok := describeSourceInPipeline(&build.Spec.Source)
 		if !ok {
-			return fmt.Sprintf("unconfigured source build %s", build.Name)
+			return fmt.Sprintf("unconfigured source build bc/%s", build.Name)
 		}
 		if baseImage == nil {
-			return fmt.Sprintf("%s; no image set", source)
+			return fmt.Sprintf("%s through bc/%s; no image set", source, build.Name)
 		}
-		return fmt.Sprintf("builds %s with %s", source, baseImage.ImageSpec())
+		return fmt.Sprintf("builds %s with %s through bc/%s", source, baseImage.ImageSpec(), build.Name)
 	case buildapi.CustomBuildStrategyType:
 		source, ok := describeSourceInPipeline(&build.Spec.Source)
 		if !ok {
-			return fmt.Sprintf("custom build %s", build.Name)
+			return fmt.Sprintf("custom build bc/%s ", build.Name)
 		}
-		return fmt.Sprintf("custom build of %s", source)
+		return fmt.Sprintf("custom build of %s through bc/%s", source, build.Name)
 	default:
-		return fmt.Sprintf("unrecognized build %s", build.Name)
+		return fmt.Sprintf("unrecognized build bc/%s", build.Name)
 	}
 }
 
@@ -413,7 +416,8 @@ func describeAdditionalBuildDetail(build *buildgraph.BuildConfigNode, lastSucces
 		lastTime = passTime
 	}
 
-	if lastSuccessfulBuild != nil && includeSuccess {
+	// display the last successful build if specifically requested or we're going to display an active build for context
+	if lastSuccessfulBuild != nil && (includeSuccess || len(activeBuilds) > 0) {
 		out = append(out, describeBuildPhase(lastSuccessfulBuild.Build, &passTime, build.BuildConfig.Name, pushTargetResolved))
 	}
 	if passTime.Before(failTime) {
@@ -455,25 +459,30 @@ func describeBuildPhase(build *buildapi.Build, t *util.Time, parentName string, 
 	} else {
 		time = strings.ToLower(formatRelativeTime(t.Time))
 	}
-	name := build.Name
+	buildIdentification := fmt.Sprintf("build/%s", build.Name)
 	prefix := parentName + "-"
-	if strings.HasPrefix(name, prefix) {
-		name = name[len(prefix):]
+	if strings.HasPrefix(build.Name, prefix) {
+		suffix := build.Name[len(prefix):]
+
+		if buildNumber, err := strconv.Atoi(suffix); err == nil {
+			buildIdentification = fmt.Sprintf("#%d build", buildNumber)
+		}
 	}
+
 	revision := describeSourceRevision(build.Spec.Revision)
 	if len(revision) != 0 {
 		revision = fmt.Sprintf(" - %s", revision)
 	}
 	switch build.Status.Phase {
 	case buildapi.BuildPhaseComplete:
-		return fmt.Sprintf("build %s succeeded %s ago%s%s", name, time, revision, imageStreamFailure)
+		return fmt.Sprintf("%s succeeded %s ago%s%s", buildIdentification, time, revision, imageStreamFailure)
 	case buildapi.BuildPhaseError:
-		return fmt.Sprintf("build %s stopped with an error %s ago%s%s", name, time, revision, imageStreamFailure)
+		return fmt.Sprintf("%s stopped with an error %s ago%s%s", buildIdentification, time, revision, imageStreamFailure)
 	case buildapi.BuildPhaseFailed:
-		return fmt.Sprintf("build %s failed %s ago%s%s", name, time, revision, imageStreamFailure)
+		return fmt.Sprintf("%s failed %s ago%s%s", buildIdentification, time, revision, imageStreamFailure)
 	default:
 		status := strings.ToLower(string(build.Status.Phase))
-		return fmt.Sprintf("build %s %s for %s%s%s", name, status, time, revision, imageStreamFailure)
+		return fmt.Sprintf("%s %s for %s%s%s", buildIdentification, status, time, revision, imageStreamFailure)
 	}
 }
 
@@ -659,11 +668,11 @@ func describeServiceInServiceGroup(svc graphview.ServiceGroup) []string {
 	port := describeServicePorts(spec)
 	switch {
 	case ip == "None":
-		return []string{fmt.Sprintf("service %s (headless)%s", svc.Service.Name, port)}
+		return []string{fmt.Sprintf("service/%s (headless)%s", svc.Service.Name, port)}
 	case len(ip) == 0:
-		return []string{fmt.Sprintf("service %s <initializing>%s", svc.Service.Name, port)}
+		return []string{fmt.Sprintf("service/%s <initializing>%s", svc.Service.Name, port)}
 	default:
-		return []string{fmt.Sprintf("service %s - %s%s", svc.Service.Name, ip, port)}
+		return []string{fmt.Sprintf("service/%s - %s%s", svc.Service.Name, ip, port)}
 	}
 }
 
@@ -881,7 +890,7 @@ type bcLoader struct {
 func (l *bcLoader) Load() error {
 	list, err := l.lister.BuildConfigs(l.namespace).List(labels.Everything(), fields.Everything())
 	if err != nil {
-		return err
+		return tolerateNotFoundErrors(err)
 	}
 
 	l.items = list.Items
@@ -905,7 +914,7 @@ type buildLoader struct {
 func (l *buildLoader) Load() error {
 	list, err := l.lister.Builds(l.namespace).List(labels.Everything(), fields.Everything())
 	if err != nil {
-		return err
+		return tolerateNotFoundErrors(err)
 	}
 
 	l.items = list.Items
@@ -918,4 +927,13 @@ func (l *buildLoader) AddToGraph(g osgraph.Graph) error {
 	}
 
 	return nil
+}
+
+// tolerateNotFoundErrors is tolerant of not found errors in case builds are disabled server
+// side (Atomic).
+func tolerateNotFoundErrors(err error) error {
+	if kapierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
 }

@@ -5,10 +5,10 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	kclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
+	"k8s.io/kubernetes/pkg/api"
+	kclient "k8s.io/kubernetes/pkg/client"
 
 	osclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
@@ -163,7 +163,7 @@ func (cfg *Config) Clients() (osclient.Interface, kclient.Interface, error) {
 
 	osClient, err := osclient.New(cfg.OpenShiftConfig())
 	if err != nil {
-		return nil, nil, fmt.Errorf("Unable to configure OpenShift client: %v", err)
+		return nil, nil, fmt.Errorf("Unable to configure Origin client: %v", err)
 	}
 
 	return osClient, kubeClient, nil

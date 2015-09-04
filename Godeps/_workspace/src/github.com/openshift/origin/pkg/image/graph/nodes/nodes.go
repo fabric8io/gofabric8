@@ -3,7 +3,7 @@ package nodes
 import (
 	"github.com/gonum/graph"
 
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	kapi "k8s.io/kubernetes/pkg/api"
 
 	osgraph "github.com/openshift/origin/pkg/api/graph"
 	imageapi "github.com/openshift/origin/pkg/image/api"
@@ -80,7 +80,7 @@ func MakeImageStreamTagObjectMeta(namespace, name, tag string) *imageapi.ImageSt
 	}
 }
 
-// MakeImageStreamTagObjectMeta returns an ImageStreamTag that has enough information to join the graph, but it is not
+// MakeImageStreamTagObjectMeta2 returns an ImageStreamTag that has enough information to join the graph, but it is not
 // based on a full IST object.  This can be used to properly initialize the graph without having to retrieve all ISTs
 func MakeImageStreamTagObjectMeta2(namespace, name string) *imageapi.ImageStreamTag {
 	return &imageapi.ImageStreamTag{

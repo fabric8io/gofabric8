@@ -1,7 +1,7 @@
 package bootstrappolicy
 
 import (
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	kapi "k8s.io/kubernetes/pkg/api"
 )
 
 const (
@@ -21,6 +21,8 @@ func GetBootstrapSecurityContextConstraints(buildControllerUsername string) []ka
 			},
 			AllowPrivilegedContainer: true,
 			AllowHostDirVolumePlugin: true,
+			AllowHostNetwork:         true,
+			AllowHostPorts:           true,
 			SELinuxContext: kapi.SELinuxContextStrategyOptions{
 				Type: kapi.SELinuxStrategyRunAsAny,
 			},

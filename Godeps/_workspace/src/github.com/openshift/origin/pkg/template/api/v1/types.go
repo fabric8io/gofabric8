@@ -1,8 +1,8 @@
 package v1
 
 import (
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api/v1"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
+	kapi "k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/runtime"
 )
 
 // Template contains the inputs needed to produce a Config.
@@ -54,4 +54,7 @@ type Parameter struct {
 
 	// From is an input value for the generator. Optional.
 	From string `json:"from,omitempty" description:"input value for the generator"`
+
+	// Optional: Indicates the parameter must have a value.  Defaults to false.
+	Required bool `json:"required,omitempty" description:"indicates the parameter must have a non-empty value or be generated"`
 }

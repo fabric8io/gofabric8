@@ -1,9 +1,9 @@
 package bootstrappolicy
 
 import (
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
+	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 )
@@ -125,7 +125,7 @@ func GetBootstrapClusterRoles() []authorizationapi.ClusterRole {
 				{Verbs: util.NewStringSet("list"), Resources: util.NewStringSet("projectrequests")},
 				{Verbs: util.NewStringSet("list", "get"), Resources: util.NewStringSet("clusterroles")},
 				{Verbs: util.NewStringSet("list"), Resources: util.NewStringSet("projects")},
-				{Verbs: util.NewStringSet("create"), Resources: util.NewStringSet("subjectaccessreviews"), AttributeRestrictions: runtime.EmbeddedObject{&authorizationapi.IsPersonalSubjectAccessReview{}}},
+				{Verbs: util.NewStringSet("create"), Resources: util.NewStringSet("subjectaccessreviews", "localsubjectaccessreviews"), AttributeRestrictions: runtime.EmbeddedObject{Object: &authorizationapi.IsPersonalSubjectAccessReview{}}},
 			},
 		},
 		{
@@ -143,7 +143,7 @@ func GetBootstrapClusterRoles() []authorizationapi.ClusterRole {
 			Rules: []authorizationapi.PolicyRule{
 				{
 					Verbs:           util.NewStringSet("get"),
-					NonResourceURLs: util.NewStringSet("/healthz", "/healthz/*", "/version", "/api", "/oapi", "/osapi"),
+					NonResourceURLs: util.NewStringSet("/healthz", "/healthz/*", "/version", "/api", "/oapi", "/osapi", "/api/", "/oapi/", "/osapi/"),
 				},
 			},
 		},
@@ -456,6 +456,10 @@ func GetBootstrapClusterRoles() []authorizationapi.ClusterRole {
 				},
 				{
 					Verbs:     util.NewStringSet("get", "list", "watch"),
+					Resources: util.NewStringSet("netnamespaces"),
+				},
+				{
+					Verbs:     util.NewStringSet("get", "list", "watch"),
 					Resources: util.NewStringSet("nodes"),
 				},
 				{
@@ -473,6 +477,10 @@ func GetBootstrapClusterRoles() []authorizationapi.ClusterRole {
 				{
 					Verbs:     util.NewStringSet("get", "list", "watch", "create", "delete"),
 					Resources: util.NewStringSet("hostsubnets"),
+				},
+				{
+					Verbs:     util.NewStringSet("get", "list", "watch", "create", "delete"),
+					Resources: util.NewStringSet("netnamespaces"),
 				},
 				{
 					Verbs:     util.NewStringSet("get", "list", "watch"),
@@ -510,7 +518,7 @@ func GetBootstrapOpenshiftRoleBindings(openshiftNamespace string) []authorizatio
 				Name:      OpenshiftSharedResourceViewRoleName,
 				Namespace: openshiftNamespace,
 			},
-			Groups: util.NewStringSet(AuthenticatedGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: AuthenticatedGroup}},
 		},
 	}
 }
@@ -524,7 +532,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: MasterRoleName,
 			},
-			Groups: util.NewStringSet(MastersGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: MastersGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -533,7 +541,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: ClusterAdminRoleName,
 			},
-			Groups: util.NewStringSet(ClusterAdminGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: ClusterAdminGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -542,7 +550,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: ClusterReaderRoleName,
 			},
-			Groups: util.NewStringSet(ClusterReaderGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: ClusterReaderGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -551,7 +559,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: BasicUserRoleName,
 			},
-			Groups: util.NewStringSet(AuthenticatedGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: AuthenticatedGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -560,7 +568,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: SelfProvisionerRoleName,
 			},
-			Groups: util.NewStringSet(AuthenticatedGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: AuthenticatedGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -569,7 +577,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: OAuthTokenDeleterRoleName,
 			},
-			Groups: util.NewStringSet(AuthenticatedGroup, UnauthenticatedGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: AuthenticatedGroup}, {Kind: authorizationapi.SystemGroupKind, Name: UnauthenticatedGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -578,7 +586,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: StatusCheckerRoleName,
 			},
-			Groups: util.NewStringSet(AuthenticatedGroup, UnauthenticatedGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: AuthenticatedGroup}, {Kind: authorizationapi.SystemGroupKind, Name: UnauthenticatedGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -587,7 +595,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: RouterRoleName,
 			},
-			Groups: util.NewStringSet(RouterGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: RouterGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -596,7 +604,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: RegistryRoleName,
 			},
-			Groups: util.NewStringSet(RegistryGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: RegistryGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -605,7 +613,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: NodeRoleName,
 			},
-			Groups: util.NewStringSet(NodesGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: NodesGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -615,7 +623,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 				Name: NodeProxierRoleName,
 			},
 			// Allow node identities to run node proxies
-			Groups: util.NewStringSet(NodesGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: NodesGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -625,7 +633,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 				Name: SDNReaderRoleName,
 			},
 			// Allow node identities to run SDN plugins
-			Groups: util.NewStringSet(NodesGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: NodesGroup}},
 		},
 		{
 			ObjectMeta: kapi.ObjectMeta{
@@ -634,7 +642,7 @@ func GetBootstrapClusterRoleBindings() []authorizationapi.ClusterRoleBinding {
 			RoleRef: kapi.ObjectReference{
 				Name: WebHooksRoleName,
 			},
-			Groups: util.NewStringSet(AuthenticatedGroup, UnauthenticatedGroup),
+			Subjects: []kapi.ObjectReference{{Kind: authorizationapi.SystemGroupKind, Name: AuthenticatedGroup}, {Kind: authorizationapi.SystemGroupKind, Name: UnauthenticatedGroup}},
 		},
 	}
 }

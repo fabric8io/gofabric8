@@ -5,15 +5,12 @@ import (
 	"testing"
 	"time"
 
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
-	ktestclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client/testclient"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/runtime"
+	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/errors"
+	ktestclient "k8s.io/kubernetes/pkg/client/testclient"
+	"k8s.io/kubernetes/pkg/runtime"
 
-	osgraphtest "github.com/openshift/origin/pkg/api/graph/test"
-	buildedges "github.com/openshift/origin/pkg/build/graph"
 	"github.com/openshift/origin/pkg/client/testclient"
-	imageedges "github.com/openshift/origin/pkg/image/graph"
 	projectapi "github.com/openshift/origin/pkg/project/api"
 )
 
@@ -23,57 +20,6 @@ func mustParseTime(t string) time.Time {
 		panic(err)
 	}
 	return out
-}
-
-func TestUnpushableBuild(t *testing.T) {
-	g, _, err := osgraphtest.BuildGraph("../../../api/graph/test/unpushable-build.yaml")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	buildedges.AddAllInputOutputEdges(g)
-	imageedges.AddAllImageStreamRefEdges(g)
-
-	if e, a := true, hasUnresolvedImageStreamTag(g); e != a {
-		t.Errorf("expected %v, got %v", e, a)
-	}
-}
-
-func TestPushableBuild(t *testing.T) {
-	g, _, err := osgraphtest.BuildGraph("../../../api/graph/test/pushable-build.yaml")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	buildedges.AddAllInputOutputEdges(g)
-	imageedges.AddAllImageStreamRefEdges(g)
-
-	if e, a := false, hasUnresolvedImageStreamTag(g); e != a {
-		t.Errorf("expected %v, got %v", e, a)
-	}
-}
-
-func TestCircularDeps(t *testing.T) {
-	g, _, err := osgraphtest.BuildGraph("../../../api/graph/test/circular.yaml")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	buildedges.AddAllInputOutputEdges(g)
-
-	if !hasCircularDependencies(g) {
-		t.Fatalf("expected having circular dependencies")
-	}
-
-	not, _, err := osgraphtest.BuildGraph("../../../api/graph/test/circular-not.yaml")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	buildedges.AddAllInputOutputEdges(not)
-
-	if hasCircularDependencies(not) {
-		t.Fatalf("expected not having circular dependencies")
-	}
-
 }
 
 func TestProjectStatus(t *testing.T) {
@@ -101,7 +47,7 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project Test (example)\n",
+				"In project Test (example) on server https://example.com:8443\n",
 				"You have no services, deployment configs, or build configs.",
 			},
 		},
@@ -114,8 +60,8 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project example\n",
-				"service empty-service",
+				"In project example on server https://example.com:8443\n",
+				"service/empty-service",
 				"<initializing>:5432",
 				"To see more, use",
 			},
@@ -129,8 +75,8 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project example\n",
-				"service database-rc",
+				"In project example on server https://example.com:8443\n",
+				"service/database-rc",
 				"rc/database-rc-1 runs mysql",
 				"0/1 pods growing to 1",
 				"To see more, use",
@@ -145,11 +91,25 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project example\n",
+				"In project example on server https://example.com:8443\n",
 				"rc/my-rc runs openshift/mysql-55-centos7",
 				"0/1 pods growing to 1",
-				"is not allowed to mount secret/existing-secret",
-				"these missing secrets secret/dne",
+				"rc/my-rc is attempting to mount a secret secret/existing-secret disallowed by sa/default",
+				"rc/my-rc is attempting to mount a secret secret/dne disallowed by sa/default",
+				"rc/my-rc is attempting to mount a missing secret secret/dne",
+			},
+		},
+		"dueling rcs": {
+			Path: "../../../../pkg/api/graph/test/dueling-rcs.yaml",
+			Extra: []runtime.Object{
+				&projectapi.Project{
+					ObjectMeta: kapi.ObjectMeta{Name: "dueling-rc", Namespace: ""},
+				},
+			},
+			ErrFn: func(err error) bool { return err == nil },
+			Contains: []string{
+				"rc/rc-1 is competing for pod/conflicted-pod with rc/rc-2",
+				"rc/rc-2 is competing for pod/conflicted-pod with rc/rc-1",
 			},
 		},
 		"service with pod": {
@@ -161,8 +121,8 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project example\n",
-				"service frontend-app",
+				"In project example on server https://example.com:8443\n",
+				"service/frontend-app",
 				"pod/frontend-app-1-bjwh8 runs openshift/ruby-hello-world",
 				"To see more, use",
 			},
@@ -176,7 +136,7 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project example\n",
+				"In project example on server https://example.com:8443\n",
 				"  rc/database-1 runs openshift/mysql-55-centos7",
 				"rc/frontend-rc-1 runs openshift/ruby-hello-world",
 			},
@@ -190,13 +150,37 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project example\n",
-				"service sinatra-example-2 - 172.30.17.48:8080",
+				"In project example on server https://example.com:8443\n",
+				"service/sinatra-example-2 - 172.30.17.48:8080",
 				"builds git://github.com",
 				"with docker.io/openshift/ruby-20-centos7:latest",
 				"not built yet",
 				"#1 deployment waiting on image or update",
 				"To see more, use",
+			},
+		},
+		"unpushable build": {
+			Path: "../../../../pkg/api/graph/test/unpushable-build.yaml",
+			Extra: []runtime.Object{
+				&projectapi.Project{
+					ObjectMeta: kapi.ObjectMeta{Name: "example", Namespace: ""},
+				},
+			},
+			ErrFn: func(err error) bool { return err == nil },
+			Contains: []string{
+				"bc/ruby-hello-world is pushing to imagestreamtag/ruby-hello-world:latest that is using is/ruby-hello-world, but the administrator has not configured the integrated Docker registry.",
+			},
+		},
+		"cyclical build": {
+			Path: "../../../../pkg/api/graph/test/circular.yaml",
+			Extra: []runtime.Object{
+				&projectapi.Project{
+					ObjectMeta: kapi.ObjectMeta{Name: "example", Namespace: ""},
+				},
+			},
+			ErrFn: func(err error) bool { return err == nil },
+			Contains: []string{
+				"Cycle detected in build configurations:",
 			},
 		},
 		"running build": {
@@ -208,11 +192,11 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project example\n",
-				"service sinatra-example-1 - 172.30.17.47:8080",
+				"In project example on server https://example.com:8443\n",
+				"service/sinatra-example-1 - 172.30.17.47:8080",
 				"builds git://github.com",
 				"with docker.io/openshift/ruby-20-centos7:latest",
-				"build 1 running for about a minute",
+				"#1 build running for about a minute",
 				"#1 deployment waiting on image or update",
 				"To see more, use",
 			},
@@ -227,12 +211,12 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project example\n",
-				"service sinatra-app-example - 172.30.17.49:8080",
+				"In project example on server https://example.com:8443\n",
+				"service/sinatra-app-example - 172.30.17.49:8080",
 				"sinatra-app-example-a deploys",
 				"sinatra-app-example-b deploys",
 				"with docker.io/openshift/ruby-20-centos7:latest",
-				"build 1 running for about a minute",
+				"#1 build running for about a minute",
 				"- 7a4f354: Prepare v1beta3 Template types (Roy Programmer <someguy@outhere.com>)",
 				"To see more, use",
 			},
@@ -247,9 +231,9 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"In project example\n",
-				"service database - 172.30.17.240:5434 -> 3306",
-				"service frontend - 172.30.17.154:5432 -> 8080",
+				"In project example on server https://example.com:8443\n",
+				"service/database - 172.30.17.240:5434 -> 3306",
+				"service/frontend - 172.30.17.154:5432 -> 8080",
 				"database deploys",
 				"frontend deploys",
 				"with docker.io/openshift/ruby-20-centos7:latest",
@@ -281,7 +265,7 @@ func TestProjectStatus(t *testing.T) {
 			o.Add(obj)
 		}
 		oc, kc := testclient.NewFixtureClients(o)
-		d := ProjectStatusDescriber{C: oc, K: kc}
+		d := ProjectStatusDescriber{C: oc, K: kc, Server: "https://example.com:8443"}
 		out, err := d.Describe("example", "")
 		if !test.ErrFn(err) {
 			t.Errorf("%s: unexpected error: %v", k, err)
@@ -294,6 +278,5 @@ func TestProjectStatus(t *testing.T) {
 				t.Errorf("%s: did not have %q:\n%s\n---", k, s, out)
 			}
 		}
-		t.Logf("\n%s", out)
 	}
 }

@@ -16,10 +16,10 @@
 package client
 
 import (
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	cmdutil "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl/cmd/util"
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
+	"k8s.io/kubernetes/pkg/client"
+	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
 func NewClient(f *cmdutil.Factory) (*client.Client, *client.Config) {

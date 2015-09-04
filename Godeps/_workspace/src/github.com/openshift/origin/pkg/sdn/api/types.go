@@ -1,7 +1,7 @@
 package api
 
 import (
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	kapi "k8s.io/kubernetes/pkg/api"
 )
 
 type ClusterNetwork struct {
@@ -18,7 +18,7 @@ type ClusterNetworkList struct {
 	Items []ClusterNetwork
 }
 
-// HostSubnet encapsulates the inputs needed to define the container subnet network on a minion
+// HostSubnet encapsulates the inputs needed to define the container subnet network on a node
 type HostSubnet struct {
 	kapi.TypeMeta
 	kapi.ObjectMeta
@@ -34,4 +34,20 @@ type HostSubnetList struct {
 	kapi.TypeMeta
 	kapi.ListMeta
 	Items []HostSubnet
+}
+
+// NetNamespace holds the network id against its name
+type NetNamespace struct {
+	kapi.TypeMeta
+	kapi.ObjectMeta
+
+	NetName string
+	NetID   uint
+}
+
+// NetNamespaceList is a collection of NetNamespaces
+type NetNamespaceList struct {
+	kapi.TypeMeta
+	kapi.ListMeta
+	Items []NetNamespace
 }

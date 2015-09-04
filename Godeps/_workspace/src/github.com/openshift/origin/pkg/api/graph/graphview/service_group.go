@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
+	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/util"
 
 	osgraph "github.com/openshift/origin/pkg/api/graph"
 	kubeedges "github.com/openshift/origin/pkg/api/kubegraph"
@@ -13,7 +13,7 @@ import (
 	deploygraph "github.com/openshift/origin/pkg/deploy/graph/nodes"
 )
 
-// ServiceReference is a service, the DeploymentConfigPipelines it covers, and lists of the other nodes that fulfill it
+// ServiceGroup is a service, the DeploymentConfigPipelines it covers, and lists of the other nodes that fulfill it
 type ServiceGroup struct {
 	Service *kubegraph.ServiceNode
 

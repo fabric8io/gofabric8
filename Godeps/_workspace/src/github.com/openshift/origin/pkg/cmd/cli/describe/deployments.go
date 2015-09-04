@@ -10,12 +10,12 @@ import (
 
 	"github.com/openshift/origin/pkg/api/graph"
 
-	kapi "github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	kerrors "github.com/GoogleCloudPlatform/kubernetes/pkg/api/errors"
-	kclient "github.com/GoogleCloudPlatform/kubernetes/pkg/client"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/fields"
-	kctl "github.com/GoogleCloudPlatform/kubernetes/pkg/kubectl"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/labels"
+	kapi "k8s.io/kubernetes/pkg/api"
+	kerrors "k8s.io/kubernetes/pkg/api/errors"
+	kclient "k8s.io/kubernetes/pkg/client"
+	"k8s.io/kubernetes/pkg/fields"
+	kctl "k8s.io/kubernetes/pkg/kubectl"
+	"k8s.io/kubernetes/pkg/labels"
 
 	kubegraph "github.com/openshift/origin/pkg/api/kubegraph/nodes"
 	"github.com/openshift/origin/pkg/client"
@@ -245,13 +245,13 @@ func printTriggers(triggers []deployapi.DeploymentTriggerPolicy, w *tabwriter.Wr
 func printReplicationControllerSpec(spec kapi.ReplicationControllerSpec, w io.Writer) error {
 	fmt.Fprint(w, "Template:\n")
 
-	fmt.Fprintf(w, "\tSelector:\t%s\n\tReplicas:\t%d\n",
+	fmt.Fprintf(w, "  Selector:\t%s\n  Replicas:\t%d\n",
 		formatLabels(spec.Selector),
 		spec.Replicas)
 
-	fmt.Fprintf(w, "\tContainers:\n\t\tNAME\tIMAGE\tENV\n")
+	fmt.Fprintf(w, "  Containers:\n  NAME\tIMAGE\tENV\n")
 	for _, container := range spec.Template.Spec.Containers {
-		fmt.Fprintf(w, "\t\t%s\t%s\t%s\n",
+		fmt.Fprintf(w, "  %s\t%s\t%s\n",
 			container.Name,
 			container.Image,
 			formatLabels(convertEnv(container.Env)))
