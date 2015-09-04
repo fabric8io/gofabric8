@@ -143,7 +143,7 @@ func cerateAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k
 		printResult(secrets[0]+" secret", r, err)
 
 	default:
-		gpgKeyName := []string{"secring.gpg"}
+		gpgKeyName := []string{"secring.gpg", "pubring.gpg", "trustdb.gpg"}
 		r, err := createSecret(c, fa, flags, secretDataIdentifiers, secretType, gpgKeyName)
 		printResult(secretDataIdentifiers+" secret", r, err)
 	}
@@ -227,13 +227,15 @@ func getSecretData(secretType string, name string, keysNames []string, flags *fl
 		return data
 
 	case "secret-gpg-key":
-		if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
-			logSecretImport(name + "/" + keysNames[0])
-		}
-		gpg, err := ioutil.ReadFile(name + "/" + keysNames[0])
-		check(err)
+		for i := 0; i < len(keysNames); i++ {
+			if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
+				logSecretImport(name +"/" + keysNames[i])
+			}
+			gpg, err := ioutil.ReadFile(name +"/" + keysNames[i])
+			check(err)
 
-		data[keysNames[0]] = gpg
+			data[keysNames[i]] = gpg
+		}
 
 	default:
 		util.Fatalf("No matching data type %s\n", dataType)
