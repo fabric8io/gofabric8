@@ -49,6 +49,7 @@ func main() {
 
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))
+	cmds.AddCommand(commands.NewCmdVolume(f))
 	cmds.AddCommand(commands.NewCmdSecrets(f))
 
 	cmds.Execute()
