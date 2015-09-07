@@ -27,11 +27,6 @@ import (
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-const (
-    hostPathFlag = "host-path"
-	nameFlag = "name"
-)
-
 func NewCmdVolume(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "volume",
@@ -61,16 +56,6 @@ func NewCmdVolume(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func missingFlag(cmd *cobra.Command, name string)(Result, error) {
-	util.Errorf("No option -%s specified!\n", hostPathFlag)
-	text := cmd.Name()
-	parent := cmd.Parent()
-	if parent != nil {
-		text = parent.Name() + " " + text
-	}
-	util.Infof("Please try something like: %s --%s='some value' ...\n\n", text, hostPathFlag)
-	return Failure, nil
-}
 func createPersistentVolume(cmd *cobra.Command, ns string, c *k8sclient.Client, fac *cmdutil.Factory) (Result, error) {
 	flags := cmd.Flags()
 	hostPath := flags.Lookup(hostPathFlag).Value.String()
@@ -93,8 +78,12 @@ func createPersistentVolume(cmd *cobra.Command, ns string, c *k8sclient.Client, 
 	if hostPath == "" {
 		return missingFlag(cmd, hostPathFlag)
 	}
+	if confirmAction(flags) == false {
+		return Failure, nil
+	}
+
 	// lets create a new PV
-	util.Infof("PersistentVolume name %s will be created on host path %s", name, hostPath)
+	util.Infof("PersistentVolume name %s will be created on host path %s\n", name, hostPath)
 	pv := api.PersistentVolume{
 			ObjectMeta: api.ObjectMeta{
 				Name: name,

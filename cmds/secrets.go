@@ -57,31 +57,25 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 			util.Info(" in namespace ")
 			util.Successf("%s\n\n", ns)
 
-			if cmd.Flags().Lookup("yes").Value.String() == "false" {
-				util.Info("Continue? [Y/n] ")
-				cont := util.AskForConfirmation(true)
-				if !cont {
-					util.Fatal("Cancelled...\n")
-				}
-			}
+			if confirmAction(cmd.Flags()) {
+				typeOfMaster := util.TypeOfMaster(c)
 
-			typeOfMaster := util.TypeOfMaster(c)
+				if typeOfMaster == util.Kubernetes {
+					util.Fatal("Support for Kubernetes not yet available...\n")
+				} else {
+					oc, _ := client.NewOpenShiftClient(cfg)
+					t := getTemplates(oc, ns)
 
-			if typeOfMaster == util.Kubernetes {
-				util.Fatal("Support for Kubernetes not yet available...\n")
-			} else {
-				oc, _ := client.NewOpenShiftClient(cfg)
-				t := getTemplates(oc, ns)
-
-				// get all the Templates and find the annotations on any Pods
-				for _, i := range t.Items {
-					// convert TemplateList.Objects to Kubernetes resources
-					_ = runtime.DecodeList(i.Objects, api.Scheme, runtime.UnstructuredJSONScheme)
-					for _, rc := range i.Objects {
-						switch rc := rc.(type) {
-						case *api.ReplicationController:
-							for secretType, secretDataIdentifiers := range rc.Spec.Template.Annotations {
-								cerateAndPrintSecrets(secretDataIdentifiers, secretType, c, f, cmd.Flags())
+					// get all the Templates and find the annotations on any Pods
+					for _, i := range t.Items {
+						// convert TemplateList.Objects to Kubernetes resources
+						_ = runtime.DecodeList(i.Objects, api.Scheme, runtime.UnstructuredJSONScheme)
+						for _, rc := range i.Objects {
+							switch rc := rc.(type) {
+							case *api.ReplicationController:
+								for secretType, secretDataIdentifiers := range rc.Spec.Template.Annotations {
+									cerateAndPrintSecrets(secretDataIdentifiers, secretType, c, f, cmd.Flags())
+								}
 							}
 						}
 					}

@@ -29,13 +29,6 @@ import (
 	kutil "k8s.io/kubernetes/pkg/util"
 )
 
-type Result string
-
-const (
-	Success Result = "✔"
-	Failure Result = "✘"
-)
-
 type validateFunc func(c *k8sclient.Client, f *cmdutil.Factory) (Result, error)
 type oValidateFunc func(c *oclient.Client, f *cmdutil.Factory) (Result, error)
 

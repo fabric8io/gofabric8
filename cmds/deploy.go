@@ -59,8 +59,6 @@ const (
 	Fabric8SCC    = "fabric8"
 	PrivilegedSCC = "privileged"
 	RestrictedSCC = "restricted"
-
-	DefaultDomain = "vagrant.f8"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -80,118 +78,112 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			util.Info(" in namespace ")
 			util.Successf("%s\n\n", ns)
 
-			if cmd.Flags().Lookup("yes").Value.String() == "false" {
-				util.Info("Continue? [Y/n] ")
-				cont := util.AskForConfirmation(true)
-				if !cont {
-					util.Fatal("Cancelled...\n")
-				}
-			}
+			if confirmAction(cmd.Flags()) {
+				v := cmd.Flags().Lookup("version").Value.String()
 
-			v := cmd.Flags().Lookup("version").Value.String()
+				typeOfMaster := util.TypeOfMaster(c)
+				v = f8Version(v, typeOfMaster)
 
-			typeOfMaster := util.TypeOfMaster(c)
-			v = f8Version(v, typeOfMaster)
+				util.Warnf("\nStarting deployment of %s...\n\n", v)
 
-			util.Warnf("\nStarting deployment of %s...\n\n", v)
+				if typeOfMaster == util.Kubernetes {
+					uri := fmt.Sprintf(baseConsoleKubernetesUrl, v)
+					filenames := []string{uri}
 
-			if typeOfMaster == util.Kubernetes {
-				uri := fmt.Sprintf(baseConsoleKubernetesUrl, v)
-				filenames := []string{uri}
-
-				createCmd := cobra.Command{}
-				createCmd.Flags().StringSlice("filename", filenames, "")
-				err := kcmd.RunCreate(f, &createCmd, ioutil.Discard)
-				if err != nil {
-					printResult("fabric8 console", Failure, err)
+					createCmd := cobra.Command{}
+					createCmd.Flags().StringSlice("filename", filenames, "")
+					err := kcmd.RunCreate(f, &createCmd, ioutil.Discard)
+					if err != nil {
+						printResult("fabric8 console", Failure, err)
+					} else {
+						printResult("fabric8 console", Success, nil)
+					}
 				} else {
-					printResult("fabric8 console", Success, nil)
-				}
-			} else {
-				oc, _ := client.NewOpenShiftClient(cfg)
+					oc, _ := client.NewOpenShiftClient(cfg)
 
-				r, err := verifyRestrictedSecurityContextConstraints(c, f)
-				printResult("SecurityContextConstraints restricted", r, err)
-				r, err = deployFabric8SecurityContextConstraints(c, f)
-				printResult("SecurityContextConstraints fabric8", r, err)
+					r, err := verifyRestrictedSecurityContextConstraints(c, f)
+					printResult("SecurityContextConstraints restricted", r, err)
+					r, err = deployFabric8SecurityContextConstraints(c, f)
+					printResult("SecurityContextConstraints fabric8", r, err)
 
-				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:default:fabric8")
-				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:default:metrics")
+					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:default:fabric8")
+					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:default:metrics")
 
-				printAddServiceAccount(c, f, "metrics")
-				printAddServiceAccount(c, f, "router")
+					printAddServiceAccount(c, f, "metrics")
+					printAddServiceAccount(c, f, "router")
 
 
-				uri := fmt.Sprintf(baseConsoleUrl, v)
-				resp, err := http.Get(uri)
-				if err != nil {
-					util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-				}
-				defer resp.Body.Close()
-				jsonData, err := ioutil.ReadAll(resp.Body)
-				if err != nil {
-					util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-				}
-				var v1tmpl tapiv1.Template
-				err = json.Unmarshal(jsonData, &v1tmpl)
-				if err != nil {
-					util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-				}
-				var tmpl tapi.Template
+					uri := fmt.Sprintf(baseConsoleUrl, v)
+					resp, err := http.Get(uri)
+					if err != nil {
+						util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+					}
+					defer resp.Body.Close()
+					jsonData, err := ioutil.ReadAll(resp.Body)
+					if err != nil {
+						util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+					}
+					var v1tmpl tapiv1.Template
+					err = json.Unmarshal(jsonData, &v1tmpl)
+					if err != nil {
+						util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+					}
+					var tmpl tapi.Template
 
-				err = api.Scheme.Convert(&v1tmpl, &tmpl)
-				if err != nil {
-					util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-				}
+					err = api.Scheme.Convert(&v1tmpl, &tmpl)
+					if err != nil {
+						util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+					}
 
-				generators := map[string]generator.Generator{
-					"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
-				}
-				p := template.NewProcessor(generators)
+					generators := map[string]generator.Generator{
+						"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
+					}
+					p := template.NewProcessor(generators)
 
-				tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
-					Name:  "DOMAIN",
-					Value: cmd.Flags().Lookup("domain").Value.String(),
-				})
+					tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
+						Name:  "DOMAIN",
+						Value: cmd.Flags().Lookup("domain").Value.String(),
+					})
 
-				p.Process(&tmpl)
+					p.Process(&tmpl)
 
-				for _, o := range tmpl.Objects {
-					switch o := o.(type) {
-					case *runtime.Unstructured:
-						var b []byte
-						b, err = json.Marshal(o.Object)
-						if err != nil {
-							break
-						}
-						req := c.Post().Body(b)
-						if o.Kind != "OAuthClient" {
-							req.Namespace(ns).Resource(strings.ToLower(o.TypeMeta.Kind + "s"))
-						} else {
-							req.AbsPath("oapi", "v1", strings.ToLower(o.TypeMeta.Kind+"s"))
-						}
-						res := req.Do()
-						if res.Error() != nil {
-							err = res.Error()
-							break
-						}
-						var statusCode int
-						res.StatusCode(&statusCode)
-						if statusCode != http.StatusCreated {
-							err = fmt.Errorf("Failed to create %s: %d", o.TypeMeta.Kind, statusCode)
-							break
+					for _, o := range tmpl.Objects {
+						switch o := o.(type) {
+						case *runtime.Unstructured:
+							var b []byte
+							b, err = json.Marshal(o.Object)
+							if err != nil {
+								break
+							}
+							req := c.Post().Body(b)
+							if o.Kind != "OAuthClient" {
+								req.Namespace(ns).Resource(strings.ToLower(o.TypeMeta.Kind + "s"))
+							} else {
+								req.AbsPath("oapi", "v1", strings.ToLower(o.TypeMeta.Kind+"s"))
+							}
+							res := req.Do()
+							if res.Error() != nil {
+								err = res.Error()
+								break
+							}
+							var statusCode int
+							res.StatusCode(&statusCode)
+							if statusCode != http.StatusCreated {
+								err = fmt.Errorf("Failed to create %s: %d", o.TypeMeta.Kind, statusCode)
+								break
+							}
 						}
 					}
-				}
 
-				if err != nil {
-					printResult("fabric8 console", Failure, err)
-				} else {
-					printResult("fabric8 console", Success, nil)
-				}
+					if err != nil {
+						printResult("fabric8 console", Failure, err)
+					} else {
+						printResult("fabric8 console", Success, nil)
+					}
 
-				printError("Install templates", installTemplates(oc, f, v))
-				printError("Create routes", createRoutes(c, oc, f))
+					printError("Install templates", installTemplates(oc, f, v))
+					printError("Create routes", createRoutes(c, oc, f))
+				}
 			}
 		},
 	}
@@ -286,16 +278,20 @@ func createRoutes(c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory)
 		util.Fatal("No default namespace")
 		return err
 	}
+	domain := os.Getenv("KUBERNETES_DOMAIN")
+	if domain == "" {
+		domain = DefaultDomain
+	}
+	return createRoutesForDomain(ns, domain, c, oc, fac)
+}
+
+func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory) error {
 	rc, err := c.Services(ns).List(labels.Everything())
 	if err != nil {
 		util.Errorf("Failed to load services in namespace %s with error %v", ns, err)
 		return err
 	}
 	items := rc.Items
-	domain := os.Getenv("KUBERNETES_DOMAIN")
-	if domain == "" {
-		domain = DefaultDomain
-	}
 	for _, service := range items {
 		// TODO use the external load balancer as a way to know if we should create a route?
 		name := service.ObjectMeta.Name
