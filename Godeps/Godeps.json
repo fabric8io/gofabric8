@@ -342,6 +342,10 @@
 			"Rev": "490cc6eb5fa45bf8a8b7b73c8bc82a8160e8531d"
 		},
 		{
+			"ImportPath": "github.com/Sirupsen/logrus",
+			"Rev": "aaf92c95712104318fc35409745f1533aa5ff327"
+		},
+		{
 			"ImportPath": "github.com/spf13/cobra",
 			"Rev": "385fc87e4343efec233811d3d933509e8975d11a"
 		},
