@@ -53,7 +53,8 @@ release:
 		CGO_ENABLED=0 GOOS=$$os ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$$os-amd64 -a gofabric8.go ; \
 		tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$(VERSION)-$$os-amd64.tar.gz build/$(NAME)-$$os-amd64 README.md LICENSE ; \
 	done
-	CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a gofabric8.go
+	echo ignoring: CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a gofabric8.go
+	CGO_ENABLED=0 GOOS=windows ARCH=386 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$(VERSION)-windows-386.exe -a gofabric8.go
 	zip release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE && \
 		echo -e "@ build/$(NAME)-$(VERSION)-windows-amd64.exe\n@=$(NAME).exe"  | zipnote -w release/$(NAME)-$(VERSION)-windows-amd64.zip
 	go get github.com/progrium/gh-release/...
