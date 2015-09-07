@@ -137,7 +137,7 @@ func cerateAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k
 		printResult(secrets[0]+" secret", r, err)
 
 	default:
-		gpgKeyName := []string{"secring.gpg", "pubring.gpg", "trustdb.gpg"}
+		gpgKeyName := []string{"gpg.conf", "secring.gpg", "pubring.gpg", "trustdb.gpg"}
 		r, err := createSecret(c, fa, flags, secretDataIdentifiers, secretType, gpgKeyName)
 		printResult(secretDataIdentifiers+" secret", r, err)
 	}
