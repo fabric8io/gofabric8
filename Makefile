@@ -16,10 +16,12 @@
 
 SHELL := /bin/bash
 NAME=gofabric8
-VERSION=$(shell cat version/VERSION)
+VERSION := $(shell cat version/VERSION)
 OPENSHIFT_TAG := $(shell cat .openshift-version)
 ROOT_PACKAGE := $(shell go list .)
 GO_VERSION := $(shell go version)
+PACKAGE_DIRS := $(shell go list -f '{{.Dir}}' ./...)
+FORMATTED := $(shell go fmt ./...)
 
 REV        := $(shell git rev-parse --short HEAD 2> /dev/null  || echo 'unknown')
 BRANCH     := $(shell git rev-parse --abbrev-ref HEAD 2> /dev/null  || echo 'unknown')
@@ -31,7 +33,7 @@ BUILDFLAGS := -ldflags \
 		-X $(ROOT_PACKAGE)/version.BuildDate '$(BUILD_DATE)'\
 		-X $(ROOT_PACKAGE)/version.GoVersion '$(GO_VERSION)'"
 
-build: *.go */*.go
+build: *.go */*.go fmt
 	CGO_ENABLED=0 godep go build $(BUILDFLAGS) -o build/$(NAME) -a gofabric8.go
 
 install: *.go */*.go
@@ -46,6 +48,9 @@ update-deps-old:
 		popd && \
 		godep save ./... && \
 		godep update ...
+
+fmt:
+	@([[ ! -z "$(FORMATTED)" ]] && printf "Fixed unformatted files:\n$(FORMATTED)") || true
 
 update-deps:
 	echo $(OPENSHIFT_TAG) > .openshift-version && \
