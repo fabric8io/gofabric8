@@ -18,13 +18,13 @@ package cmds
 import (
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
-	"github.com/spf13/cobra"
-	"k8s.io/kubernetes/pkg/labels"
-	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	kapi "k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client"
 	oclient "github.com/openshift/origin/pkg/client"
 	rapi "github.com/openshift/origin/pkg/route/api"
+	"github.com/spf13/cobra"
+	kapi "k8s.io/kubernetes/pkg/api"
+	k8sclient "k8s.io/kubernetes/pkg/client"
+	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/labels"
 )
 
 func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
@@ -32,6 +32,9 @@ func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
 		Use:   "routes",
 		Short: "Creates any missing Routes for services",
 		Long:  `Creates any missing Route resources for Services which need to be exposed remotely`,
+		PreRun: func(cmd *cobra.Command, args []string) {
+			showBanner()
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			c, cfg := client.NewClient(f)
 			oc, _ := client.NewOpenShiftClient(cfg)
@@ -77,7 +80,7 @@ func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oc
 					ObjectMeta: kapi.ObjectMeta{
 						Name: name,
 					},
-					Host: hostName,
+					Host:        hostName,
 					ServiceName: name,
 				}
 				// lets create the route
@@ -91,4 +94,3 @@ func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oc
 	}
 	return nil
 }
-

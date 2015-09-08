@@ -47,6 +47,9 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 		Use:   "secrets",
 		Short: "Set up Secrets on your Kubernetes or OpenShift environment",
 		Long:  `set up Secrets on your Kubernetes or OpenShift environment`,
+		PreRun: func(cmd *cobra.Command, args []string) {
+			showBanner()
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			c, cfg := client.NewClient(f)
 			ns, _, _ := f.DefaultNamespace()
@@ -240,9 +243,9 @@ func getSecretData(secretType string, name string, keysNames []string, flags *fl
 	case "secret-gpg-key":
 		for i := 0; i < len(keysNames); i++ {
 			if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
-				logSecretImport(name +"/" + keysNames[i])
+				logSecretImport(name + "/" + keysNames[i])
 			}
-			gpg, err := ioutil.ReadFile(name +"/" + keysNames[i])
+			gpg, err := ioutil.ReadFile(name + "/" + keysNames[i])
 			check(err)
 
 			data[keysNames[i]] = gpg

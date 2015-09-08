@@ -21,10 +21,10 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
-	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/fields"
 	k8sclient "k8s.io/kubernetes/pkg/client"
+	"k8s.io/kubernetes/pkg/fields"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/labels"
 )
 
 func NewCmdVolume(f *cmdutil.Factory) *cobra.Command {
@@ -32,6 +32,9 @@ func NewCmdVolume(f *cmdutil.Factory) *cobra.Command {
 		Use:   "volume",
 		Short: "Creates a persisent volume for fabric8 apps needing persistent disk",
 		Long:  `Creates a persisent volume so that the PersistentVolumeClaims in fabric8 apps can be satisfied when creating fabric8 apps`,
+		PreRun: func(cmd *cobra.Command, args []string) {
+			showBanner()
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			c, cfg := client.NewClient(f)
 			ns, _, err := f.DefaultNamespace()
@@ -85,19 +88,19 @@ func createPersistentVolume(cmd *cobra.Command, ns string, c *k8sclient.Client, 
 	// lets create a new PV
 	util.Infof("PersistentVolume name %s will be created on host path %s\n", name, hostPath)
 	pv := api.PersistentVolume{
-			ObjectMeta: api.ObjectMeta{
-				Name: name,
+		ObjectMeta: api.ObjectMeta{
+			Name: name,
+		},
+		Spec: api.PersistentVolumeSpec{
+			Capacity: api.ResourceList{
+				api.ResourceName(api.ResourceStorage): resource.MustParse("100G"),
 			},
-			Spec: api.PersistentVolumeSpec{
-				Capacity: api.ResourceList{
-					api.ResourceName(api.ResourceStorage): resource.MustParse("100G"),
-				},
-				AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteMany},
-				PersistentVolumeSource: api.PersistentVolumeSource{
-					HostPath: &api.HostPathVolumeSource{Path: hostPath},
-				},
+			AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteMany},
+			PersistentVolumeSource: api.PersistentVolumeSource{
+				HostPath: &api.HostPathVolumeSource{Path: hostPath},
 			},
-		}
+		},
+	}
 
 	_, err = pvs.Create(&pv)
 	if err != nil {

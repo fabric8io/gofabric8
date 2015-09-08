@@ -65,6 +65,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 		Use:   "deploy",
 		Short: "Deploy fabric8 to your Kubernetes or OpenShift environment",
 		Long:  `deploy fabric8 to your Kubernetes or OpenShift environment`,
+		PreRun: func(cmd *cobra.Command, args []string) {
+			showBanner()
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			c, cfg := client.NewClient(f)
 			ns, _, _ := f.DefaultNamespace()
@@ -108,7 +111,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 					printAddServiceAccount(c, f, "metrics")
 					printAddServiceAccount(c, f, "router")
-
 
 					uri := fmt.Sprintf(baseConsoleUrl, v)
 					resp, err := http.Get(uri)
@@ -272,6 +274,19 @@ func installTemplates(c *oclient.Client, fac *cmdutil.Factory, v string) error {
 	return nil
 }
 
+func createRoutes(c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory) error {
+	ns, _, err := fac.DefaultNamespace()
+	if err != nil {
+		util.Fatal("No default namespace")
+		return err
+	}
+	domain := os.Getenv("KUBERNETES_DOMAIN")
+	if domain == "" {
+		domain = DefaultDomain
+	}
+	return createRoutesForDomain(ns, domain, c, oc, fac)
+}
+
 func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
 	name := Fabric8SCC
 	scc := kapi.SecurityContextConstraints{
@@ -279,8 +294,8 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 			Name: name,
 		},
 		AllowPrivilegedContainer: true,
-		AllowHostNetwork: true,
-		AllowHostPorts: true,
+		AllowHostNetwork:         true,
+		AllowHostPorts:           true,
 		AllowHostDirVolumePlugin: true,
 		SELinuxContext: kapi.SELinuxContextStrategyOptions{
 			Type: kapi.SELinuxStrategyRunAsAny,

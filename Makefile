@@ -16,14 +16,26 @@
 
 SHELL := /bin/bash
 NAME=gofabric8
-VERSION=$(shell cat VERSION)
+VERSION=$(shell cat version/VERSION)
 OPENSHIFT_TAG := $(shell cat .openshift-version)
+ROOT_PACKAGE := $(shell go list .)
+GO_VERSION := $(shell go version)
+
+REV        := $(shell git rev-parse --short HEAD 2> /dev/null  || echo 'unknown')
+BRANCH     := $(shell git rev-parse --abbrev-ref HEAD 2> /dev/null  || echo 'unknown')
+BUILD_DATE := $(shell date +%Y%m%d-%H:%M:%S)
+BUILDFLAGS := -ldflags \
+  " -X $(ROOT_PACKAGE)/version.Version '$(VERSION)'\
+		-X $(ROOT_PACKAGE)/version.Revision '$(REV)'\
+		-X $(ROOT_PACKAGE)/version.Branch '$(BRANCH)'\
+		-X $(ROOT_PACKAGE)/version.BuildDate '$(BUILD_DATE)'\
+		-X $(ROOT_PACKAGE)/version.GoVersion '$(GO_VERSION)'"
 
 build: *.go */*.go
-	CGO_ENABLED=0 godep go build -o build/$(NAME) -a gofabric8.go
+	CGO_ENABLED=0 godep go build $(BUILDFLAGS) -o build/$(NAME) -a gofabric8.go
 
 install: *.go */*.go
-	GOBIN=${GOPATH}/bin godep go install -a gofabric8.go
+	GOBIN=${GOPATH}/bin godep go install $(BUILDFLAGS) -a gofabric8.go
 
 update-deps-old:
 	echo $(OPENSHIFT_TAG) > .openshift-version && \
@@ -50,10 +62,10 @@ update-deps:
 release:
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \
-		CGO_ENABLED=0 GOOS=$$os ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$$os-amd64 -a gofabric8.go ; \
+		CGO_ENABLED=0 GOOS=$$os ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 -a gofabric8.go ; \
 		tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$(VERSION)-$$os-amd64.tar.gz build/$(NAME)-$$os-amd64 README.md LICENSE ; \
 	done
-	CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build -ldflags "-X main.Version $(VERSION)" -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a gofabric8.go
+	CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a gofabric8.go
 	zip release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE && \
 		echo -e "@ build/$(NAME)-$(VERSION)-windows-amd64.exe\n@=$(NAME).exe"  | zipnote -w release/$(NAME)-$(VERSION)-windows-amd64.zip
 	go get github.com/progrium/gh-release/...

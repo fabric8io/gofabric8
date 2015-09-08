@@ -37,6 +37,9 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 		Use:   "validate",
 		Short: "Validate your Kubernetes or OpenShift environment",
 		Long:  `validate your Kubernetes or OpenShift environment`,
+		PreRun: func(cmd *cobra.Command, args []string) {
+			showBanner()
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			c, cfg := client.NewClient(f)
 			ns, _, _ := f.DefaultNamespace()
