@@ -16,18 +16,18 @@
 package cmds
 
 import (
-	"os"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
+	"k8s.io/kubernetes/pkg/labels"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	kapi "k8s.io/kubernetes/pkg/api"
+	k8sclient "k8s.io/kubernetes/pkg/client"
+	oclient "github.com/openshift/origin/pkg/client"
+	rapi "github.com/openshift/origin/pkg/route/api"
 )
 
 func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
-	defaultDomain := os.Getenv("KUBERNETES_DOMAIN")
-	if defaultDomain == "" {
-		defaultDomain = DefaultDomain
-	}
 	cmd := &cobra.Command{
 		Use:   "routes",
 		Short: "Creates any missing Routes for services",
@@ -54,6 +54,41 @@ func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
 			}
 		},
 	}
-	cmd.PersistentFlags().StringP(domainFlag, "", defaultDomain, "The domain to put the created routes inside")
+	cmd.PersistentFlags().StringP(domainFlag, "", defaultDomain(), "The domain to put the created routes inside")
 	return cmd
 }
+
+func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory) error {
+	rc, err := c.Services(ns).List(labels.Everything())
+	if err != nil {
+		util.Errorf("Failed to load services in namespace %s with error %v", ns, err)
+		return err
+	}
+	items := rc.Items
+	for _, service := range items {
+		// TODO use the external load balancer as a way to know if we should create a route?
+		name := service.ObjectMeta.Name
+		if name != "kubernetes" {
+			routes := oc.Routes(ns)
+			_, err = routes.Get(name)
+			if err != nil {
+				hostName := name + "." + domain
+				route := rapi.Route{
+					ObjectMeta: kapi.ObjectMeta{
+						Name: name,
+					},
+					Host: hostName,
+					ServiceName: name,
+				}
+				// lets create the route
+				_, err = routes.Create(&route)
+				if err != nil {
+					util.Errorf("Failed to create the route %s with error %v", name, err)
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+

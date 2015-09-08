@@ -16,10 +16,11 @@
 package cmds
 
 import (
+	"os"
+
 	"github.com/spf13/cobra"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/pflag"
-
 )
 
 type Result string
@@ -39,6 +40,13 @@ const (
 
 )
 
+func defaultDomain() string {
+	defaultDomain := os.Getenv("KUBERNETES_DOMAIN")
+	if defaultDomain == "" {
+		defaultDomain = DefaultDomain
+	}
+	return defaultDomain
+}
 func missingFlag(cmd *cobra.Command, name string)(Result, error) {
 	util.Errorf("No option -%s specified!\n", hostPathFlag)
 	text := cmd.Name()
