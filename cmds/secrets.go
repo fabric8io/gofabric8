@@ -66,6 +66,7 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 					oc, _ := client.NewOpenShiftClient(cfg)
 					t := getTemplates(oc, ns)
 
+					count := 0
 					// get all the Templates and find the annotations on any Pods
 					for _, i := range t.Items {
 						// convert TemplateList.Objects to Kubernetes resources
@@ -74,10 +75,15 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 							switch rc := rc.(type) {
 							case *api.ReplicationController:
 								for secretType, secretDataIdentifiers := range rc.Spec.Template.Annotations {
-									cerateAndPrintSecrets(secretDataIdentifiers, secretType, c, f, cmd.Flags())
+									count += createAndPrintSecrets(secretDataIdentifiers, secretType, c, f, cmd.Flags())
 								}
 							}
 						}
+					}
+
+					if count == 0 {
+						util.Info("No secrets created as no fabric8 secrets annotations found in the templates\n")
+						util.Info("For more details see: https://github.com/fabric8io/fabric8/blob/master/docs/secretAnnotations.md\n")
 					}
 				}
 			}
@@ -102,7 +108,8 @@ func createSecret(c *k8sclient.Client, f *cmdutil.Factory, flags *flag.FlagSet, 
 	return Failure, err
 }
 
-func cerateAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k8sclient.Client, fa *cmdutil.Factory, flags *flag.FlagSet) {
+func createAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k8sclient.Client, fa *cmdutil.Factory, flags *flag.FlagSet) int {
+	count := 0
 	// check to see if multiple public and private keys are needed
 	var dataType = strings.Split(secretType, "/")
 	switch dataType[1] {
@@ -112,6 +119,9 @@ func cerateAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k
 			var name = items[i]
 			r, err := createSecret(c, fa, flags, name, secretType, nil)
 			printResult(name+" secret", r, err)
+			if err == nil {
+				count++
+			}
 		}
 	case "secret-ssh-public-key":
 		// if this is just a public key then the secret name is at the start of the string
@@ -135,12 +145,19 @@ func cerateAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k
 		r, err := createSecret(c, fa, flags, secrets[0], secretType, keysNames)
 
 		printResult(secrets[0]+" secret", r, err)
+		if err == nil {
+			count++
+		}
 
 	default:
 		gpgKeyName := []string{"gpg.conf", "secring.gpg", "pubring.gpg", "trustdb.gpg"}
 		r, err := createSecret(c, fa, flags, secretDataIdentifiers, secretType, gpgKeyName)
 		printResult(secretDataIdentifiers+" secret", r, err)
+		if err == nil {
+			count++
+		}
 	}
+	return count
 }
 
 func secret(name string, secretType string, keysNames []string, flags *flag.FlagSet) api.Secret {
