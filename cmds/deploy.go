@@ -112,6 +112,10 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printAddServiceAccount(c, f, "metrics")
 					printAddServiceAccount(c, f, "router")
 
+					// TODO we should be able to remove these when the hawtio bug is fixed that doesn't create SAs on Run -> ...
+					printAddServiceAccount(c, f, "jenkins")
+					printAddServiceAccount(c, f, "gerrit")
+
 					uri := fmt.Sprintf(baseConsoleUrl, v)
 					resp, err := http.Get(uri)
 					if err != nil {
