@@ -32,15 +32,16 @@ import (
 
 func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "pull",
+		Use:   "pull [templateNames]",
 		Short: "Pulls the docker images for the given templates",
 		Long:  `Performs a docker pull on all the docker images referenced in the given templates to preload the local docker registry with images`,
 		PreRun: func(cmd *cobra.Command, args []string) {
 			showBanner()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) == 0 {
-				printResult("No template names specified!", Failure, nil)
+			if len(args) < 1 {
+				util.Error("No template names specified!")
+				cmd.Usage()
 			} else {
 				_, cfg := client.NewClient(f)
 				oc, _ := client.NewOpenShiftClient(cfg)
@@ -61,8 +62,6 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 			}
 		},
 	}
-	cmd.PersistentFlags().StringP(hostPathFlag, "", "", "Defines the host folder on which to define a persisent volume for single node setups")
-	cmd.PersistentFlags().StringP(nameFlag, "", "fabric8", "The name of the PersistentVolume to create")
 	return cmd
 }
 
