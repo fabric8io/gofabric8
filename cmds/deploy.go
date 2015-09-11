@@ -47,11 +47,11 @@ import (
 )
 
 const (
-	consoleMetadataUrl           = "https://repo1.maven.org/maven2/io/fabric8/apps/base/maven-metadata.xml"
-	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/apps/base/%[1]s/base-%[1]s-kubernetes.json"
-	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
-	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
-	templatesDistroUrl           = "https://repo1.maven.org/maven2/io/fabric8/apps/distro/%[1]s/distro-%[1]s-templates.zip"
+	consoleMetadataUrl           = "https://repo1.maven.org/maven2/io/fabric8/devops/apps/console/maven-metadata.xml"
+	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/devops/apps/console/%[1]s/console-%[1]s-kubernetes.json"
+	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/devops/apps/console-kubernetes/maven-metadata.xml"
+	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/devops/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
+	templatesDistroUrl           = "https://repo1.maven.org/maven2/io/fabric8/devops/distro/distro/%[1]s/distro-%[1]s-templates.zip"
 
 	Fabric8SCC    = "fabric8"
 	PrivilegedSCC = "privileged"
