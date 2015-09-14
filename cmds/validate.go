@@ -239,7 +239,7 @@ func validateTemplates(c *oclient.Client, f *cmdutil.Factory) (Result, error) {
 	if err != nil {
 		return Failure, err
 	}
-	rc, err := c.Templates(ns).Get("base")
+	rc, err := c.Templates(ns).Get("management")
 	if rc != nil {
 		return Success, err
 	}
