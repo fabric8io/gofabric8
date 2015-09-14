@@ -72,13 +72,12 @@ release:
 	done
 	CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a gofabric8.go
 	zip release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE
-	# disable as it seems to barf
-	#	echo -e "@ build/$(NAME)-$(VERSION)-windows-amd64.exe\n@=$(NAME).exe"  | zipnote -w release/$(NAME)-$(VERSION)-windows-amd64.zip
+	echo -e "@ build/$(NAME)-$(VERSION)-windows-amd64.exe\n@=$(NAME).exe"  | zipnote -w release/$(NAME)-$(VERSION)-windows-amd64.zip
 	go get github.com/progrium/gh-release/...
-	gh-release create fabric8io/$(NAME) $(VERSION)
+	#gh-release create fabric8io/$(NAME) $(VERSION)
 
-	#gh-release create fabric8io/$(NAME) $(VERSION) \
-	#	$(shell git rev-parse --abbrev-ref HEAD) $(VERSION)
+	gh-release create fabric8io/$(NAME) $(VERSION) \
+		$(shell git rev-parse --abbrev-ref HEAD) $(VERSION)
 
 clean:
 		rm -rf build release
