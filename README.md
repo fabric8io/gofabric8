@@ -63,14 +63,14 @@ Use "gofabric8 help [command]" for more information about a command.
 
 ### Pre-requisits
 
-Install [go](https://golang.org/doc/install)   
-Install [godep](https://github.com/GoogleCloudPlatform/kubernetes/blob/master/docs/devel/development.md#godep-and-dependency-management)
+Install [go version 1.4](https://golang.org/doc/install)
+Install [godep](https://https://github.com/tools/godep)
 
 
 ### Building
 
 ```sh
-git clone git@github.com:fabric8io/gofabric8.git $GOPATH/src/github.com/fabric8io/gofabric2
+git clone git@github.com:fabric8io/gofabric8.git $GOPATH/src/github.com/fabric8io/gofabric8
 ./make
 ```
 
