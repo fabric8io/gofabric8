@@ -303,7 +303,7 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 		RunAsUser: kapi.RunAsUserStrategyOptions{
 			Type: kapi.RunAsUserStrategyRunAsAny,
 		},
-		Users:  []string{"system:serviceaccount:openshift-infra:build-controller", "system:serviceaccount:default:default", "system:serviceaccount:default:fabric8", "system:serviceaccount:default:jenkins", "system:serviceaccount:default:router"},
+		Users:  []string{"system:serviceaccount:openshift-infra:build-controller", "system:serviceaccount:default:default", "system:serviceaccount:default:fabric8", "system:serviceaccount:default:gerrit", "system:serviceaccount:default:jenkins", "system:serviceaccount:default:router"},
 		Groups: []string{bootstrappolicy.ClusterAdminGroup, bootstrappolicy.NodesGroup},
 	}
 	ns, _, err := f.DefaultNamespace()
