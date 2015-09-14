@@ -15,7 +15,7 @@
 #
 
 SHELL := /bin/bash
-NAME=gofabric8
+NAME := gofabric8
 VERSION := $(shell cat version/VERSION)
 OPENSHIFT_TAG := $(shell cat .openshift-version)
 ROOT_PACKAGE := $(shell go list .)
@@ -34,10 +34,10 @@ BUILDFLAGS := -ldflags \
 		-X $(ROOT_PACKAGE)/version.GoVersion '$(GO_VERSION)'"
 
 build: *.go */*.go fmt
-	CGO_ENABLED=0 godep go build $(BUILDFLAGS) -o build/$(NAME) -a gofabric8.go
+	CGO_ENABLED=0 godep go build $(BUILDFLAGS) -o build/$(NAME) -a $(NAME).go
 
 install: *.go */*.go
-	GOBIN=${GOPATH}/bin godep go install $(BUILDFLAGS) -a gofabric8.go
+	GOBIN=${GOPATH}/bin godep go install $(BUILDFLAGS) -a $(NAME).go
 
 update-deps-old:
 	echo $(OPENSHIFT_TAG) > .openshift-version && \
@@ -67,13 +67,13 @@ update-deps:
 release:
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \
-		CGO_ENABLED=0 GOOS=$$os ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 -a gofabric8.go ; \
+		CGO_ENABLED=0 GOOS=$$os ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 -a $(NAME).go ; \
 		tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$(VERSION)-$$os-amd64.tar.gz build/$(NAME)-$$os-amd64 README.md LICENSE ; \
 	done
-	CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a gofabric8.go
+	CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a $(NAME).go
 	zip --junk-paths release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE
-	go get github.com/progrium/gh-release/...
-	gh-release create fabric8io/$(NAME) $(VERSION) $(shell git rev-parse --abbrev-ref HEAD) $(VERSION)
+	go get -u github.com/progrium/gh-release/...
+	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)
 
 clean:
 		rm -rf build release
