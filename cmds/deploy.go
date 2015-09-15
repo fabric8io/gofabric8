@@ -421,14 +421,9 @@ func printAddClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName s
 
 // simulates: oadm policy add-cluster-role-to-user roleName userName
 func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) error {
-	namespace, _, err := f.DefaultNamespace()
-	if err != nil {
-		util.Info("No namespace!'\n")
-		return err
-	}
 	options := policy.RoleModificationOptions{
 		RoleName:            roleName,
-		RoleBindingAccessor: policy.NewLocalRoleBindingAccessor(namespace, c),
+		RoleBindingAccessor: policy.NewClusterRoleBindingAccessor(c),
 		Users:               []string{userName},
 	}
 	return options.AddRole()
