@@ -32,10 +32,12 @@ const (
 	Failure Result = "✘"
 
 	// cmd flags
-	yesFlag      = "yes"
-	hostPathFlag = "host-path"
-	nameFlag     = "name"
-	domainFlag   = "domain"
+	yesFlag       = "yes"
+	hostPathFlag  = "host-path"
+	nameFlag      = "name"
+	domainFlag    = "domain"
+	consoleFlag   = "console"
+	templatesFlag = "templates"
 
 	DefaultDomain = "vagrant.f8"
 )

@@ -103,84 +103,92 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 					r, err := verifyRestrictedSecurityContextConstraints(c, f)
 					printResult("SecurityContextConstraints restricted", r, err)
-					r, err = deployFabric8SecurityContextConstraints(c, f)
+					r, err = deployFabric8SecurityContextConstraints(c, f, ns)
 					printResult("SecurityContextConstraints fabric8", r, err)
 
-					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:default:fabric8")
-					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:default:metrics")
+					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
+					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
 
 					printAddServiceAccount(c, f, "metrics")
 					printAddServiceAccount(c, f, "router")
 
-					uri := fmt.Sprintf(baseConsoleUrl, v)
-					resp, err := http.Get(uri)
-					if err != nil {
-						util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-					}
-					defer resp.Body.Close()
-					jsonData, err := ioutil.ReadAll(resp.Body)
-					if err != nil {
-						util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-					}
-					var v1tmpl tapiv1.Template
-					err = json.Unmarshal(jsonData, &v1tmpl)
-					if err != nil {
-						util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-					}
-					var tmpl tapi.Template
+					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
+						uri := fmt.Sprintf(baseConsoleUrl, v)
+						resp, err := http.Get(uri)
+						if err != nil {
+							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+						}
+						defer resp.Body.Close()
+						jsonData, err := ioutil.ReadAll(resp.Body)
+						if err != nil {
+							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+						}
+						var v1tmpl tapiv1.Template
+						err = json.Unmarshal(jsonData, &v1tmpl)
+						if err != nil {
+							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+						}
+						var tmpl tapi.Template
 
-					err = api.Scheme.Convert(&v1tmpl, &tmpl)
-					if err != nil {
-						util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-					}
+						err = api.Scheme.Convert(&v1tmpl, &tmpl)
+						if err != nil {
+							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+						}
 
-					generators := map[string]generator.Generator{
-						"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
-					}
-					p := template.NewProcessor(generators)
+						generators := map[string]generator.Generator{
+							"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
+						}
+						p := template.NewProcessor(generators)
 
-					tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
-						Name:  "DOMAIN",
-						Value: cmd.Flags().Lookup("domain").Value.String(),
-					})
+						tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
+							Name:  "DOMAIN",
+							Value: cmd.Flags().Lookup("domain").Value.String(),
+						})
 
-					p.Process(&tmpl)
+						p.Process(&tmpl)
 
-					for _, o := range tmpl.Objects {
-						switch o := o.(type) {
-						case *runtime.Unstructured:
-							var b []byte
-							b, err = json.Marshal(o.Object)
-							if err != nil {
-								break
-							}
-							req := c.Post().Body(b)
-							if o.Kind != "OAuthClient" {
-								req.Namespace(ns).Resource(strings.ToLower(o.TypeMeta.Kind + "s"))
-							} else {
-								req.AbsPath("oapi", "v1", strings.ToLower(o.TypeMeta.Kind+"s"))
-							}
-							res := req.Do()
-							if res.Error() != nil {
-								err = res.Error()
-								break
-							}
-							var statusCode int
-							res.StatusCode(&statusCode)
-							if statusCode != http.StatusCreated {
-								err = fmt.Errorf("Failed to create %s: %d", o.TypeMeta.Kind, statusCode)
-								break
+						for _, o := range tmpl.Objects {
+							switch o := o.(type) {
+							case *runtime.Unstructured:
+								var b []byte
+								b, err = json.Marshal(o.Object)
+								if err != nil {
+									break
+								}
+								req := c.Post().Body(b)
+								if o.Kind != "OAuthClient" {
+									req.Namespace(ns).Resource(strings.ToLower(o.TypeMeta.Kind + "s"))
+								} else {
+									req.AbsPath("oapi", "v1", strings.ToLower(o.TypeMeta.Kind+"s"))
+								}
+								res := req.Do()
+								if res.Error() != nil {
+									err = res.Error()
+									break
+								}
+								var statusCode int
+								res.StatusCode(&statusCode)
+								if statusCode != http.StatusCreated {
+									err = fmt.Errorf("Failed to create %s: %d", o.TypeMeta.Kind, statusCode)
+									break
+								}
 							}
 						}
-					}
 
-					if err != nil {
-						printResult("fabric8 console", Failure, err)
+						if err != nil {
+							printResult("fabric8 console", Failure, err)
+						} else {
+							printResult("fabric8 console", Success, nil)
+						}
 					} else {
-						printResult("fabric8 console", Success, nil)
+						printError("Ignoring the deploy of the fabric8 console", nil)
 					}
 
-					printError("Install templates", installTemplates(oc, f, v))
+					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
+						printError("Install templates", installTemplates(oc, f, v))
+					} else {
+						printError("Ignoring the deploy of templates", nil)
+					}
 
 					domain := cmd.Flags().Lookup(domainFlag).Value.String()
 
@@ -190,6 +198,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.PersistentFlags().StringP("domain", "d", defaultDomain(), "The domain name to append to the service name to access web applications")
+	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
+	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
 }
 
@@ -287,8 +297,11 @@ func createRoutes(c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory)
 	return createRoutesForDomain(ns, domain, c, oc, fac)
 }
 
-func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory, ns string) (Result, error) {
 	name := Fabric8SCC
+	if ns != "default" {
+		name += "-" + ns
+	}
 	scc := kapi.SecurityContextConstraints{
 		ObjectMeta: kapi.ObjectMeta{
 			Name: name,
@@ -303,15 +316,10 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 		RunAsUser: kapi.RunAsUserStrategyOptions{
 			Type: kapi.RunAsUserStrategyRunAsAny,
 		},
-		Users:  []string{"system:serviceaccount:openshift-infra:build-controller", "system:serviceaccount:default:default", "system:serviceaccount:default:fabric8", "system:serviceaccount:default:gerrit", "system:serviceaccount:default:jenkins", "system:serviceaccount:default:router"},
+		Users:  []string{"system:serviceaccount:openshift-infra:build-controller", "system:serviceaccount:" + ns + ":default", "system:serviceaccount:" + ns + ":fabric8", "system:serviceaccount:" + ns + ":gerrit", "system:serviceaccount:" + ns + ":jenkins", "system:serviceaccount:" + ns + ":router"},
 		Groups: []string{bootstrappolicy.ClusterAdminGroup, bootstrappolicy.NodesGroup},
 	}
-	ns, _, err := f.DefaultNamespace()
-	if err != nil {
-		util.Fatal("No default namespace")
-		return Failure, err
-	}
-	_, err = c.SecurityContextConstraints().Get(name)
+	_, err := c.SecurityContextConstraints().Get(name)
 	if err == nil {
 		err = c.SecurityContextConstraints().Delete(name)
 		if err != nil {
