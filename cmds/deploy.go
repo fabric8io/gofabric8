@@ -107,6 +107,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printResult("SecurityContextConstraints fabric8", r, err)
 
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
+					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
 					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
 
 					printAddServiceAccount(c, f, "metrics")
