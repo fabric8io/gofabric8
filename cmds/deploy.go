@@ -53,9 +53,14 @@ const (
 	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/devops/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
 	templatesDistroUrl           = "https://repo1.maven.org/maven2/io/fabric8/devops/distro/distro/%[1]s/distro-%[1]s-templates.zip"
 
+	iPaaSTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
+	iPaaSMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/maven-metadata.xml"
+
 	Fabric8SCC    = "fabric8"
 	PrivilegedSCC = "privileged"
 	RestrictedSCC = "restricted"
+
+	versioniPaaSFlag = "version-ipaas"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -83,6 +88,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				typeOfMaster := util.TypeOfMaster(c)
 				v = f8Version(v, typeOfMaster)
+
+				versioniPaaS := cmd.Flags().Lookup(versioniPaaSFlag).Value.String()
+				versioniPaaS = versionForUrl(versioniPaaS, iPaaSMetadataUrl)
 
 				util.Warnf("\nStarting deployment of %s...\n\n", v)
 
@@ -186,7 +194,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					}
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
-						printError("Install templates", installTemplates(oc, f, v))
+						printError("Install DevOps templates", installTemplates(oc, f, v, templatesDistroUrl))
+						printError("Install iPaaS templates", installTemplates(oc, f, versioniPaaS, iPaaSTemplatesDistroUrl))
 					} else {
 						printError("Ignoring the deploy of templates", nil)
 					}
@@ -199,12 +208,13 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.PersistentFlags().StringP("domain", "d", defaultDomain(), "The domain name to append to the service name to access web applications")
+	cmd.PersistentFlags().StringP(versioniPaaSFlag, "", "latest", "The version to use for the Fabric8 iPaaS templates")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
 }
 
-func installTemplates(c *oclient.Client, fac *cmdutil.Factory, v string) error {
+func installTemplates(c *oclient.Client, fac *cmdutil.Factory, v string, templateUrl string) error {
 	ns, _, err := fac.DefaultNamespace()
 	if err != nil {
 		util.Fatal("No default namespace")
@@ -212,8 +222,8 @@ func installTemplates(c *oclient.Client, fac *cmdutil.Factory, v string) error {
 	}
 	templates := c.Templates(ns)
 
-	util.Infof("Downloading templates for fabric8 version %v\n", v)
-	uri := fmt.Sprintf(templatesDistroUrl, v)
+	util.Infof("Downloading templates for version %v\n", v)
+	uri := fmt.Sprintf(templateUrl, v)
 	resp, err := http.Get(uri)
 	if err != nil {
 		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
@@ -443,7 +453,10 @@ func f8Version(v string, typeOfMaster util.MasterType) string {
 	if typeOfMaster == util.Kubernetes {
 		metadataUrl = consoleKubernetesMetadataUrl
 	}
+	return versionForUrl(v, metadataUrl)
+}
 
+func versionForUrl(v string, metadataUrl string) string {
 	resp, err := http.Get(metadataUrl)
 	if err != nil {
 		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
