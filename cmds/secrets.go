@@ -20,7 +20,10 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"golang.org/x/crypto/ssh"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fabric8io/gofabric8/client"
@@ -93,8 +96,8 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.PersistentFlags().BoolP("print-import-folder-structure", "", true, "Prints the folder structures that are being used by the template annotations to import secrets")
-	cmd.PersistentFlags().BoolP("print-generated-keys", "", false, "Print any generated secrets to the console")
-	cmd.PersistentFlags().BoolP("generate-secrets-data", "g", true, "Generate secrets data if secrets cannot be found on the local filesystem")
+	cmd.PersistentFlags().BoolP("write-generated-keys", "", false, "Write generated secrets to the local filesystem")
+	cmd.PersistentFlags().BoolP("generate-secrets-data", "g", true, "Generate secrets data if secrets cannot be found to import from the local filesystem")
 	return cmd
 }
 
@@ -200,7 +203,11 @@ func getSecretData(secretType string, name string, keysNames []string, flags *fl
 		// if we cant find the public and private key to import, and generation flag is set then lets generate the keys
 		if (err1 != nil && err2 != nil) && flags.Lookup("generate-secrets-data").Value.String() == "true" {
 			util.Info("No secrets found on local filesystem, generating SSH public and private key pair\n")
-			keypair := generateSshKeyPair(flags.Lookup("print-generated-keys").Value.String())
+			keypair := generateSshKeyPair()
+			if flags.Lookup("write-generated-keys").Value.String() == "true" {
+				writeFile(name+"/ssh-key", keypair.priv)
+				writeFile(name+"/ssh-key.pub", keypair.pub)
+			}
 			data["ssh-key"] = keypair.priv
 			data["ssh-key.pub"] = keypair.pub
 
@@ -229,7 +236,10 @@ func getSecretData(secretType string, name string, keysNames []string, flags *fl
 			// if we cant find the public key to import and generation flag is set then lets generate the key
 			if (err != nil) && flags.Lookup("generate-secrets-data").Value.String() == "true" {
 				util.Info("No secrets found on local filesystem, generating SSH public key\n")
-				keypair := generateSshKeyPair(flags.Lookup("print-generated-keys").Value.String())
+				keypair := generateSshKeyPair()
+				if flags.Lookup("write-generated-keys").Value.String() == "true" {
+					writeFile(name+"/ssh-key.pub", keypair.pub)
+				}
 				data[keysNames[i]] = keypair.pub
 
 			} else {
@@ -257,15 +267,11 @@ func getSecretData(secretType string, name string, keysNames []string, flags *fl
 	return data
 }
 
-func generateSshKeyPair(logGeneratedKeys string) Keypair {
+func generateSshKeyPair() Keypair {
 
 	priv, err := rsa.GenerateKey(rand.Reader, 2014)
 	if err != nil {
 		util.Fatalf("Error generating key", err)
-	}
-	err = priv.Validate()
-	if err != nil {
-		util.Fatalf("Validation failed.", err)
 	}
 
 	// Get der format. priv_der []byte
@@ -283,29 +289,12 @@ func generateSshKeyPair(logGeneratedKeys string) Keypair {
 	// priv_pem string
 	priv_pem := string(pem.EncodeToMemory(&priv_blk))
 
-	if logGeneratedKeys == "true" {
-		util.Infof(priv_pem)
-	}
-
 	// Public Key generation
-	pub := priv.PublicKey
-	pub_der, err := x509.MarshalPKIXPublicKey(&pub)
-	if err != nil {
-		util.Fatalf("Failed to get der format for PublicKey.", err)
-	}
-
-	pub_blk := pem.Block{
-		Type:    "PUBLIC KEY",
-		Headers: nil,
-		Bytes:   pub_der,
-	}
-	pub_pem := string(pem.EncodeToMemory(&pub_blk))
-	if logGeneratedKeys == "true" {
-		util.Infof(pub_pem)
-	}
+	sshPublicKey, err := ssh.NewPublicKey(&priv.PublicKey)
+	pubBytes := ssh.MarshalAuthorizedKey(sshPublicKey)
 
 	return Keypair{
-		pub:  []byte(pub_pem),
+		pub:  []byte(pubBytes),
 		priv: []byte(priv_pem),
 	}
 }
@@ -317,4 +306,17 @@ func getTemplates(c *oclient.Client, ns string) *tapi.TemplateList {
 		util.Fatalf("No Templates found in namespace %s\n", ns)
 	}
 	return rc
+}
+
+func writeFile(path string, contents []byte) {
+	dir := strings.Split(path, string(filepath.Separator))
+	os.MkdirAll("."+string(filepath.Separator)+dir[0], 0700)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	if _, err := f.Write(contents); err != nil {
+		panic(err)
+	}
 }
