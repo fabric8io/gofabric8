@@ -50,7 +50,6 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 			util.Info(" in namespace ")
 			util.Successf("%s\n\n", ns)
 			printValidationResult("Service account", validateServiceAccount, c, f)
-			printValidationResult("Router", validateRouter, c, f)
 			printValidationResult("Console", validateConsoleDeployment, c, f)
 
 			if util.TypeOfMaster(c) == util.Kubernetes {
@@ -58,12 +57,13 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			if util.TypeOfMaster(c) == util.OpenShift {
+				printValidationResult("Router", validateRouter, c, f)
 				oc, _ := client.NewOpenShiftClient(cfg)
 				printOValidationResult("Templates", validateTemplates, oc, f)
+				printValidationResult("SecurityContextConstraints", validateSecurityContextConstraints, c, f)
 			}
 
 			printValidationResult("PersistentVolumeClaims", validatePersistenceVolumeClaims, c, f)
-			printValidationResult("SecurityContextConstraints", validateSecurityContextConstraints, c, f)
 		},
 	}
 

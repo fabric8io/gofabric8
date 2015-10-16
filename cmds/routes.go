@@ -37,6 +37,9 @@ func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			c, cfg := client.NewClient(f)
+			if util.TypeOfMaster(c) == util.Kubernetes {
+				util.Fatal("Routes command is for OpenShift only")
+			}
 			oc, _ := client.NewOpenShiftClient(cfg)
 			ns, _, err := f.DefaultNamespace()
 			if err != nil {
