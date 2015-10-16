@@ -72,7 +72,7 @@ release:
 	done
 	CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a $(NAME).go
 	zip --junk-paths release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE
-	go get -u github.com/jimmidyson/gh-release
+	go get -u github.com/progrium/gh-release
 	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)
 
 clean:
