@@ -3,6 +3,8 @@
 gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment
 								Find more information at http://fabric8.io.
 
+When deploying, by default the latest release version is used.  In order to deploy a specific version you can use the `--version` flag as detailed below.
+
 ## Getting started
 
 ### Download & run
@@ -23,6 +25,11 @@ Usage:
 Available Commands:
   validate    Validate your Kubernetes or OpenShift environment
   deploy      Deploy fabric8 to your Kubernetes or OpenShift environment
+  pull        Pulls the docker images for the given templates
+  routes      Creates any missing Routes for services
+  secrets     Set up Secrets on your Kubernetes or OpenShift environment
+  volume      Creates a persisent volume for fabric8 apps needing persistent disk
+  version     Display version & exit
   help        Help about any command
 
 Flags:
@@ -33,7 +40,6 @@ Flags:
       --client-key="": Path to a client key file for TLS.
       --cluster="": The name of the kubeconfig cluster to use
       --context="": The name of the kubeconfig context to use
-  -d, --domain="vagrant.f8": The domain name to append to the service name to access web applications
   -h, --help=false: help for gofabric8
       --insecure-skip-tls-verify=false: If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.
       --kubeconfig="": Path to the kubeconfig file to use for CLI requests.
@@ -56,7 +62,7 @@ Flags:
   -y, --yes=false: assume yes
 
 
-Use "gofabric8 help [command]" for more information about a command.
+Use "gofabric8 [command] --help" for more information about a command.
 ```
 
 ## Development
