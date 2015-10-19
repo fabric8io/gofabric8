@@ -7,12 +7,19 @@ When deploying, by default the latest release version is used.  In order to depl
 
 ## Getting started
 
-### Download & run
+### Install / Update & run
+
+Get latest download URL from [gofabric8 releases](https://github.com/fabric8io/gofabric8/releases)
 
 ```sh
-curl -L https://github.com/fabric8io/gofabric8/releases/download/v0.2/gofabric8-0.2-darwin-amd64.tar.gz | tar -xvz
-chmod +x gofabric8
-./gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy
+sudo rm /tmp/gofabric8
+sudo rm -rf /usr/bin/gofabric8
+mkdir /tmp/gofabric8
+curl --retry 999 --retry-max-time 0  -sSL [[ADD DOWNLOAD URL HERE]] | tar xzv -C /tmp/gofabric8
+chmod +x /tmp/gofabric8/gofabric8
+sudo mv /tmp/gofabric8/* /usr/bin/
+
+gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy
 ```
 
 ### Usage
