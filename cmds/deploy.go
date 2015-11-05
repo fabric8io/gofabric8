@@ -83,7 +83,10 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			util.Info(" in namespace ")
 			util.Successf("%s\n\n", ns)
 
-			if confirmAction(cmd.Flags()) {
+			domain := cmd.Flags().Lookup("domain").Value.String()
+			if strings.Contains(domain, "=") {
+				util.Warnf("\nInvalid domain: %s\n\n", domain)
+			} else if confirmAction(cmd.Flags()) {
 				v := cmd.Flags().Lookup("version").Value.String()
 
 				typeOfMaster := util.TypeOfMaster(c)
@@ -151,7 +154,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 						tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
 							Name:  "DOMAIN",
-							Value: cmd.Flags().Lookup("domain").Value.String(),
+							Value: domain,
 						})
 
 						p.Process(&tmpl)
