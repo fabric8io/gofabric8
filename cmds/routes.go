@@ -70,6 +70,9 @@ func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oc
 		util.Errorf("Failed to load services in namespace %s with error %v", ns, err)
 		return err
 	}
+	var labels = make(map[string]string)
+	labels["provider"] = "fabric8"
+
 	items := rc.Items
 	for _, service := range items {
 		// TODO use the external load balancer as a way to know if we should create a route?
@@ -81,7 +84,8 @@ func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oc
 				hostName := name + "." + domain
 				route := rapi.Route{
 					ObjectMeta: kapi.ObjectMeta{
-						Name: name,
+						Labels: labels,
+						Name:   name,
 					},
 					Host:        hostName,
 					ServiceName: name,
