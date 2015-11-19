@@ -46,7 +46,7 @@ func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
 				util.Fatal("No default namespace")
 				printResult("Get default namespace", Failure, err)
 			} else {
-				util.Info("Creating a persistent volume for your ")
+				util.Info("Setting up routes on your")
 				util.Success(string(util.TypeOfMaster(c)))
 				util.Info(" installation at ")
 				util.Success(cfg.Host)
