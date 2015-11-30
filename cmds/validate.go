@@ -212,7 +212,11 @@ func validateSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory)
 	if err != nil {
 		return Failure, err
 	}
-	rc, err := c.SecurityContextConstraints().Get("fabric8")
+	name := Fabric8SCC
+	if ns != "default" {
+		name += "-" + ns
+	}
+	rc, err := c.SecurityContextConstraints().Get(name)
 	if err != nil {
 		util.Fatalf("Failed to get SecurityContextConstraints, %s in namespace %s\n", err, ns)
 	}
