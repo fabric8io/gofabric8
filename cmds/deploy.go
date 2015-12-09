@@ -47,10 +47,10 @@ import (
 )
 
 const (
-	consoleMetadataUrl           = "https://repo1.maven.org/maven2/io/fabric8/devops/apps/console/maven-metadata.xml"
-	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/devops/apps/console/%[1]s/console-%[1]s-kubernetes.json"
-	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/devops/apps/console-kubernetes/maven-metadata.xml"
-	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/devops/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
+	consoleMetadataUrl           = "https://repo1.maven.org/maven2/io/fabric8/apps/console/maven-metadata.xml"
+	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/apps/console/%[1]s/console-%[1]s-kubernetes.json"
+	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
+	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
 	templatesDistroUrl           = "https://repo1.maven.org/maven2/io/fabric8/devops/distro/distro/%[1]s/distro-%[1]s-templates.zip"
 
 	iPaaSTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
