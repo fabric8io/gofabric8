@@ -51,16 +51,18 @@ const (
 	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/apps/console/%[1]s/console-%[1]s-kubernetes.json"
 	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
 	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
-	templatesDistroUrl           = "https://repo1.maven.org/maven2/io/fabric8/devops/distro/distro/%[1]s/distro-%[1]s-templates.zip"
 
-	iPaaSTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
-	iPaaSMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/maven-metadata.xml"
+	devopsTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/devops/distro/distro/%[1]s/distro-%[1]s-templates.zip"
+	iPaaSTemplatesDistroUrl  = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
+	iPaaSMetadataUrl         = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/maven-metadata.xml"
+	devOpsMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/devops/distro/distro/maven-metadata.xml"
 
 	Fabric8SCC    = "fabric8"
 	PrivilegedSCC = "privileged"
 	RestrictedSCC = "restricted"
 
-	versioniPaaSFlag = "version-ipaas"
+	versioniPaaSFlag  = "version-ipaas"
+	versionDevOpsFlag = "version-devops"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -90,15 +92,18 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				v := cmd.Flags().Lookup("version").Value.String()
 
 				typeOfMaster := util.TypeOfMaster(c)
-				v = f8Version(v, typeOfMaster)
+				consoleVersion := f8ConsoleVersion(v, typeOfMaster)
 
 				versioniPaaS := cmd.Flags().Lookup(versioniPaaSFlag).Value.String()
 				versioniPaaS = versionForUrl(versioniPaaS, iPaaSMetadataUrl)
 
-				util.Warnf("\nStarting deployment of %s...\n\n", v)
+				versionDevOps := cmd.Flags().Lookup(versionDevOpsFlag).Value.String()
+				versionDevOps = versionForUrl(versionDevOps, devOpsMetadataUrl)
+
+				util.Warnf("\nStarting fabric8 console deployment using %s...\n\n", consoleVersion)
 
 				if typeOfMaster == util.Kubernetes {
-					uri := fmt.Sprintf(baseConsoleKubernetesUrl, v)
+					uri := fmt.Sprintf(baseConsoleKubernetesUrl, consoleVersion)
 					filenames := []string{uri}
 
 					createCmd := cobra.Command{}
@@ -125,7 +130,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printAddServiceAccount(c, f, "router")
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
-						uri := fmt.Sprintf(baseConsoleUrl, v)
+						uri := fmt.Sprintf(baseConsoleUrl, consoleVersion)
 						resp, err := http.Get(uri)
 						if err != nil {
 							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
@@ -197,7 +202,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					}
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
-						printError("Install DevOps templates", installTemplates(oc, f, v, templatesDistroUrl))
+						printError("Install DevOps templates", installTemplates(oc, f, versionDevOps, devopsTemplatesDistroUrl))
 						printError("Install iPaaS templates", installTemplates(oc, f, versioniPaaS, iPaaSTemplatesDistroUrl))
 					} else {
 						printError("Ignoring the deploy of templates", nil)
@@ -212,6 +217,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd.PersistentFlags().StringP("domain", "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().StringP(versioniPaaSFlag, "", "latest", "The version to use for the Fabric8 iPaaS templates")
+	cmd.PersistentFlags().StringP(versionDevOpsFlag, "", "latest", "The version to use for the Fabric8 DevOps templates")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
@@ -451,7 +457,7 @@ func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string
 	return options.AddRole()
 }
 
-func f8Version(v string, typeOfMaster util.MasterType) string {
+func f8ConsoleVersion(v string, typeOfMaster util.MasterType) string {
 	metadataUrl := consoleMetadataUrl
 	if typeOfMaster == util.Kubernetes {
 		metadataUrl = consoleKubernetesMetadataUrl
