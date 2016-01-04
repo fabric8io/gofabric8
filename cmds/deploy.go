@@ -52,10 +52,11 @@ const (
 	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
 	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
 
-	devopsTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/devops/distro/distro/%[1]s/distro-%[1]s-templates.zip"
+	devopsTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/forge/distro/distro/%[1]s/distro-%[1]s-templates.zip"
+	devOpsMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/forge/distro/distro/maven-metadata.xml"
+
 	iPaaSTemplatesDistroUrl  = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
 	iPaaSMetadataUrl         = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/maven-metadata.xml"
-	devOpsMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/devops/distro/distro/maven-metadata.xml"
 
 	Fabric8SCC    = "fabric8"
 	PrivilegedSCC = "privileged"
