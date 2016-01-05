@@ -22,6 +22,7 @@ import (
 	"encoding/pem"
 	"golang.org/x/crypto/ssh"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -261,6 +262,42 @@ func getSecretData(secretType string, name string, keysNames []string, flags *fl
 			data[keysNames[i]] = gpg
 		}
 
+	case "secret-docker-cfg":
+
+		if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
+			logSecretImport(name + "/config.json")
+		}
+		dockerCfg, err := ioutil.ReadFile(name + "/config.json")
+		check(err)
+
+		data["config.json"] = dockerCfg
+
+	case "secret-maven-settings":
+
+		if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
+			logSecretImport(name + "/settings.xml")
+		}
+		mvn, err := ioutil.ReadFile(name + "/settings.xml")
+		check(err)
+		if err != nil && flags.Lookup("generate-secrets-data").Value.String() == "true" {
+			defaultSettingsXML := "https://raw.githubusercontent.com/fabric8io/gofabric8/master/default-secrets/mvnsettings.xml"
+			logSecretImport("Using deafult maven settings from " + defaultSettingsXML)
+			resp, err := http.Get(defaultSettingsXML)
+			if err != nil {
+				util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
+			}
+			defer resp.Body.Close()
+			// read xml http response
+			mvn, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
+			}
+			data["settings.xml"] = mvn
+		} else {
+			data["settings.xml"] = mvn
+		}
+
+		return data
 	default:
 		util.Fatalf("No matching data type %s\n", dataType)
 	}
