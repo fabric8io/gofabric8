@@ -262,6 +262,16 @@ func getSecretData(secretType string, name string, keysNames []string, flags *fl
 			data[keysNames[i]] = gpg
 		}
 
+	case "secret-github-api-token":
+
+		if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
+			logSecretImport(name + "/apitoken")
+		}
+		apitoken, err := ioutil.ReadFile(name + "/apitoken")
+		check(err)
+
+		data["apitoken"] = apitoken
+
 	case "secret-docker-cfg":
 
 		if flags.Lookup("print-import-folder-structure").Value.String() == "true" {
