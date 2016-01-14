@@ -77,7 +77,7 @@ Use "gofabric8 [command] --help" for more information about a command.
 ### Pre-requisits
 
 Install [go version 1.4](https://golang.org/doc/install)
-Install [godep](https://https://github.com/tools/godep)
+Install [godep](https://github.com/tools/godep)
 
 
 ### Building
