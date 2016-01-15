@@ -48,7 +48,6 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 				ns, _, err := f.DefaultNamespace()
 				if err != nil {
 					util.Fatal("No default namespace")
-					printResult("Get default namespace", Failure, err)
 				} else {
 					for _, template := range args {
 						util.Info("Downloading docker images for template ")
@@ -69,7 +68,6 @@ func downloadTemplateDockerImages(cmd *cobra.Command, ns string, c *oclient.Clie
 	rc, err := c.Templates(ns).Get(name)
 	if err != nil {
 		util.Fatalf("No Template %s found in namespace %s\n", name, ns)
-		return Failure, err
 	}
 
 	// convert Template.Objects to Kubernetes resources
