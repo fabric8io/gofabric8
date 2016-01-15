@@ -40,7 +40,6 @@ func NewCmdVolume(f *cmdutil.Factory) *cobra.Command {
 			ns, _, err := f.DefaultNamespace()
 			if err != nil {
 				util.Fatal("No default namespace")
-				printResult("Get default namespace", Failure, err)
 			} else {
 				util.Info("Creating a persistent volume for your ")
 				util.Success(string(util.TypeOfMaster(c)))
