@@ -24,7 +24,7 @@ gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy
 
 ### Usage
 
-```sh
+```
 Usage:
   gofabric8 [flags]
   gofabric8 [command]
@@ -42,11 +42,13 @@ Available Commands:
 Flags:
       --alsologtostderr=false: log to standard error as well as files
       --api-version="": The API version to use when talking to the server
+			--apidomain="vagrant.f8": The domain used to connect to kubernetes/openshift api if different from the --domain param
       --certificate-authority="": Path to a cert. file for the certificate authority.
       --client-certificate="": Path to a client key file for TLS.
       --client-key="": Path to a client key file for TLS.
       --cluster="": The name of the kubeconfig cluster to use
       --context="": The name of the kubeconfig context to use
+	-d  --domain="vagrant.f8": The domain fabric8 should be accessible at.
   -h, --help=false: help for gofabric8
       --insecure-skip-tls-verify=false: If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.
       --kubeconfig="": Path to the kubeconfig file to use for CLI requests.
