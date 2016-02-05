@@ -36,6 +36,7 @@ const (
 	hostPathFlag  = "host-path"
 	nameFlag      = "name"
 	domainFlag    = "domain"
+	apiServerFlag = "api-server"
 	consoleFlag   = "console"
 	templatesFlag = "templates"
 

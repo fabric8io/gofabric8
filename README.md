@@ -41,8 +41,8 @@ Available Commands:
 
 Flags:
       --alsologtostderr=false: log to standard error as well as files
+			--api-server="vagrant.f8": The server used to connect to kubernetes/openshift api if different from the --domain param
       --api-version="": The API version to use when talking to the server
-			--apidomain="vagrant.f8": The domain used to connect to kubernetes/openshift api if different from the --domain param
       --certificate-authority="": Path to a cert. file for the certificate authority.
       --client-certificate="": Path to a client key file for TLS.
       --client-key="": Path to a client key file for TLS.
