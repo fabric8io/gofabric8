@@ -87,10 +87,10 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			util.Successf("%s\n\n", ns)
 
 			domain := cmd.Flags().Lookup(domainFlag).Value.String()
-			apidomain := cmd.Flags().Lookup("apidomain").Value.String()
+			apiserver := cmd.Flags().Lookup(apiServerFlag).Value.String()
 
-			if len(apidomain) == 0 {
-				apidomain = domain
+			if len(apiserver) == 0 {
+				apiserver = domain
 			}
 
 			if strings.Contains(domain, "=") {
@@ -166,7 +166,10 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 						tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
 							Name:  "DOMAIN",
-							Value: apidomain,
+							Value: domain,
+						}, tapi.Parameter{
+							Name:  "APISERVER",
+							Value: apiserver,
 						})
 
 						p.Process(&tmpl)
@@ -223,7 +226,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.PersistentFlags().StringP("domain", "d", defaultDomain(), "The domain name to append to the service name to access web applications")
-	cmd.PersistentFlags().StringP("apidomain", "", "--domain", "if set the fabric8 pod uses that domain to call the console")
+	cmd.PersistentFlags().String("api-server", "", "overrides the api server url")
 	cmd.PersistentFlags().StringP(versioniPaaSFlag, "", "latest", "The version to use for the Fabric8 iPaaS templates")
 	cmd.PersistentFlags().StringP(versionDevOpsFlag, "", "latest", "The version to use for the Fabric8 DevOps templates")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
