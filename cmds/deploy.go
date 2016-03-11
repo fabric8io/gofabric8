@@ -55,6 +55,9 @@ const (
 	devopsTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/forge/distro/distro/%[1]s/distro-%[1]s-templates.zip"
 	devOpsMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/forge/distro/distro/maven-metadata.xml"
 
+	kubeflixTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/kubeflix/distro/distro/%[1]s/distro-%[1]s-templates.zip"
+	kubeflixMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/kubeflix/distro/distro/maven-metadata.xml"
+
 	iPaaSTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
 	iPaaSMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/maven-metadata.xml"
 
@@ -62,8 +65,9 @@ const (
 	PrivilegedSCC = "privileged"
 	RestrictedSCC = "restricted"
 
-	versioniPaaSFlag  = "version-ipaas"
-	versionDevOpsFlag = "version-devops"
+	versioniPaaSFlag    = "version-ipaas"
+	versionDevOpsFlag   = "version-devops"
+	versionKubeflixFlag = "version-kubeflix"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -106,6 +110,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				versionDevOps := cmd.Flags().Lookup(versionDevOpsFlag).Value.String()
 				versionDevOps = versionForUrl(versionDevOps, devOpsMetadataUrl)
+
+				versionKubeflix := cmd.Flags().Lookup(versionKubeflixFlag).Value.String()
+				versionKubeflix = versionForUrl(versionKubeflix, kubeflixMetadataUrl)
 
 				util.Warnf("\nStarting fabric8 console deployment using %s...\n\n", consoleVersion)
 
@@ -214,6 +221,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 						printError("Install DevOps templates", installTemplates(oc, f, versionDevOps, devopsTemplatesDistroUrl))
 						printError("Install iPaaS templates", installTemplates(oc, f, versioniPaaS, iPaaSTemplatesDistroUrl))
+						printError("Install Kubeflix templates", installTemplates(oc, f, versionKubeflix, kubeflixTemplatesDistroUrl))
 					} else {
 						printError("Ignoring the deploy of templates", nil)
 					}
@@ -229,6 +237,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String("api-server", "", "overrides the api server url")
 	cmd.PersistentFlags().StringP(versioniPaaSFlag, "", "latest", "The version to use for the Fabric8 iPaaS templates")
 	cmd.PersistentFlags().StringP(versionDevOpsFlag, "", "latest", "The version to use for the Fabric8 DevOps templates")
+	cmd.PersistentFlags().StringP(versionKubeflixFlag, "", "latest", "The version to use for the Kubeflix templates")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
