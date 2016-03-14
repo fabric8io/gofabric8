@@ -139,8 +139,10 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
 					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
+					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
 
 					printAddServiceAccount(c, f, "metrics")
+					printAddServiceAccount(c, f, "fluentd")
 					printAddServiceAccount(c, f, "router")
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
