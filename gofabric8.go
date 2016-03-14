@@ -34,11 +34,11 @@ func main() {
 		Run: runHelp,
 	}
 
+	cmds.PersistentFlags().String("fabric8-version", "latest", "fabric8 version")
+	cmds.PersistentFlags().BoolP("yes", "y", false, "assume yes")
+
 	f := cmdutil.NewFactory(nil)
 	f.BindFlags(cmds.PersistentFlags())
-
-	cmds.PersistentFlags().StringP("version", "v", "latest", "fabric8 version")
-	cmds.PersistentFlags().BoolP("yes", "y", false, "assume yes")
 
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))

@@ -20,11 +20,11 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
 	rapi "github.com/openshift/origin/pkg/route/api"
+	rapiv1 "github.com/openshift/origin/pkg/route/api/v1"
 	"github.com/spf13/cobra"
 	kapi "k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client"
+	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/labels"
 )
 
 func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
@@ -65,7 +65,10 @@ func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
 }
 
 func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory) error {
-	rc, err := c.Services(ns).List(labels.Everything())
+	rapi.AddToScheme(kapi.Scheme)
+	rapiv1.AddToScheme(kapi.Scheme)
+
+	rc, err := c.Services(ns).List(kapi.ListOptions{})
 	if err != nil {
 		util.Errorf("Failed to load services in namespace %s with error %v", ns, err)
 		return err
@@ -87,8 +90,10 @@ func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oc
 						Labels: labels,
 						Name:   name,
 					},
-					Host:        hostName,
-					ServiceName: name,
+					Spec: rapi.RouteSpec{
+						Host: hostName,
+						To:   kapi.ObjectReference{Name: name},
+					},
 				}
 				// lets create the route
 				_, err = routes.Create(&route)

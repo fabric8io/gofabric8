@@ -18,8 +18,8 @@ package util
 import (
 	"encoding/json"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client"
+	api "k8s.io/kubernetes/pkg/api/unversioned"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 )
 
 type MasterType string

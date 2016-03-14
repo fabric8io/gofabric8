@@ -20,12 +20,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"golang.org/x/crypto/ssh"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -34,10 +35,8 @@ import (
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client"
-	"k8s.io/kubernetes/pkg/fields"
+	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -77,7 +76,7 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 					// get all the Templates and find the annotations on any Pods
 					for _, i := range t.Items {
 						// convert TemplateList.Objects to Kubernetes resources
-						_ = runtime.DecodeList(i.Objects, api.Scheme, runtime.UnstructuredJSONScheme)
+						_ = runtime.DecodeList(i.Objects, api.Codecs.UniversalDecoder())
 						for _, rc := range i.Objects {
 							switch rc := rc.(type) {
 							case *api.ReplicationController:
@@ -357,7 +356,7 @@ func generateSshKeyPair() Keypair {
 
 func getTemplates(c *oclient.Client, ns string) *tapi.TemplateList {
 
-	rc, err := c.Templates(ns).List(labels.Everything(), fields.Everything())
+	rc, err := c.Templates(ns).List(api.ListOptions{})
 	if err != nil {
 		util.Fatalf("No Templates found in namespace %s\n", ns)
 	}

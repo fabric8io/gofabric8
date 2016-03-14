@@ -18,7 +18,7 @@ package client
 import (
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
-	"k8s.io/kubernetes/pkg/client"
+	client "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -39,7 +39,7 @@ func NewClient(f *cmdutil.Factory) (*client.Client, *client.Config) {
 
 func NewOpenShiftClient(cfg *client.Config) (*oclient.Client, *client.Config) {
 	ocfg := *cfg
-	ocfg.Prefix = ""
+	ocfg.APIPath = ""
 	c, err := oclient.New(&ocfg)
 	if err != nil {
 		util.Fatalf("Could not initialise an OpenShift client: %v", err)

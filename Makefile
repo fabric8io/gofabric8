@@ -16,61 +16,40 @@
 
 SHELL := /bin/bash
 NAME := gofabric8
+GO := GO15VENDOREXPERIMENT=1 go
 VERSION := $(shell cat version/VERSION)
 OPENSHIFT_TAG := $(shell cat .openshift-version)
-ROOT_PACKAGE := $(shell go list .)
-GO_VERSION := $(shell go version)
-PACKAGE_DIRS := $(shell go list -f '{{.Dir}}' ./...)
-FORMATTED := $(shell go fmt ./...)
+ROOT_PACKAGE := $(shell $(GO) list .)
+GO_VERSION := $(shell $(GO) version | sed -e 's/^[^0-9.]*\([0-9.]*\).*/\1/')
+PACKAGE_DIRS := $(shell $(GO) list ./... | grep -v /vendor/)
+FORMATTED := $(shell $(GO) fmt $(PACKAGE_DIRS))
 
 REV        := $(shell git rev-parse --short HEAD 2> /dev/null  || echo 'unknown')
 BRANCH     := $(shell git rev-parse --abbrev-ref HEAD 2> /dev/null  || echo 'unknown')
 BUILD_DATE := $(shell date +%Y%m%d-%H:%M:%S)
 BUILDFLAGS := -ldflags \
-  " -X $(ROOT_PACKAGE)/version.Version '$(VERSION)'\
-		-X $(ROOT_PACKAGE)/version.Revision '$(REV)'\
-		-X $(ROOT_PACKAGE)/version.Branch '$(BRANCH)'\
-		-X $(ROOT_PACKAGE)/version.BuildDate '$(BUILD_DATE)'\
-		-X $(ROOT_PACKAGE)/version.GoVersion '$(GO_VERSION)'"
+  " -X $(ROOT_PACKAGE)/version.Version='$(VERSION)'\
+		-X $(ROOT_PACKAGE)/version.Revision='$(REV)'\
+		-X $(ROOT_PACKAGE)/version.Branch='$(BRANCH)'\
+		-X $(ROOT_PACKAGE)/version.BuildDate='$(BUILD_DATE)'\
+		-X $(ROOT_PACKAGE)/version.GoVersion='$(GO_VERSION)'"
 
 build: *.go */*.go fmt
-	CGO_ENABLED=0 godep go build $(BUILDFLAGS) -o build/$(NAME) -a $(NAME).go
+	CGO_ENABLED=0 $(GO) build $(BUILDFLAGS) -o build/$(NAME) $(NAME).go
 
 install: *.go */*.go
-	GOBIN=${GOPATH}/bin godep go install $(BUILDFLAGS) -a $(NAME).go
-
-update-deps-old:
-	echo $(OPENSHIFT_TAG) > .openshift-version && \
-		pushd $(GOPATH)/src/github.com/openshift/origin && \
-		git fetch origin && \
-		git checkout -B $(OPENSHIFT_TAG) refs/tags/$(OPENSHIFT_TAG) && \
-		godep restore && \
-		popd && \
-		godep save ./... && \
-		godep update ...
+	GOBIN=${GOPATH}/bin $(GO) install $(BUILDFLAGS) $(NAME).go
 
 fmt:
 	@([[ ! -z "$(FORMATTED)" ]] && printf "Fixed unformatted files:\n$(FORMATTED)") || true
 
-update-deps:
-	echo $(OPENSHIFT_TAG) > .openshift-version && \
-		pushd $(GOPATH)/src/github.com/openshift/origin && \
-		git fetch origin && \
-		git checkout -B $(OPENSHIFT_TAG) refs/tags/$(OPENSHIFT_TAG) && \
-		godep restore && \
-		popd && \
-		godep save cmd/generate/generate.go && \
-		godep update ... && \
-		rm -rf Godeps/_workspace/src/k8s.io/kubernetes && \
-		cp -r $(GOPATH)/src/github.com/openshift/origin/Godeps/_workspace/src/k8s.io/kubernetes Godeps/_workspace/src/k8s.io/kubernetes
-
 release:
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \
-		CGO_ENABLED=0 GOOS=$$os ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 -a $(NAME).go ; \
+		CGO_ENABLED=0 GOOS=$$os ARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
 		tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$(VERSION)-$$os-amd64.tar.gz build/$(NAME)-$$os-amd64 README.md LICENSE ; \
 	done
-	CGO_ENABLED=0 GOOS=windows ARCH=amd64 godep go build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe -a $(NAME).go
+	CGO_ENABLED=0 GOOS=windows ARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe $(NAME).go
 	zip --junk-paths release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE
 	go get -u github.com/progrium/gh-release
 	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)

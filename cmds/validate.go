@@ -22,11 +22,11 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/spf13/cobra"
-	k8sclient "k8s.io/kubernetes/pkg/client"
-	"k8s.io/kubernetes/pkg/fields"
+	"k8s.io/kubernetes/pkg/api"
+	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/labels"
-	kutil "k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/sets"
 )
 
 type validateFunc func(c *k8sclient.Client, f *cmdutil.Factory) (Result, error)
@@ -138,7 +138,7 @@ func validatePersistenceVolumeClaims(c *k8sclient.Client, f *cmdutil.Factory) (R
 	if err != nil {
 		return Failure, err
 	}
-	rc, err := c.PersistentVolumeClaims(ns).List(labels.Everything(), fields.Everything())
+	rc, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{})
 	if err != nil {
 		util.Fatalf("Failed to get PersistentVolumeClaims, %s in namespace %s\n", err, ns)
 	}
@@ -186,13 +186,13 @@ func validateRouter(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
 	if err != nil {
 		return Failure, err
 	}
-	requirement, err := labels.NewRequirement("router", labels.EqualsOperator, kutil.NewStringSet("router"))
+	requirement, err := labels.NewRequirement("router", labels.EqualsOperator, sets.NewString("router"))
 	if err != nil {
 		return Failure, err
 	}
-	label := labels.LabelSelector{*requirement}
+	label := labels.NewSelector().Add(*requirement)
 
-	rc, err := c.ReplicationControllers(ns).List(label)
+	rc, err := c.ReplicationControllers(ns).List(api.ListOptions{LabelSelector: label})
 	if err != nil {
 		util.Fatalf("Failed to get PersistentVolumeClaims, %s in namespace %s\n", err, ns)
 	}

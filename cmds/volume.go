@@ -21,10 +21,8 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
-	k8sclient "k8s.io/kubernetes/pkg/client"
-	"k8s.io/kubernetes/pkg/fields"
+	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/labels"
 )
 
 func NewCmdVolume(f *cmdutil.Factory) *cobra.Command {
@@ -63,7 +61,7 @@ func createPersistentVolume(cmd *cobra.Command, ns string, c *k8sclient.Client, 
 	hostPath := flags.Lookup(hostPathFlag).Value.String()
 	name := flags.Lookup(nameFlag).Value.String()
 	pvs := c.PersistentVolumes()
-	rc, err := pvs.List(labels.Everything(), fields.Everything())
+	rc, err := pvs.List(api.ListOptions{})
 	if err != nil {
 		util.Errorf("Failed to load PersistentVolumes with error %v", err)
 		return Failure, err

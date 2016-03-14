@@ -71,7 +71,7 @@ func downloadTemplateDockerImages(cmd *cobra.Command, ns string, c *oclient.Clie
 	}
 
 	// convert Template.Objects to Kubernetes resources
-	_ = runtime.DecodeList(rc.Objects, api.Scheme, runtime.UnstructuredJSONScheme)
+	_ = runtime.DecodeList(rc.Objects, api.Codecs.UniversalDecoder())
 	for _, rc := range rc.Objects {
 		switch rc := rc.(type) {
 		case *api.ReplicationController:

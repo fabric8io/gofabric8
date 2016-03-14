@@ -1,0 +1,115 @@
+<project-header class="top-header"></project-header>
+  <project-page>
+
+    <!-- Middle section -->
+    <div class="middle-section">
+      <div id="scrollable-content" class="middle-container has-scroll">
+        <div class="middle-header">
+          <div class="container-fluid">
+            <breadcrumbs breadcrumbs="breadcrumbs"></breadcrumbs>
+            <alerts alerts="alerts"></alerts>
+            <div ng-if="!loaded">Loading...</div>
+            <div ng-if="build">
+              <h1>
+                {{build.metadata.name}}
+                <span ng-if="build.status.message" class="pficon pficon-warning-triangle-o" style="cursor: help;" data-toggle="popover" data-placement="right" data-trigger="hover" dynamic-content="{{build.status.message}}"></span>
+                <small class="meta">created <relative-timestamp timestamp="build.metadata.creationTimestamp"></relative-timestamp></small>
+                <div class="pull-right dropdown">
+                  <!-- Primary Actions -->
+                  <button class="btn btn-default hidden-xs"
+                          ng-click="cancelBuild()"
+                          ng-if="!build.metadata.deletionTimestamp && (build | isIncompleteBuild)">Cancel</button>
+                  <button class="btn btn-default hidden-xs"
+                          ng-click="cloneBuild()"
+                          ng-hide="build.metadata.deletionTimestamp || (build | isIncompleteBuild)"
+                          ng-disabled="!canBuild">Rebuild</button>
+
+                  <!-- Secondary Actions -->
+                  <a href="" class="dropdown-toggle resource-actions-dropdown" data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
+                  <ul class="dropdown-menu actions action-button">
+                    <li ng-if="!build.metadata.deletionTimestamp && (build | isIncompleteBuild)"
+                        class="visible-xs-inline">
+                      <a href=""
+                         role="button"
+                         ng-click="cancelBuild()"
+                      ><i class="fa fa-ban fa-fw" aria-hidden="true"></i> Cancel</a>
+                    </li>
+                    <li class="visible-xs-inline"
+                        ng-class="{ disabled: !canBuild }"
+                        ng-hide="build.metadata.deletionTimestamp || (build | isIncompleteBuild)">
+                      <a href=""
+                         role="button"
+                         ng-click="cloneBuild()"
+                         ng-attr-aria-disabled="{{canBuild ? undefined : 'true'}}"
+                         ng-class="{ 'disabled-link': !canBuild }"
+                      ><i class="fa fa-refresh fa-fw"></i> Rebuild</a>
+                    </li>
+                    <li>
+                      <edit-link
+                        resource="build"
+                        kind="builds"
+                        alerts="alerts">
+                      </edit-link>
+                    </li>
+                    <li>
+                      <delete-link
+                        resource-type="build"
+                        resource-name="{{build.metadata.name}}"
+                        project-name="{{build.metadata.namespace}}"
+                        alerts="alerts">
+                      </delete-link>
+                    </li>
+                  </ul>
+                </div>
+              </h1>
+              <labels ng-if="buildConfigName" labels="build.metadata.labels" clickable="true" kind="builds" title-kind="builds for build config {{buildConfigName}}" project-name="{{build.metadata.namespace}}" limit="3" navigate-url="project/{{build.metadata.namespace}}/browse/builds/{{buildConfigName}}"></labels>
+              <labels ng-if="!buildConfigName" labels="build.metadata.labels" limit="3"></labels>
+            </div>
+          </div>
+        </div><!-- /middle-header-->
+        <div class="middle-content">
+          <div class="container-fluid">
+            <div class="row" ng-if="build">
+              <div class="col-md-12">
+
+                  <uib-tabset>
+                    <uib-tab active="selectedTab.details">
+                      <uib-tab-heading>Details</uib-tab-heading>
+                      <ng-include src=" 'views/browse/_build-details.html' "></ng-include>
+                    </uib-tab>
+
+                    <uib-tab heading="Environment" active="selectedTab.environment">
+                      <uib-tab-heading>Environment</uib-tab-heading>
+                      <environment env-vars="(build | buildStrategy).env"></environment>
+                      <em ng-if="!(build | buildStrategy).env">The build strategy had no environment variables defined.</em>
+                    </uib-tab>
+
+                    <uib-tab active="selectedTab.logs">
+                      <uib-tab-heading>Logs</uib-tab-heading>
+                      <log-viewer
+                        ng-if="selectedTab.logs"
+                        follow-affix-top="390"
+                        follow-affix-bottom="90"
+                        resource="builds/log"
+                        name="build.metadata.name"
+                        context="projectContext"
+                        options="logOptions"
+                        status="build.status.phase"
+                        start="build.status.startTimestamp | date : 'short'"
+                        end="build.status.completionTimestamp | date : 'short'"
+                        run="logCanRun">
+                      </log-viewer>
+                    </uib-tab>
+                    <uib-tab active="selectedTab.events">
+                      <uib-tab-heading>Events</uib-tab-heading>
+                      <events resource-kind="Pod" resource-name="{{build | annotation : 'buildPod'}}" project-context="projectContext" ng-if="selectedTab.events"></events>
+                    </uib-tab>
+                  </uib-tabset>
+
+              </div><!-- /col-* -->
+            </div>
+          </div>
+        </div><!-- /middle-content -->
+      </div><!-- /middle-container -->
+    </div><!-- /middle-section -->
+  </project-page>

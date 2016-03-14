@@ -30,6 +30,8 @@ import (
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
+	aapi "github.com/openshift/origin/pkg/authorization/api"
+	aapiv1 "github.com/openshift/origin/pkg/authorization/api/v1"
 	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
@@ -40,7 +42,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
 	kapi "k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client"
+	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -100,7 +102,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			if strings.Contains(domain, "=") {
 				util.Warnf("\nInvalid domain: %s\n\n", domain)
 			} else if confirmAction(cmd.Flags()) {
-				v := cmd.Flags().Lookup("version").Value.String()
+				v := cmd.Flags().Lookup("fabric8-version").Value.String()
 
 				typeOfMaster := util.TypeOfMaster(c)
 				consoleVersion := f8ConsoleVersion(v, typeOfMaster)
@@ -122,7 +124,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 					createCmd := cobra.Command{}
 					createCmd.Flags().StringSlice("filename", filenames, "")
-					err := kcmd.RunCreate(f, &createCmd, ioutil.Discard)
+					err := kcmd.RunCreate(f, &createCmd, ioutil.Discard, nil)
 					if err != nil {
 						printResult("fabric8 console", Failure, err)
 					} else {
@@ -135,6 +137,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printResult("SecurityContextConstraints restricted", r, err)
 					r, err = deployFabric8SecurityContextConstraints(c, f, ns)
 					printResult("SecurityContextConstraints fabric8", r, err)
+
+					aapi.AddToScheme(api.Scheme)
+					aapiv1.AddToScheme(api.Scheme)
 
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
@@ -161,6 +166,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						if err != nil {
 							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
 						}
+						tapi.AddToScheme(api.Scheme)
+						tapiv1.AddToScheme(api.Scheme)
 						var tmpl tapi.Template
 
 						err = api.Scheme.Convert(&v1tmpl, &tmpl)
@@ -237,9 +244,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd.PersistentFlags().StringP("domain", "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().String("api-server", "", "overrides the api server url")
-	cmd.PersistentFlags().StringP(versioniPaaSFlag, "", "latest", "The version to use for the Fabric8 iPaaS templates")
-	cmd.PersistentFlags().StringP(versionDevOpsFlag, "", "latest", "The version to use for the Fabric8 DevOps templates")
-	cmd.PersistentFlags().StringP(versionKubeflixFlag, "", "latest", "The version to use for the Kubeflix templates")
+	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
+	cmd.PersistentFlags().String(versionDevOpsFlag, "latest", "The version to use for the Fabric8 DevOps templates")
+	cmd.PersistentFlags().String(versionKubeflixFlag, "latest", "The version to use for the Kubeflix templates")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
@@ -476,6 +483,7 @@ func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string
 		RoleBindingAccessor: policy.NewClusterRoleBindingAccessor(c),
 		Users:               []string{userName},
 	}
+
 	return options.AddRole()
 }
 
