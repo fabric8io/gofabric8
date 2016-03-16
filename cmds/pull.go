@@ -24,6 +24,8 @@ import (
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
+	tapi "github.com/openshift/origin/pkg/template/api"
+	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -36,6 +38,8 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 		Short: "Pulls the docker images for the given templates",
 		Long:  `Performs a docker pull on all the docker images referenced in the given templates to preload the local docker registry with images`,
 		PreRun: func(cmd *cobra.Command, args []string) {
+			tapi.AddToScheme(api.Scheme)
+			tapiv1.AddToScheme(api.Scheme)
 			showBanner()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
@@ -48,15 +52,14 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 				ns, _, err := f.DefaultNamespace()
 				if err != nil {
 					util.Fatal("No default namespace")
-				} else {
-					for _, template := range args {
-						util.Info("Downloading docker images for template ")
-						util.Success(template)
-						util.Info("\n\n")
+				}
+				for _, template := range args {
+					util.Info("Downloading docker images for template ")
+					util.Success(template)
+					util.Info("\n\n")
 
-						r, err := downloadTemplateDockerImages(cmd, ns, oc, f, template)
-						printResult("Download Docker images", r, err)
-					}
+					r, err := downloadTemplateDockerImages(ns, oc, f, template)
+					printResult("Download Docker images", r, err)
 				}
 			}
 		},
@@ -64,15 +67,15 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func downloadTemplateDockerImages(cmd *cobra.Command, ns string, c *oclient.Client, fac *cmdutil.Factory, name string) (Result, error) {
-	rc, err := c.Templates(ns).Get(name)
+func downloadTemplateDockerImages(ns string, c *oclient.Client, fac *cmdutil.Factory, name string) (Result, error) {
+	template, err := c.Templates(ns).Get(name)
 	if err != nil {
 		util.Fatalf("No Template %s found in namespace %s\n", name, ns)
 	}
 
 	// convert Template.Objects to Kubernetes resources
-	_ = runtime.DecodeList(rc.Objects, api.Codecs.UniversalDecoder())
-	for _, rc := range rc.Objects {
+	_ = runtime.DecodeList(template.Objects, api.Codecs.UniversalDecoder())
+	for _, rc := range template.Objects {
 		switch rc := rc.(type) {
 		case *api.ReplicationController:
 			for _, container := range rc.Spec.Template.Spec.Containers {
