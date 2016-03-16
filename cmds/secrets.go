@@ -20,6 +20,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -32,6 +33,7 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
 	tapi "github.com/openshift/origin/pkg/template/api"
+	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
@@ -76,7 +78,11 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 					// get all the Templates and find the annotations on any Pods
 					for _, i := range t.Items {
 						// convert TemplateList.Objects to Kubernetes resources
-						_ = runtime.DecodeList(i.Objects, api.Codecs.UniversalDecoder())
+						errs := runtime.DecodeList(i.Objects, api.Codecs.UniversalDecoder())
+						if len(errs) > 0 {
+							fmt.Println("Failed to decode templates", errs)
+							os.Exit(2)
+						}
 						for _, rc := range i.Objects {
 							switch rc := rc.(type) {
 							case *api.ReplicationController:
@@ -355,12 +361,13 @@ func generateSshKeyPair() Keypair {
 }
 
 func getTemplates(c *oclient.Client, ns string) *tapi.TemplateList {
-
-	rc, err := c.Templates(ns).List(api.ListOptions{})
+	tapi.AddToScheme(api.Scheme)
+	tapiv1.AddToScheme(api.Scheme)
+	templates, err := c.Templates(ns).List(api.ListOptions{})
 	if err != nil {
 		util.Fatalf("No Templates found in namespace %s\n", ns)
 	}
-	return rc
+	return templates
 }
 
 func writeFile(path string, contents []byte) {
