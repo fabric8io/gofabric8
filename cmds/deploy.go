@@ -148,6 +148,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 					printAddServiceAccount(c, f, "metrics")
 					printAddServiceAccount(c, f, "fluentd")
+					printAddServiceAccount(c, f, "gogs")
 					printAddServiceAccount(c, f, "router")
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
@@ -365,7 +366,7 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 		RunAsUser: kapi.RunAsUserStrategyOptions{
 			Type: kapi.RunAsUserStrategyRunAsAny,
 		},
-		Users:  []string{"system:serviceaccount:openshift-infra:build-controller", "system:serviceaccount:" + ns + ":default", "system:serviceaccount:" + ns + ":fabric8", "system:serviceaccount:" + ns + ":gerrit", "system:serviceaccount:" + ns + ":jenkins", "system:serviceaccount:" + ns + ":router"},
+		Users:  []string{"system:serviceaccount:openshift-infra:build-controller", "system:serviceaccount:" + ns + ":default", "system:serviceaccount:" + ns + ":fabric8", "system:serviceaccount:" + ns + ":gerrit", "system:serviceaccount:" + ns + ":jenkins", "system:serviceaccount:" + ns + ":router", "system:serviceaccount:" + ns + ":gogs"},
 		Groups: []string{bootstrappolicy.ClusterAdminGroup, bootstrappolicy.NodesGroup},
 	}
 	_, err := c.SecurityContextConstraints().Get(name)
