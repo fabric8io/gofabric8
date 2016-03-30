@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -35,7 +36,7 @@ const (
 
 	// DefaultPreviousImagePullPolicy specifies policy for pulling the previously
 	// build Docker image when doing incremental build
-	DefaultPreviousImagePullPolicy = PullAlways
+	DefaultPreviousImagePullPolicy = PullIfNotPresent
 )
 
 // Config contains essential fields for performing build.
@@ -107,6 +108,10 @@ type Config struct {
 	// Incremental describes whether to try to perform incremental build.
 	Incremental bool
 
+	// IncrementalFromTag sets an alternative image tag to look for existing
+	// artifacts. Tag is used by default if this is not set.
+	IncrementalFromTag string
+
 	// RemovePreviousImage describes if previous image should be removed after successful build.
 	// This applies only to incremental builds.
 	RemovePreviousImage bool
@@ -144,6 +149,11 @@ type Config struct {
 	// (default: false).
 	Quiet bool
 
+	// ForceCopy results in only the file SCM plugin being used (i.e. no `git clone`); allows for empty directories to be included
+	// in resulting image (since git does not support that).
+	// (default: false).
+	ForceCopy bool
+
 	// Specify a relative directory inside the application repository that should
 	// be used as a root directory for the application.
 	ContextDir string
@@ -171,6 +181,18 @@ type Config struct {
 	// CGroupLimits describes the cgroups limits that will be applied to any containers
 	// run by s2i.
 	CGroupLimits *CGroupLimits
+
+	// DropCapabilities contains a list of capabilities to drop when executing containers
+	DropCapabilities []string
+
+	// ScriptDownloadProxyConfig optionally specifies the http and https proxy
+	// to use when downloading scripts
+	ScriptDownloadProxyConfig *ProxyConfig
+}
+
+type ProxyConfig struct {
+	HTTPProxy  *url.URL
+	HTTPSProxy *url.URL
 }
 
 type CGroupLimits struct {
@@ -339,7 +361,7 @@ func (p *PullPolicy) Set(v string) error {
 	case "if-not-present":
 		*p = PullIfNotPresent
 	default:
-		return fmt.Errorf("invalid value %q, valid values are: always, never or if-not-present")
+		return fmt.Errorf("invalid value %q, valid values are: always, never or if-not-present", v)
 	}
 	return nil
 }

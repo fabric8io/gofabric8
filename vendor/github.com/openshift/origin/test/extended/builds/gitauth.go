@@ -38,7 +38,7 @@ var _ = g.Describe("[builds][Slow] can use private repositories as build input",
 		gitServerFixture          = exutil.FixturePath("fixtures", "test-gitserver.yaml")
 		gitServerTokenAuthFixture = exutil.FixturePath("fixtures", "test-gitserver-tokenauth.yaml")
 		testBuildFixture          = exutil.FixturePath("fixtures", "test-auth-build.yaml")
-		oc                        = exutil.NewCLI("build-sti-env", exutil.KubeConfigPath())
+		oc                        = exutil.NewCLI("build-sti-private-repo", exutil.KubeConfigPath())
 		caCertPath                = filepath.Join(filepath.Dir(exutil.KubeConfigPath()), "ca.crt")
 	)
 
@@ -65,8 +65,7 @@ var _ = g.Describe("[builds][Slow] can use private repositories as build input",
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		g.By("expecting the deployment of the gitserver to be in the Complete phase")
-		err = exutil.WaitForADeployment(oc.KubeREST().ReplicationControllers(oc.Namespace()), gitServerDeploymentConfigName,
-			exutil.CheckDeploymentCompletedFn, exutil.CheckDeploymentFailedFn)
+		err = exutil.WaitForADeploymentToComplete(oc.KubeREST().ReplicationControllers(oc.Namespace()), gitServerDeploymentConfigName)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		sourceSecretName := secretFunc()

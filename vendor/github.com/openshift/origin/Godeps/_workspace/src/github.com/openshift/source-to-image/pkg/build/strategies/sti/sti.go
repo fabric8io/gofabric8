@@ -83,7 +83,7 @@ func New(req *api.Config, overrides build.Overrides) (*STI, error) {
 		}
 	}
 
-	inst := scripts.NewInstaller(req.BuilderImage, req.ScriptsURL, docker, req.PullAuthentication)
+	inst := scripts.NewInstaller(req.BuilderImage, req.ScriptsURL, req.ScriptDownloadProxyConfig, docker, req.PullAuthentication)
 
 	b := &STI{
 		installer:         inst,
@@ -108,7 +108,7 @@ func New(req *api.Config, overrides build.Overrides) (*STI, error) {
 	// which would lead to replacing this quick short circuit (so this change is tactical)
 	b.source = overrides.Downloader
 	if b.source == nil && !req.Usage {
-		downloader, sourceURL, err := scm.DownloaderForSource(req.Source)
+		downloader, sourceURL, err := scm.DownloaderForSource(req.Source, req.ForceCopy)
 		if err != nil {
 			return nil, err
 		}
@@ -143,7 +143,11 @@ func (b *STI) Build(config *api.Config) (*api.Result, error) {
 	}
 
 	if b.incremental = b.artifacts.Exists(config); b.incremental {
-		glog.V(1).Infof("Existing image for tag %s detected for incremental build", config.Tag)
+		tag := config.IncrementalFromTag
+		if len(tag) == 0 {
+			tag = config.Tag
+		}
+		glog.V(1).Infof("Existing image for tag %s detected for incremental build", tag)
 	} else {
 		glog.V(1).Infof("Clean build will be performed")
 	}
@@ -152,9 +156,7 @@ func (b *STI) Build(config *api.Config) (*api.Result, error) {
 	if b.incremental {
 		if err := b.artifacts.Save(config); err != nil {
 			glog.Warningf("Clean build will be performed because of error saving previous build artifacts")
-			if glog.V(2) {
-				glog.Infof("ERROR: %v", err)
-			}
+			glog.V(2).Infof("ERROR: %v", err)
 		}
 	}
 
@@ -266,7 +268,7 @@ func (b *STI) PostExecute(containerID, location string) error {
 
 	env, err := scripts.GetEnvironment(b.config)
 	if err != nil {
-		glog.V(1).Infof("No .sti/environment provided (%v)", err)
+		glog.V(1).Infof("No user environment provided (%v)", err)
 	}
 
 	buildEnv := append(scripts.ConvertEnvironment(env), b.generateConfigEnv()...)
@@ -344,9 +346,14 @@ func (b *STI) Exists(config *api.Config) bool {
 		policy = api.DefaultPreviousImagePullPolicy
 	}
 
-	result, err := dockerpkg.PullImage(config.Tag, b.incrementalDocker, policy, false)
+	tag := config.IncrementalFromTag
+	if len(tag) == 0 {
+		tag = config.Tag
+	}
+
+	result, err := dockerpkg.PullImage(tag, b.incrementalDocker, policy, false)
 	if err != nil {
-		glog.V(2).Infof("Unable to pull previously build %q image: %v", config.Tag, err)
+		glog.V(2).Infof("Unable to pull previously built image %q: %v", tag, err)
 		return false
 	}
 
@@ -361,14 +368,18 @@ func (b *STI) Save(config *api.Config) (err error) {
 		return err
 	}
 
-	image := config.Tag
+	image := config.IncrementalFromTag
+	if len(image) == 0 {
+		image = config.Tag
+	}
 	outReader, outWriter := io.Pipe()
+	defer outReader.Close()
+	defer outWriter.Close()
 	errReader, errWriter := io.Pipe()
 	defer errReader.Close()
 	defer errWriter.Close()
 	glog.V(1).Infof("Saving build artifacts from image %s to path %s", image, artifactTmpDir)
 	extractFunc := func(string) error {
-		defer outReader.Close()
 		return b.tar.ExtractTarStream(artifactTmpDir, outReader)
 	}
 
@@ -396,11 +407,11 @@ func (b *STI) Save(config *api.Config) (err error) {
 		OnStart:         extractFunc,
 		NetworkMode:     string(config.DockerNetworkMode),
 		CGroupLimits:    config.CGroupLimits,
+		CapDrop:         config.DropCapabilities,
 	}
 
 	go dockerpkg.StreamContainerIO(errReader, nil, glog.Error)
 	err = b.docker.RunContainer(opts)
-
 	if e, ok := err.(errors.ContainerError); ok {
 		return errors.NewSaveArtifactsError(image, e.Output, err)
 	}
@@ -413,7 +424,7 @@ func (b *STI) Execute(command string, user string, config *api.Config) error {
 
 	env, err := scripts.GetEnvironment(config)
 	if err != nil {
-		glog.V(1).Infof("No .sti/environment provided (%v)", err)
+		glog.V(1).Infof("No user environment provided (%v)", err)
 	}
 
 	buildEnv := append(scripts.ConvertEnvironment(env), b.generateConfigEnv()...)
@@ -447,6 +458,7 @@ func (b *STI) Execute(command string, user string, config *api.Config) error {
 		PostExec:        b.postExecutor,
 		NetworkMode:     string(config.DockerNetworkMode),
 		CGroupLimits:    config.CGroupLimits,
+		CapDrop:         config.DropCapabilities,
 	}
 
 	// If there are injections specified, override the original assemble script
@@ -500,8 +512,8 @@ func (b *STI) Execute(command string, user string, config *api.Config) error {
 		close(injectionComplete)
 	}
 
+	wg := sync.WaitGroup{}
 	if !config.LayeredBuild {
-		wg := sync.WaitGroup{}
 		wg.Add(1)
 		uploadDir := filepath.Join(config.WorkingDir, "upload")
 		// TODO: be able to pass a stream directly to the Docker build to avoid the double temp hit
@@ -558,6 +570,10 @@ func (b *STI) Execute(command string, user string, config *api.Config) error {
 	go dockerpkg.StreamContainerIO(errReader, &errOutput, glog.Error)
 
 	err = b.docker.RunContainer(opts)
+	if util.IsTimeoutError(err) {
+		// Cancel waiting for source input if the container timeouts
+		wg.Done()
+	}
 	if e, ok := err.(errors.ContainerError); ok {
 		return errors.NewContainerError(config.BuilderImage, e.ErrorCode, errOutput)
 	}

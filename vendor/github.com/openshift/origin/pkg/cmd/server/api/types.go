@@ -1,6 +1,7 @@
 package api
 
 import (
+	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
@@ -38,11 +39,24 @@ var (
 	// exposed externally.
 	DeadOpenShiftStorageVersionLevels = []string{"v1beta1", "v1beta3"}
 
-	APIGroupKube                   = ""
-	APIGroupExtensions             = "extensions"
+	APIGroupKube        = ""
+	APIGroupExtensions  = "extensions"
+	APIGroupAutoscaling = "autoscaling"
+	APIGroupBatch       = "batch"
+
+	// Map of group names to allowed REST API versions
 	KubeAPIGroupsToAllowedVersions = map[string][]string{
-		APIGroupKube:       {"v1"},
-		APIGroupExtensions: {"v1beta1"},
+		APIGroupKube:        {"v1"},
+		APIGroupExtensions:  {"v1beta1"},
+		APIGroupAutoscaling: {"v1"},
+		APIGroupBatch:       {"v1"},
+	}
+	// Map of group names to known, but disallowed REST API versions
+	KubeAPIGroupsToDeadVersions = map[string][]string{
+		APIGroupKube:        {"v1beta3"},
+		APIGroupExtensions:  {},
+		APIGroupAutoscaling: {},
+		APIGroupBatch:       {},
 	}
 	KnownKubeAPIGroups = sets.StringKeySet(KubeAPIGroupsToAllowedVersions)
 
@@ -116,6 +130,23 @@ type NodeConfig struct {
 
 	// IPTablesSyncPeriod is how often iptable rules are refreshed
 	IPTablesSyncPeriod string
+
+	// VolumeConfig contains options for configuring volumes on the node.
+	VolumeConfig VolumeConfig
+}
+
+// VolumeConfig contains options for configuring volumes on the node.
+type VolumeConfig struct {
+	// LocalQuota contains options for controlling local volume quota on the node.
+	LocalQuota LocalQuota
+}
+
+// LocalQuota contains options for controlling local volume quota on the node.
+type LocalQuota struct {
+	// PerFSGroup can be specified to enable a quota on local storage use per unique FSGroup ID.
+	// At present this is only implemented for emptyDir volumes, and if the underlying
+	// volumeDirectory is on an XFS filesystem.
+	PerFSGroup *resource.Quantity
 }
 
 // NodeNetworkConfig provides network options for the node
@@ -317,6 +348,38 @@ type PolicyConfig struct {
 
 	// OpenShiftInfrastructureNamespace is the namespace where OpenShift infrastructure resources live (like controller service accounts)
 	OpenShiftInfrastructureNamespace string
+
+	// UserAgentMatchingConfig controls how API calls from *voluntarily* identifying clients will be handled.  THIS DOES NOT DEFEND AGAINST MALICIOUS CLIENTS!
+	UserAgentMatchingConfig UserAgentMatchingConfig
+}
+
+// UserAgentMatchingConfig controls how API calls from *voluntarily* identifying clients will be handled.  THIS DOES NOT DEFEND AGAINST MALICIOUS CLIENTS!
+type UserAgentMatchingConfig struct {
+	// If this list is non-empty, then a User-Agent must match one of the UserAgentRegexes to be allowed
+	RequiredClients []UserAgentMatchRule
+
+	// If this list is non-empty, then a User-Agent must not match any of the UserAgentRegexes
+	DeniedClients []UserAgentDenyRule
+
+	// DefaultRejectionMessage is the message shown when rejecting a client.  If it is not a set, a generic message is given.
+	DefaultRejectionMessage string
+}
+
+// UserAgentMatchRule describes how to match a given request based on User-Agent and HTTPVerb
+type UserAgentMatchRule struct {
+	// UserAgentRegex is a regex that is checked against the User-Agent.
+	Regex string
+
+	// HTTPVerbs specifies which HTTP verbs should be matched.  An empty list means "match all verbs".
+	HTTPVerbs []string
+}
+
+// UserAgentDenyRule adds a rejection message that can be used to help a user figure out how to get an approved client
+type UserAgentDenyRule struct {
+	UserAgentMatchRule
+
+	// RejectionMessage is the message shown when rejecting a client.  If it is not a set, the default message is used.
+	RejectionMessage string
 }
 
 // MasterNetworkConfig to be passed to the compiled in network plugin
@@ -325,6 +388,11 @@ type MasterNetworkConfig struct {
 	ClusterNetworkCIDR string
 	HostSubnetLength   uint
 	ServiceNetworkCIDR string
+	// ExternalIPNetworkCIDRs controls what values are acceptable for the service external IP field. If empty, no externalIP
+	// may be set. It may contain a list of CIDRs which are checked for access. If a CIDR is prefixed with !, IPs in that
+	// CIDR will be rejected. Rejections will be applied first, then the IP checked against one of the allowed CIDRs. You
+	// should ensure this range does not overlap with your nodes, pods, or service CIDRs for security reasons.
+	ExternalIPNetworkCIDRs []string `json:"externalIPNetworkCIDRs"`
 }
 
 type ImageConfig struct {
@@ -616,7 +684,8 @@ type LDAPPasswordIdentityProvider struct {
 	// BindDN is an optional DN to bind with during the search phase.
 	BindDN string
 	// BindPassword is an optional password to bind with during the search phase.
-	BindPassword string
+	BindPassword StringSource
+
 	// Insecure, if true, indicates the connection should not use TLS.
 	// Cannot be set to true with a URL scheme of "ldaps://"
 	// If false, "ldaps://" URLs connect using TLS, and "ldap://" URLs are upgraded to a TLS connection using StartTLS as specified in https://tools.ietf.org/html/rfc2830
@@ -675,6 +744,12 @@ type RequestHeaderIdentityProvider struct {
 	ClientCA string
 	// Headers is the set of headers to check for identity information
 	Headers []string
+	// PreferredUsernameHeaders is the set of headers to check for the preferred username
+	PreferredUsernameHeaders []string
+	// NameHeaders is the set of headers to check for the display name
+	NameHeaders []string
+	// EmailHeaders is the set of headers to check for the email address
+	EmailHeaders []string
 }
 
 type GitHubIdentityProvider struct {
@@ -683,7 +758,7 @@ type GitHubIdentityProvider struct {
 	// ClientID is the oauth client ID
 	ClientID string
 	// ClientSecret is the oauth client secret
-	ClientSecret string
+	ClientSecret StringSource
 	// Organizations optionally restricts which organizations are allowed to log in
 	Organizations []string
 }
@@ -699,7 +774,7 @@ type GitLabIdentityProvider struct {
 	// ClientID is the oauth client ID
 	ClientID string
 	// ClientSecret is the oauth client secret
-	ClientSecret string
+	ClientSecret StringSource
 }
 
 type GoogleIdentityProvider struct {
@@ -708,7 +783,7 @@ type GoogleIdentityProvider struct {
 	// ClientID is the oauth client ID
 	ClientID string
 	// ClientSecret is the oauth client secret
-	ClientSecret string
+	ClientSecret StringSource
 
 	// HostedDomain is the optional Google App domain (e.g. "mycompany.com") to restrict logins to
 	HostedDomain string
@@ -724,7 +799,7 @@ type OpenIDIdentityProvider struct {
 	// ClientID is the oauth client ID
 	ClientID string
 	// ClientSecret is the oauth client secret
-	ClientSecret string
+	ClientSecret StringSource
 
 	// ExtraScopes are any scopes to request in addition to the standard "openid" scope.
 	ExtraScopes []string
@@ -864,6 +939,35 @@ type AssetExtensionsConfig struct {
 	HTML5Mode bool
 }
 
+const (
+	// StringSourceEncryptedBlockType is the PEM block type used to store an encrypted string
+	StringSourceEncryptedBlockType = "ENCRYPTED STRING"
+	// StringSourceKeyBlockType is the PEM block type used to store an encrypting key
+	StringSourceKeyBlockType = "ENCRYPTING KEY"
+)
+
+// StringSource allows specifying a string inline, or externally via env var or file.
+// When it contains only a string value, it marshals to a simple JSON string.
+type StringSource struct {
+	// StringSourceSpec specifies the string value, or external location
+	StringSourceSpec
+}
+
+// StringSourceSpec specifies a string value, or external location
+type StringSourceSpec struct {
+	// Value specifies the cleartext value, or an encrypted value if keyFile is specified.
+	Value string
+
+	// Env specifies an envvar containing the cleartext value, or an encrypted value if the keyFile is specified.
+	Env string
+
+	// File references a file containing the cleartext value, or an encrypted value if a keyFile is specified.
+	File string
+
+	// KeyFile references a file containing the key to use to decrypt the value.
+	KeyFile string
+}
+
 type LDAPSyncConfig struct {
 	unversioned.TypeMeta
 
@@ -872,7 +976,8 @@ type LDAPSyncConfig struct {
 	// BindDN is an optional DN to bind with during the search phase.
 	BindDN string
 	// BindPassword is an optional password to bind with during the search phase.
-	BindPassword string
+	BindPassword StringSource
+
 	// Insecure, if true, indicates the connection should not use TLS.
 	// Cannot be set to true with a URL scheme of "ldaps://"
 	// If false, "ldaps://" URLs connect using TLS, and "ldap://" URLs are upgraded to a TLS connection using StartTLS as specified in https://tools.ietf.org/html/rfc2830

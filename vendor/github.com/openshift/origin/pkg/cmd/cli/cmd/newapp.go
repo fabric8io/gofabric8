@@ -10,13 +10,14 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/MakeNowJust/heredoc/dot"
+	"github.com/MakeNowJust/heredoc"
 	docker "github.com/fsouza/go-dockerclient"
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	ctl "k8s.io/kubernetes/pkg/kubectl"
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
@@ -147,10 +148,12 @@ func NewCmdNewApplication(fullName string, f *clientcmd.Factory, out io.Writer) 
 	cmd.Flags().StringSliceVar(&config.SourceRepositories, "code", config.SourceRepositories, "Source code to use to build this application.")
 	cmd.Flags().StringVar(&config.ContextDir, "context-dir", "", "Context directory to be used for the build.")
 	cmd.Flags().StringSliceVarP(&config.ImageStreams, "image", "", config.ImageStreams, "Name of an image stream to use in the app. (deprecated)")
+	cmd.Flags().MarkDeprecated("image", "use --image-stream instead")
 	cmd.Flags().StringSliceVarP(&config.ImageStreams, "image-stream", "i", config.ImageStreams, "Name of an image stream to use in the app.")
 	cmd.Flags().StringSliceVar(&config.DockerImages, "docker-image", config.DockerImages, "Name of a Docker image to include in the app.")
 	cmd.Flags().StringSliceVar(&config.Templates, "template", config.Templates, "Name of a stored template to use in the app.")
 	cmd.Flags().StringSliceVarP(&config.TemplateFiles, "file", "f", config.TemplateFiles, "Path to a template file to use for the app.")
+	cmd.MarkFlagFilename("file", "yaml", "yml", "json")
 	cmd.Flags().StringSliceVarP(&config.TemplateParameters, "param", "p", config.TemplateParameters, "Specify a list of key value pairs (e.g., -p FOO=BAR,BAR=FOO) to set/override parameter values in the template.")
 	cmd.Flags().StringSliceVar(&config.Groups, "group", config.Groups, "Indicate components that should be grouped together as <comp1>+<comp2>.")
 	cmd.Flags().StringSliceVarP(&config.Environment, "env", "e", config.Environment, "Specify key value pairs of environment variables to set into each container.")
@@ -161,6 +164,7 @@ func NewCmdNewApplication(fullName string, f *clientcmd.Factory, out io.Writer) 
 	cmd.Flags().BoolVarP(&config.AsList, "list", "L", false, "List all local templates and image streams that can be used to create.")
 	cmd.Flags().BoolVarP(&config.AsSearch, "search", "S", false, "Search all templates, image streams, and Docker images that match the arguments provided.")
 	cmd.Flags().BoolVar(&config.AllowMissingImages, "allow-missing-images", false, "If true, indicates that referenced Docker images that cannot be found locally or in a registry should still be used.")
+	cmd.Flags().BoolVar(&config.AllowMissingImageStreamTags, "allow-missing-imagestream-tags", false, "If true, indicates that image stream tags that don't exist should still be used.")
 	cmd.Flags().BoolVar(&config.AllowSecretUse, "grant-install-rights", false, "If true, a component that requires access to your account may use your token to install software into your project. Only grant images you trust the right to run with your token.")
 	cmd.Flags().BoolVar(&config.SkipGeneration, "no-install", false, "Do not attempt to run images that describe themselves as being installable")
 	cmd.Flags().BoolVar(&config.DryRun, "dry-run", false, "If true, do not actually create resources.")
@@ -172,6 +176,7 @@ func NewCmdNewApplication(fullName string, f *clientcmd.Factory, out io.Writer) 
 	cmd.Flags().String("output-version", "", "Output the formatted object with the given version (default api-version).")
 	cmd.Flags().Bool("no-headers", false, "When using the default output, don't print headers.")
 	cmd.Flags().String("output-template", "", "Template string or path to template file to use when -o=template or -o=templatefile.  The template format is golang templates [http://golang.org/pkg/text/template/#pkg-overview]")
+	cmd.MarkFlagFilename("output-template")
 
 	return cmd
 }
@@ -282,9 +287,9 @@ func RunNewApplication(fullName string, f *clientcmd.Factory, out io.Writer, c *
 				}
 			}
 			if triggered {
-				fmt.Fprintf(out, "%sBuild scheduled for %q, use 'oc logs' to track its progress.\n", indent, t.Name)
+				fmt.Fprintf(out, "%sBuild scheduled, use 'oc logs -f bc/%s' to track its progress.\n", indent, t.Name)
 			} else {
-				fmt.Fprintf(out, "%sBuild config %q does not include any automatic triggers, use 'oc start-build' to start a build.\n", indent, t.Name)
+				fmt.Fprintf(out, "%sUse 'oc start-build %s' to start a build.\n", indent, t.Name)
 			}
 		case *imageapi.ImageStream:
 			if len(t.Status.DockerImageRepository) == 0 {
@@ -608,7 +613,7 @@ func transformError(err error, c *cobra.Command, fullName string, groups errorGr
 		if t.Input.Token != nil && t.Input.Token.ServiceAccount {
 			groups.Add(
 				"explicit-access-installer",
-				D(`
+				heredoc.Doc(`
 					WARNING: This will allow the pod to create and manage resources within your namespace -
 					ensure you trust the image with those permissions before you continue.
 
@@ -620,7 +625,7 @@ func transformError(err error, c *cobra.Command, fullName string, groups errorGr
 		} else {
 			groups.Add(
 				"explicit-access-you",
-				D(`
+				heredoc.Doc(`
 					WARNING: This will allow the pod to act as you across the entire cluster - ensure you
 					trust the image with those permissions before you continue.
 
@@ -634,7 +639,7 @@ func transformError(err error, c *cobra.Command, fullName string, groups errorGr
 	case newapp.ErrNoMatch:
 		groups.Add(
 			"no-matches",
-			Df(`
+			heredoc.Docf(`
 				The '%[1]s' command will match arguments to the following types:
 
 				  1. Images tagged into image streams in the current project or the 'openshift' project
@@ -659,8 +664,8 @@ func transformError(err error, c *cobra.Command, fullName string, groups errorGr
 		}
 		groups.Add(
 			"multiple-matches",
-			Df(`
-					The argument %[1]q could apply to the following Docker images or OpenShift image streams:
+			heredoc.Docf(`
+					The argument %[1]q could apply to the following Docker images, OpenShift image streams, or templates:
 
 					%[2]s`, t.Value, buf.String(),
 			),
@@ -675,10 +680,24 @@ func transformError(err error, c *cobra.Command, fullName string, groups errorGr
 
 		groups.Add(
 			"partial-match",
-			Df(`
-					The argument %[1]q only partially matched the following Docker image or OpenShift image stream:
+			heredoc.Docf(`
+					The argument %[1]q only partially matched the following Docker image, OpenShift image stream, or template:
 
 					%[2]s`, t.Value, buf.String(),
+			),
+			t,
+			t.Errs...,
+		)
+		return
+	case newapp.ErrNoTagsFound:
+		buf := &bytes.Buffer{}
+		fmt.Fprintf(buf, "  Use --allow-missing-imagestream-tags to use this image stream\n\n")
+		groups.Add(
+			"no-tags",
+			heredoc.Docf(`
+					The image stream %[1]q exists, but it has no tags.
+
+					%[2]s`, t.Match.Name, buf.String(),
 			),
 			t,
 			t.Errs...,
@@ -792,10 +811,10 @@ func printHumanReadableQueryResult(r *newcmd.QueryResult, out io.Writer, fullNam
 }
 
 type configSecretRetriever struct {
-	config *kclient.Config
+	config *restclient.Config
 }
 
-func newConfigSecretRetriever(config *kclient.Config) newapp.SecretAccessor {
+func newConfigSecretRetriever(config *restclient.Config) newapp.SecretAccessor {
 	return &configSecretRetriever{config}
 }
 

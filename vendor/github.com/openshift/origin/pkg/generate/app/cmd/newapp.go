@@ -72,9 +72,10 @@ type AppConfig struct {
 	OutputDocker     bool
 	NoOutput         bool
 
-	ExpectToBuild      bool
-	BinaryBuild        bool
-	AllowMissingImages bool
+	ExpectToBuild               bool
+	BinaryBuild                 bool
+	AllowMissingImages          bool
+	AllowMissingImageStreamTags bool
 
 	Deploy           bool
 	AsTestDeployment bool
@@ -193,6 +194,7 @@ func (c *AppConfig) SetOpenShiftClient(osclient client.Interface, OriginNamespac
 		Client:            osclient,
 		ImageStreamImages: osclient,
 		Namespaces:        namespaces,
+		AllowMissingTags:  c.AllowMissingImageStreamTags,
 	}
 	c.ImageStreamByAnnotationSearcher = app.NewImageStreamByAnnotationSearcher(osclient, osclient, namespaces)
 	c.TemplateSearcher = app.TemplateSearcher{
@@ -318,7 +320,10 @@ func (c *AppConfig) addReferenceBuilderComponents(b *app.ReferenceBuilder) {
 		input.Argument = fmt.Sprintf("--image-stream=%q", input.From)
 		input.Searcher = c.ImageStreamSearcher
 		if c.ImageStreamSearcher != nil {
-			input.Resolver = app.FirstMatchResolver{Searcher: c.ImageStreamSearcher}
+			resolver := app.PerfectMatchWeightedResolver{
+				app.WeightedResolver{Searcher: c.ImageStreamSearcher},
+			}
+			input.Resolver = resolver
 		}
 		return input
 	})
@@ -326,7 +331,7 @@ func (c *AppConfig) addReferenceBuilderComponents(b *app.ReferenceBuilder) {
 		input.Argument = fmt.Sprintf("--template=%q", input.From)
 		input.Searcher = c.TemplateSearcher
 		if c.TemplateSearcher != nil {
-			input.Resolver = app.HighestScoreResolver{Searcher: c.TemplateSearcher}
+			input.Resolver = app.HighestUniqueScoreResolver{Searcher: c.TemplateSearcher}
 		}
 		return input
 	})
@@ -377,7 +382,7 @@ func (c *AppConfig) validate() (app.ComponentReferences, app.SourceRepositories,
 	b.AddGroups(c.Groups)
 	refs, repos, errs := b.Result()
 
-	if len(c.Strategy) != 0 && len(repos) == 0 {
+	if len(c.Strategy) != 0 && len(repos) == 0 && !c.BinaryBuild {
 		errs = append(errs, fmt.Errorf("when --strategy is specified you must provide at least one source code location"))
 	}
 
@@ -595,7 +600,8 @@ func (c *AppConfig) ensureHasSource(components app.ComponentReferences, reposito
 						continue
 					}
 					repo := app.NewBinarySourceRepository()
-					if c.Strategy == "docker" || len(c.Strategy) == 0 {
+					isBuilder := input.ResolvedMatch != nil && input.ResolvedMatch.Builder
+					if c.Strategy == "docker" || (len(c.Strategy) == 0 && !isBuilder) {
 						repo.BuildWithDocker()
 					}
 					input.Use(repo)
@@ -662,7 +668,7 @@ func (c *AppConfig) buildPipelines(components app.ComponentReferences, environme
 			switch {
 			case refInput.ExpectToBuild:
 				glog.V(4).Infof("will add %q secrets into a build for a source build of %q", strings.Join(c.Secrets, ","), refInput.Uses)
-				if err := refInput.Uses.AddBuildSecrets(c.Secrets); err != nil {
+				if err := refInput.Uses.AddBuildSecrets(c.Secrets, refInput.Uses.IsDockerBuild()); err != nil {
 					return nil, fmt.Errorf("unable to add build secrets %q: %v", strings.Join(c.Secrets, ","), err)
 				}
 				glog.V(4).Infof("will use %q as the base image for a source build of %q", ref, refInput.Uses)
@@ -1094,17 +1100,20 @@ func (c *AppConfig) run(acceptors app.Acceptors) (*AppResult, error) {
 		}
 	}
 
-	err = c.checkCircularReferences(objects)
-	if err != nil {
-		if err, ok := err.(app.CircularOutputReferenceError); ok {
-			if len(c.To) == 0 {
-				// Output reference was generated, return error.
-				return nil, fmt.Errorf("%v, set a different tag with --to", err)
+	// Only check circular references for `oc new-build`.
+	if c.ExpectToBuild {
+		err = c.checkCircularReferences(objects)
+		if err != nil {
+			if err, ok := err.(app.CircularOutputReferenceError); ok {
+				if len(c.To) == 0 {
+					// Output reference was generated, return error.
+					return nil, fmt.Errorf("%v, set a different tag with --to", err)
+				}
+				// Output reference was explicitly provided, print warning.
+				fmt.Fprintf(c.ErrOut, "--> WARNING: %v\n", err)
+			} else {
+				return nil, err
 			}
-			// Output reference was explicitly provided, print warning.
-			fmt.Fprintf(c.ErrOut, "--> WARNING: %v\n", err)
-		} else {
-			return nil, err
 		}
 	}
 
@@ -1122,7 +1131,7 @@ func (c *AppConfig) run(acceptors app.Acceptors) (*AppResult, error) {
 func (c *AppConfig) checkCircularReferences(objects app.Objects) error {
 	for _, obj := range objects {
 		if bc, ok := obj.(*buildapi.BuildConfig); ok {
-			input := buildutil.GetImageStreamForStrategy(bc.Spec.Strategy)
+			input := buildutil.GetInputReference(bc.Spec.Strategy)
 			if bc.Spec.Output.To != nil && input != nil &&
 				reflect.DeepEqual(input, bc.Spec.Output.To) {
 				ns := input.Namespace

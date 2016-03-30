@@ -2105,8 +2105,6 @@ type SecurityContextConstraints struct {
 	AllowedCapabilities []Capability `json:"allowedCapabilities" description:"capabilities that are allowed to be added"`
 	// AllowHostDirVolumePlugin determines if the policy allow containers to use the HostDir volume plugin
 	AllowHostDirVolumePlugin bool `json:"allowHostDirVolumePlugin" description:"allow the use of the host dir volume plugin"`
-	// AllowEmptyDirVolumePlugin determines if the policy allow containers to use the EmptyDir volume plugin
-	AllowEmptyDirVolumePlugin *bool `json:"allowEmptyDirVolumePlugin" description:"allow the use of the empty dir volume plugin; defaults to true"`
 	// AllowHostNetwork determines if the policy allows the use of HostNetwork in the pod spec.
 	AllowHostNetwork bool `json:"allowHostNetwork" description:"allow the use of the hostNetwork in the pod spec"`
 	// AllowHostPorts determines if the policy allows host ports in the containers.
@@ -2123,6 +2121,12 @@ type SecurityContextConstraints struct {
 	SupplementalGroups SupplementalGroupsStrategyOptions `json:"supplementalGroups,omitempty" description:"strategy used to generate supplemental groups"`
 	// FSGroup is the strategy that will dictate what fs group is used by the SecurityContext.
 	FSGroup FSGroupStrategyOptions `json:"fsGroup,omitempty" description:"strategy used to generate fsGroup"`
+	// ReadOnlyRootFilesystem when set to true will force containers to run with a read only root file
+	// system.  If the container specifically requests to run with a non-read only root file system
+	// the SCC should deny the pod.
+	// If set to false the container may run with a read only root file system if it wishes but it
+	// will not be forced to.
+	ReadOnlyRootFilesystem bool `json:"readOnlyRootFilesystem" description:"require containers to run with a read only root filesystem"`
 
 	// The users who have permissions to use this security context constraints
 	Users []string `json:"users,omitempty" description:"users allowed to use this SecurityContextConstraints"`

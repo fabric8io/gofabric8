@@ -92,25 +92,16 @@ func (m *MetricsForE2E) PrintJSON() string {
 
 var InterestingApiServerMetrics = []string{
 	"apiserver_request_count",
-	"apiserver_request_latencies_bucket",
+	"apiserver_request_latencies_summary",
 	"etcd_helper_cache_entry_count",
 	"etcd_helper_cache_hit_count",
 	"etcd_helper_cache_miss_count",
 	"etcd_request_cache_add_latencies_summary",
 	"etcd_request_cache_get_latencies_summary",
 	"etcd_request_latencies_summary",
-	"go_gc_duration_seconds",
-	"go_goroutines",
-	"process_cpu_seconds_total",
-	"process_open_fds",
-	"process_resident_memory_bytes",
-	"process_start_time_seconds",
-	"process_virtual_memory_bytes",
 }
 
 var InterestingKubeletMetrics = []string{
-	"go_gc_duration_seconds",
-	"go_goroutines",
 	"kubelet_container_manager_latency_microseconds",
 	"kubelet_docker_errors",
 	"kubelet_docker_operations_latency_microseconds",
@@ -119,11 +110,6 @@ var InterestingKubeletMetrics = []string{
 	"kubelet_pod_worker_latency_microseconds",
 	"kubelet_pod_worker_start_latency_microseconds",
 	"kubelet_sync_pods_latency_microseconds",
-	"process_cpu_seconds_total",
-	"process_open_fds",
-	"process_resident_memory_bytes",
-	"process_start_time_seconds",
-	"process_virtual_memory_bytes",
 }
 
 // Dashboard metrics
@@ -138,9 +124,16 @@ type PodStartupLatency struct {
 }
 
 type SchedulingLatency struct {
-	Scheduling LatencyMetric `json:"scheduling:`
+	Scheduling LatencyMetric `json:"scheduling"`
 	Binding    LatencyMetric `json:"binding"`
 	Total      LatencyMetric `json:"total"`
+}
+
+type SaturationTime struct {
+	TimeToSaturate time.Duration `json:"timeToStaturate"`
+	NumberOfNodes  int           `json:"numberOfNodes"`
+	NumberOfPods   int           `json:"numberOfPods"`
+	Throughput     float32       `json:"throughput"`
 }
 
 type APICall struct {
@@ -206,7 +199,7 @@ func readLatencyMetrics(c *client.Client) (APIResponsiveness, error) {
 
 	ignoredResources := sets.NewString("events")
 	// TODO: figure out why we're getting non-capitalized proxy and fix this.
-	ignoredVerbs := sets.NewString("WATCHLIST", "PROXY", "proxy")
+	ignoredVerbs := sets.NewString("WATCHLIST", "PROXY", "proxy", "CONNECT")
 
 	for _, sample := range samples {
 		// Example line:

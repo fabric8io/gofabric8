@@ -1,34 +1,5 @@
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-
-<h2>PLEASE NOTE: This document applies to the HEAD of the source tree</h2>
-
-If you are using a released version of Kubernetes, you should
-refer to the docs that go with that version.
-
-<!-- TAG RELEASE_LINK, added by the munger automatically -->
-<strong>
-The latest release of this document can be found
-[here](http://releases.k8s.io/release-1.1/examples/spark/README.md).
-
-Documentation for other releases can be found at
-[releases.k8s.io](http://releases.k8s.io).
-</strong>
---
-
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
@@ -38,23 +9,25 @@ Following this example, you will create a functional [Apache
 Spark](http://spark.apache.org/) cluster using Kubernetes and
 [Docker](http://docker.io).
 
-You will setup a Spark master service and a set of
-Spark workers using Spark's [standalone mode](http://spark.apache.org/docs/latest/spark-standalone.html).
+You will setup a Spark master service and a set of Spark workers using Spark's [standalone mode](http://spark.apache.org/docs/latest/spark-standalone.html).
 
 For the impatient expert, jump straight to the [tl;dr](#tldr)
 section.
 
 ### Sources
 
-The Docker images are heavily based on https://github.com/mattf/docker-spark
+The Docker images are heavily based on https://github.com/mattf/docker-spark.
+And are curated in https://github.com/kubernetes/application-images/tree/master/spark
 
 ## Step Zero: Prerequisites
 
-This example assumes you have a Kubernetes cluster installed and
-running, and that you have installed the ```kubectl``` command line
-tool somewhere in your path. Please see the [getting
-started](../../docs/getting-started-guides/) for installation
-instructions for your platform.
+This example assumes
+
+- You have a Kubernetes cluster installed and running.
+- That you have installed the ```kubectl``` command line tool somewhere in your path.
+- That a spark-master service which spins up will be automatically discoverable by your kube DNS impl, as 'spark-master'
+
+For details, you can look at the Dockerfiles in the Sources section.
 
 ## Step One: Start your Master service
 
@@ -191,7 +164,7 @@ Zeppelin needs the Master service to be running.
 ### Check to see if Zeppelin is running
 
 ```console
-$ kubectl get pods -lcomponent=zeppelin
+$ kubectl get pods -l component=zeppelin
 NAME                        READY     STATUS    RESTARTS   AGE
 zeppelin-controller-ja09s   1/1       Running   0          53s
 ```
@@ -235,7 +208,7 @@ $ kubectl port-forward zeppelin-controller-ja09s 8080:8080
 ```
 
 This forwards `localhost` 8080 to container port 8080. You can then find
-Zeppelin at (https://localhost:8080/)[https://localhost:8080/].
+Zeppelin at [https://localhost:8080/](https://localhost:8080/).
 
 Create a "New Notebook". In there, type:
 
@@ -301,6 +274,13 @@ Then visit [http://localhost:8080/](http://localhost:8080/).
   you see Zeppelin go into `Disconnected` state (there will be a red dot on the
   top right as well), the `port-forward` probably failed and needs to be
   restarted. See #12179.
+
+
+
+<!-- BEGIN MUNGE: IS_VERSIONED -->
+<!-- TAG IS_VERSIONED -->
+<!-- END MUNGE: IS_VERSIONED -->
+
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/examples/spark/README.md?pixel)]()

@@ -26,7 +26,8 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	_ "k8s.io/kubernetes/pkg/api/install" // To register api.Pod used in tests below
+	"k8s.io/kubernetes/pkg/client/restclient"
 	k8sruntime "k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/strategicpatch"
@@ -348,7 +349,7 @@ func TestEventf(t *testing.T) {
 	eventBroadcaster := NewBroadcaster()
 	sinkWatcher := eventBroadcaster.StartRecordingToSink(&testEvents)
 
-	clock := &util.FakeClock{time.Now()}
+	clock := util.NewFakeClock(time.Now())
 	recorder := recorderWithFakeClock(api.EventSource{Component: "eventTest"}, eventBroadcaster, clock)
 	for index, item := range table {
 		clock.Step(1 * time.Second)
@@ -391,7 +392,7 @@ func TestWriteEventError(t *testing.T) {
 		"giveUp1": {
 			timesToSendError: 1000,
 			attemptsWanted:   1,
-			err:              &client.RequestConstructionError{},
+			err:              &restclient.RequestConstructionError{},
 		},
 		"giveUp2": {
 			timesToSendError: 1000,
@@ -559,7 +560,7 @@ func TestEventfNoNamespace(t *testing.T) {
 	eventBroadcaster := NewBroadcaster()
 	sinkWatcher := eventBroadcaster.StartRecordingToSink(&testEvents)
 
-	clock := &util.FakeClock{time.Now()}
+	clock := util.NewFakeClock(time.Now())
 	recorder := recorderWithFakeClock(api.EventSource{Component: "eventTest"}, eventBroadcaster, clock)
 
 	for index, item := range table {
@@ -846,7 +847,7 @@ func TestMultiSinkCache(t *testing.T) {
 	}
 
 	eventBroadcaster := NewBroadcaster()
-	clock := &util.FakeClock{time.Now()}
+	clock := util.NewFakeClock(time.Now())
 	recorder := recorderWithFakeClock(api.EventSource{Component: "eventTest"}, eventBroadcaster, clock)
 
 	sinkWatcher := eventBroadcaster.StartRecordingToSink(&testEvents)

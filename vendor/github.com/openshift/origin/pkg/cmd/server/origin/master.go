@@ -22,12 +22,14 @@ import (
 	"k8s.io/kubernetes/pkg/apimachinery/registered"
 	v1beta1extensions "k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 	"k8s.io/kubernetes/pkg/apiserver"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/genericapiserver"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/sets"
+	utilwait "k8s.io/kubernetes/pkg/util/wait"
 
 	"github.com/openshift/origin/pkg/api/v1"
 	"github.com/openshift/origin/pkg/api/v1beta3"
@@ -100,8 +102,9 @@ import (
 	rolestorage "github.com/openshift/origin/pkg/authorization/registry/role/policybased"
 	rolebindingstorage "github.com/openshift/origin/pkg/authorization/registry/rolebinding/policybased"
 	"github.com/openshift/origin/pkg/authorization/registry/subjectaccessreview"
+	"github.com/openshift/origin/pkg/authorization/rulevalidation"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
-	routeplugin "github.com/openshift/origin/plugins/route/allocation/simple"
+	routeplugin "github.com/openshift/origin/pkg/route/allocation/simple"
 )
 
 const (
@@ -127,14 +130,14 @@ var (
 // APIInstaller installs additional API components into this server
 type APIInstaller interface {
 	// InstallAPI returns an array of strings describing what was installed
-	InstallAPI(*restful.Container) []string
+	InstallAPI(*restful.Container) ([]string, error)
 }
 
 // APIInstallFunc is a function for installing APIs
-type APIInstallFunc func(*restful.Container) []string
+type APIInstallFunc func(*restful.Container) ([]string, error)
 
 // InstallAPI implements APIInstaller
-func (fn APIInstallFunc) InstallAPI(container *restful.Container) []string {
+func (fn APIInstallFunc) InstallAPI(container *restful.Container) ([]string, error) {
 	return fn(container)
 }
 
@@ -151,9 +154,14 @@ func (c *MasterConfig) Run(protected []APIInstaller, unprotected []APIInstaller)
 	// enforce authentication on protected endpoints
 	protected = append(protected, APIInstallFunc(c.InstallProtectedAPI))
 	for _, i := range protected {
-		extra = append(extra, i.InstallAPI(safe)...)
+		msgs, err := i.InstallAPI(safe)
+		if err != nil {
+			glog.Fatalf("error installing api %v", err)
+		}
+		extra = append(extra, msgs...)
 	}
-	handler := c.authorizationFilter(safe)
+	handler := c.versionSkewFilter(safe)
+	handler = c.authorizationFilter(handler)
 	handler = authenticationHandlerFilter(handler, c.Authenticator, c.getRequestContextMapper())
 	handler = namespacingFilter(handler, c.getRequestContextMapper())
 	handler = cacheControlFilter(handler, "no-store") // protected endpoints should not be cached
@@ -161,12 +169,16 @@ func (c *MasterConfig) Run(protected []APIInstaller, unprotected []APIInstaller)
 	// unprotected resources
 	unprotected = append(unprotected, APIInstallFunc(c.InstallUnprotectedAPI))
 	for _, i := range unprotected {
-		extra = append(extra, i.InstallAPI(open)...)
+		msgs, err := i.InstallAPI(open)
+		if err != nil {
+			glog.Fatalf("error installing api %v", err)
+		}
+		extra = append(extra, msgs...)
 	}
 
 	var kubeAPILevels []string
 	if c.Options.KubernetesMasterConfig != nil {
-		kubeAPILevels = configapi.GetEnabledAPIVersionsForGroup(*c.Options.KubernetesMasterConfig, configapi.APIGroupKube)
+		kubeAPILevels = configapi.GetEnabledAPIVersionsForGroup(*c.Options.KubernetesMasterConfig, kapi.GroupName)
 	}
 
 	handler = indexAPIPaths(c.Options.APILevels, kubeAPILevels, handler)
@@ -203,11 +215,12 @@ func (c *MasterConfig) Run(protected []APIInstaller, unprotected []APIInstaller)
 		handler = contextHandler
 	}
 
+	longRunningRequestCheck := apiserver.BasicLongRunningRequestCheck(longRunningRE, map[string]string{"watch": "true"})
 	// TODO: MaxRequestsInFlight should be subdivided by intent, type of behavior, and speed of
 	// execution - updates vs reads, long reads vs short reads, fat reads vs skinny reads.
 	if c.Options.ServingInfo.MaxRequestsInFlight > 0 {
 		sem := make(chan bool, c.Options.ServingInfo.MaxRequestsInFlight)
-		handler = apiserver.MaxInFlightLimit(sem, longRunningRE, handler)
+		handler = apiserver.MaxInFlightLimit(sem, longRunningRequestCheck, handler)
 	}
 
 	c.serve(handler, extra)
@@ -244,7 +257,7 @@ func (c *MasterConfig) serve(handler http.Handler, extra []string) {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	go util.Forever(func() {
+	go utilwait.Forever(func() {
 		for _, s := range extra {
 			glog.Infof(s, c.Options.ServingInfo.BindAddress)
 		}
@@ -283,7 +296,7 @@ func (c *MasterConfig) InitializeObjects() {
 	c.ensureOpenShiftSharedResourcesNamespace()
 }
 
-func (c *MasterConfig) InstallProtectedAPI(container *restful.Container) []string {
+func (c *MasterConfig) InstallProtectedAPI(container *restful.Container) ([]string, error) {
 	// initialize OpenShift API
 	storage := c.GetRestStorage()
 
@@ -327,7 +340,7 @@ func (c *MasterConfig) InstallProtectedAPI(container *restful.Container) []strin
 	initHealthCheckRoute(root, "/healthz")
 	initReadinessCheckRoute(root, "/healthz/ready", c.ProjectAuthorizationCache.ReadyForAccess)
 
-	return messages
+	return messages, nil
 }
 
 func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
@@ -344,11 +357,11 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 	}
 
 	// TODO: allow the system CAs and the local CAs to be joined together.
-	importTransport, err := kclient.TransportFor(&kclient.Config{})
+	importTransport, err := restclient.TransportFor(&restclient.Config{})
 	if err != nil {
 		glog.Fatalf("Unable to configure a default transport for importing: %v", err)
 	}
-	insecureImportTransport, err := kclient.TransportFor(&kclient.Config{Insecure: true})
+	insecureImportTransport, err := restclient.TransportFor(&restclient.Config{Insecure: true})
 	if err != nil {
 		glog.Fatalf("Unable to configure a default transport for importing: %v", err)
 	}
@@ -385,9 +398,16 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 	clusterPolicyBindingStorage := clusterpolicybindingstorage.NewStorage(c.EtcdHelper)
 	clusterPolicyBindingRegistry := clusterpolicybindingregistry.NewRegistry(clusterPolicyBindingStorage)
 
-	roleStorage := rolestorage.NewVirtualStorage(policyRegistry)
-	roleBindingStorage := rolebindingstorage.NewVirtualStorage(policyRegistry, policyBindingRegistry, clusterPolicyRegistry, clusterPolicyBindingRegistry)
-	clusterRoleStorage := clusterrolestorage.NewClusterRoleStorage(clusterPolicyRegistry)
+	ruleResolver := rulevalidation.NewDefaultRuleResolver(
+		policyRegistry,
+		policyBindingRegistry,
+		clusterPolicyRegistry,
+		clusterPolicyBindingRegistry,
+	)
+
+	roleStorage := rolestorage.NewVirtualStorage(policyRegistry, ruleResolver)
+	roleBindingStorage := rolebindingstorage.NewVirtualStorage(policyBindingRegistry, ruleResolver)
+	clusterRoleStorage := clusterrolestorage.NewClusterRoleStorage(clusterPolicyRegistry, clusterPolicyBindingRegistry)
 	clusterRoleBindingStorage := clusterrolebindingstorage.NewClusterRoleBindingStorage(clusterPolicyRegistry, clusterPolicyBindingRegistry)
 
 	subjectAccessReviewStorage := subjectaccessreview.NewREST(c.Authorizer)
@@ -533,13 +553,19 @@ func (c *MasterConfig) GetRestStorage() map[string]rest.Storage {
 	return storage
 }
 
-func (c *MasterConfig) InstallUnprotectedAPI(container *restful.Container) []string {
-	return []string{}
+func (c *MasterConfig) InstallUnprotectedAPI(container *restful.Container) ([]string, error) {
+	return []string{}, nil
 }
 
 // initAPIVersionRoute initializes the osapi endpoint to behave similar to the upstream api endpoint
 func initAPIVersionRoute(root *restful.WebService, prefix string, versions ...string) {
-	versionHandler := apiserver.APIVersionHandler(kapi.Codecs, versions...)
+	versionHandler := apiserver.APIVersionHandler(kapi.Codecs, func(req *restful.Request) *unversioned.APIVersions {
+		apiVersionsForDiscovery := unversioned.APIVersions{
+			// TODO: ServerAddressByClientCIDRs: s.getServerAddressByClientCIDRs(req.Request),
+			Versions: versions,
+		}
+		return &apiVersionsForDiscovery
+	})
 	root.Route(root.GET(prefix).To(versionHandler).
 		Doc("list supported server API versions").
 		Produces(restful.MIME_JSON).
@@ -601,7 +627,7 @@ func (c *MasterConfig) defaultAPIGroupVersion() *apiserver.APIGroupVersion {
 	}
 
 	statusMapper := meta.NewDefaultRESTMapper([]unversioned.GroupVersion{kubeapiv1.SchemeGroupVersion}, registered.GroupOrDie(kapi.GroupName).InterfacesFor)
-	statusMapper.Add(kubeapiv1.SchemeGroupVersion.WithKind("Status"), meta.RESTScopeRoot, false)
+	statusMapper.Add(kubeapiv1.SchemeGroupVersion.WithKind("Status"), meta.RESTScopeRoot)
 	restMapper = meta.MultiRESTMapper(append(restMapper, statusMapper))
 
 	return &apiserver.APIGroupVersion{
@@ -616,7 +642,7 @@ func (c *MasterConfig) defaultAPIGroupVersion() *apiserver.APIGroupVersion {
 
 		Admit:                       c.AdmissionControl,
 		Context:                     c.getRequestContextMapper(),
-		NonDefaultGroupVersionKinds: map[string]unversioned.GroupVersionKind{},
+		SubresourceGroupVersionKind: map[string]unversioned.GroupVersionKind{},
 	}
 }
 
@@ -635,7 +661,7 @@ func (c *MasterConfig) api_v1beta3(all map[string]rest.Storage) *apiserver.APIGr
 	version.GroupVersion = v1beta3.SchemeGroupVersion
 	version.Serializer = kapi.Codecs
 	version.ParameterCodec = runtime.NewParameterCodec(kapi.Scheme)
-	version.NonDefaultGroupVersionKinds["deploymentconfigs/scale"] = v1beta1extensions.SchemeGroupVersion.WithKind("Scale")
+	version.SubresourceGroupVersionKind["deploymentconfigs/scale"] = v1beta1extensions.SchemeGroupVersion.WithKind("Scale")
 	return version
 }
 
@@ -653,7 +679,7 @@ func (c *MasterConfig) api_v1(all map[string]rest.Storage) *apiserver.APIGroupVe
 	version.GroupVersion = v1.SchemeGroupVersion
 	version.Serializer = kapi.Codecs
 	version.ParameterCodec = runtime.NewParameterCodec(kapi.Scheme)
-	version.NonDefaultGroupVersionKinds["deploymentconfigs/scale"] = v1beta1extensions.SchemeGroupVersion.WithKind("Scale")
+	version.SubresourceGroupVersionKind["deploymentconfigs/scale"] = v1beta1extensions.SchemeGroupVersion.WithKind("Scale")
 	return version
 }
 

@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -10,7 +10,7 @@ import (
 	"time"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
@@ -19,11 +19,8 @@ import (
 	testserver "github.com/openshift/origin/test/util/server"
 )
 
-func init() {
-	testutil.RequireEtcd()
-}
-
 func TestWebhookGitHubPushWithImage(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -121,6 +118,7 @@ func TestWebhookGitHubPushWithImage(t *testing.T) {
 }
 
 func TestWebhookGitHubPushWithImageStream(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -218,6 +216,7 @@ func TestWebhookGitHubPushWithImageStream(t *testing.T) {
 }
 
 func TestWebhookGitHubPing(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unable to start master: %v", err)
@@ -271,7 +270,7 @@ func TestWebhookGitHubPing(t *testing.T) {
 	}
 }
 
-func postFile(client kclient.HTTPClient, event, filename, url string, expStatusCode int, t *testing.T) {
+func postFile(client restclient.HTTPClient, event, filename, url string, expStatusCode int, t *testing.T) {
 	data, err := ioutil.ReadFile("../../pkg/build/webhook/github/fixtures/" + filename)
 	if err != nil {
 		t.Fatalf("Failed to open %s: %v", filename, err)

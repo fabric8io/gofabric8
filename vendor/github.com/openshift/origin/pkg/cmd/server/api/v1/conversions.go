@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/runtime/serializer"
@@ -306,6 +307,7 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 			out.Location = in.Location
 			return nil
 		},
+		api.Convert_resource_Quantity_To_resource_Quantity,
 	)
 	if err != nil {
 		// If one of the conversion functions is malformed, detect it immediately.
@@ -325,7 +327,7 @@ func convert_runtime_Object_To_runtime_RawExtension(in runtime.Object, out *runt
 	}
 
 	externalObject, err := internal.Scheme.ConvertToVersion(in, s.Meta().DestVersion)
-	if conversion.IsNotRegisteredError(err) {
+	if runtime.IsNotRegisteredError(err) {
 		switch cast := in.(type) {
 		case *runtime.Unknown:
 			out.RawJSON = cast.RawJSON

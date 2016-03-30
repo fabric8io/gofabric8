@@ -58,7 +58,7 @@ type flexVolumePlugin struct {
 	host       volume.VolumeHost
 }
 
-// Init intializes the plugin.
+// Init initializes the plugin.
 func (plugin *flexVolumePlugin) Init(host volume.VolumeHost) error {
 	plugin.host = host
 	// call the init script
@@ -110,7 +110,7 @@ func (plugin *flexVolumePlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ vo
 			return nil, fmt.Errorf("Cannot get kube client")
 		}
 
-		secretName, err := kubeClient.Secrets(pod.Namespace).Get(fv.SecretRef.Name)
+		secretName, err := kubeClient.Core().Secrets(pod.Namespace).Get(fv.SecretRef.Name)
 		if err != nil {
 			err = fmt.Errorf("Couldn't get secret %v/%v err: %v", pod.Namespace, fv.SecretRef, err)
 			return nil, err

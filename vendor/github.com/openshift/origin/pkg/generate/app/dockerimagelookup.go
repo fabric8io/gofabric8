@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -55,6 +56,7 @@ func (r DockerClientSearcher) Search(precise bool, terms ...string) (ComponentMa
 				// we don't want to create an imagestream for "scratch", so treat
 				// it as a local only image.
 				LocalOnly: true,
+				Virtual:   true,
 			})
 			return componentMatches, errs
 		}
@@ -79,7 +81,8 @@ func (r DockerClientSearcher) Search(precise bool, terms ...string) (ComponentMa
 			termMatches = append(termMatches, matches...)
 		}
 
-		if r.Client == nil {
+		if r.Client == nil || reflect.ValueOf(r.Client).IsNil() {
+			componentMatches = append(componentMatches, termMatches...)
 			continue
 		}
 

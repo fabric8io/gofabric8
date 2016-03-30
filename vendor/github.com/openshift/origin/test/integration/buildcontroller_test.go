@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -38,10 +38,6 @@ var (
 	// a single watch event is expected, the test will fail after the timeout.
 	BuildControllersWatchTimeout = 10 * time.Second
 )
-
-func init() {
-	testutil.RequireEtcd()
-}
 
 type controllerCount struct {
 	BuildControllers,
@@ -328,6 +324,7 @@ func checkErr(t *testing.T, err error) {
 }
 
 func setupBuildControllerTest(counts controllerCount, t *testing.T) (*client.Client, *kclient.Client) {
+	testutil.RequireEtcd(t)
 	master, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	checkErr(t, err)
 
@@ -649,18 +646,33 @@ func runBuildRunningPodDeleteTest(t *testing.T, clusterAdminClient *client.Clien
 		t.Fatalf("expected watch event type %s, got %s", e, a)
 	}
 	newBuild := event.Object.(*buildapi.Build)
+	buildName := newBuild.Name
+	podName := newBuild.Name + "-build"
 
 	// initial pod creation for build
-	event = waitForWatch(t, "build pod created", podWatch)
+	for {
+		event = waitForWatch(t, "build pod created", podWatch)
+		newPod := event.Object.(*kapi.Pod)
+		if newPod.Name == podName {
+			break
+		}
+	}
 	if e, a := watchapi.Added, event.Type; e != a {
 		t.Fatalf("expected watch event type %s, got %s", e, a)
 	}
 
-	event = waitForWatch(t, "build updated to pending", buildWatch)
+	// throw away events from other builds, we only care about the new build
+	// we just triggered
+	for {
+		event = waitForWatch(t, "build updated to pending", buildWatch)
+		newBuild = event.Object.(*buildapi.Build)
+		if newBuild.Name == buildName {
+			break
+		}
+	}
 	if e, a := watchapi.Modified, event.Type; e != a {
 		t.Fatalf("expected watch event type %s, got %s", e, a)
 	}
-	newBuild = event.Object.(*buildapi.Build)
 	if newBuild.Status.Phase != buildapi.BuildPhasePending {
 		t.Fatalf("expected build status to be marked pending, but was marked %s", newBuild.Status.Phase)
 	}

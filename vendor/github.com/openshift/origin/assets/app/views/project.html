@@ -58,7 +58,7 @@
                 </div>
               </div>
 
-              <div ng-if="overviewMode == 'topology' && !renderOptions.showGetStarted">
+              <div ng-if="overviewMode == 'topology' && !renderOptions.showGetStarted" class="kube-topology-block">
                 <kubernetes-topology-graph bottom-of-window="1" items="topologyItems"
                   relations="topologyRelations" kinds="topologyKinds" selection="topologySelection">
                 </kubernetes-topology-graph>
@@ -111,8 +111,18 @@
                           </span>
                           <span class="small" ng-if="otherRoutes">
                             (and
-                            <a href="{{service | navigateResourceURL}}">{{otherRoutes}} other {{(otherRoutes == 1) ? 'route' : 'routes'}}</a>)
+                            <a href="project/{{projectName}}/browse/routes"><span ng-if="otherRoutes === 1">one other route</span
+                                ><span ng-if="otherRoutes > 1">{{otherRoutes}} other routes</span></a>)
                           </span>
+                          <span ng-if="!otherRoutes">
+                            <route-warnings warnings="routeWarningsByService[serviceId][displayRouteByService[serviceId].metadata.name]"></route-warnings>
+                          </span>
+                          <div ng-if="(routeWarningsByService[serviceId] | hashSize) > 0 && otherRoutes">
+                            <small>
+                              <span class="pficon pficon-warning-triangle-o" aria-hidden="true"></span>
+                              This service has <a href="project/{{projectName}}/browse/routes">routes</a> with warnings.
+                            </small>
+                          </div>                          
                         </h2>
 
                         <!-- If no route is present, show the service name large -->
@@ -123,7 +133,7 @@
                       </div>
 
                       <div class="component meta-data">
-                        <span ng-if="numPorts">
+                        <span ng-if="numPorts" class="ports">
                           <!--
                           Show only the first two ports if there are many since we don't have much space here.
                           The full list is visible elsewhere.
@@ -135,11 +145,11 @@
                                          There's just not enough room now, and we already have problems with wrapping. -->
                               <span ng-attr-title="{{portMapping.name}}">{{portMapping.port}}/{{portMapping.protocol}}</span>&#8201;&#8594;&#8201;{{portMapping.targetPort}}<span ng-if="$index < (numPorts - 1)">, </span></span>
                           </span>
-                          <span ng-if="numPorts > 2" ng-init="numRemaining = numPorts - 2">
+                          <span ng-if="numPorts > 2" ng-init="numRemaining = numPorts - 2" class="more-ports">
                             and {{numRemaining}} {{numRemaining == 1 ? "other" : "others"}}
                           </span>
                         </span>
-                        <div ng-if="!displayRouteByService[serviceId]" class="component-label add-route-link">
+                        <div ng-if="!displayRouteByService[serviceId]" class="add-route-link">
                           <a ng-href="project/{{project.metadata.name}}/create-route?service={{service.metadata.name}}">Create Route</a>
                         </div>
                       </div>

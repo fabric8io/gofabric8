@@ -18,6 +18,7 @@ package unversioned
 
 import (
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/watch"
 )
 
@@ -36,7 +37,7 @@ type PodInterface interface {
 	Watch(opts api.ListOptions) (watch.Interface, error)
 	Bind(binding *api.Binding) error
 	UpdateStatus(pod *api.Pod) (*api.Pod, error)
-	GetLogs(name string, opts *api.PodLogOptions) *Request
+	GetLogs(name string, opts *api.PodLogOptions) *restclient.Request
 }
 
 // pods implements PodsNamespacer interface
@@ -56,7 +57,7 @@ func newPods(c *Client, namespace string) *pods {
 // List takes label and field selectors, and returns the list of pods that match those selectors.
 func (c *pods) List(opts api.ListOptions) (result *api.PodList, err error) {
 	result = &api.PodList{}
-	err = c.r.Get().Namespace(c.ns).Resource("pods").VersionedParams(&opts, api.Scheme).Do().Into(result)
+	err = c.r.Get().Namespace(c.ns).Resource("pods").VersionedParams(&opts, api.ParameterCodec).Do().Into(result)
 	return
 }
 
@@ -92,7 +93,7 @@ func (c *pods) Watch(opts api.ListOptions) (watch.Interface, error) {
 		Prefix("watch").
 		Namespace(c.ns).
 		Resource("pods").
-		VersionedParams(&opts, api.Scheme).
+		VersionedParams(&opts, api.ParameterCodec).
 		Watch()
 }
 
@@ -109,6 +110,6 @@ func (c *pods) UpdateStatus(pod *api.Pod) (result *api.Pod, err error) {
 }
 
 // Get constructs a request for getting the logs for a pod
-func (c *pods) GetLogs(name string, opts *api.PodLogOptions) *Request {
-	return c.r.Get().Namespace(c.ns).Name(name).Resource("pods").SubResource("log").VersionedParams(opts, api.Scheme)
+func (c *pods) GetLogs(name string, opts *api.PodLogOptions) *restclient.Request {
+	return c.r.Get().Namespace(c.ns).Name(name).Resource("pods").SubResource("log").VersionedParams(opts, api.ParameterCodec)
 }

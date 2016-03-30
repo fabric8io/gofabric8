@@ -50,20 +50,20 @@ Replaces the specified replication controller with a new replication controller 
 new PodTemplate. The new-controller.json must specify the same namespace as the
 existing replication controller and overwrite at least one (common) label in its replicaSelector.`
 	rollingUpdate_example = `# Update pods of frontend-v1 using new replication controller data in frontend-v2.json.
-$ kubectl rolling-update frontend-v1 -f frontend-v2.json
+kubectl rolling-update frontend-v1 -f frontend-v2.json
 
 # Update pods of frontend-v1 using JSON data passed into stdin.
-$ cat frontend-v2.json | kubectl rolling-update frontend-v1 -f -
+cat frontend-v2.json | kubectl rolling-update frontend-v1 -f -
 
 # Update the pods of frontend-v1 to frontend-v2 by just changing the image, and switching the
 # name of the replication controller.
-$ kubectl rolling-update frontend-v1 frontend-v2 --image=image:v2
+kubectl rolling-update frontend-v1 frontend-v2 --image=image:v2
 
 # Update the pods of frontend by just changing the image, and keeping the old name.
-$ kubectl rolling-update frontend --image=image:v2
+kubectl rolling-update frontend --image=image:v2
 
 # Abort and reverse an existing rollout in progress (from frontend-v1 to frontend-v2).
-$ kubectl rolling-update frontend-v1 frontend-v2 --rollback
+kubectl rolling-update frontend-v1 frontend-v2 --rollback
 `
 )
 
@@ -235,6 +235,7 @@ func RunRollingUpdate(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, arg
 	// than the old rc. This selector is the hash of the rc, which will differ because the new rc has a
 	// different image.
 	if len(image) != 0 {
+		codec := api.Codecs.LegacyCodec(client.APIVersion())
 		keepOldName = len(args) == 1
 		newName := findNewName(args, oldRc)
 		if newRc, err = kubectl.LoadExistingNextReplicationController(client, cmdNamespace, newName); err != nil {
@@ -249,14 +250,14 @@ func RunRollingUpdate(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, arg
 			if oldRc.Spec.Template.Spec.Containers[0].Image == image {
 				return cmdutil.UsageError(cmd, "Specified --image must be distinct from existing container image")
 			}
-			newRc, err = kubectl.CreateNewControllerFromCurrentController(client, client.Codec, cmdNamespace, oldName, newName, image, container, deploymentKey)
+			newRc, err = kubectl.CreateNewControllerFromCurrentController(client, codec, cmdNamespace, oldName, newName, image, container, deploymentKey)
 			if err != nil {
 				return err
 			}
 		}
 		// Update the existing replication controller with pointers to the 'next' controller
 		// and adding the <deploymentKey> label if necessary to distinguish it from the 'next' controller.
-		oldHash, err := api.HashObject(oldRc, client.Codec)
+		oldHash, err := api.HashObject(oldRc, codec)
 		if err != nil {
 			return err
 		}
@@ -332,7 +333,7 @@ func RunRollingUpdate(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, arg
 		Interval:       interval,
 		Timeout:        timeout,
 		CleanupPolicy:  updateCleanupPolicy,
-		MaxUnavailable: intstr.FromInt(1),
+		MaxUnavailable: intstr.FromInt(0),
 		MaxSurge:       intstr.FromInt(1),
 	}
 	if rollback {
@@ -364,7 +365,7 @@ func RunRollingUpdate(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, arg
 	if err != nil {
 		return err
 	}
-	_, res := meta.KindToResource(kind, false)
+	_, res := meta.KindToResource(kind)
 	cmdutil.PrintSuccess(mapper, false, out, res.Resource, oldName, message)
 	return nil
 }

@@ -2,6 +2,7 @@ package builder
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
@@ -70,7 +71,13 @@ func getDockerNetworkMode() s2iapi.DockerNetworkMode {
 func GetCGroupLimits() (*s2iapi.CGroupLimits, error) {
 	byteLimit, err := readInt64("/sys/fs/cgroup/memory/memory.limit_in_bytes")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot determine cgroup limits: %v", err)
+	}
+	// math.MaxInt64 seems to give cgroups trouble, this value is
+	// still 92 terabytes, so it ought to be sufficiently large for
+	// our purposes.
+	if byteLimit > 92233720368547 {
+		byteLimit = 92233720368547
 	}
 
 	// different docker versions seem to use different cgroup directories,
@@ -95,17 +102,17 @@ func GetCGroupLimits() (*s2iapi.CGroupLimits, error) {
 
 	cpuQuota, err := readInt64(filepath.Join(cpuDir, "cpu.cfs_quota_us"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot determine cgroup limits: %v", err)
 	}
 
 	cpuPeriod, err := readInt64(filepath.Join(cpuDir, "cpu.cfs_period_us"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot determine cgroup limits: %v", err)
 	}
 
 	cpuShares, err := readInt64(filepath.Join(cpuDir, "cpu.shares"))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot determine cgroup limits: %v", err)
 	}
 
 	return &s2iapi.CGroupLimits{

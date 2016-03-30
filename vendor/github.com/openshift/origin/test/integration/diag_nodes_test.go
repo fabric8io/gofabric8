@@ -17,6 +17,7 @@ import (
 )
 
 func TestDiagNodeConditions(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, nodeConfig, clientFile, err := testserver.StartTestAllInOne()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -66,8 +66,10 @@ func AddToScheme(scheme *runtime.Scheme) {
 		&ReplicationController{},
 		&ServiceList{},
 		&Service{},
+		&ServiceProxyOptions{},
 		&NodeList{},
 		&Node{},
+		&NodeProxyOptions{},
 		&Endpoints{},
 		&EndpointsList{},
 		&Binding{},
@@ -98,6 +100,8 @@ func AddToScheme(scheme *runtime.Scheme) {
 		&ComponentStatusList{},
 		&SerializedReference{},
 		&RangeAllocation{},
+		&ConfigMap{},
+		&ConfigMapList{},
 
 		&SecurityContextConstraints{},
 		&SecurityContextConstraintsList{},
@@ -134,6 +138,7 @@ func (obj *EndpointsList) GetObjectKind() unversioned.ObjectKind             { r
 func (obj *Node) GetObjectMeta() meta.Object                                 { return &obj.ObjectMeta }
 func (obj *Node) GetObjectKind() unversioned.ObjectKind                      { return &obj.TypeMeta }
 func (obj *NodeList) GetObjectKind() unversioned.ObjectKind                  { return &obj.TypeMeta }
+func (obj *NodeProxyOptions) GetObjectKind() unversioned.ObjectKind          { return &obj.TypeMeta }
 func (obj *Binding) GetObjectMeta() meta.Object                              { return &obj.ObjectMeta }
 func (obj *Binding) GetObjectKind() unversioned.ObjectKind                   { return &obj.TypeMeta }
 func (obj *Event) GetObjectMeta() meta.Object                                { return &obj.ObjectMeta }
@@ -167,6 +172,7 @@ func (obj *PodAttachOptions) GetObjectKind() unversioned.ObjectKind          { r
 func (obj *PodLogOptions) GetObjectKind() unversioned.ObjectKind             { return &obj.TypeMeta }
 func (obj *PodExecOptions) GetObjectKind() unversioned.ObjectKind            { return &obj.TypeMeta }
 func (obj *PodProxyOptions) GetObjectKind() unversioned.ObjectKind           { return &obj.TypeMeta }
+func (obj *ServiceProxyOptions) GetObjectKind() unversioned.ObjectKind       { return &obj.TypeMeta }
 func (obj *ComponentStatus) GetObjectMeta() meta.Object                      { return &obj.ObjectMeta }
 func (obj *ComponentStatus) GetObjectKind() unversioned.ObjectKind           { return &obj.TypeMeta }
 func (obj *ComponentStatusList) GetObjectKind() unversioned.ObjectKind       { return &obj.TypeMeta }
@@ -175,6 +181,9 @@ func (obj *RangeAllocation) GetObjectMeta() meta.Object                      { r
 func (obj *RangeAllocation) GetObjectKind() unversioned.ObjectKind           { return &obj.TypeMeta }
 func (obj *ObjectReference) GetObjectKind() unversioned.ObjectKind           { return obj }
 func (obj *ExportOptions) GetObjectKind() unversioned.ObjectKind             { return &obj.TypeMeta }
+func (obj *ConfigMap) GetObjectMeta() meta.Object                            { return &obj.ObjectMeta }
+func (obj *ConfigMap) GetObjectKind() unversioned.ObjectKind                 { return &obj.TypeMeta }
+func (obj *ConfigMapList) GetObjectKind() unversioned.ObjectKind             { return &obj.TypeMeta }
 
 func (obj *SecurityContextConstraints) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }
 func (obj *SecurityContextConstraintsList) GetObjectKind() unversioned.ObjectKind {

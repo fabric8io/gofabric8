@@ -14,6 +14,8 @@
   input[type="number"],
   input[type="search"],
   input[type="url"],
+  select,
+  select.form-control,
   textarea,
   .console-os .ace_editor {
     font-size: 16px;
@@ -46,6 +48,7 @@
     margin-right: -20px;
     margin-top: 20px;
     padding-left: 20px;
+    padding-right: 20px;
     .actions {
       margin-top: 0;
     }
@@ -66,44 +69,68 @@
   }
 }
 
-// Data toolbar with label filter customizations
+// Firefox-specific hack for preventing fieldset content causing the container to expand
+// see: https://stackoverflow.com/questions/17408815/fieldset-resizes-wrong-appears-to-have-unremovable-min-width-min-content/17863685#17863685
+@-moz-document url-prefix() {
+  .console-os fieldset {
+    display: table-cell;
+  }
+}
+
+/* Data toolbar
+   - Includes customizations for label filter input and active filter
+---------------------------------------------------------------------------- */
 .data-toolbar {
-  .flex-display(@display: flex);
-  .flex(@columns: 1 0 0%);
-  .flex-wrap(@wrap: wrap);
-  padding: 3px 0 1px;
-  .data-toolbar-filter {
-    .flex-display(@display: flex);
-    .flex(@columns: 1 0 0%);
-  }
-  .data-toolbar-views {
-    .flex(@columns: 0 0 55px);
-    text-align: right;
-  }
+ .flex-display(@display: flex);
+ .flex(@columns: 1 0 0%);
+ .flex-wrap(@wrap: wrap);
+ padding: 3px 0 1px;
+ .data-toolbar-filter {
+   .flex-display(@display: flex);
+   .flex(@columns: 1 0 0%);
+ }
+ .data-toolbar-views {
+   .flex(@columns: 0 0 55px);
+   text-align: right;
+ }
 }
 .filter .navbar-filter-widget {
-  white-space: nowrap; // prevent button wrap in Safari
-  .label-filter-add.btn {
-    margin-right: 0;
-  }
-  @media (min-width: @screen-md-min) {
-    .selectize-input.not-full {
-      width: 300px !important;
-    }
-  }
+ @media(min-width: @screen-sm-min) {
+   white-space: nowrap; // prevent button wrap in Safari when not at mobile resolutions
+ }
+ .label-filter-add.btn {
+   margin-right: 0;
+ }
+ @media (min-width: @screen-md-min) {
+   .selectize-input.not-full {
+     width: 300px !important;
+   }
+ }
+}
+@media (max-width: @screen-xs-max) {
+ project-filter {
+   width: 100%; // Extends flex container full width of flex parent
+ }
+ .filter .navbar-filter-widget .label-filter {
+   min-width: initial;
+   width: 80%; // Width of the input field that allows for the 'add' button to be appended down to 320px
+ }
+ .filter .navbar-filter-widget .selectize-input {
+   width: auto !important;
+ }
 }
 .navbar-filter-widget-collapse .form-group {
-  margin-bottom: 0;
+ margin-bottom: 0;
 }
 .active-filters {
-  line-height: 0;
-  .label-filter-active-filters {
-    padding-bottom: 3px;
-    .label {
-      max-width: none;
-      word-break: break-all;
-    }
-  }
+ line-height: 0;
+ .label-filter-active-filters {
+   padding-bottom: 3px;
+   .label {
+     max-width: none;
+     word-break: break-all;
+   }
+ }
 }
 
 .separator {
@@ -129,6 +156,7 @@
 }
 
 .nav-tabs, .tab-content {
+  margin-bottom: @grid-gutter-width / 2;
   margin-top: @grid-gutter-width / 2;
 }
 
@@ -153,30 +181,26 @@
 }
 
 .empty-state-message {
-  margin: @grid-gutter-width auto;
+  margin: 60px auto @grid-gutter-width;
   max-width: 600px;
   padding: 0 (@grid-gutter-width / 2);
   .btn {
     margin: 10px 0 20px;
   }
+}
+
+.empty-state-message.empty-state-full-page {
   @media (min-height: 500px) {
     margin-top: 150px;
   }
 }
 
 .service-table {
-  border: 0;
-  margin: 10px 0 5px;
-  table {
-    .table;
-    .table-condensed;
-    .text-center;
-    .small;
-    margin-bottom: 0;
-    thead {
-      tr th {
-        .text-center;
-      }
+  .text-center;
+  max-width: 650px;
+  thead {
+    tr th {
+      .text-center;
     }
   }
 }
@@ -278,6 +302,10 @@
   }
 }
 
+.quota-chart {
+  margin: 0 20px;
+}
+
 
 // Create App
 // --------------------------------------------------
@@ -295,13 +323,16 @@ label.checkbox {
 // Make sure icons are the same size so headings align.
 .add-to-project {
   .catalog-legend {
-    dd {
-      margin-bottom: 5px;
+    dt, dd {
+      display: inline;
     }
-    .fa, .pficon {
-      width: 12px;
-      margin-right: 5px;
-      text-align: center;
+    dt:before {
+      content: "";
+      display: block;
+    }
+    dd:before {
+      // dash and space
+      content: '\2014\00a0';
     }
   }
 
@@ -358,7 +389,6 @@ label.checkbox {
 
 .create-from-template,
 .create-from-image {
-  margin-bottom: 100px; // needed space for hover help text near bottom
   .template-name {
     text-align: right;
     span.fa {
@@ -482,6 +512,9 @@ label.checkbox {
     .flex-direction(@direction: row);
     .flex-wrap(@wrap: wrap);
     .justify-content(@justify: flex-start);
+    // remove ie prefixes when PostCSS Autoprefixer is included for github issue #7559
+    -ms-flex-pack: start;
+
     .tile-template, .tile-image {
       .flex(@columns: 1 0 auto);
       width: 100%;
@@ -613,6 +646,22 @@ abbr[data-original-title], abbr[title] {
   dd {
     &:extend(.clearfix all); // Including this here because it's not being set even though it's in /bootstrap/less/type.less dunno why?
   }
+  // FIXME: We should just set @dl-horizontal-breakpoint when we upgrade Bootstrap to 3.3.6.
+  // We want the definition list to display side-by-side after a smaller breakpoint than @screen-sm-min.
+  // Temporarily use the same styles as in
+  //   https://github.com/twbs/bootstrap/blob/5ea03fa259ccac4c7ea72f0a19b57f77957fe55d/less/type.less#L214-L225
+  @media (min-width: 415px) {
+    dt {
+      float: left;
+      width: (@dl-horizontal-offset - 20);
+      clear: left;
+      text-align: right;
+      .text-overflow();
+    }
+    dd {
+      margin-left: @dl-horizontal-offset;
+    }
+  }
 }
 
 .gutter-top-bottom {
@@ -671,16 +720,20 @@ select:invalid {
 }
 
 .attention-message {
-  background-color: lighten(@brand-primary, 20%);
+  background-color: lighten(@brand-primary, 50%);
   border: 1px solid darken(@brand-primary, 10%);
   position: absolute;
-  top: 20%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  margin-top: 100px;
+  transform: translateX(-50%);
   padding: 1em 1em 2em;
   min-width: 85%;
   h1,p {
     text-align: center;
+  }
+  p {
+    max-width: 70em;
+    margin: auto;
   }
 }
 
@@ -729,7 +782,11 @@ a.disabled-link {
   }
 }
 
-.resource-actions-dropdown {
+.actions-dropdown-btn {
+  margin-left: 5px;
+}
+
+.actions-dropdown-kebab {
   .action-button;
   // Bigger click target for the dropdown icon, which is a narrow ellipsis
   padding: 0 10px;
@@ -742,14 +799,15 @@ a.disabled-link {
     font-size: 21px;
     font-weight: 500;
     margin-bottom: 20px;
+    .word-break();
   }
   p {
     font-size: @font-size-large + 1;
   }
 }
 
-// Disable numeric highlighting in YAML because of bugs
-.editor.yaml-mode .ace_constant.ace_numeric {
+// Disable numeric highlighting in YAML and Dockerfile modes because of bugs
+.editor.yaml-mode .ace_constant.ace_numeric, .ace_editor.dockerfile-mode .ace_constant.ace_numeric {
   color: inherit;
 }
 
@@ -781,7 +839,10 @@ a.disabled-link {
     border-bottom: 1px solid #bbbbbb;
     padding: 0;
     .alert {
-      margin-bottom: 0;
+      margin: 10px;
+      &:not(.ng-hide) + .ace_editor {
+        border-top: 1px solid #bbb;
+      }
     }
   }
   .modal-footer {
@@ -827,10 +888,14 @@ a.disabled-link {
 }
 pre.clipped {
   display: inline-block;
+  margin-top: 10px;
+  max-width: 100%;
 }
 
 .k8s-label {
   margin-right: 5px;
+  // A bit more space below the actions button.
+  margin-top: 3px;
   &:before {
     content: ' ';
     white-space: normal;
@@ -926,6 +991,7 @@ h1 small.meta, .build-config-summary .meta {
     vertical-align: top;
   }
   &.table.table-bordered > tbody > tr > td:last-child {
+    word-break: break-all;
     width: 100%;
 
     .env-var-value {

@@ -47,7 +47,7 @@ func scTestPod(hostIPC bool, hostPID bool) *api.Pod {
 			Containers: []api.Container{
 				{
 					Name:  "test-container",
-					Image: "gcr.io/google_containers/busybox",
+					Image: "gcr.io/google_containers/busybox:1.24",
 				},
 			},
 			RestartPolicy: api.RestartPolicyNever,
@@ -58,7 +58,7 @@ func scTestPod(hostIPC bool, hostPID bool) *api.Pod {
 }
 
 var _ = Describe("Security Context [Feature:SecurityContext]", func() {
-	framework := NewFramework("security-context")
+	framework := NewDefaultFramework("security-context")
 
 	It("should support pod.Spec.SecurityContext.SupplementalGroups", func() {
 		pod := scTestPod(false, false)

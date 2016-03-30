@@ -10,8 +10,8 @@
             <h1>Pods</h1>
           </div>
           <alerts alerts="alerts"></alerts>
-          <div ng-if="!renderOptions.showGetStarted" class="row data-toolbar">
-            <div class="col-sm-7">
+          <div ng-if="!renderOptions.showGetStarted" class="data-toolbar">
+            <div class="data-toolbar-filter">
               <project-filter></project-filter>
             </div>
           </div>
@@ -44,8 +44,8 @@
                     </td>
                     <td data-title="Status">
                       <div row class="status">
-                        <status-icon status="pod.status.phase" disable-animation></status-icon>
-                        <span flex>{{pod.status.phase}}</span>
+                        <status-icon status="pod | podStatus" disable-animation></status-icon>
+                        <span flex>{{pod | podStatus | sentenceCase}}</span>
                       </div>
                     </td>
                     <td data-title="Ready">{{pod | numContainersReady}}/{{pod.spec.containers.length}}</td>

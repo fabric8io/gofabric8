@@ -7,11 +7,13 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"testing"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util/wait"
 
@@ -22,6 +24,7 @@ import (
 	"github.com/openshift/origin/pkg/cmd/server/kubernetes"
 	"github.com/openshift/origin/pkg/cmd/server/start"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
+	utilflags "github.com/openshift/origin/pkg/cmd/util/flags"
 	"github.com/openshift/origin/test/util"
 
 	// install all APIs
@@ -34,11 +37,10 @@ import (
 // controllers to start up, and populate the service accounts in the test namespace
 const ServiceAccountWaitTimeout = 30 * time.Second
 
-// RequireServer verifies if the etcd, docker and the OpenShift server are
-// available and you can successfully connected to them.
-func RequireServer() {
-	util.RequireEtcd()
-	util.RequireDocker()
+// RequireServer verifies if the etcd and the OpenShift server are
+// available and you can successfully connect to them.
+func RequireServer(t *testing.T) {
+	util.RequireEtcd(t)
 	if _, err := util.GetClusterAdminClient(util.KubeConfigPath()); err != nil {
 		os.Exit(1)
 	}
@@ -206,7 +208,7 @@ func CreateNodeCerts(nodeArgs *start.NodeArgs, masterURL string) error {
 	createNodeConfig.Hostnames = []string{nodeArgs.NodeName}
 	createNodeConfig.ListenAddr = nodeArgs.ListenArg.ListenAddr
 	createNodeConfig.APIServerURL = masterURL
-	createNodeConfig.APIServerCAFile = admin.DefaultCertFilename(nodeArgs.MasterCertDir, "ca")
+	createNodeConfig.APIServerCAFiles = []string{admin.DefaultCertFilename(nodeArgs.MasterCertDir, "ca")}
 	createNodeConfig.NodeClientCAFile = admin.DefaultCertFilename(nodeArgs.MasterCertDir, "ca")
 
 	if err := createNodeConfig.Validate(nil); err != nil {
@@ -219,10 +221,11 @@ func CreateNodeCerts(nodeArgs *start.NodeArgs, masterURL string) error {
 	return nil
 }
 
-func DefaultAllInOneOptions() (*configapi.MasterConfig, *configapi.NodeConfig, error) {
+func DefaultAllInOneOptions() (*configapi.MasterConfig, *configapi.NodeConfig, *utilflags.ComponentFlag, error) {
 	startOptions := start.AllInOneOptions{MasterOptions: &start.MasterOptions{}, NodeArgs: &start.NodeArgs{}}
 	startOptions.MasterOptions.MasterArgs, startOptions.NodeArgs, _, _, _ = setupStartOptions(false, false)
 	startOptions.NodeArgs.AllowDisabledDocker = true
+	startOptions.NodeArgs.Components.Disable("plugins", "proxy")
 	startOptions.ServiceNetworkCIDR = start.NewDefaultNetworkArgs().ServiceNetworkCIDR
 	startOptions.Complete()
 	startOptions.MasterOptions.MasterArgs.ConfigDir.Default(path.Join(util.GetBaseDir(), "openshift.local.config", "master"))
@@ -230,36 +233,36 @@ func DefaultAllInOneOptions() (*configapi.MasterConfig, *configapi.NodeConfig, e
 	startOptions.NodeArgs.MasterCertDir = startOptions.MasterOptions.MasterArgs.ConfigDir.Value()
 
 	if err := CreateMasterCerts(startOptions.MasterOptions.MasterArgs); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := CreateBootstrapPolicy(startOptions.MasterOptions.MasterArgs); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if err := CreateNodeCerts(startOptions.NodeArgs, startOptions.MasterOptions.MasterArgs.MasterAddr.String()); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	masterOptions, err := startOptions.MasterOptions.MasterArgs.BuildSerializeableMasterConfig()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	nodeOptions, err := startOptions.NodeArgs.BuildSerializeableNodeConfig()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return masterOptions, nodeOptions, nil
+	return masterOptions, nodeOptions, startOptions.NodeArgs.Components, nil
 }
 
-func StartConfiguredAllInOne(masterConfig *configapi.MasterConfig, nodeConfig *configapi.NodeConfig) (string, error) {
+func StartConfiguredAllInOne(masterConfig *configapi.MasterConfig, nodeConfig *configapi.NodeConfig, components *utilflags.ComponentFlag) (string, error) {
 	adminKubeConfigFile, err := StartConfiguredMaster(masterConfig)
 	if err != nil {
 		return "", err
 	}
 
-	if err := StartConfiguredNode(nodeConfig); err != nil {
+	if err := StartConfiguredNode(nodeConfig, components); err != nil {
 		return "", err
 	}
 
@@ -267,25 +270,24 @@ func StartConfiguredAllInOne(masterConfig *configapi.MasterConfig, nodeConfig *c
 }
 
 func StartTestAllInOne() (*configapi.MasterConfig, *configapi.NodeConfig, string, error) {
-	master, node, err := DefaultAllInOneOptions()
+	master, node, components, err := DefaultAllInOneOptions()
 	if err != nil {
 		return nil, nil, "", err
 	}
 
-	adminKubeConfigFile, err := StartConfiguredAllInOne(master, node)
+	adminKubeConfigFile, err := StartConfiguredAllInOne(master, node, components)
 	return master, node, adminKubeConfigFile, err
 }
 
 type TestOptions struct {
-	DeleteAllEtcdKeys bool
 	EnableControllers bool
 }
 
 func DefaultTestOptions() TestOptions {
-	return TestOptions{true, true}
+	return TestOptions{EnableControllers: true}
 }
 
-func StartConfiguredNode(nodeConfig *configapi.NodeConfig) error {
+func StartConfiguredNode(nodeConfig *configapi.NodeConfig, components *utilflags.ComponentFlag) error {
 	kubernetes.SetFakeCadvisorInterfaceForIntegrationTest()
 	kubernetes.SetFakeContainerManagerInterfaceForIntegrationTest()
 
@@ -295,7 +297,7 @@ func StartConfiguredNode(nodeConfig *configapi.NodeConfig) error {
 	}
 	nodeTLS := configapi.UseTLS(nodeConfig.ServingInfo)
 
-	if err := start.StartNode(*nodeConfig); err != nil {
+	if err := start.StartNode(*nodeConfig, components); err != nil {
 		return err
 	}
 
@@ -318,10 +320,6 @@ func StartConfiguredMasterAPI(masterConfig *configapi.MasterConfig) (string, err
 }
 
 func StartConfiguredMasterWithOptions(masterConfig *configapi.MasterConfig, testOptions TestOptions) (string, error) {
-	if testOptions.DeleteAllEtcdKeys {
-		util.DeleteAllEtcdKeys()
-	}
-
 	if err := start.NewMaster(masterConfig, testOptions.EnableControllers, true).Start(); err != nil {
 		return "", err
 	}
@@ -416,7 +414,7 @@ func WaitForServiceAccounts(client *kclient.Client, namespace string, accounts [
 
 // CreateNewProject creates a new project using the clusterAdminClient, then gets a token for the adminUser and returns
 // back a client for the admin user
-func CreateNewProject(clusterAdminClient *client.Client, clientConfig kclient.Config, projectName, adminUser string) (*client.Client, error) {
+func CreateNewProject(clusterAdminClient *client.Client, clientConfig restclient.Config, projectName, adminUser string) (*client.Client, error) {
 	newProjectOptions := &newproject.NewProjectOptions{
 		Client:      clusterAdminClient,
 		ProjectName: projectName,

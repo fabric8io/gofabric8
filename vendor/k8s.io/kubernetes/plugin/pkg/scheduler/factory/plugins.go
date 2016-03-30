@@ -33,13 +33,14 @@ import (
 
 // PluginFactoryArgs are passed to all plugin factory functions.
 type PluginFactoryArgs struct {
-	algorithm.PodLister
-	algorithm.ServiceLister
-	algorithm.ControllerLister
-	NodeLister algorithm.NodeLister
-	NodeInfo   predicates.NodeInfo
-	PVInfo     predicates.PersistentVolumeInfo
-	PVCInfo    predicates.PersistentVolumeClaimInfo
+	PodLister        algorithm.PodLister
+	ServiceLister    algorithm.ServiceLister
+	ControllerLister algorithm.ControllerLister
+	ReplicaSetLister algorithm.ReplicaSetLister
+	NodeLister       algorithm.NodeLister
+	NodeInfo         predicates.NodeInfo
+	PVInfo           predicates.PersistentVolumeInfo
+	PVCInfo          predicates.PersistentVolumeClaimInfo
 }
 
 // A FitPredicateFactory produces a FitPredicate from the given args.
@@ -168,6 +169,7 @@ func RegisterCustomPriorityFunction(policy schedulerapi.PriorityPolicy) string {
 			pcf = &PriorityConfigFactory{
 				Function: func(args PluginFactoryArgs) algorithm.PriorityFunction {
 					return priorities.NewServiceAntiAffinityPriority(
+						args.PodLister,
 						args.ServiceLister,
 						policy.Argument.ServiceAntiAffinity.Label,
 					)

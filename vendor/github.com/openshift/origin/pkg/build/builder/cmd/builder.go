@@ -11,7 +11,7 @@ import (
 	"github.com/golang/glog"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/runtime"
 
 	s2iapi "github.com/openshift/source-to-image/pkg/api"
@@ -54,7 +54,7 @@ func newBuilderConfigFromEnvironment() (*builderConfig, error) {
 	if len(masterVersion) != 0 && masterVersion != thisVersion {
 		glog.Warningf("Master version %q does not match Builder image version %q", masterVersion, thisVersion)
 	} else {
-		glog.V(2).Infof("Master version %q, Builder versions %q", masterVersion, thisVersion)
+		glog.V(2).Infof("Master version %q, Builder version %q", masterVersion, thisVersion)
 	}
 
 	// sourceSecretsDir (SOURCE_SECRET_PATH)
@@ -68,7 +68,7 @@ func newBuilderConfigFromEnvironment() (*builderConfig, error) {
 	}
 
 	// buildsClient (KUBERNETES_SERVICE_HOST, KUBERNETES_SERVICE_PORT)
-	clientConfig, err := kclient.InClusterConfig()
+	clientConfig, err := restclient.InClusterConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get client config: %v", err)
 	}

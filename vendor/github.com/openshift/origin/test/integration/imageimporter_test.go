@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -18,7 +18,8 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
+	kerrors "k8s.io/kubernetes/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/watch"
 
 	"github.com/openshift/origin/pkg/dockerregistry"
@@ -30,11 +31,8 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
-func init() {
-	testutil.RequireEtcd()
-}
-
 func TestImageStreamImport(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -163,6 +161,7 @@ func mockRegistryHandler(t *testing.T, count *int) http.Handler {
 }
 
 func TestImageStreamImportAuthenticated(t *testing.T) {
+	testutil.RequireEtcd(t)
 	// start regular HTTP servers
 	count := 0
 	server := httptest.NewServer(mockRegistryHandler(t, &count))
@@ -254,7 +253,7 @@ func TestImageStreamImportAuthenticated(t *testing.T) {
 			ObjectMeta: kapi.ObjectMeta{Name: fmt.Sprintf("secret-%d", i+1)},
 			Type:       kapi.SecretTypeDockerConfigJson,
 			Data: map[string][]byte{
-				kapi.DockerConfigJsonKey: []byte(`{"auths":{"` + host + `/v2/test/image/":{"auth":"` + base64.StdEncoding.EncodeToString([]byte("user:password")) + `"}}}`),
+				kapi.DockerConfigJsonKey: []byte(`{"auths":{"` + host + `/test/image/":{"auth":"` + base64.StdEncoding.EncodeToString([]byte("user:password")) + `"}}}`),
 			},
 		})
 		if err != nil {
@@ -329,6 +328,7 @@ func TestImageStreamImportAuthenticated(t *testing.T) {
 // test controller interval), updates the image stream only when there are changes, and if an
 // error occurs writes the error only once (instead of every interval)
 func TestImageStreamImportScheduled(t *testing.T) {
+	testutil.RequireEtcd(t)
 	written := make(chan struct{}, 1)
 	count := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -498,7 +498,7 @@ func TestImageStreamImportScheduled(t *testing.T) {
 }
 
 func TestImageStreamImportDockerHub(t *testing.T) {
-	rt, _ := kclient.TransportFor(&kclient.Config{})
+	rt, _ := restclient.TransportFor(&restclient.Config{})
 	importCtx := importer.NewContext(rt, nil).WithCredentials(importer.NoCredentials)
 
 	imports := &api.ImageStreamImport{
@@ -515,8 +515,22 @@ func TestImageStreamImportDockerHub(t *testing.T) {
 		},
 	}
 
-	i := importer.NewImageStreamImporter(importCtx, 3, nil)
-	if err := i.Import(gocontext.Background(), imports); err != nil {
+	err := retryWhenUnreachable(t, func() error {
+		i := importer.NewImageStreamImporter(importCtx, 3, nil)
+		if err := i.Import(gocontext.Background(), imports); err != nil {
+			return err
+		}
+
+		errs := []error{}
+		for i, d := range imports.Status.Images {
+			fromName := imports.Spec.Images[i].From.Name
+			if d.Status.Status != unversioned.StatusSuccess && fromName != "mysql/doesnotexistinanyform" {
+				errs = append(errs, fmt.Errorf("failed to import an image %s: %v", fromName, d.Status.Message))
+			}
+		}
+		return kerrors.NewAggregate(errs)
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -545,19 +559,37 @@ func TestImageStreamImportDockerHub(t *testing.T) {
 }
 
 func TestImageStreamImportQuayIO(t *testing.T) {
-	rt, _ := kclient.TransportFor(&kclient.Config{})
+	rt, _ := restclient.TransportFor(&restclient.Config{})
 	importCtx := importer.NewContext(rt, nil).WithCredentials(importer.NoCredentials)
 
+	repositoryName := quayRegistryName + "/coreos/etcd"
 	imports := &api.ImageStreamImport{
 		Spec: api.ImageStreamImportSpec{
 			Images: []api.ImageImportSpec{
-				{From: kapi.ObjectReference{Kind: "DockerImage", Name: "quay.io/coreos/etcd"}},
+				{From: kapi.ObjectReference{Kind: "DockerImage", Name: repositoryName}},
 			},
 		},
 	}
 
-	i := importer.NewImageStreamImporter(importCtx, 3, nil)
-	if err := i.Import(gocontext.Background(), imports); err != nil {
+	err := retryWhenUnreachable(t, func() error {
+		i := importer.NewImageStreamImporter(importCtx, 3, nil)
+		if err := i.Import(gocontext.Background(), imports); err != nil {
+			return err
+		}
+
+		errs := []error{}
+		for i, d := range imports.Status.Images {
+			fromName := imports.Spec.Images[i].From.Name
+			if d.Status.Status != unversioned.StatusSuccess {
+				if d.Status.Reason == "NotV2Registry" {
+					t.Skipf("the server did not report as a v2 registry: %#v", d.Status)
+				}
+				errs = append(errs, fmt.Errorf("failed to import an image %s: %v", fromName, d.Status.Message))
+			}
+		}
+		return kerrors.NewAggregate(errs)
+	}, imageNotFoundErrorPatterns...)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -568,32 +600,27 @@ func TestImageStreamImportQuayIO(t *testing.T) {
 		t.Fatalf("unexpected response: %#v", imports.Status.Images)
 	}
 	d := imports.Status.Images[0]
-	if d.Status.Status != unversioned.StatusSuccess {
-		if d.Status.Reason == "NotV2Registry" {
-			t.Skipf("the server did not report as a v2 registry: %#v", d.Status)
-		}
-		t.Fatalf("unexpected error: %#v", d.Status)
-	}
-	if d.Image == nil || len(d.Image.DockerImageManifest) == 0 || !strings.HasPrefix(d.Image.DockerImageReference, "quay.io/coreos/etcd@") || len(d.Image.DockerImageMetadata.ID) == 0 || len(d.Image.DockerImageLayers) == 0 {
-		t.Errorf("unexpected object: %#v", d.Image)
+	if d.Image == nil || len(d.Image.DockerImageManifest) == 0 || !strings.HasPrefix(d.Image.DockerImageReference, repositoryName+"@") || len(d.Image.DockerImageMetadata.ID) == 0 || len(d.Image.DockerImageLayers) == 0 {
 		s := spew.ConfigState{
 			Indent: " ",
 			// Extra deep spew.
 			DisableMethods: true,
 		}
 		t.Logf("import: %s", s.Sdump(d))
+		t.Fatalf("unexpected object: %#v", d.Image)
 	}
 }
 
 func TestImageStreamImportRedHatRegistry(t *testing.T) {
-	rt, _ := kclient.TransportFor(&kclient.Config{})
+	rt, _ := restclient.TransportFor(&restclient.Config{})
 	importCtx := importer.NewContext(rt, nil).WithCredentials(importer.NoCredentials)
 
+	repositoryName := pulpRegistryName + "/rhel7"
 	// test without the client on the context
 	imports := &api.ImageStreamImport{
 		Spec: api.ImageStreamImportSpec{
 			Images: []api.ImageImportSpec{
-				{From: kapi.ObjectReference{Kind: "DockerImage", Name: "registry.access.redhat.com/rhel7"}},
+				{From: kapi.ObjectReference{Kind: "DockerImage", Name: repositoryName}},
 			},
 		},
 	}
@@ -618,15 +645,32 @@ func TestImageStreamImportRedHatRegistry(t *testing.T) {
 	imports = &api.ImageStreamImport{
 		Spec: api.ImageStreamImportSpec{
 			Images: []api.ImageImportSpec{
-				{From: kapi.ObjectReference{Kind: "DockerImage", Name: "registry.access.redhat.com/rhel7"}},
+				{From: kapi.ObjectReference{Kind: "DockerImage", Name: repositoryName}},
 			},
 		},
 	}
 	context := gocontext.WithValue(gocontext.Background(), importer.ContextKeyV1RegistryClient, dockerregistry.NewClient(20*time.Second, false))
 	importCtx = importer.NewContext(rt, nil).WithCredentials(importer.NoCredentials)
-	i = importer.NewImageStreamImporter(importCtx, 3, nil)
-	if err := i.Import(context, imports); err != nil {
-		t.Fatal(err)
+	err := retryWhenUnreachable(t, func() error {
+		i = importer.NewImageStreamImporter(importCtx, 3, nil)
+		if err := i.Import(context, imports); err != nil {
+			return err
+		}
+
+		errs := []error{}
+		for i, d := range imports.Status.Images {
+			fromName := imports.Spec.Images[i].From.Name
+			if d.Status.Status != unversioned.StatusSuccess {
+				errs = append(errs, fmt.Errorf("failed to import an image %s: %v", fromName, d.Status.Message))
+			}
+		}
+		return kerrors.NewAggregate(errs)
+	}, imageNotFoundErrorPatterns...)
+	if err != nil {
+		if strings.Contains(err.Error(), "x509: certificate has expired or is not yet valid") {
+			t.Skip("SKIPPING: due to expired certificate of %s: %v", pulpRegistryName, err)
+		}
+		t.Fatal(err.Error())
 	}
 
 	if imports.Status.Repository != nil {
@@ -636,9 +680,9 @@ func TestImageStreamImportRedHatRegistry(t *testing.T) {
 		t.Fatalf("unexpected response: %#v", imports.Status.Images)
 	}
 	d = imports.Status.Images[0]
-	if d.Image == nil || len(d.Image.DockerImageManifest) != 0 || d.Image.DockerImageReference != "registry.access.redhat.com/rhel7:latest" || len(d.Image.DockerImageMetadata.ID) == 0 || len(d.Image.DockerImageLayers) != 0 {
-		t.Errorf("unexpected object: %#v", d.Status)
+	if d.Image == nil || len(d.Image.DockerImageManifest) != 0 || d.Image.DockerImageReference != repositoryName+":latest" || len(d.Image.DockerImageMetadata.ID) == 0 || len(d.Image.DockerImageLayers) != 0 {
 		t.Logf("imports: %#v", imports.Status.Images[0].Image)
+		t.Fatalf("unexpected object: %#v", d.Status)
 	}
 }
 

@@ -19,8 +19,7 @@ angular.module("openshiftConsole")
             $scope.alerts["create"] =
               {
                 type: "success",
-                message: "Build " + build.metadata.name + " has started.",
-                link: $filter('navigateResourceURL')(build)
+                message: "Build " + build.metadata.name + " has started."
               };
         },
         function(result) { //failure
@@ -75,7 +74,10 @@ angular.module("openshiftConsole")
             {
               type: "success",
               message: "Build " + buildName + " is being rebuilt as " + build.metadata.name + ".",
-              link: $filter('navigateResourceURL')(build)
+              links: [{
+                href: $filter('navigateResourceURL')(build) + "?tab=logs",
+                label: "View Log"
+              }]
             };
         },
         function(result) { //failure
@@ -100,6 +102,31 @@ angular.module("openshiftConsole")
         }
       });
       return buildConfigBuildsInProgress;
+    };
+
+    BuildsService.prototype.isPaused = function(buildConfig) {
+      return $filter('annotation')(buildConfig, "openshift.io/build-config.paused") === 'true';
+    };
+
+    BuildsService.prototype.canBuild = function(buildConfig, buildConfigBuildsInProgressMap) {
+      if (!buildConfig) {
+        return false;
+      }
+
+      if (buildConfig.metadata.deletionTimestamp) {
+        return false;
+      }
+
+      if (buildConfigBuildsInProgressMap &&
+          $filter('hashSize')(buildConfigBuildsInProgressMap[buildConfig.metadata.name]) > 0) {
+        return false;
+      }
+
+      if (this.isPaused(buildConfig)) {
+        return false;
+      }
+
+      return true;
     };
 
     return new BuildsService();

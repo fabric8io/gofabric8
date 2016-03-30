@@ -36,64 +36,41 @@ type HandlerRunner interface {
 	Run(containerID ContainerID, pod *api.Pod, container *api.Container, handler *api.Handler) error
 }
 
-// RunContainerOptionsGenerator generates the options that necessary for
-// container runtime to run a container.
-type RunContainerOptionsGenerator interface {
-	GenerateRunContainerOptions(pod *api.Pod, container *api.Container) (*RunContainerOptions, error)
+// RuntimeHelper wraps kubelet to make container runtime
+// able to get necessary informations like the RunContainerOptions, DNS settings.
+type RuntimeHelper interface {
+	GenerateRunContainerOptions(pod *api.Pod, container *api.Container, podIP string) (*RunContainerOptions, error)
+	GetClusterDNS(pod *api.Pod) (dnsServers []string, dnsSearches []string, err error)
 }
 
 // ShouldContainerBeRestarted checks whether a container needs to be restarted.
 // TODO(yifan): Think about how to refactor this.
 func ShouldContainerBeRestarted(container *api.Container, pod *api.Pod, podStatus *PodStatus) bool {
-	// Get all dead container status.
-	var resultStatus []*ContainerStatus
-	for _, containerStatus := range podStatus.ContainerStatuses {
-		if containerStatus.Name == container.Name && containerStatus.State == ContainerStateExited {
-			resultStatus = append(resultStatus, containerStatus)
-		}
+	// Get latest container status.
+	status := podStatus.FindContainerStatusByName(container.Name)
+	// If the container was never started before, we should start it.
+	// NOTE(random-liu): If all historical containers were GC'd, we'll also return true here.
+	if status == nil {
+		return true
 	}
-
-	// Check RestartPolicy for dead container.
-	if len(resultStatus) > 0 {
-		if pod.Spec.RestartPolicy == api.RestartPolicyNever {
-			glog.V(4).Infof("Already ran container %q of pod %q, do nothing", container.Name, format.Pod(pod))
+	// Check whether container is running
+	if status.State == ContainerStateRunning {
+		return false
+	}
+	// Always restart container in unknown state now
+	if status.State == ContainerStateUnknown {
+		return true
+	}
+	// Check RestartPolicy for dead container
+	if pod.Spec.RestartPolicy == api.RestartPolicyNever {
+		glog.V(4).Infof("Already ran container %q of pod %q, do nothing", container.Name, format.Pod(pod))
+		return false
+	}
+	if pod.Spec.RestartPolicy == api.RestartPolicyOnFailure {
+		// Check the exit code.
+		if status.ExitCode == 0 {
+			glog.V(4).Infof("Already successfully ran container %q of pod %q, do nothing", container.Name, format.Pod(pod))
 			return false
-		}
-		if pod.Spec.RestartPolicy == api.RestartPolicyOnFailure {
-			// Check the exit code of last run. Note: This assumes the result is sorted
-			// by the created time in reverse order.
-			if resultStatus[0].ExitCode == 0 {
-				glog.V(4).Infof("Already successfully ran container %q of pod %q, do nothing", container.Name, format.Pod(pod))
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// TODO(random-liu): This should be removed soon after rkt implements GetPodStatus.
-func ShouldContainerBeRestartedOldVersion(container *api.Container, pod *api.Pod, podStatus *api.PodStatus) bool {
-	// Get all dead container status.
-	var resultStatus []*api.ContainerStatus
-	for i, containerStatus := range podStatus.ContainerStatuses {
-		if containerStatus.Name == container.Name && containerStatus.State.Terminated != nil {
-			resultStatus = append(resultStatus, &podStatus.ContainerStatuses[i])
-		}
-	}
-
-	// Check RestartPolicy for dead container.
-	if len(resultStatus) > 0 {
-		if pod.Spec.RestartPolicy == api.RestartPolicyNever {
-			glog.V(4).Infof("Already ran container %q of pod %q, do nothing", container.Name, format.Pod(pod))
-			return false
-		}
-		if pod.Spec.RestartPolicy == api.RestartPolicyOnFailure {
-			// Check the exit code of last run. Note: This assumes the result is sorted
-			// by the created time in reverse order.
-			if resultStatus[0].State.Terminated.ExitCode == 0 {
-				glog.V(4).Infof("Already successfully ran container %q of pod %q, do nothing", container.Name, format.Pod(pod))
-				return false
-			}
 		}
 	}
 	return true

@@ -12,27 +12,38 @@
             <div ng-if="build">
               <h1>
                 {{build.metadata.name}}
-                <span ng-if="build.status.message" class="pficon pficon-warning-triangle-o" style="cursor: help;" data-toggle="popover" data-placement="right" data-trigger="hover" dynamic-content="{{build.status.message}}"></span>
+                <span ng-if="build.status.message" class="pficon pficon-warning-triangle-o" style="cursor: help;" data-toggle="popover" data-trigger="hover" dynamic-content="{{build.status.message}}"></span>
+                <span class="pficon pficon-warning-triangle-o"
+                      ng-if="paused"
+                      aria-hidden="true"
+                      data-toggle="tooltip"
+                      data-original-title="Building from build configuration {{buildConfig.metadata.name}} has been paused.">
+                </span>
                 <small class="meta">created <relative-timestamp timestamp="build.metadata.creationTimestamp"></relative-timestamp></small>
                 <div class="pull-right dropdown">
                   <!-- Primary Actions -->
                   <button class="btn btn-default hidden-xs"
                           ng-click="cancelBuild()"
-                          ng-if="!build.metadata.deletionTimestamp && (build | isIncompleteBuild)">Cancel</button>
+                          ng-if="!build.metadata.deletionTimestamp && (build | isIncompleteBuild)">Cancel Build</button>
                   <button class="btn btn-default hidden-xs"
                           ng-click="cloneBuild()"
                           ng-hide="build.metadata.deletionTimestamp || (build | isIncompleteBuild)"
                           ng-disabled="!canBuild">Rebuild</button>
 
                   <!-- Secondary Actions -->
-                  <a href="" class="dropdown-toggle resource-actions-dropdown" data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
+                  <button type="button" class="dropdown-toggle btn btn-default actions-dropdown-btn hidden-xs" data-toggle="dropdown">
+                    Actions
+                    <span class="caret" aria-hidden="true"></span>
+                  </button>
+                  <a href=""
+                     class="dropdown-toggle actions-dropdown-kebab visible-xs-inline"
+                     data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
                   <ul class="dropdown-menu actions action-button">
                     <li ng-if="!build.metadata.deletionTimestamp && (build | isIncompleteBuild)"
                         class="visible-xs-inline">
                       <a href=""
                          role="button"
-                         ng-click="cancelBuild()"
-                      ><i class="fa fa-ban fa-fw" aria-hidden="true"></i> Cancel</a>
+                         ng-click="cancelBuild()">Cancel Build</a>
                     </li>
                     <li class="visible-xs-inline"
                         ng-class="{ disabled: !canBuild }"
@@ -41,19 +52,18 @@
                          role="button"
                          ng-click="cloneBuild()"
                          ng-attr-aria-disabled="{{canBuild ? undefined : 'true'}}"
-                         ng-class="{ 'disabled-link': !canBuild }"
-                      ><i class="fa fa-refresh fa-fw"></i> Rebuild</a>
+                         ng-class="{ 'disabled-link': !canBuild }">Rebuild</a>
                     </li>
                     <li>
                       <edit-link
                         resource="build"
-                        kind="builds"
+                        kind="Build"
                         alerts="alerts">
                       </edit-link>
                     </li>
                     <li>
                       <delete-link
-                        resource-type="build"
+                        kind="Build"
                         resource-name="{{build.metadata.name}}"
                         project-name="{{build.metadata.namespace}}"
                         alerts="alerts">
@@ -94,10 +104,24 @@
                         name="build.metadata.name"
                         context="projectContext"
                         options="logOptions"
-                        status="build.status.phase"
-                        start="build.status.startTimestamp | date : 'short'"
-                        end="build.status.completionTimestamp | date : 'short'"
+                        empty="logEmpty"
                         run="logCanRun">
+
+                        <div row cross-axis="center">
+                          <div>
+                            Build status:
+                            <status-icon status="build.status.phase"></status-icon>
+                            <span class="space-after">{{build.status.phase}}</span>
+
+                            <span ng-if="build.status.startTimestamp && !logEmpty">
+                              &mdash; Log from {{build.status.startTimestamp  | date : 'short'}}
+                              <span ng-if="build.status.completionTimestamp">
+                                to {{build.status.completionTimestamp  | date : 'short'}}
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+
                       </log-viewer>
                     </uib-tab>
                     <uib-tab active="selectedTab.events">

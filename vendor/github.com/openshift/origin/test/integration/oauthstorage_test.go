@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -28,10 +28,6 @@ import (
 	testutil "github.com/openshift/origin/test/util"
 )
 
-func init() {
-	testutil.RequireEtcd()
-}
-
 type testUser struct {
 	UserName string
 	UserUID  string
@@ -59,14 +55,14 @@ func (u *testUser) ConvertFromAccessToken(*api.OAuthAccessToken) (interface{}, e
 }
 
 func TestOAuthStorage(t *testing.T) {
-	testutil.DeleteAllEtcdKeys()
+	testutil.RequireEtcd(t)
 
 	groupMeta := registered.GroupOrDie(api.GroupName)
 	etcdClient, err := testutil.MakeNewEtcdClient()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	etcdHelper := etcdstorage.NewEtcdStorage(etcdClient, kapi.Codecs.LegacyCodec(groupMeta.GroupVersions...), etcdtest.PathPrefix())
+	etcdHelper := etcdstorage.NewEtcdStorage(etcdClient, kapi.Codecs.LegacyCodec(groupMeta.GroupVersions...), etcdtest.PathPrefix(), false)
 
 	accessTokenStorage := accesstokenetcd.NewREST(etcdHelper)
 	accessTokenRegistry := accesstokenregistry.NewRegistry(accessTokenStorage)

@@ -61,15 +61,8 @@ func (plugin *glusterfsPlugin) CanSupport(spec *volume.Spec) bool {
 		(spec.Volume != nil && spec.Volume.Glusterfs == nil) {
 		return false
 	}
-	// see if glusterfs mount helper is there
-	// this needs a ls because the plugin container may be on a filesystem
-	// that is not visible to the volume plugin process.
-	_, err := plugin.execCommand("ls", []string{"/sbin/mount.glusterfs"})
-	if err == nil {
-		return true
-	}
 
-	return false
+	return true
 
 }
 
@@ -85,7 +78,7 @@ func (plugin *glusterfsPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ vol
 	source, _ := plugin.getGlusterVolumeSource(spec)
 	ep_name := source.EndpointsName
 	ns := pod.Namespace
-	ep, err := plugin.host.GetKubeClient().Endpoints(ns).Get(ep_name)
+	ep, err := plugin.host.GetKubeClient().Core().Endpoints(ns).Get(ep_name)
 	if err != nil {
 		glog.Errorf("glusterfs: failed to get endpoints %s[%v]", ep_name, err)
 		return nil, err

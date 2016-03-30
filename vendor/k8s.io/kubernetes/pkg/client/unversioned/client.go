@@ -20,6 +20,9 @@ import (
 	"net"
 	"net/url"
 	"strings"
+
+	"k8s.io/kubernetes/pkg/client/restclient"
+	"k8s.io/kubernetes/pkg/client/typed/discovery"
 )
 
 // Interface holds the methods for clients of Kubernetes,
@@ -40,8 +43,11 @@ type Interface interface {
 	PersistentVolumesInterface
 	PersistentVolumeClaimsNamespacer
 	ComponentStatusesInterface
+	ConfigMapsNamespacer
+	Autoscaling() AutoscalingInterface
+	Batch() BatchInterface
 	Extensions() ExtensionsInterface
-	Discovery() DiscoveryInterface
+	Discovery() discovery.DiscoveryInterface
 
 	SecurityContextConstraintsInterface
 }
@@ -109,20 +115,17 @@ func (c *Client) ComponentStatuses() ComponentStatusInterface {
 	return newComponentStatuses(c)
 }
 
-// Client is the implementation of a Kubernetes client.
-type Client struct {
-	*RESTClient
-	*ExtensionsClient
-	*DiscoveryClient
+func (c *Client) ConfigMaps(namespace string) ConfigMapsInterface {
+	return newConfigMaps(c, namespace)
 }
 
-func stringDoesntExistIn(str string, slice []string) bool {
-	for _, s := range slice {
-		if s == str {
-			return false
-		}
-	}
-	return true
+// Client is the implementation of a Kubernetes client.
+type Client struct {
+	*restclient.RESTClient
+	*AutoscalingClient
+	*BatchClient
+	*ExtensionsClient
+	*discovery.DiscoveryClient
 }
 
 // IsTimeout tests if this is a timeout error in the underlying transport.
@@ -147,10 +150,18 @@ func IsTimeout(err error) bool {
 	return false
 }
 
+func (c *Client) Autoscaling() AutoscalingInterface {
+	return c.AutoscalingClient
+}
+
+func (c *Client) Batch() BatchInterface {
+	return c.BatchClient
+}
+
 func (c *Client) Extensions() ExtensionsInterface {
 	return c.ExtensionsClient
 }
 
-func (c *Client) Discovery() DiscoveryInterface {
+func (c *Client) Discovery() discovery.DiscoveryInterface {
 	return c.DiscoveryClient
 }

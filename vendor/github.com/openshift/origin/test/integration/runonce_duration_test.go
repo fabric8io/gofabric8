@@ -10,7 +10,6 @@ import (
 
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
-	kubemaster "github.com/openshift/origin/pkg/cmd/server/kubernetes"
 	pluginapi "github.com/openshift/origin/pkg/quota/admission/runonceduration/api"
 	testutil "github.com/openshift/origin/test/util"
 	testserver "github.com/openshift/origin/test/util/server"
@@ -33,7 +32,6 @@ func TestRunOnceDurationAdmissionPlugin(t *testing.T) {
 	var secs int64 = 3600
 	config := &pluginapi.RunOnceDurationConfig{
 		ActiveDeadlineSecondsOverride: &secs,
-		Enabled: true,
 	}
 	kclient := setupRunOnceDurationTest(t, config, nil)
 	pod, err := kclient.Pods(testutil.Namespace()).Create(testRunOnceDurationPod())
@@ -49,7 +47,6 @@ func TestRunOnceDurationAdmissionPluginProjectOverride(t *testing.T) {
 	var secs int64 = 3600
 	config := &pluginapi.RunOnceDurationConfig{
 		ActiveDeadlineSecondsOverride: &secs,
-		Enabled: true,
 	}
 	nsAnnotations := map[string]string{
 		pluginapi.ActiveDeadlineSecondsOverrideAnnotation: "100",
@@ -65,12 +62,11 @@ func TestRunOnceDurationAdmissionPluginProjectOverride(t *testing.T) {
 }
 
 func setupRunOnceDurationTest(t *testing.T, pluginConfig *pluginapi.RunOnceDurationConfig, nsAnnotations map[string]string) kclient.Interface {
+	testutil.RequireEtcd(t)
 	masterConfig, err := testserver.DefaultMasterOptions()
 	if err != nil {
 		t.Fatalf("error creating config: %v", err)
 	}
-	plugins := append([]string{"RunOnceDuration"}, kubemaster.AdmissionPlugins...)
-	masterConfig.KubernetesMasterConfig.AdmissionConfig.PluginOrderOverride = plugins
 	masterConfig.KubernetesMasterConfig.AdmissionConfig.PluginConfig = map[string]configapi.AdmissionPluginConfig{
 		"RunOnceDuration": {
 			Configuration: pluginConfig,

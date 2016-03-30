@@ -68,6 +68,7 @@ func NewCmdProcess(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.
 		},
 	}
 	cmd.Flags().StringP("filename", "f", "", "Filename or URL to file to read a template")
+	cmd.MarkFlagFilename("filename", "yaml", "yml", "json")
 	cmd.Flags().StringSliceP("value", "v", nil, "Specify a list of key-value pairs (eg. -v FOO=BAR,BAR=FOO) to set/override parameter values")
 	cmd.Flags().BoolP("parameters", "", false, "Do not process but only print available parameters")
 	cmd.Flags().StringP("labels", "l", "", "Label to set in all resources for this template")
@@ -76,8 +77,6 @@ func NewCmdProcess(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.
 	cmd.Flags().Bool("raw", false, "If true output the processed template instead of the template's objects. Implied by -o describe")
 	cmd.Flags().String("output-version", "", "Output the formatted object with the given version (default api-version).")
 	cmd.Flags().StringP("template", "t", "", "Template string or path to template file to use when -o=template or -o=templatefile.  The template format is golang templates [http://golang.org/pkg/text/template/#pkg-overview]")
-
-	cmd.MarkFlagFilename("filename", "yaml", "yml", "json")
 
 	return cmd
 }
@@ -215,9 +214,9 @@ func RunProcess(f *clientcmd.Factory, out io.Writer, cmd *cobra.Command, args []
 		// when user specify the --value
 		if cmd.Flag("value").Changed {
 			values := kcmdutil.GetFlagStringSlice(cmd, "value")
-			injectUserVars(values, out, obj)
+			injectUserVars(values, cmd, obj)
 		}
-		injectUserVars(valueArgs, out, obj)
+		injectUserVars(valueArgs, cmd, obj)
 
 		resultObj, err := client.TemplateConfigs(namespace).Create(obj)
 		if err != nil {
@@ -272,11 +271,11 @@ func RunProcess(f *clientcmd.Factory, out io.Writer, cmd *cobra.Command, args []
 }
 
 // injectUserVars injects user specified variables into the Template
-func injectUserVars(values []string, out io.Writer, t *templateapi.Template) {
+func injectUserVars(values []string, cmd *cobra.Command, t *templateapi.Template) {
 	for _, keypair := range values {
 		p := strings.SplitN(keypair, "=", 2)
 		if len(p) != 2 {
-			fmt.Fprintf(out, "invalid parameter assignment in %q: %q\n", t.Name, keypair)
+			fmt.Fprintf(cmd.Out(), "invalid parameter assignment in %q: %q\n", t.Name, keypair)
 			continue
 		}
 		if v := template.GetParameterByName(t, p[0]); v != nil {
@@ -284,7 +283,7 @@ func injectUserVars(values []string, out io.Writer, t *templateapi.Template) {
 			v.Generate = ""
 			template.AddParameter(t, *v)
 		} else {
-			fmt.Fprintf(out, "unknown parameter name %q\n", p[0])
+			fmt.Fprintf(cmd.Out(), "unknown parameter name %q\n", p[0])
 		}
 	}
 }

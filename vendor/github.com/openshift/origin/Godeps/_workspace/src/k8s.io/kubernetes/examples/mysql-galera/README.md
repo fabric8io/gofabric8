@@ -1,29 +1,5 @@
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-
-<h2>PLEASE NOTE: This document applies to the HEAD of the source tree</h2>
-
-If you are using a released version of Kubernetes, you should
-refer to the docs that go with that version.
-
-Documentation for other releases can be found at
-[releases.k8s.io](http://releases.k8s.io).
-</strong>
---
-
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
@@ -47,7 +23,7 @@ By defaults, there are only three pods (hence replication controllers) for this 
 
 When the replication controller is created, it results in the corresponding container to start, run an entrypoint script that installs the mysql system tables, set up users, and build up a list of servers that is used with the galera parameter ```wsrep_cluster_address```.  This is a list of running nodes that galera uses for election of a node to obtain SST (Single State Transfer) from.
 
-Note: Kubernetes best-practices is to pre-create the services for each controller, and the configuration files which contain the service and replication controller for each node, when created, will result in both a service and replication contrller running for the given node. An important thing to know is that it's important that initally pxc-node1.yaml be processed first and no other pxc-nodeN services that don't have corresponding replication controllers should exist. The reason for this is that if there is a node in ```wsrep_clsuter_address``` without a backing galera node there will be nothing to obtain SST from which will cause the node to shut itself down and the container in question to exit (and another soon relaunched, repeatedly).
+Note: Kubernetes best-practices is to pre-create the services for each controller, and the configuration files which contain the service and replication controller for each node, when created, will result in both a service and replication contrller running for the given node. An important thing to know is that it's important that initially pxc-node1.yaml be processed first and no other pxc-nodeN services that don't have corresponding replication controllers should exist. The reason for this is that if there is a node in ```wsrep_clsuter_address``` without a backing galera node there will be nothing to obtain SST from which will cause the node to shut itself down and the container in question to exit (and another soon relaunched, repeatedly).
 
 First, create the overall cluster service that will be used to connect to the cluster:
 
@@ -159,6 +135,13 @@ At this point, there is a working cluster that can begin being used via the pxc-
 
 This setup certainly can become more fluid and dynamic. One idea is to perhaps use an etcd container to store information about node state. Originally, there was a read-only kubernetes API available to each container but that has since been removed. Also, Kelsey Hightower is working on moving the functionality of confd to Kubernetes. This could replace the shell duct tape that builds the cluster configuration file for the image.
 
+
+
+
+
+<!-- BEGIN MUNGE: IS_VERSIONED -->
+<!-- TAG IS_VERSIONED -->
+<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

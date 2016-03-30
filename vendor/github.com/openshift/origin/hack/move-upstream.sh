@@ -22,17 +22,22 @@ cd "${OS_ROOT}"
 repo="${UPSTREAM_REPO:-k8s.io/kubernetes}"
 package="${UPSTREAM_PACKAGE:-pkg/api}"
 
-patch="${TMPDIR}/patch"
+patch="${TMPDIR:-/tmp}/patch"
 rm -rf "${patch}"
 mkdir -p "${patch}"
-relativedir="${UPSTREAM_DIR-../../../${repo}}"
+relativedir="${UPSTREAM_REPO_LOCATION:-../../../${repo}}"
 if [[ ! -d "${relativedir}" ]]; then
   echo "Expected ${relativedir} to exist" 1>&2
   exit 1
 fi
 
 if [[ -z "${NO_REBASE-}" ]]; then
-  lastrev="$(go run ${OS_ROOT}/tools/godepversion/godepversion.go ${OS_ROOT}/Godeps/Godeps.json ${repo}/${package})"
+  if [[ "${package}" != "." ]]; then
+    out="${repo}/${package}"
+  else
+    out="${repo}"
+  fi
+  lastrev="$(go run ${OS_ROOT}/tools/godepversion/godepversion.go ${OS_ROOT}/Godeps/Godeps.json ${out})"
 fi
 
 branch="${TARGET_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"

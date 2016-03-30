@@ -18,13 +18,14 @@ package metrics
 
 import (
 	"fmt"
+	"time"
 
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/prometheus/common/model"
 )
 
-var KnownKubeletMetrics = map[string][]string{
+var NecessaryKubeletMetrics = map[string][]string{
 	"cadvisor_version_info":                                  {"cadvisorRevision", "cadvisorVersion", "dockerVersion", "kernelVersion", "osVersion"},
 	"container_cpu_system_seconds_total":                     {"id", "image", "kubernetes_container_name", "kubernetes_namespace", "kubernetes_pod_name", "name"},
 	"container_cpu_usage_seconds_total":                      {"id", "image", "kubernetes_container_name", "kubernetes_namespace", "kubernetes_pod_name", "name", "cpu"},
@@ -43,6 +44,8 @@ var KnownKubeletMetrics = map[string][]string{
 	"container_fs_writes_merged_total":                       {"device", "id", "image", "kubernetes_container_name", "kubernetes_namespace", "kubernetes_pod_name", "name"},
 	"container_fs_writes_total":                              {"device", "id", "image", "kubernetes_container_name", "kubernetes_namespace", "kubernetes_pod_name", "name"},
 	"container_last_seen":                                    {"id", "image", "kubernetes_container_name", "kubernetes_namespace", "kubernetes_pod_name", "name"},
+	"container_memory_cache":                                 {},
+	"container_memory_rss":                                   {},
 	"container_memory_failcnt":                               {"id", "image", "kubernetes_container_name", "kubernetes_namespace", "kubernetes_pod_name", "name"},
 	"container_memory_failures_total":                        {"id", "image", "kubernetes_container_name", "kubernetes_namespace", "kubernetes_pod_name", "name", "scope", "type"},
 	"container_memory_usage_bytes":                           {"id", "image", "kubernetes_container_name", "kubernetes_namespace", "kubernetes_pod_name", "name"},
@@ -116,29 +119,42 @@ func (m *KubeletMetrics) Equal(o KubeletMetrics) bool {
 
 func NewKubeletMetrics() KubeletMetrics {
 	result := NewMetrics()
-	for metric := range KnownKubeletMetrics {
+	for metric := range NecessaryKubeletMetrics {
 		result[metric] = make(model.Samples, 0)
 	}
 	return KubeletMetrics(result)
 }
 
-func parseKubeletMetrics(data string, unknownMetrics sets.String) (KubeletMetrics, error) {
+func parseKubeletMetrics(data string) (KubeletMetrics, error) {
 	result := NewKubeletMetrics()
-	if err := parseMetrics(data, KnownKubeletMetrics, (*Metrics)(&result), unknownMetrics); err != nil {
+	if err := parseMetrics(data, NecessaryKubeletMetrics, (*Metrics)(&result), nil); err != nil {
 		return KubeletMetrics{}, err
 	}
 	return result, nil
 }
 
 func (g *MetricsGrabber) getMetricsFromNode(nodeName string, kubeletPort int) (string, error) {
-	rawOutput, err := g.client.Get().
-		Prefix("proxy").
-		Resource("nodes").
-		Name(fmt.Sprintf("%v:%v", nodeName, kubeletPort)).
-		Suffix("metrics").
-		Do().Raw()
-	if err != nil {
-		return "", err
+	// There's a problem with timing out during proxy. Wrapping this in a goroutine to prevent deadlock.
+	// Hanging goroutine will be leaked.
+	finished := make(chan struct{})
+	var err error
+	var rawOutput []byte
+	go func() {
+		rawOutput, err = g.client.Get().
+			Prefix("proxy").
+			Resource("nodes").
+			Name(fmt.Sprintf("%v:%v", nodeName, kubeletPort)).
+			Suffix("metrics").
+			Do().Raw()
+		finished <- struct{}{}
+	}()
+	select {
+	case <-time.After(ProxyTimeout):
+		return "", fmt.Errorf("Timed out when waiting for proxy to gather metrics from %v", nodeName)
+	case <-finished:
+		if err != nil {
+			return "", err
+		}
+		return string(rawOutput), nil
 	}
-	return string(rawOutput), nil
 }

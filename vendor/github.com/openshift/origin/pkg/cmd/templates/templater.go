@@ -128,6 +128,7 @@ func (templater *templater) UsageFunc(exposedFlags ...string) func(*cobra.Comman
 			"rootCmd":             templater.rootCmdName,
 			"isRootCmd":           templater.isRootCmd,
 			"optionsCmdFor":       templater.optionsCmdFor,
+			"usageLine":           templater.usageLine,
 			"exposed": func(c *cobra.Command) *flag.FlagSet {
 				exposed := flag.NewFlagSet("exposed", flag.ContinueOnError)
 				if len(exposedFlags) > 0 {
@@ -201,10 +202,22 @@ func (t *templater) optionsCmdFor(c *cobra.Command) string {
 	return ""
 }
 
+func (t *templater) usageLine(c *cobra.Command) string {
+	usage := c.UseLine()
+	suffix := "[options]"
+	if c.HasFlags() && !strings.Contains(usage, suffix) {
+		usage += " " + suffix
+	}
+	return usage
+}
+
 func flagsUsages(f *flag.FlagSet) string {
 	x := new(bytes.Buffer)
 
 	f.VisitAll(func(flag *flag.Flag) {
+		if flag.Hidden {
+			return
+		}
 		format := "--%s=%s: %s\n"
 
 		if flag.Value.Type() == "string" {

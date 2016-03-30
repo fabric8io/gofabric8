@@ -2,7 +2,7 @@ package: github.com/fabric8io/gofabric8
 import:
 - package: github.com/daviddengcn/go-colortext
 - package: github.com/openshift/origin
-  version: v1.1.3
+  version: v1.1.5
   subpackages:
   - pkg/client
   - pkg/cmd/admin/policy
@@ -20,7 +20,7 @@ import:
 - package: k8s.io/kubernetes
   repo: git@github.com:openshift/kubernetes.git
   vcs: git
-  version: stable-20160127
+  version: release-1.2-stable-20160309
   subpackages:
   - pkg/api
   - pkg/api/resource

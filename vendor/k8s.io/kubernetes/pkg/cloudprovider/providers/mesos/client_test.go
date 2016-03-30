@@ -29,6 +29,8 @@ import (
 	"github.com/mesos/mesos-go/detector"
 	"github.com/mesos/mesos-go/mesosutil"
 	"golang.org/x/net/context"
+
+	utilnet "k8s.io/kubernetes/pkg/util/net"
 )
 
 // Test data
@@ -105,7 +107,7 @@ const (
 		"finished_tasks": 0,
 		"flags": {
 			"zk_session_timeout": "10secs",
-			"work_dir": "/tmp/mesos/local/Lc9arz",
+			"work_dir": "/somepath/mesos/local/Lc9arz",
 			"webui_dir": "/usr/local/share/mesos/webui",
 			"version": "false",
 			"user_sorter": "drf",
@@ -180,11 +182,11 @@ func makeHttpMocks() (*httptest.Server, *http.Client, *http.Transport) {
 	}))
 
 	// Intercept all client requests and feed them to the test server
-	transport := &http.Transport{
+	transport := utilnet.SetTransportDefaults(&http.Transport{
 		Proxy: func(req *http.Request) (*url.URL, error) {
 			return url.Parse(httpServer.URL)
 		},
-	}
+	})
 
 	httpClient := &http.Client{Transport: transport}
 

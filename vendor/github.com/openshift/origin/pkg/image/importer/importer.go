@@ -74,7 +74,7 @@ type ImageStreamImporter struct {
 // ImageStreamImport object. Limiter may be nil.
 func NewImageStreamImporter(retriever RepositoryRetriever, maximumTagsPerRepo int, limiter util.RateLimiter) *ImageStreamImporter {
 	if limiter == nil {
-		limiter = util.NewFakeRateLimiter()
+		limiter = util.NewFakeAlwaysRateLimiter()
 	}
 	return &ImageStreamImporter{
 		maximumTagsPerRepo: maximumTagsPerRepo,
@@ -696,7 +696,7 @@ func (r *repositoryRetriever) ping(registry url.URL, insecure bool, transport ht
 			registry.Scheme = "http"
 			_, nErr := r.ping(registry, true, transport)
 			if nErr != nil {
-				return nil, err
+				return nil, nErr
 			}
 			return &registry, nil
 		}

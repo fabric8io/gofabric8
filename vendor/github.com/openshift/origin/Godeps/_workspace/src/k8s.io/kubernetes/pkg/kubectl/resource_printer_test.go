@@ -35,6 +35,7 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 	yamlserializer "k8s.io/kubernetes/pkg/runtime/serializer/yaml"
 	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/ghodss/yaml"
@@ -224,7 +225,7 @@ func ErrorPrintHandler(obj *TestPrintType, w io.Writer, options PrintOptions) er
 
 func TestCustomTypePrinting(t *testing.T) {
 	columns := []string{"Data"}
-	printer := NewHumanReadablePrinter(false, false, false, false, false, []string{})
+	printer := NewHumanReadablePrinter(false, false, false, false, false, false, []string{})
 	printer.Handler(columns, PrintCustomType)
 
 	obj := TestPrintType{"test object"}
@@ -241,7 +242,7 @@ func TestCustomTypePrinting(t *testing.T) {
 
 func TestPrintHandlerError(t *testing.T) {
 	columns := []string{"Data"}
-	printer := NewHumanReadablePrinter(false, false, false, false, false, []string{})
+	printer := NewHumanReadablePrinter(false, false, false, false, false, false, []string{})
 	printer.Handler(columns, ErrorPrintHandler)
 	obj := TestPrintType{"test object"}
 	buffer := &bytes.Buffer{}
@@ -252,7 +253,7 @@ func TestPrintHandlerError(t *testing.T) {
 }
 
 func TestUnknownTypePrinting(t *testing.T) {
-	printer := NewHumanReadablePrinter(false, false, false, false, false, []string{})
+	printer := NewHumanReadablePrinter(false, false, false, false, false, false, []string{})
 	buffer := &bytes.Buffer{}
 	err := printer.PrintObj(&TestUnknownType{}, buffer)
 	if err == nil {
@@ -456,8 +457,8 @@ func TestPrinters(t *testing.T) {
 		t.Fatal(err)
 	}
 	printers := map[string]ResourcePrinter{
-		"humanReadable":        NewHumanReadablePrinter(true, false, false, false, false, []string{}),
-		"humanReadableHeaders": NewHumanReadablePrinter(false, false, false, false, false, []string{}),
+		"humanReadable":        NewHumanReadablePrinter(true, false, false, false, false, false, []string{}),
+		"humanReadableHeaders": NewHumanReadablePrinter(false, false, false, false, false, false, []string{}),
 		"json":                 &JSONPrinter{},
 		"yaml":                 &YAMLPrinter{},
 		"template":             templatePrinter,
@@ -500,7 +501,7 @@ func TestPrinters(t *testing.T) {
 
 func TestPrintEventsResultSorted(t *testing.T) {
 	// Arrange
-	printer := NewHumanReadablePrinter(false /* noHeaders */, false, false, false, false, []string{})
+	printer := NewHumanReadablePrinter(false /* noHeaders */, false, false, false, false, false, []string{})
 
 	obj := api.EventList{
 		Items: []api.Event{
@@ -544,7 +545,7 @@ func TestPrintEventsResultSorted(t *testing.T) {
 }
 
 func TestPrintNodeStatus(t *testing.T) {
-	printer := NewHumanReadablePrinter(false, false, false, false, false, []string{})
+	printer := NewHumanReadablePrinter(false, false, false, false, false, false, []string{})
 	table := []struct {
 		node   api.Node
 		status string
@@ -639,6 +640,41 @@ func contains(fields []string, field string) bool {
 		}
 	}
 	return false
+}
+
+func TestPrintHunmanReadableIngressWithColumnLabels(t *testing.T) {
+	ingress := extensions.Ingress{
+		ObjectMeta: api.ObjectMeta{
+			Name:              "test1",
+			CreationTimestamp: unversioned.Time{Time: time.Now().AddDate(-10, 0, 0)},
+			Labels: map[string]string{
+				"app_name": "kubectl_test_ingress",
+			},
+		},
+		Spec: extensions.IngressSpec{
+			Backend: &extensions.IngressBackend{
+				ServiceName: "svc",
+				ServicePort: intstr.FromInt(93),
+			},
+		},
+		Status: extensions.IngressStatus{
+			LoadBalancer: api.LoadBalancerStatus{
+				Ingress: []api.LoadBalancerIngress{
+					{
+						IP:       "2.3.4.5",
+						Hostname: "localhost.localdomain",
+					},
+				},
+			},
+		},
+	}
+	buff := bytes.Buffer{}
+	printIngress(&ingress, &buff, PrintOptions{false, false, false, false, false, false, []string{"app_name"}})
+	output := string(buff.Bytes())
+	appName := ingress.ObjectMeta.Labels["app_name"]
+	if !strings.Contains(output, appName) {
+		t.Errorf("expected to container app_name label value %s, but doesn't %s", appName, output)
+	}
 }
 
 func TestPrintHumanReadableService(t *testing.T) {
@@ -755,7 +791,7 @@ func TestPrintHumanReadableService(t *testing.T) {
 
 	for _, svc := range tests {
 		buff := bytes.Buffer{}
-		printService(&svc, &buff, PrintOptions{false, false, false, false, false, []string{}})
+		printService(&svc, &buff, PrintOptions{false, false, false, false, false, false, []string{}})
 		output := string(buff.Bytes())
 		ip := svc.Spec.ClusterIP
 		if !strings.Contains(output, ip) {
@@ -937,7 +973,7 @@ func TestPrintHumanReadableWithNamespace(t *testing.T) {
 	for _, test := range table {
 		if test.isNamespaced {
 			// Expect output to include namespace when requested.
-			printer := NewHumanReadablePrinter(false, true, false, false, false, []string{})
+			printer := NewHumanReadablePrinter(false, true, false, false, false, false, []string{})
 			buffer := &bytes.Buffer{}
 			err := printer.PrintObj(test.obj, buffer)
 			if err != nil {
@@ -949,7 +985,7 @@ func TestPrintHumanReadableWithNamespace(t *testing.T) {
 			}
 		} else {
 			// Expect error when trying to get all namespaces for un-namespaced object.
-			printer := NewHumanReadablePrinter(false, true, false, false, false, []string{})
+			printer := NewHumanReadablePrinter(false, true, false, false, false, false, []string{})
 			buffer := &bytes.Buffer{}
 			err := printer.PrintObj(test.obj, buffer)
 			if err == nil {
@@ -1044,7 +1080,7 @@ func TestPrintPod(t *testing.T) {
 
 	buf := bytes.NewBuffer([]byte{})
 	for _, test := range tests {
-		printPod(&test.pod, buf, PrintOptions{false, false, false, true, false, []string{}})
+		printPod(&test.pod, buf, PrintOptions{false, false, false, true, false, false, []string{}})
 		// We ignore time
 		if !strings.HasPrefix(buf.String(), test.expect) {
 			t.Fatalf("Expected: %s, got: %s", test.expect, buf.String())
@@ -1137,7 +1173,7 @@ func TestPrintNonTerminatedPod(t *testing.T) {
 
 	buf := bytes.NewBuffer([]byte{})
 	for _, test := range tests {
-		printPod(&test.pod, buf, PrintOptions{false, false, false, false, false, []string{}})
+		printPod(&test.pod, buf, PrintOptions{false, false, false, false, false, false, []string{}})
 		// We ignore time
 		if !strings.HasPrefix(buf.String(), test.expect) {
 			t.Fatalf("Expected: %s, got: %s", test.expect, buf.String())
@@ -1197,7 +1233,7 @@ func TestPrintPodWithLabels(t *testing.T) {
 
 	buf := bytes.NewBuffer([]byte{})
 	for _, test := range tests {
-		printPod(&test.pod, buf, PrintOptions{false, false, false, false, false, test.labelColumns})
+		printPod(&test.pod, buf, PrintOptions{false, false, false, false, false, false, test.labelColumns})
 		// We ignore time
 		if !strings.HasPrefix(buf.String(), test.startsWith) || !strings.HasSuffix(buf.String(), test.endsWith) {
 			t.Fatalf("Expected to start with: %s and end with: %s, but got: %s", test.startsWith, test.endsWith, buf.String())
@@ -1219,9 +1255,9 @@ func TestTranslateTimestamp(t *testing.T) {
 		{"30 seconds ago", translateTimestamp(unversioned.Time{Time: time.Now().Add(-3e10)}), "30s"},
 		{"5 minutes ago", translateTimestamp(unversioned.Time{Time: time.Now().Add(-3e11)}), "5m"},
 		{"an hour ago", translateTimestamp(unversioned.Time{Time: time.Now().Add(-6e12)}), "1h"},
-		{"2 days ago", translateTimestamp(unversioned.Time{Time: time.Now().AddDate(0, 0, -2)}), "2d"},
-		{"months ago", translateTimestamp(unversioned.Time{Time: time.Now().AddDate(0, 0, -90)}), "90d"},
-		{"10 years ago", translateTimestamp(unversioned.Time{Time: time.Now().AddDate(-10, 0, 0)}), "10y"},
+		{"2 days ago", translateTimestamp(unversioned.Time{Time: time.Now().UTC().AddDate(0, 0, -2)}), "2d"},
+		{"months ago", translateTimestamp(unversioned.Time{Time: time.Now().UTC().AddDate(0, 0, -90)}), "90d"},
+		{"10 years ago", translateTimestamp(unversioned.Time{Time: time.Now().UTC().AddDate(-10, 0, 0)}), "10y"},
 	}
 	for _, test := range tl {
 		if test.got != test.exp {
@@ -1249,19 +1285,164 @@ func TestPrintDeployment(t *testing.T) {
 					},
 				},
 				Status: extensions.DeploymentStatus{
-					Replicas:        10,
-					UpdatedReplicas: 2,
+					Replicas:            10,
+					UpdatedReplicas:     2,
+					AvailableReplicas:   1,
+					UnavailableReplicas: 4,
 				},
 			},
-			"test1\t2/5\t0s\n",
+			"test1\t5\t10\t2\t1\t0s\n",
 		},
 	}
 
 	buf := bytes.NewBuffer([]byte{})
 	for _, test := range tests {
-		printDeployment(&test.deployment, buf, PrintOptions{false, false, false, true, false, []string{}})
+		printDeployment(&test.deployment, buf, PrintOptions{false, false, false, true, false, false, []string{}})
 		if buf.String() != test.expect {
 			t.Fatalf("Expected: %s, got: %s", test.expect, buf.String())
+		}
+		buf.Reset()
+	}
+}
+
+func TestPrintDaemonSet(t *testing.T) {
+	tests := []struct {
+		ds         extensions.DaemonSet
+		startsWith string
+	}{
+		{
+			extensions.DaemonSet{
+				ObjectMeta: api.ObjectMeta{
+					Name:              "test1",
+					CreationTimestamp: unversioned.Time{Time: time.Now().Add(1.9e9)},
+				},
+				Spec: extensions.DaemonSetSpec{
+					Template: api.PodTemplateSpec{
+						Spec: api.PodSpec{Containers: make([]api.Container, 2)},
+					},
+				},
+				Status: extensions.DaemonSetStatus{
+					CurrentNumberScheduled: 2,
+					DesiredNumberScheduled: 3,
+				},
+			},
+			"test1\t3\t2\t<none>\t0s\n",
+		},
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+	for _, test := range tests {
+		printDaemonSet(&test.ds, buf, PrintOptions{false, false, false, false, false, false, []string{}})
+		if !strings.HasPrefix(buf.String(), test.startsWith) {
+			t.Fatalf("Expected to start with %s but got %s", test.startsWith, buf.String())
+		}
+		buf.Reset()
+	}
+}
+
+func TestPrintJob(t *testing.T) {
+	completions := 2
+	tests := []struct {
+		job    extensions.Job
+		expect string
+	}{
+		{
+			extensions.Job{
+				ObjectMeta: api.ObjectMeta{
+					Name:              "job1",
+					CreationTimestamp: unversioned.Time{Time: time.Now().Add(1.9e9)},
+				},
+				Spec: extensions.JobSpec{
+					Completions: &completions,
+				},
+				Status: extensions.JobStatus{
+					Succeeded: 1,
+				},
+			},
+			"job1\t2\t1\t0s\n",
+		},
+		{
+			extensions.Job{
+				ObjectMeta: api.ObjectMeta{
+					Name:              "job2",
+					CreationTimestamp: unversioned.Time{Time: time.Now().AddDate(-10, 0, 0)},
+				},
+				Spec: extensions.JobSpec{
+					Completions: nil,
+				},
+				Status: extensions.JobStatus{
+					Succeeded: 0,
+				},
+			},
+			"job2\t<none>\t0\t10y\n",
+		},
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+	for _, test := range tests {
+		printJob(&test.job, buf, PrintOptions{false, false, false, true, false, false, []string{}})
+		if buf.String() != test.expect {
+			t.Fatalf("Expected: %s, got: %s", test.expect, buf.String())
+		}
+		buf.Reset()
+	}
+}
+
+func TestPrintPodShowLabels(t *testing.T) {
+	tests := []struct {
+		pod        api.Pod
+		startsWith string
+		endsWith   string
+		showLabels bool
+	}{
+		{
+			// Test name, num of containers, restarts, container ready status
+			api.Pod{
+				ObjectMeta: api.ObjectMeta{
+					Name:   "test1",
+					Labels: map[string]string{"col1": "asd", "COL2": "zxc"},
+				},
+				Spec: api.PodSpec{Containers: make([]api.Container, 2)},
+				Status: api.PodStatus{
+					Phase: "podPhase",
+					ContainerStatuses: []api.ContainerStatus{
+						{Ready: true, RestartCount: 3, State: api.ContainerState{Running: &api.ContainerStateRunning{}}},
+						{RestartCount: 3},
+					},
+				},
+			},
+			"test1\t1/2\tpodPhase\t6\t",
+			"\tCOL2=zxc,col1=asd\n",
+			true,
+		},
+		{
+			// Test name, num of containers, restarts, container ready status
+			api.Pod{
+				ObjectMeta: api.ObjectMeta{
+					Name:   "test1",
+					Labels: map[string]string{"col3": "asd", "COL4": "zxc"},
+				},
+				Spec: api.PodSpec{Containers: make([]api.Container, 2)},
+				Status: api.PodStatus{
+					Phase: "podPhase",
+					ContainerStatuses: []api.ContainerStatus{
+						{Ready: true, RestartCount: 3, State: api.ContainerState{Running: &api.ContainerStateRunning{}}},
+						{RestartCount: 3},
+					},
+				},
+			},
+			"test1\t1/2\tpodPhase\t6\t",
+			"\n",
+			false,
+		},
+	}
+
+	buf := bytes.NewBuffer([]byte{})
+	for _, test := range tests {
+		printPod(&test.pod, buf, PrintOptions{false, false, false, false, test.showLabels, false, []string{}})
+		// We ignore time
+		if !strings.HasPrefix(buf.String(), test.startsWith) || !strings.HasSuffix(buf.String(), test.endsWith) {
+			t.Fatalf("Expected to start with: %s and end with: %s, but got: %s", test.startsWith, test.endsWith, buf.String())
 		}
 		buf.Reset()
 	}

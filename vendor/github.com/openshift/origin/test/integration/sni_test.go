@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -11,8 +11,11 @@ import (
 	"os"
 	"testing"
 
+	knet "k8s.io/kubernetes/pkg/util/net"
+
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/util"
+	testutil "github.com/openshift/origin/test/util"
 	testserver "github.com/openshift/origin/test/util/server"
 )
 
@@ -26,6 +29,7 @@ const (
 )
 
 func TestSNI(t *testing.T) {
+	testutil.RequireEtcd(t)
 	// Create tempfiles with certs and keys we're going to use
 	certNames := map[string]string{}
 	for certName, certContents := range sniCerts {
@@ -201,14 +205,14 @@ func TestSNI(t *testing.T) {
 			continue
 		}
 
-		transport := &http.Transport{
+		transport := knet.SetTransportDefaults(&http.Transport{
 			// Custom Dial func to always dial the real master, no matter what host is asked for
 			Dial: func(network, addr string) (net.Conn, error) {
 				// t.Logf("%s: Dialing for %s", k, addr)
 				return net.Dial(network, masterPublicURL.Host)
 			},
 			TLSClientConfig: tc.TLSConfig,
-		}
+		})
 		resp, err := transport.RoundTrip(req)
 		if tc.ExpectedOK && err != nil {
 			t.Errorf("%s: unexpected error: %v", k, err)

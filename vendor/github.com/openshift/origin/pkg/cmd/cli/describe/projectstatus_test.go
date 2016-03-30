@@ -153,7 +153,7 @@ func TestProjectStatus(t *testing.T) {
 				"builds git://github.com",
 				"with docker.io/centos/ruby-22-centos7:latest",
 				"not built yet",
-				"#1 deployment waiting on image or update",
+				"deployment #1 waiting on image or update",
 				"View details with 'oc describe <resource>/<name>' or list everything with 'oc get all'.",
 			},
 		},
@@ -166,7 +166,7 @@ func TestProjectStatus(t *testing.T) {
 			},
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
-				"bc/ruby-hello-world is pushing to istag/ruby-hello-world:latest that is using is/ruby-hello-world, but the administrator has not configured the integrated Docker registry.",
+				"bc/ruby-hello-world is pushing to istag/ruby-hello-world:latest, but the administrator has not configured the integrated Docker registry.",
 			},
 		},
 		"bare-bc-can-push": {
@@ -179,7 +179,7 @@ func TestProjectStatus(t *testing.T) {
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
 				// this makes sure that status knows this can push.  If it fails, there's a "(can't push image)" next to like #8
-				" hours\n  #7",
+				" hours\n  build #7",
 			},
 			Time: mustParseTime("2015-12-17T20:36:15Z"),
 		},
@@ -208,8 +208,8 @@ func TestProjectStatus(t *testing.T) {
 				"svc/sinatra-example-1 - 172.30.17.47:8080",
 				"builds git://github.com",
 				"with docker.io/centos/ruby-22-centos7:latest",
-				"#1 build running for about a minute",
-				"#1 deployment waiting on image or update",
+				"build #1 running for about a minute",
+				"deployment #1 waiting on image or update",
 				"View details with 'oc describe <resource>/<name>' or list everything with 'oc get all'.",
 			},
 			Time: mustParseTime("2015-04-06T21:20:03Z"),
@@ -228,7 +228,7 @@ func TestProjectStatus(t *testing.T) {
 				"sinatra-app-example-a deploys",
 				"sinatra-app-example-b deploys",
 				"with docker.io/centos/ruby-22-centos7:latest",
-				"#1 build running for about a minute",
+				"build #1 running for about a minute",
 				"- 7a4f354: Prepare v1beta3 Template types (Roy Programmer <someguy@outhere.com>)",
 				"View details with 'oc describe <resource>/<name>' or list everything with 'oc get all'.",
 			},
@@ -245,18 +245,21 @@ func TestProjectStatus(t *testing.T) {
 			Contains: []string{
 				"In project example on server https://example.com:8443\n",
 				"svc/database - 172.30.17.240:5434 -> 3306",
-				"exposed by route/frontend on pod port 8080",
-				"svc/frontend - 172.30.17.154:5432 -> 8080",
+				"https://www.test.com (redirects) to pod port 8080 (svc/frontend)",
+				"http://frontend-example.router.default.svc.cluster.local to pod port 8080 (!)",
+				"svc/database-external (all nodes):31000 -> 3306",
 				"database test deploys",
 				"frontend deploys",
 				"with docker.io/centos/ruby-22-centos7:latest",
-				"#3 deployment pending on image",
-				"#2 deployment failed less than a second ago: unable to contact server - 0/1 pods",
-				"#1 deployed less than a second ago",
-				"#2 test deployment running for 7 seconds - 2/1 pods",
-				"#1 test deployed 8 seconds ago",
-				"* bc/ruby-sample-build is pushing to istag/origin-ruby-sample:latest that is using is/origin-ruby-sample, but that image stream does not exist.",
+				"deployment #3 pending on image",
+				"deployment #2 failed less than a second ago: unable to contact server - 0/1 pods",
+				"deployment #1 deployed less than a second ago",
+				"test deployment #2 running for 7 seconds - 2/1 pods",
+				"test deployment #1 deployed 8 seconds ago",
+				"* bc/ruby-sample-build is pushing to istag/origin-ruby-sample:latest, but the image stream for that tag does not exist.",
 				"* The image trigger for dc/frontend will have no effect because is/origin-ruby-sample does not exist",
+				"* route/frontend was not accepted by router \"other\":  (HostAlreadyClaimed)",
+				"* dc/database has no readiness probe to verify pods are ready to accept traffic or ensure deployment is successful.",
 				"View details with 'oc describe <resource>/<name>' or list everything with 'oc get all'.",
 			},
 			Time: mustParseTime("2015-04-07T04:12:25Z"),
@@ -274,6 +277,34 @@ func TestProjectStatus(t *testing.T) {
 				`container "gitlab-ce" in pod/gitlab-ce-1-lc411 is crash-looping`,
 				`oc logs -p gitlab-ce-1-lc411 -c gitlab-ce`, // verifies we print the log command
 				`policycommand example default`,             // verifies that we print the help command
+			},
+		},
+		"cross namespace reference": {
+			Path: "../../../api/graph/test/different-project-image-deployment.yaml",
+			Extra: []runtime.Object{
+				&projectapi.Project{
+					ObjectMeta: kapi.ObjectMeta{Name: "example", Namespace: ""},
+				},
+			},
+			ErrFn: func(err error) bool { return err == nil },
+			Contains: []string{
+				// If there was a warning we wouldn't get the following message. Since we ignore cross-namespace
+				// links by default, there should be no warning here.
+				`View details with 'oc describe <resource>/<name>' or list everything with 'oc get all'.`,
+			},
+		},
+		"monopod": {
+			Path: "../../../../test/fixtures/app-scenarios/k8s-lonely-pod.json",
+			Extra: []runtime.Object{
+				&projectapi.Project{
+					ObjectMeta: kapi.ObjectMeta{Name: "example", Namespace: ""},
+				},
+			},
+			ErrFn: func(err error) bool { return err == nil },
+			Contains: []string{
+				"In project example on server https://example.com:8443\n",
+				"pod/lonely-pod runs openshift/hello-openshift",
+				"You have no services, deployment configs, or build configs.",
 			},
 		},
 	}

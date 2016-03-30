@@ -21,16 +21,18 @@ import (
 	"io"
 	"sync"
 
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+
 	"k8s.io/kubernetes/pkg/admission"
 	"k8s.io/kubernetes/pkg/api"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
 	"k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
+	vol "k8s.io/kubernetes/pkg/volume"
 )
 
 func init() {
-	admission.RegisterPlugin("PersistentVolumeLabel", func(client client.Interface, config io.Reader) (admission.Interface, error) {
+	admission.RegisterPlugin("PersistentVolumeLabel", func(client clientset.Interface, config io.Reader) (admission.Interface, error) {
 		persistentVolumeLabelAdmission := NewPersistentVolumeLabel()
 		return persistentVolumeLabelAdmission, nil
 	})
@@ -101,6 +103,10 @@ func (l *persistentVolumeLabel) Admit(a admission.Attributes) (err error) {
 }
 
 func (l *persistentVolumeLabel) findAWSEBSLabels(volume *api.PersistentVolume) (map[string]string, error) {
+	// Ignore any volumes that are being provisioned
+	if volume.Spec.AWSElasticBlockStore.VolumeID == vol.ProvisionedVolumeName {
+		return nil, nil
+	}
 	ebsVolumes, err := l.getEBSVolumes()
 	if err != nil {
 		return nil, err
@@ -140,6 +146,11 @@ func (l *persistentVolumeLabel) getEBSVolumes() (aws.Volumes, error) {
 }
 
 func (l *persistentVolumeLabel) findGCEPDLabels(volume *api.PersistentVolume) (map[string]string, error) {
+	// Ignore any volumes that are being provisioned
+	if volume.Spec.GCEPersistentDisk.PDName == vol.ProvisionedVolumeName {
+		return nil, nil
+	}
+
 	provider, err := l.getGCECloudProvider()
 	if err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import (
 
 	"github.com/openshift/openshift-sdn/pkg/cmd/admin/network"
 	"github.com/openshift/origin/pkg/cmd/admin/cert"
+	diagnostics "github.com/openshift/origin/pkg/cmd/admin/diagnostics"
 	"github.com/openshift/origin/pkg/cmd/admin/groups"
 	"github.com/openshift/origin/pkg/cmd/admin/node"
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
@@ -31,7 +32,7 @@ Administrative Commands
 Commands for managing a cluster are exposed here. Many administrative
 actions involve interaction with the command-line client as well.`
 
-func NewCommandAdmin(name, fullName string, out io.Writer) *cobra.Command {
+func NewCommandAdmin(name, fullName string, out io.Writer, errout io.Writer) *cobra.Command {
 	// Main command
 	cmds := &cobra.Command{
 		Use:   name,
@@ -63,6 +64,7 @@ func NewCommandAdmin(name, fullName string, out io.Writer) *cobra.Command {
 			Message: "Maintenance Commands:",
 			Commands: []*cobra.Command{
 				buildchain.NewCmdBuildChain(name, fullName+" "+buildchain.BuildChainRecommendedCommandName, f, out),
+				diagnostics.NewCmdDiagnostics(diagnostics.DiagnosticsRecommendedName, fullName+" "+diagnostics.DiagnosticsRecommendedName, out),
 				node.NewCommandManageNode(f, node.ManageNodeCommandName, fullName+" "+node.ManageNodeCommandName, out),
 				prune.NewCommandPrune(prune.PruneRecommendedName, fullName+" "+prune.PruneRecommendedName, f, out),
 			},
@@ -88,7 +90,7 @@ func NewCommandAdmin(name, fullName string, out io.Writer) *cobra.Command {
 				admin.NewCommandCreateErrorTemplate(f, admin.CreateErrorTemplateCommand, fullName+" "+admin.CreateErrorTemplateCommand, out),
 				admin.NewCommandOverwriteBootstrapPolicy(admin.OverwriteBootstrapPolicyCommandName, fullName+" "+admin.OverwriteBootstrapPolicyCommandName, fullName+" "+admin.CreateBootstrapPolicyFileCommand, out),
 				admin.NewCommandNodeConfig(admin.NodeConfigCommandName, fullName+" "+admin.NodeConfigCommandName, out),
-				cert.NewCmdCert(cert.CertRecommendedName, fullName+" "+cert.CertRecommendedName, out),
+				cert.NewCmdCert(cert.CertRecommendedName, fullName+" "+cert.CertRecommendedName, out, errout),
 			},
 		},
 	}

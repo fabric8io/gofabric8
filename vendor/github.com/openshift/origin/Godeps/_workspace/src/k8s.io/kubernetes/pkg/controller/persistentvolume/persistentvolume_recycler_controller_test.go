@@ -23,9 +23,10 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
-	"k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
 	"k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/host_path"
+	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 )
 
 const (
@@ -44,7 +45,7 @@ func TestFailedRecycling(t *testing.T) {
 	plugMgr := volume.VolumePluginMgr{}
 
 	recycler := &PersistentVolumeRecycler{
-		kubeClient:      &testclient.Fake{},
+		kubeClient:      fake.NewSimpleClientset(),
 		client:          mockClient,
 		pluginMgr:       plugMgr,
 		releasedVolumes: make(map[string]releasedVolumeStatus),
@@ -84,12 +85,12 @@ func TestRecyclingRetry(t *testing.T) {
 
 	plugMgr := volume.VolumePluginMgr{}
 	// Use a fake NewRecycler function
-	plugMgr.InitPlugins(host_path.ProbeRecyclableVolumePlugins(newFailingMockRecycler, volume.VolumeConfig{}), volume.NewFakeVolumeHost("/tmp/fake", nil, nil))
+	plugMgr.InitPlugins(host_path.ProbeRecyclableVolumePlugins(newFailingMockRecycler, volume.VolumeConfig{}), volumetest.NewFakeVolumeHost("/tmp/fake", nil, nil))
 	// Reset a global call counter
 	failedCallCount = 0
 
 	recycler := &PersistentVolumeRecycler{
-		kubeClient:      &testclient.Fake{},
+		kubeClient:      fake.NewSimpleClientset(),
 		client:          mockClient,
 		pluginMgr:       plugMgr,
 		syncPeriod:      mySyncPeriod,
@@ -126,12 +127,12 @@ func TestRecyclingRetryAlwaysFail(t *testing.T) {
 
 	plugMgr := volume.VolumePluginMgr{}
 	// Use a fake NewRecycler function
-	plugMgr.InitPlugins(host_path.ProbeRecyclableVolumePlugins(newAlwaysFailingMockRecycler, volume.VolumeConfig{}), volume.NewFakeVolumeHost("/tmp/fake", nil, nil))
+	plugMgr.InitPlugins(host_path.ProbeRecyclableVolumePlugins(newAlwaysFailingMockRecycler, volume.VolumeConfig{}), volumetest.NewFakeVolumeHost("/tmp/fake", nil, nil))
 	// Reset a global call counter
 	failedCallCount = 0
 
 	recycler := &PersistentVolumeRecycler{
-		kubeClient:      &testclient.Fake{},
+		kubeClient:      fake.NewSimpleClientset(),
 		client:          mockClient,
 		pluginMgr:       plugMgr,
 		syncPeriod:      mySyncPeriod,
@@ -227,7 +228,7 @@ func testRecycleFailures(t *testing.T, recycler *PersistentVolumeRecycler, mockC
 func newFailingMockRecycler(spec *volume.Spec, host volume.VolumeHost, config volume.VolumeConfig) (volume.Recycler, error) {
 	return &failingMockRecycler{
 		path:       spec.PersistentVolume.Spec.HostPath.Path,
-		errorCount: myMaximumRetry - 1, // fail two times and then successfuly recycle the volume
+		errorCount: myMaximumRetry - 1, // fail two times and then successfully recycle the volume
 	}, nil
 }
 

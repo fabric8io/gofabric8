@@ -32,6 +32,16 @@ USE_IMAGES=${USE_IMAGES:-$defaultimage}
 
 # This test validates admin level commands including system policy
 
+# Check failure modes of various system commands
+os::cmd::expect_failure_and_text 'openshift start network' 'kubeconfig must be set'
+os::cmd::expect_failure_and_text 'openshift start network --config=${NODECONFIG} --enable=kubelet' 'the following components are not recognized: kubelet'
+os::cmd::expect_failure_and_text 'openshift start network --config=${NODECONFIG} --enable=kubelet,other' 'the following components are not recognized: kubelet, other'
+os::cmd::expect_failure_and_text 'openshift start network --config=${NODECONFIG} --disable=other' 'the following components are not recognized: other'
+os::cmd::expect_failure_and_text 'openshift start network --config=${NODECONFIG} --disable=proxy,plugins' 'at least one node component must be enabled \(plugins, proxy\)'
+os::cmd::expect_failure_and_text 'openshift start node' 'kubeconfig must be set'
+os::cmd::expect_failure_and_text 'openshift start node --config=${NODECONFIG} --disable=other' 'the following components are not recognized: other'
+os::cmd::expect_failure_and_text 'openshift start node --config=${NODECONFIG} --disable=kubelet,proxy,plugins' 'at least one node component must be enabled \(kubelet, plugins, proxy\)'
+
 # Test admin manage-node operations
 os::cmd::expect_success_and_text 'openshift admin manage-node --help' 'Manage nodes'
 
@@ -56,6 +66,34 @@ status:
 os::cmd::expect_success_and_text 'oadm manage-node --selector= --schedulable=true' 'Ready'
 os::cmd::expect_success_and_not_text 'oadm manage-node --selector= --schedulable=true' 'Sched'
 
+# check create-master-certs validation
+os::cmd::expect_failure_and_text 'oadm ca create-master-certs --hostnames=example.com --master='                                                'master must be provided'
+os::cmd::expect_failure_and_text 'oadm ca create-master-certs --hostnames=example.com --master=example.com'                                     'master must be a valid URL'
+os::cmd::expect_failure_and_text 'oadm ca create-master-certs --hostnames=example.com --master=https://example.com --public-master=example.com' 'public master must be a valid URL'
+
+# check encrypt/decrypt of plain text
+os::cmd::expect_success          "echo -n 'secret data 1' | oadm ca encrypt --genkey='${ARTIFACT_DIR}/secret.key' --out='${ARTIFACT_DIR}/secret.encrypted'"
+os::cmd::expect_success_and_text "oadm ca decrypt --in='${ARTIFACT_DIR}/secret.encrypted' --key='${ARTIFACT_DIR}/secret.key'" '^secret data 1$'
+# create a file with trailing whitespace
+echo "data with newline" > "${ARTIFACT_DIR}/secret.whitespace.data"
+os::cmd::expect_success_and_text "oadm ca encrypt --key='${ARTIFACT_DIR}/secret.key' --in='${ARTIFACT_DIR}/secret.whitespace.data'      --out='${ARTIFACT_DIR}/secret.whitespace.encrypted'" 'Warning.*whitespace'
+os::cmd::expect_success          "oadm ca decrypt --key='${ARTIFACT_DIR}/secret.key' --in='${ARTIFACT_DIR}/secret.whitespace.encrypted' --out='${ARTIFACT_DIR}/secret.whitespace.decrypted'"
+os::cmd::expect_success          "diff '${ARTIFACT_DIR}/secret.whitespace.data' '${ARTIFACT_DIR}/secret.whitespace.decrypted'"
+# create a binary file
+echo "hello" | gzip > "${ARTIFACT_DIR}/secret.data"
+# encrypt using file and pipe input/output
+os::cmd::expect_success "oadm ca encrypt --key='${ARTIFACT_DIR}/secret.key' --in='${ARTIFACT_DIR}/secret.data' --out='${ARTIFACT_DIR}/secret.file-in-file-out.encrypted'"
+os::cmd::expect_success "oadm ca encrypt --key='${ARTIFACT_DIR}/secret.key' --in='${ARTIFACT_DIR}/secret.data'     > '${ARTIFACT_DIR}/secret.file-in-pipe-out.encrypted'"
+os::cmd::expect_success "oadm ca encrypt --key='${ARTIFACT_DIR}/secret.key'    < '${ARTIFACT_DIR}/secret.data'     > '${ARTIFACT_DIR}/secret.pipe-in-pipe-out.encrypted'"
+# decrypt using all three methods
+os::cmd::expect_success "oadm ca decrypt --key='${ARTIFACT_DIR}/secret.key' --in='${ARTIFACT_DIR}/secret.file-in-file-out.encrypted' --out='${ARTIFACT_DIR}/secret.file-in-file-out.decrypted'"
+os::cmd::expect_success "oadm ca decrypt --key='${ARTIFACT_DIR}/secret.key' --in='${ARTIFACT_DIR}/secret.file-in-pipe-out.encrypted'     > '${ARTIFACT_DIR}/secret.file-in-pipe-out.decrypted'"
+os::cmd::expect_success "oadm ca decrypt --key='${ARTIFACT_DIR}/secret.key'    < '${ARTIFACT_DIR}/secret.pipe-in-pipe-out.encrypted'     > '${ARTIFACT_DIR}/secret.pipe-in-pipe-out.decrypted'"
+# verify lossless roundtrip
+os::cmd::expect_success "diff '${ARTIFACT_DIR}/secret.data' '${ARTIFACT_DIR}/secret.file-in-file-out.decrypted'"
+os::cmd::expect_success "diff '${ARTIFACT_DIR}/secret.data' '${ARTIFACT_DIR}/secret.file-in-pipe-out.decrypted'"
+os::cmd::expect_success "diff '${ARTIFACT_DIR}/secret.data' '${ARTIFACT_DIR}/secret.pipe-in-pipe-out.decrypted'"
+
 os::cmd::expect_success 'oc create -f examples/hello-openshift/hello-pod.json'
 # os::cmd::expect_success_and_text 'oadm manage-node --list-pods' 'hello-openshift'
 # os::cmd::expect_success_and_text 'oadm manage-node --list-pods' '(unassigned|assigned)'
@@ -78,6 +116,13 @@ echo "groups: ok"
 os::cmd::expect_success 'oadm policy who-can get pods'
 os::cmd::expect_success 'oadm policy who-can get pods -n default'
 os::cmd::expect_success 'oadm policy who-can get pods --all-namespaces'
+# check to make sure that the resource arg conforms to resource rules
+os::cmd::expect_success_and_text 'oadm policy who-can get Pod' "Resource:  pods"
+os::cmd::expect_success_and_text 'oadm policy who-can get PodASDF' "Resource:  PodASDF"
+os::cmd::expect_success_and_text 'oadm policy who-can get hpa.autoscaling -n default' "Resource:  horizontalpodautoscalers.autoscaling"
+os::cmd::expect_success_and_text 'oadm policy who-can get hpa.v1.autoscaling -n default' "Resource:  horizontalpodautoscalers.autoscaling"
+os::cmd::expect_success_and_text 'oadm policy who-can get hpa.extensions -n default' "Resource:  horizontalpodautoscalers.extensions"
+os::cmd::expect_success_and_text 'oadm policy who-can get hpa -n default' "Resource:  horizontalpodautoscalers.extensions"
 
 os::cmd::expect_success 'oadm policy add-role-to-group cluster-admin system:unauthenticated'
 os::cmd::expect_success 'oadm policy add-role-to-user cluster-admin system:no-user'
@@ -116,7 +161,7 @@ os::cmd::expect_success 'oc delete clusterrole/cluster-status --cascade=false'
 os::cmd::expect_failure 'oc get clusterrole/cluster-status'
 os::cmd::expect_success 'oadm policy reconcile-cluster-roles'
 os::cmd::expect_failure 'oc get clusterrole/cluster-status'
-os::cmd::expect_success 'oadm policy reconcile-cluster-roles --confirm'
+os::cmd::expect_success 'oadm policy reconcile-cluster-roles --confirm --loglevel=8'
 os::cmd::expect_success 'oc get clusterrole/cluster-status'
 # check the reconcile again with a specific cluster role name
 os::cmd::expect_success 'oc delete clusterrole/cluster-status --cascade=false'
@@ -161,6 +206,13 @@ os::cmd::expect_success_and_not_text 'oc get clusterrolebindings/basic-users -o 
 # Ensure --additive-only=false removes customized users from the binding
 os::cmd::expect_success 'oadm policy reconcile-cluster-role-bindings --additive-only=false --confirm'
 os::cmd::expect_success_and_not_text 'oc get clusterrolebindings/basic-users -o json' 'custom-user'
+# check the reconcile again with a specific cluster role name
+os::cmd::expect_success 'oc delete clusterrolebinding/basic-users'
+os::cmd::expect_failure 'oc get clusterrolebinding/basic-users'
+os::cmd::expect_success 'oadm policy reconcile-cluster-role-bindings cluster-admin --confirm'
+os::cmd::expect_failure 'oc get clusterrolebinding/basic-users'
+os::cmd::expect_success 'oadm policy reconcile-cluster-role-bindings basic-user --confirm'
+os::cmd::expect_success 'oc get clusterrolebinding/basic-users'
 echo "admin-reconcile-cluster-role-bindings: ok"
 
 os::cmd::expect_success "oc create -f test/extended/fixtures/roles/policy-roles.yaml"
@@ -201,21 +253,6 @@ os::cmd::expect_success 'oadm new-project recreated-project --admin="createuser2
 os::cmd::expect_success_and_text "oc describe policybinding ':default' -n recreated-project" 'createuser2'
 echo "new-project: ok"
 
-# Test running a router
-os::cmd::expect_failure_and_text 'oadm router --dry-run' 'does not exist'
-encoded_json='{"kind":"ServiceAccount","apiVersion":"v1","metadata":{"name":"router"}}'
-os::cmd::expect_success "echo '${encoded_json}' | oc create -f - -n default"
-os::cmd::expect_success "oadm policy add-scc-to-user privileged system:serviceaccount:default:router"
-os::cmd::expect_success_and_text "oadm router -o yaml --credentials=${KUBECONFIG} --service-account=router -n default" 'image:.*-haproxy-router:'
-os::cmd::expect_success "oadm router --credentials=${KUBECONFIG} --images='${USE_IMAGES}' --service-account=router -n default"
-os::cmd::expect_success_and_text 'oadm router -n default' 'service exists'
-os::cmd::expect_success_and_text 'oc get dc/router -o yaml -n default' 'readinessProbe'
-os::cmd::expect_success_and_text 'oc get dc/router -o yaml -n default' 'host: localhost'
-
-# only when using hostnetwork should we force the probes to use localhost
-os::cmd::expect_success_and_not_text "oadm router -o yaml --credentials=${KUBECONFIG} --service-account=router -n default --host-network=false" 'host: localhost'
-echo "router: ok"
-
 # Test running a registry
 os::cmd::expect_failure_and_text 'oadm registry --dry-run' 'does not exist'
 os::cmd::expect_success_and_text "oadm registry -o yaml --credentials=${KUBECONFIG}" 'image:.*-docker-registry'
@@ -224,6 +261,13 @@ os::cmd::expect_success_and_text 'oadm registry' 'service exists'
 os::cmd::expect_success_and_text 'oc describe svc/docker-registry' 'Session Affinity:\s*ClientIP'
 os::cmd::expect_success_and_text 'oc get dc/docker-registry -o yaml' 'readinessProbe'
 echo "registry: ok"
+
+workingdir=$(mktemp -d)
+os::cmd::expect_success "oadm registry --credentials=${KUBECONFIG} -o yaml > ${workingdir}/oadm_registry.yaml"
+os::util::sed "s/5000/6000/g" ${workingdir}/oadm_registry.yaml
+os::cmd::expect_success "oc apply -f ${workingdir}/oadm_registry.yaml"
+os::cmd::expect_success_and_text 'oc get dc/docker-registry -o yaml' '6000'
+echo "apply: ok"
 
 # Test building a dependency tree
 os::cmd::expect_success 'oc process -f examples/sample-app/application-template-stibuild.json -l build=sti | oc create -f -'
@@ -319,3 +363,21 @@ os::cmd::expect_success_and_not_text "oc get clusterrolebindings/cluster-admins 
 os::cmd::expect_success_and_not_text "oc get rolebindings/cluster-admin         --output-version=v1 --template='{{.subjects}}' -n default" 'cascaded-group'
 os::cmd::expect_success_and_not_text "oc get scc/restricted                     --output-version=v1 --template='{{.groups}}'"              'cascaded-group'
 echo "user-group-cascade: ok"
+
+# create a new service account
+os::cmd::expect_success_and_text 'oc create serviceaccount my-sa-name' 'serviceaccount "my-sa-name" created'
+os::cmd::expect_success 'oc get sa my-sa-name'
+
+# extract token and ensure it links us back to the service account
+os::cmd::expect_success_and_text 'oc get user/~ --token="$( oc sa get-token my-sa-name )"' 'system:serviceaccount:.+:my-sa-name'
+
+# add a new token and ensure it links us back to the service account
+os::cmd::expect_success_and_text 'oc get user/~ --token="$( oc sa new-token my-sa-name )"' 'system:serviceaccount:.+:my-sa-name'
+
+# add a new labeled token and ensure the label stuck
+os::cmd::expect_success 'oc sa new-token my-sa-name --labels="mykey=myvalue,myotherkey=myothervalue"'
+os::cmd::expect_success_and_text 'oc get secrets --selector="mykey=myvalue"' 'my-sa-name'
+os::cmd::expect_success_and_text 'oc get secrets --selector="myotherkey=myothervalue"' 'my-sa-name'
+os::cmd::expect_success_and_text 'oc get secrets --selector="mykey=myvalue,myotherkey=myothervalue"' 'my-sa-name'
+
+echo "serviceacounts: ok"

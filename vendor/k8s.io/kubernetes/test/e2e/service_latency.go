@@ -40,7 +40,7 @@ func (d durations) Less(i, j int) bool { return d[i] < d[j] }
 func (d durations) Swap(i, j int)      { d[i], d[j] = d[j], d[i] }
 
 var _ = Describe("Service endpoints latency", func() {
-	f := NewFramework("svc-latency")
+	f := NewDefaultFramework("svc-latency")
 
 	It("should not be very high [Conformance]", func() {
 		const (
@@ -66,7 +66,7 @@ var _ = Describe("Service endpoints latency", func() {
 
 		// Turn off rate limiting--it interferes with our measurements.
 		oldThrottle := f.Client.RESTClient.Throttle
-		f.Client.RESTClient.Throttle = util.NewFakeRateLimiter()
+		f.Client.RESTClient.Throttle = util.NewFakeAlwaysRateLimiter()
 		defer func() { f.Client.RESTClient.Throttle = oldThrottle }()
 
 		failing := sets.NewString()

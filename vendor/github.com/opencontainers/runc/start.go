@@ -26,6 +26,11 @@ var startCommand = cli.Command{
 			Value: "",
 			Usage: "path to the root of the bundle directory",
 		},
+		cli.StringFlag{
+			Name:  "console",
+			Value: "",
+			Usage: "specify the pty slave path for use with the container",
+		},
 	},
 	Action: func(context *cli.Context) {
 		bundle := context.String("bundle")
@@ -44,9 +49,10 @@ var startCommand = cli.Command{
 			setupSdNotify(spec, rspec, notifySocket)
 		}
 
-		listenFds := os.Getenv("LISTEN_FDS")
-		listenPid := os.Getenv("LISTEN_PID")
-
+		var (
+			listenFds = os.Getenv("LISTEN_FDS")
+			listenPid = os.Getenv("LISTEN_PID")
+		)
 		if listenFds != "" && listenPid == strconv.Itoa(os.Getpid()) {
 			setupSocketActivation(spec, listenFds)
 		}
@@ -102,6 +108,7 @@ func startContainer(context *cli.Context, spec *specs.LinuxSpec, rspec *specs.Li
 	// ensure that the container is always removed if we were the process
 	// that created it.
 	defer destroy(container)
+
 	process := newProcess(spec.Process)
 
 	// Support on-demand socket activation by passing file descriptors into the container init process.
@@ -110,13 +117,11 @@ func startContainer(context *cli.Context, spec *specs.LinuxSpec, rspec *specs.Li
 		if err != nil {
 			return -1, err
 		}
-
 		for i := SD_LISTEN_FDS_START; i < (listenFdsInt + SD_LISTEN_FDS_START); i++ {
 			process.ExtraFiles = append(process.ExtraFiles, os.NewFile(uintptr(i), ""))
 		}
 	}
-
-	tty, err := newTty(spec.Process.Terminal, process, rootuid)
+	tty, err := newTty(spec.Process.Terminal, process, rootuid, context.String("console"))
 	if err != nil {
 		return -1, err
 	}
@@ -144,13 +149,7 @@ func setupSocketActivation(spec *specs.LinuxSpec, listenFds string) {
 }
 
 func destroy(container libcontainer.Container) {
-	status, err := container.Status()
-	if err != nil {
+	if err := container.Destroy(); err != nil {
 		logrus.Error(err)
-	}
-	if status != libcontainer.Checkpointed {
-		if err := container.Destroy(); err != nil {
-			logrus.Error(err)
-		}
 	}
 }

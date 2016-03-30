@@ -17,7 +17,6 @@
                   class="pficon pficon-warning-triangle-o"
                   style="cursor: help; vertical-align: middle;"
                   data-toggle="tooltip"
-                  data-placement="right"
                   data-trigger="hover"
                   title="The deployment's deployment config is missing."
                   aria-hidden="true">
@@ -25,18 +24,28 @@
                 <span ng-if="deploymentConfigMissing" class="sr-only">Warning: The deployment's deployment config is missing.</span>
                 <small class="meta">created <relative-timestamp timestamp="deployment.metadata.creationTimestamp"></relative-timestamp></small>
                 <div class="pull-right dropdown">
-                  <a href="" class="dropdown-toggle resource-actions-dropdown" data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
+                  <button type="button" class="dropdown-toggle btn btn-default actions-dropdown-btn hidden-xs" data-toggle="dropdown">
+                    Actions
+                    <span class="caret"></span>
+                  </button>
+                  <a href=""
+                     class="dropdown-toggle actions-dropdown-kebab visible-xs-inline"
+                     data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
                   <ul class="dropdown-menu actions action-button">
+                    <li>
+                      <a ng-href="project/{{project.metadata.name}}/attach-pvc?deployment={{deployment.metadata.name}}"
+                         role="button">Attach Storage</a>
+                    </li>
                     <li>
                       <edit-link
                         resource="deployment"
-                        kind="replicationcontrollers"
+                        kind="ReplicationController"
                         alerts="alerts">
                       </edit-link>
                     </li>
                     <li ng-class="{disabled: deployment.status.replicas}">
                       <delete-link
-                        resource-type="replicationcontroller"
+                        kind="ReplicationController"
                         type-display-name="Deployment"
                         resource-name="{{deployment.metadata.name}}"
                         project-name="{{deployment.metadata.namespace}}"
@@ -81,9 +90,24 @@
                       name="deploymentConfigName"
                       context="projectContext"
                       options="logOptions"
-                      status="deployment | deploymentStatus"
-                      start="deployment.metadata.creationTimestamp | date : 'short'"
+                      empty="logEmpty"
                       run="logCanRun">
+
+                      <div row cross-axis="center">
+                        <div row>
+                          <div ng-if="deployment | deploymentStatus">
+                            Deployment status:
+                            <status-icon status="deployment | deploymentStatus"></status-icon>
+                            {{deployment | deploymentStatus}}
+                          </div>
+                          <div ng-if="deployment.metadata.creationTimestamp && !logEmpty">
+                            <div ng-if="(deployment | deploymentStatus) !== 'Deployed'">
+                              &mdash; Log from {{deployment.metadata.creationTimestamp  | date : 'short'}}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                     </log-viewer>
                   </uib-tab>
                   <uib-tab active="selectedTab.events">

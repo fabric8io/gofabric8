@@ -34,16 +34,20 @@ import (
 	"time"
 
 	cadvisorapi "github.com/google/cadvisor/info/v1"
+	cadvisorapiv2 "github.com/google/cadvisor/info/v2"
 	"k8s.io/kubernetes/pkg/api"
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/auth/authorizer"
 	"k8s.io/kubernetes/pkg/auth/user"
+	"k8s.io/kubernetes/pkg/kubelet/cm"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
+	"k8s.io/kubernetes/pkg/kubelet/server/stats"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util/httpstream"
 	"k8s.io/kubernetes/pkg/util/httpstream/spdy"
 	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/volume"
 )
 
 type fakeKubelet struct {
@@ -63,6 +67,7 @@ type fakeKubelet struct {
 	hostnameFunc                       func() string
 	resyncInterval                     time.Duration
 	loopEntryTime                      time.Time
+	plegHealth                         bool
 }
 
 func (fk *fakeKubelet) ResyncInterval() time.Duration {
@@ -129,6 +134,28 @@ func (fk *fakeKubelet) StreamingConnectionIdleTimeout() time.Duration {
 	return fk.streamingConnectionIdleTimeoutFunc()
 }
 
+func (fk *fakeKubelet) PLEGHealthCheck() (bool, error) { return fk.plegHealth, nil }
+
+// Unused functions
+func (_ *fakeKubelet) GetContainerInfoV2(_ string, _ cadvisorapiv2.RequestOptions) (map[string]cadvisorapiv2.ContainerInfo, error) {
+	return nil, nil
+}
+
+func (_ *fakeKubelet) DockerImagesFsInfo() (cadvisorapiv2.FsInfo, error) {
+	return cadvisorapiv2.FsInfo{}, fmt.Errorf("Unsupported Operation DockerImagesFsInfo")
+}
+
+func (_ *fakeKubelet) RootFsInfo() (cadvisorapiv2.FsInfo, error) {
+	return cadvisorapiv2.FsInfo{}, fmt.Errorf("Unsupport Operation RootFsInfo")
+}
+
+func (_ *fakeKubelet) GetNode() (*api.Node, error)  { return nil, nil }
+func (_ *fakeKubelet) GetNodeConfig() cm.NodeConfig { return cm.NodeConfig{} }
+
+func (fk *fakeKubelet) ListVolumesForPod(podUID types.UID) (map[string]volume.Volume, bool) {
+	return map[string]volume.Volume{}, true
+}
+
 type fakeAuth struct {
 	authenticateFunc func(*http.Request) (user.Info, bool, error)
 	attributesFunc   func(user.Info, *http.Request) authorizer.Attributes
@@ -166,6 +193,7 @@ func newServerTest() *serverTestFramework {
 				},
 			}, true
 		},
+		plegHealth: true,
 	}
 	fw.fakeAuth = &fakeAuth{
 		authenticateFunc: func(req *http.Request) (user.Info, bool, error) {
@@ -178,7 +206,11 @@ func newServerTest() *serverTestFramework {
 			return nil
 		},
 	}
-	server := NewServer(fw.fakeKubelet, fw.fakeAuth, true)
+	server := NewServer(
+		fw.fakeKubelet,
+		stats.NewResourceAnalyzer(fw.fakeKubelet, time.Minute),
+		fw.fakeAuth,
+		true)
 	fw.serverUnderTest = &server
 	// TODO: Close() this when fix #19254
 	fw.testHTTPServer = httptest.NewServer(fw.serverUnderTest)
@@ -504,7 +536,7 @@ func TestHealthCheck(t *testing.T) {
 	// Test with correct hostname, Docker version
 	assertHealthIsOk(t, fw.testHTTPServer.URL+"/healthz")
 
-	//Test with incorrect hostname
+	// Test with incorrect hostname
 	fw.fakeKubelet.hostnameFunc = func() string {
 		return "fake"
 	}
@@ -707,6 +739,17 @@ func TestSyncLoopCheck(t *testing.T) {
 	assertHealthIsOk(t, fw.testHTTPServer.URL+"/healthz")
 
 	fw.fakeKubelet.loopEntryTime = time.Now().Add(time.Minute * -10)
+	assertHealthFails(t, fw.testHTTPServer.URL+"/healthz", http.StatusInternalServerError)
+}
+
+func TestPLEGHealthCheck(t *testing.T) {
+	fw := newServerTest()
+	fw.fakeKubelet.hostnameFunc = func() string {
+		return "127.0.0.1"
+	}
+
+	// Test with failed pleg health check.
+	fw.fakeKubelet.plegHealth = false
 	assertHealthFails(t, fw.testHTTPServer.URL+"/healthz", http.StatusInternalServerError)
 }
 
@@ -1699,7 +1742,9 @@ func TestPortForwardStreamReceived(t *testing.T) {
 		if len(test.streamType) > 0 {
 			stream.headers.Set("streamType", test.streamType)
 		}
-		err := f(stream)
+		replySent := make(chan struct{})
+		err := f(stream, replySent)
+		close(replySent)
 		if len(test.expectedError) > 0 {
 			if err == nil {
 				t.Errorf("%s: expected err=%q, but it was nil", name, test.expectedError)

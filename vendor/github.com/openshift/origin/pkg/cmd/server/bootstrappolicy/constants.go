@@ -59,6 +59,10 @@ const (
 	BasicUserRoleName       = "basic-user"
 	StatusCheckerRoleName   = "cluster-status"
 
+	RegistryAdminRoleName  = "registry-admin"
+	RegistryViewerRoleName = "registry-viewer"
+	RegistryEditorRoleName = "registry-editor"
+
 	ImagePullerRoleName       = "system:image-puller"
 	ImagePusherRoleName       = "system:image-pusher"
 	ImageBuilderRoleName      = "system:image-builder"
@@ -73,6 +77,7 @@ const (
 	SDNManagerRoleName        = "system:sdn-manager"
 	OAuthTokenDeleterRoleName = "system:oauth-token-deleter"
 	WebHooksRoleName          = "system:webhook"
+	DiscoveryRoleName         = "system:discovery"
 
 	// NodeAdmin has full access to the API provided by the kubelet
 	NodeAdminRoleName = "system:node-admin"
@@ -103,6 +108,10 @@ const (
 	SDNReaderRoleBindingName         = SDNReaderRoleName + "s"
 	SDNManagerRoleBindingName        = SDNManagerRoleName + "s"
 	WebHooksRoleBindingName          = WebHooksRoleName + "s"
+	DiscoveryRoleBindingName         = DiscoveryRoleName + "-binding"
+	RegistryAdminRoleBindingName     = RegistryAdminRoleName + "s"
+	RegistryViewerRoleBindingName    = RegistryViewerRoleName + "s"
+	RegistryEditorRoleBindingName    = RegistryEditorRoleName + "s"
 
 	OpenshiftSharedResourceViewRoleBindingName = OpenshiftSharedResourceViewRoleName + "s"
 )

@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -18,6 +18,7 @@ import (
 func TestExtensionsAPIDeletion(t *testing.T) {
 	const projName = "ext-deletion-proj"
 
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -46,8 +47,7 @@ func TestExtensionsAPIDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error getting project admin client: %v", err)
 	}
-	// TODO: switch to checking "list","horizontalpodautoscalers" once SAR supports API groups
-	if err := testutil.WaitForPolicyUpdate(projectAdminClient, projName, "get", "pods", true); err != nil {
+	if err := testutil.WaitForPolicyUpdate(projectAdminClient, projName, "get", expapi.Resource("horizontalpodautoscalers"), true); err != nil {
 		t.Fatalf("unexpected error waiting for policy update: %v", err)
 	}
 
@@ -67,7 +67,6 @@ func TestExtensionsAPIDeletion(t *testing.T) {
 	job := expapi.Job{
 		ObjectMeta: kapi.ObjectMeta{Name: "test-job"},
 		Spec: expapi.JobSpec{
-			Selector: &expapi.LabelSelector{MatchLabels: map[string]string{"foo": "bar"}},
 			Template: kapi.PodTemplateSpec{
 				ObjectMeta: kapi.ObjectMeta{Labels: map[string]string{"foo": "bar"}},
 				Spec: kapi.PodSpec{

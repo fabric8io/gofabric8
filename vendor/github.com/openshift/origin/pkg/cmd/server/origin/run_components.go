@@ -8,14 +8,19 @@ import (
 
 	"github.com/golang/glog"
 
+	kctrlmgr "k8s.io/kubernetes/cmd/kube-controller-manager/app"
+	cmapp "k8s.io/kubernetes/cmd/kube-controller-manager/app/options"
 	"k8s.io/kubernetes/pkg/admission"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/controller"
+	kresourcequota "k8s.io/kubernetes/pkg/controller/resourcequota"
 	sacontroller "k8s.io/kubernetes/pkg/controller/serviceaccount"
 	"k8s.io/kubernetes/pkg/registry/service/allocator"
 	etcdallocator "k8s.io/kubernetes/pkg/registry/service/allocator/etcd"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 	"k8s.io/kubernetes/pkg/util"
+	utilwait "k8s.io/kubernetes/pkg/util/wait"
 	serviceaccountadmission "k8s.io/kubernetes/plugin/pkg/admission/serviceaccount"
 
 	buildclient "github.com/openshift/origin/pkg/build/client"
@@ -40,7 +45,19 @@ import (
 	"github.com/openshift/openshift-sdn/plugins/osdn/factory"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	imageapi "github.com/openshift/origin/pkg/image/api"
+	quota "github.com/openshift/origin/pkg/quota"
+	quotacontroller "github.com/openshift/origin/pkg/quota/controller"
 	serviceaccountcontrollers "github.com/openshift/origin/pkg/serviceaccounts/controllers"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+)
+
+const (
+	defaultConcurrentResourceQuotaSyncs int           = 5
+	defaultResourceQuotaSyncPeriod      time.Duration = 5 * time.Minute
+
+	// from CMServer MinResyncPeriod
+	defaultReplenishmentSyncPeriod time.Duration = 12 * time.Hour
 )
 
 // RunProjectAuthorizationCache starts the project authorization cache
@@ -77,7 +94,7 @@ func (c *MasterConfig) RunServiceAccountsController() {
 		options.ServiceAccounts = append(options.ServiceAccounts, sa)
 	}
 
-	sacontroller.NewServiceAccountsController(c.KubeClient(), options).Run()
+	sacontroller.NewServiceAccountsController(internalclientset.FromUnversionedClient(c.KubeClient()), options).Run()
 }
 
 // RunServiceAccountTokensController starts the service account token controller
@@ -107,7 +124,7 @@ func (c *MasterConfig) RunServiceAccountTokensController() {
 		RootCA:         rootCA,
 	}
 
-	sacontroller.NewTokensController(c.KubeClient(), options).Run()
+	sacontroller.NewTokensController(internalclientset.FromUnversionedClient(c.KubeClient()), options).Run()
 }
 
 // RunServiceAccountPullSecretsControllers starts the service account pull secret controllers
@@ -198,7 +215,7 @@ func (c *MasterConfig) RunBuildController() {
 	groupVersion := unversioned.GroupVersion{Group: "", Version: storageVersion}
 	codec := kapi.Codecs.LegacyCodec(groupVersion)
 
-	admissionControl := admission.NewFromPlugins(c.PrivilegedLoopbackKubernetesClient, []string{"SecurityContextConstraint"}, "")
+	admissionControl := admission.NewFromPlugins(internalclientset.FromUnversionedClient(c.PrivilegedLoopbackKubernetesClient), []string{"SecurityContextConstraint"}, "")
 
 	osclient, kclient := c.BuildControllerClients()
 	factory := buildcontrollerfactory.BuildControllerFactory{
@@ -211,8 +228,7 @@ func (c *MasterConfig) RunBuildController() {
 			Codec: codec,
 		},
 		SourceBuildStrategy: &buildstrategy.SourceBuildStrategy{
-			Image:                stiImage,
-			TempDirectoryCreator: buildstrategy.STITempDirectoryCreator,
+			Image: stiImage,
 			// TODO: this will be set to --storage-version (the internal schema we use)
 			Codec:            codec,
 			AdmissionControl: admissionControl,
@@ -289,8 +305,9 @@ func (c *MasterConfig) RunDeploymentController() {
 
 // RunDeployerPodController starts the deployer pod controller process.
 func (c *MasterConfig) RunDeployerPodController() {
-	_, kclient := c.DeployerPodControllerClients()
+	osclient, kclient := c.DeployerPodControllerClients()
 	factory := deployerpodcontroller.DeployerPodControllerFactory{
+		Client:     osclient,
 		KubeClient: kclient,
 		Codec:      c.EtcdHelper.Codec(),
 	}
@@ -364,7 +381,7 @@ func (c *MasterConfig) RunImageImportController() {
 	if c.Options.ImagePolicyConfig.DisableScheduledImport {
 		glog.V(2).Infof("Scheduled image import is disabled - the 'scheduled' flag on image streams will be ignored")
 	} else {
-		scheduledController.RunUntil(util.NeverStop)
+		scheduledController.RunUntil(utilwait.NeverStop)
 	}
 }
 
@@ -422,4 +439,29 @@ func (c *MasterConfig) RunSecurityAllocationController() {
 // RunGroupCache starts the group cache
 func (c *MasterConfig) RunGroupCache() {
 	c.GroupCache.Run()
+}
+
+// RunResourceQuotaManager starts resource quota controller for OpenShift resources
+func (c *MasterConfig) RunResourceQuotaManager(cm *cmapp.CMServer) {
+	concurrentResourceQuotaSyncs := defaultConcurrentResourceQuotaSyncs
+	resourceQuotaSyncPeriod := defaultResourceQuotaSyncPeriod
+	replenishmentSyncPeriodFunc := controller.StaticResyncPeriodFunc(defaultReplenishmentSyncPeriod)
+	if cm != nil {
+		// TODO: should these be part of os master config?
+		concurrentResourceQuotaSyncs = cm.ConcurrentResourceQuotaSyncs
+		resourceQuotaSyncPeriod = cm.ResourceQuotaSyncPeriod.Duration
+		replenishmentSyncPeriodFunc = kctrlmgr.ResyncPeriod(cm)
+	}
+
+	osClient, kClient := c.ResourceQuotaManagerClients()
+	resourceQuotaRegistry := quota.NewRegistry(osClient, false)
+	resourceQuotaControllerOptions := &kresourcequota.ResourceQuotaControllerOptions{
+		KubeClient:                kClient,
+		ResyncPeriod:              controller.StaticResyncPeriodFunc(resourceQuotaSyncPeriod),
+		Registry:                  resourceQuotaRegistry,
+		GroupKindsToReplenish:     []unversioned.GroupKind{imageapi.Kind("ImageStream")},
+		ControllerFactory:         quotacontroller.NewReplenishmentControllerFactory(osClient),
+		ReplenishmentResyncPeriod: replenishmentSyncPeriodFunc,
+	}
+	go kresourcequota.NewResourceQuotaController(resourceQuotaControllerOptions).Run(concurrentResourceQuotaSyncs, utilwait.NeverStop)
 }

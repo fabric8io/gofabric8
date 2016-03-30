@@ -31,7 +31,7 @@ import (
 // This test needs privileged containers, which are disabled by default.  Run
 // the test with "go run hack/e2e.go ... --ginkgo.focus=[Feature:Volumes]"
 var _ = Describe("PersistentVolumes [Feature:Volumes]", func() {
-	framework := NewFramework("pv")
+	framework := NewDefaultFramework("pv")
 	var c *client.Client
 	var ns string
 
@@ -44,7 +44,7 @@ var _ = Describe("PersistentVolumes [Feature:Volumes]", func() {
 		config := VolumeTestConfig{
 			namespace:   ns,
 			prefix:      "nfs",
-			serverImage: "gcr.io/google_containers/volume-nfs",
+			serverImage: "gcr.io/google_containers/volume-nfs:0.4",
 			serverPorts: []int{2049},
 		}
 
@@ -162,7 +162,7 @@ func makeCheckPod(ns string, nfsserver string) *api.Pod {
 			Containers: []api.Container{
 				{
 					Name:    "scrub-checker",
-					Image:   "gcr.io/google_containers/busybox",
+					Image:   "gcr.io/google_containers/busybox:1.24",
 					Command: []string{"/bin/sh"},
 					Args:    []string{"-c", "test ! -e /mnt/index.html || exit 1"},
 					VolumeMounts: []api.VolumeMount{

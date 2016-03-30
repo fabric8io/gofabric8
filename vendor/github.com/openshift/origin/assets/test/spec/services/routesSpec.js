@@ -1,6 +1,6 @@
 "use strict";
 
-describe("ApplicationGenerator", function(){
+describe("RoutesService", function(){
   var RoutesService;
 
   beforeEach(function(){
@@ -28,6 +28,9 @@ describe("ApplicationGenerator", function(){
           name: "frontend"
         },
         host: "www.example.com"
+      },
+      status: {
+        ingress: null
       }
     };
 
@@ -113,6 +116,24 @@ describe("ApplicationGenerator", function(){
       expect(warnings).toEqual(['Route path "/test" will be ignored since the route uses passthrough termination.']);
     });
 
+    it("should warn if route has an ingress that has not been admitted", function() {
+      var route = angular.copy(routeTemplate);
+      route.spec.path = '/test';
+      route.status.ingress = [{
+        host: 'www.example.com',
+        routerName: 'foo',
+        conditions: [{
+          type: "Admitted",
+          status: "False",
+          lastTransitionTime: "2016-02-17T17:18:51Z",
+          reason: "HostAlreadyClaimed",
+          message: "route bar already exposes www.example.com and is older"
+        }]
+      }];
+      var warnings = RoutesService.getRouteWarnings(route, serviceTemplate);
+      expect(warnings).toEqual(["Requested host www.example.com was rejected by the router. Reason: route bar already exposes www.example.com and is older."]);
+    });    
+
     it("should not warn if there are no problems", function() {
       var route = angular.copy(routeTemplate);
       route.spec.port = {
@@ -151,6 +172,80 @@ describe("ApplicationGenerator", function(){
 
       var warnings = RoutesService.getRouteWarnings(route, service);
       expect(warnings.length).toEqual(2);
+    });
+  });
+
+  describe("#getPreferredDisplayRoute", function() {
+    var routeTemplate = {
+      kind: "Route",
+      apiVersion: 'v1',
+      metadata: {
+        name: "ruby-hello-world",
+        labels : {
+          "app": "ruby-hello-world"
+        },
+        annotations: {
+          "openshift.io/generated-by": "OpenShiftWebConsole",
+          "openshift.io/host.generated": "true"
+        }
+      },
+      spec: {
+        to: {
+          kind: "Service",
+          name: "frontend"
+        },
+        host: "example.com"
+      },
+      status: {
+        ingress: null
+      }
+    };
+
+    it("should prefer an admitted route", function() {
+      var customHost = angular.copy(routeTemplate);
+      delete customHost.metadata.annotations["openshift.io/host.generated"];
+      customHost.spec.tls = {
+        termination: "edge"
+      };
+
+      var admitted = angular.copy(routeTemplate);
+      admitted.status.ingress = [{
+        host: "example.com",
+        routerName: "router",
+        conditions: [{
+          type: "Admitted",
+          status: "True",
+          lastTransitionTime: '2016-03-01T14:15:05Z'
+        }]
+      }];
+
+      var preferred = RoutesService.getPreferredDisplayRoute(customHost, admitted);
+      expect(preferred).toEqual(admitted);
+    });
+
+    it("should prefer a custom route", function() {
+      var customHost = angular.copy(routeTemplate);
+      delete customHost.metadata.annotations["openshift.io/host.generated"];
+
+      var secure = angular.copy(routeTemplate);
+      secure.spec.tls = {
+        termination: "edge"
+      };
+
+      var preferred = RoutesService.getPreferredDisplayRoute(customHost, secure);
+      expect(preferred).toEqual(customHost);
+    });
+
+    it("should prefer a secure route", function() {
+      var vanilla = angular.copy(routeTemplate);
+
+      var secure = angular.copy(routeTemplate);
+      secure.spec.tls = {
+        termination: "edge"
+      };
+
+      var preferred = RoutesService.getPreferredDisplayRoute(vanilla, secure);
+      expect(preferred).toEqual(secure);
     });
   });
 });

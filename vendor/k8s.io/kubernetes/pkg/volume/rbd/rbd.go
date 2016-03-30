@@ -58,13 +58,8 @@ func (plugin *rbdPlugin) CanSupport(spec *volume.Spec) bool {
 	if (spec.Volume != nil && spec.Volume.RBD == nil) || (spec.PersistentVolume != nil && spec.PersistentVolume.Spec.RBD == nil) {
 		return false
 	}
-	// see if rbd is there
-	_, err := plugin.execCommand("rbd", []string{"-h"})
-	if err == nil {
-		return true
-	}
 
-	return false
+	return true
 }
 
 func (plugin *rbdPlugin) GetAccessModes() []api.PersistentVolumeAccessMode {
@@ -84,7 +79,7 @@ func (plugin *rbdPlugin) NewBuilder(spec *volume.Spec, pod *api.Pod, _ volume.Vo
 			return nil, fmt.Errorf("Cannot get kube client")
 		}
 
-		secretName, err := kubeClient.Secrets(pod.Namespace).Get(source.SecretRef.Name)
+		secretName, err := kubeClient.Core().Secrets(pod.Namespace).Get(source.SecretRef.Name)
 		if err != nil {
 			glog.Errorf("Couldn't get secret %v/%v", pod.Namespace, source.SecretRef)
 			return nil, err

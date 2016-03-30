@@ -14,23 +14,26 @@ import (
 	kubeletoptions "k8s.io/kubernetes/cmd/kubelet/app/options"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/kubelet/dockertools"
 	kubeletserver "k8s.io/kubernetes/pkg/kubelet/server"
 	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/util"
-	"k8s.io/kubernetes/pkg/util/errors"
+	kerrors "k8s.io/kubernetes/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/util/oom"
 
 	osdnapi "github.com/openshift/openshift-sdn/plugins/osdn/api"
 	"github.com/openshift/openshift-sdn/plugins/osdn/factory"
+	"github.com/openshift/openshift-sdn/plugins/osdn/ovs"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/crypto"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	cmdflags "github.com/openshift/origin/pkg/cmd/util/flags"
 	"github.com/openshift/origin/pkg/cmd/util/variable"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
 
 // NodeConfig represents the required parameters to start the OpenShift node
@@ -42,6 +45,9 @@ type NodeConfig struct {
 	VolumeDir string
 	// AllowDisabledDocker if true, will make the Kubelet ignore errors from Docker
 	AllowDisabledDocker bool
+	// Containerized is true if we are expected to be running inside of a container
+	Containerized bool
+
 	// Client to connect to the master.
 	Client *client.Client
 	// DockerClient is a client to connect to Docker
@@ -116,8 +122,9 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 		return nil, fmt.Errorf("cannot parse node port: %v", err)
 	}
 
-	// declare the OpenShift defaults from config
+	// Defaults are tested in TestKubeletDefaults
 	server := kubeletoptions.NewKubeletServer()
+	// Adjust defaults
 	server.Config = path
 	server.RootDirectory = options.VolumeDirectory
 	server.NodeIP = options.NodeIP
@@ -126,9 +133,10 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 	server.RegisterNode = true
 	server.Address = kubeAddressStr
 	server.Port = uint(kubePort)
-	server.ReadOnlyPort = 0 // no read only access
-	server.CAdvisorPort = 0 // no unsecured cadvisor access
-	server.HealthzPort = 0  // no unsecured healthz access
+	server.ReadOnlyPort = 0        // no read only access
+	server.CAdvisorPort = 0        // no unsecured cadvisor access
+	server.HealthzPort = 0         // no unsecured healthz access
+	server.HealthzBindAddress = "" // no unsecured healthz access
 	server.ClusterDNS = options.DNSIP
 	server.ClusterDomain = options.DNSDomain
 	server.NetworkPluginName = options.NetworkConfig.NetworkPluginName
@@ -139,20 +147,27 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 	server.FileCheckFrequency = unversioned.Duration{Duration: time.Duration(fileCheckInterval) * time.Second}
 	server.PodInfraContainerImage = imageTemplate.ExpandOrDie("pod")
 	server.CPUCFSQuota = true // enable cpu cfs quota enforcement by default
+	server.MaxPods = 110
+
+	switch server.NetworkPluginName {
+	case ovs.SingleTenantPluginName(), ovs.MultiTenantPluginName():
+		// set defaults for openshift-sdn
+		server.HairpinMode = componentconfig.HairpinNone
+		server.ConfigureCBR0 = false
+	}
 
 	// prevents kube from generating certs
 	server.TLSCertFile = options.ServingInfo.ServerCert.CertFile
 	server.TLSPrivateKeyFile = options.ServingInfo.ServerCert.KeyFile
 
-	if value := cmdutil.Env("OPENSHIFT_CONTAINERIZED", ""); len(value) > 0 {
-		server.Containerized = value == "true"
-	}
+	containerized := cmdutil.Env("OPENSHIFT_CONTAINERIZED", "") == "true"
+	server.Containerized = containerized
 
 	// resolve extended arguments
 	// TODO: this should be done in config validation (along with the above) so we can provide
 	// proper errors
 	if err := cmdflags.Resolve(options.KubeletArguments, server.AddFlags); len(err) > 0 {
-		return nil, errors.NewAggregate(err)
+		return nil, kerrors.NewAggregate(err)
 	}
 
 	proxyconfig, err := buildKubeProxyConfig(options)
@@ -167,8 +182,8 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 
 	// provide any config overrides
 	cfg.NodeName = options.NodeName
-	cfg.KubeClient = kubeClient
-	cfg.EventClient = eventClient
+	cfg.KubeClient = internalclientset.FromUnversionedClient(kubeClient)
+	cfg.EventClient = internalclientset.FromUnversionedClient(eventClient)
 	cfg.DockerExecHandler = dockerExecHandler
 
 	// docker-in-docker (dind) deployments are used for testing
@@ -183,8 +198,6 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 	if value := cmdutil.Env("OPENSHIFT_DIND", ""); value == "true" {
 		glog.Warningf("Using FakeOOMAdjuster for docker-in-docker compatibility")
 		cfg.OOMAdjuster = oom.NewFakeOOMAdjuster()
-		glog.Warningf("Disabling cgroup manipulation of nested docker daemon for docker-in-docker compatibility")
-		cfg.DockerDaemonContainer = ""
 	}
 
 	// Setup auth
@@ -196,7 +209,7 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 	if err != nil {
 		return nil, err
 	}
-	authn, err := newAuthenticator(clientCAs, clientcmd.AnonymousClientConfig(*osClientConfig), authnTTL, options.AuthConfig.AuthenticationCacheSize)
+	authn, err := newAuthenticator(clientCAs, clientcmd.AnonymousClientConfig(osClientConfig), authnTTL, options.AuthConfig.AuthenticationCacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +271,8 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 	sdnPlugin, endpointFilter, err := factory.NewPlugin(options.NetworkConfig.NetworkPluginName, originClient, kubeClient, options.NodeName, options.NodeIP)
 	if err != nil {
 		return nil, fmt.Errorf("SDN initialization failed: %v", err)
-	} else if sdnPlugin != nil {
+	}
+	if sdnPlugin != nil {
 		cfg.NetworkPlugins = append(cfg.NetworkPlugins, sdnPlugin)
 	}
 
@@ -266,6 +280,7 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 		BindAddress: options.ServingInfo.BindAddress,
 
 		AllowDisabledDocker: options.AllowDisabledDocker,
+		Containerized:       containerized,
 
 		Client: kubeClient,
 
@@ -299,14 +314,15 @@ func buildKubeProxyConfig(options configapi.NodeConfig) (*proxyoptions.ProxyServ
 	if ip == nil {
 		return nil, fmt.Errorf("The provided value to bind to must be an ip:port: %q", addr)
 	}
-	proxyconfig.BindAddress = ip
+	proxyconfig.BindAddress = ip.String()
 
 	// HealthzPort, HealthzBindAddress - disable
 	proxyconfig.HealthzPort = 0
-	proxyconfig.HealthzBindAddress = nil
+	proxyconfig.HealthzBindAddress = ""
 
 	// OOMScoreAdj, ResourceContainer - clear, we don't run in a container
-	proxyconfig.OOMScoreAdj = 0
+	oomScoreAdj := 0
+	proxyconfig.OOMScoreAdj = &oomScoreAdj
 	proxyconfig.ResourceContainer = ""
 
 	// use the same client as the node
@@ -317,14 +333,16 @@ func buildKubeProxyConfig(options configapi.NodeConfig) (*proxyoptions.ProxyServ
 	// HostnameOverride, use default
 
 	// ProxyMode, set to iptables
-	proxyconfig.ProxyMode = "iptables"
+	proxyconfig.Mode = "iptables"
 
 	// IptablesSyncPeriod, set to our config value
 	syncPeriod, err := time.ParseDuration(options.IPTablesSyncPeriod)
 	if err != nil {
 		return nil, fmt.Errorf("Cannot parse the provided ip-tables sync period (%s) : %v", options.IPTablesSyncPeriod, err)
 	}
-	proxyconfig.IptablesSyncPeriod = syncPeriod
+	proxyconfig.IPTablesSyncPeriod = unversioned.Duration{
+		Duration: syncPeriod,
+	}
 
 	// ConfigSyncPeriod, use default
 
@@ -345,7 +363,7 @@ func buildKubeProxyConfig(options configapi.NodeConfig) (*proxyoptions.ProxyServ
 
 	// Resolve cmd flags to add any user overrides
 	if err := cmdflags.Resolve(options.ProxyArguments, proxyconfig.AddFlags); len(err) > 0 {
-		return nil, errors.NewAggregate(err)
+		return nil, kerrors.NewAggregate(err)
 	}
 
 	return proxyconfig, nil

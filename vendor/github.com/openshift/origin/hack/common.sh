@@ -11,8 +11,14 @@ set -o pipefail
 readonly OS_ROOT=$(
   unset CDPATH
   os_root=$(dirname "${BASH_SOURCE}")/..
+
   cd "${os_root}"
-  pwd
+  os_root=`pwd`
+  if [ -h "${os_root}" ]; then
+    readlink "${os_root}"
+  else
+    pwd
+  fi
 )
 
 readonly OS_OUTPUT_SUBPATH="${OS_OUTPUT_SUBPATH:-_output/local}"
@@ -146,6 +152,86 @@ os::build::host_platform_friendly() {
   fi
 }
 
+# os::build::setup_env will check that the `go` commands is available in
+# ${PATH}. If not running on Travis, it will also check that the Go version is
+# good enough for the Kubernetes build.
+#
+# Output Vars:
+#   export GOPATH - A modified GOPATH to our created tree along with extra
+#     stuff.
+#   export GOBIN - This is actively unset if already set as we want binaries
+#     placed in a predictable place.
+os::build::setup_env() {
+  if [[ -z "$(which go)" ]]; then
+    cat <<EOF
+
+Can't find 'go' in PATH, please fix and retry.
+See http://golang.org/doc/install for installation instructions.
+
+EOF
+    exit 2
+  fi
+
+  if [[ -z "$(which sha256sum)" ]]; then
+    sha256sum() {
+      return 0
+    }
+  fi
+
+  # Travis continuous build uses a head go release that doesn't report
+  # a version number, so we skip this check on Travis.  It's unnecessary
+  # there anyway.
+  if [[ "${TRAVIS:-}" != "true" ]]; then
+    local go_version
+    go_version=($(go version))
+    if [[ "${go_version[2]}" < "go1.4" ]]; then
+      cat <<EOF
+
+Detected Go version: ${go_version[*]}.
+Origin builds require Go version 1.4 or greater.
+
+EOF
+      exit 2
+    fi
+  fi
+
+  unset GOBIN
+
+  # use the regular gopath for building
+  if [[ -z "${OS_OUTPUT_GOPATH:-}" ]]; then
+    export GOPATH=${OS_ROOT}/Godeps/_workspace:${OS_GOPATH}
+    export OS_TARGET_BIN=${OS_GOPATH}/bin
+    return
+  fi
+
+  # create a local GOPATH in _output
+  GOPATH="${OS_OUTPUT}/go"
+  OS_TARGET_BIN=${GOPATH}/bin
+  local go_pkg_dir="${GOPATH}/src/${OS_GO_PACKAGE}"
+  local go_pkg_basedir=$(dirname "${go_pkg_dir}")
+
+  mkdir -p "${go_pkg_basedir}"
+  rm -f "${go_pkg_dir}"
+
+  # TODO: This symlink should be relative.
+  ln -s "${OS_ROOT}" "${go_pkg_dir}"
+
+  # Append OS_EXTRA_GOPATH to the GOPATH if it is defined.
+  if [[ -n ${OS_EXTRA_GOPATH:-} ]]; then
+    GOPATH="${GOPATH}:${OS_EXTRA_GOPATH}"
+    # TODO: needs to handle multiple directories
+    OS_TARGET_BIN=${OS_EXTRA_GOPATH}/bin
+  fi
+  # Append the tree maintained by `godep` to the GOPATH unless OS_NO_GODEPS
+  # is defined.
+  if [[ -z ${OS_NO_GODEPS:-} ]]; then
+    GOPATH="${GOPATH}:${OS_ROOT}/Godeps/_workspace"
+    OS_TARGET_BIN=${OS_ROOT}/Godeps/_workspace/bin
+  fi
+  export GOPATH
+  export OS_TARGET_BIN
+}
+
 # Build static binary targets.
 #
 # Input:
@@ -198,26 +284,40 @@ os::build::build_binaries() {
       fi
     done
 
+    local host_platform=$(os::build::host_platform)
     local platform
     for platform in "${platforms[@]}"; do
-      os::build::set_platform_envs "${platform}"
       echo "++ Building go targets for ${platform}:" "${targets[@]}"
+      mkdir -p "${OS_OUTPUT_BINPATH}/${platform}"
+
+      # output directly to the desired location
+      if [[ $platform == $host_platform ]]; then
+        export GOBIN="${OS_OUTPUT_BINPATH}/${platform}"
+      else
+        unset GOBIN
+      fi
+
       if [[ ${#nonstatics[@]} -gt 0 ]]; then
-        go install "${goflags[@]:+${goflags[@]}}" \
-            -ldflags "${version_ldflags}" \
-            "${nonstatics[@]}"
+        GOOS=${platform%/*} GOARCH=${platform##*/} go install \
+          "${goflags[@]:+${goflags[@]}}" \
+          -ldflags "${version_ldflags}" \
+          "${nonstatics[@]}"
+
+        # GOBIN is not supported on cross-compile in Go 1.5+ - move to the correct target
+        if [[ $platform != $host_platform ]]; then
+          local platform_src="/${platform//\//_}"
+          mv "${OS_TARGET_BIN}/${platform_src}/"* "${OS_OUTPUT_BINPATH}/${platform}/"
+        fi
       fi
 
       for test in "${tests[@]:+${tests[@]}}"; do
-        mkdir -p "${GOBIN}/${platform}"
-        local outfile="${GOBIN}/${platform}/$(basename ${test})"
-        go test -c -o "${outfile}" \
+        local outfile="${OS_OUTPUT_BINPATH}/${platform}/$(basename ${test})"
+        GOOS=${platform%/*} GOARCH=${platform##*/} go test \
+          -c -o "${outfile}" \
           "${goflags[@]:+${goflags[@]}}" \
           -ldflags "${version_ldflags}" \
           "$(dirname ${test})"
       done
-
-      os::build::unset_platform_envs "${platform}"
     done
   )
 }
@@ -244,67 +344,6 @@ os::build::export_targets() {
   if [[ ${#platforms[@]} -eq 0 ]]; then
     platforms=("$(os::build::host_platform)")
   fi
-}
-
-# Takes the platform name ($1) and sets the appropriate golang env variables
-# for that platform.
-os::build::set_platform_envs() {
-  [[ -n ${1-} ]] || {
-    echo "!!! Internal error.  No platform set in os::build::set_platform_envs"
-    exit 1
-  }
-
-  export GOOS=${platform%/*}
-  export GOARCH=${platform##*/}
-}
-
-# Takes the platform name ($1) and resets the appropriate golang env variables
-# for that platform.
-os::build::unset_platform_envs() {
-  unset GOOS
-  unset GOARCH
-}
-
-# os::build::setup_env will check that the `go` commands is available in
-# ${PATH}. If not running on Travis, it will also check that the Go version is
-# good enough for the Kubernetes build.
-#
-# Output Vars:
-#   export GOPATH - A modified GOPATH to our created tree along with extra
-#     stuff.
-#   export GOBIN - This is actively unset if already set as we want binaries
-#     placed in a predictable place.
-os::build::setup_env() {
-  if [[ -z "$(which go)" ]]; then
-    cat <<EOF
-
-Can't find 'go' in PATH, please fix and retry.
-See http://golang.org/doc/install for installation instructions.
-
-EOF
-    exit 2
-  fi
-
-  # Travis continuous build uses a head go release that doesn't report
-  # a version number, so we skip this check on Travis.  It's unnecessary
-  # there anyway.
-  if [[ "${TRAVIS:-}" != "true" ]]; then
-    local go_version
-    go_version=($(go version))
-    if [[ "${go_version[2]}" < "go1.4" ]]; then
-      cat <<EOF
-
-Detected go version: ${go_version[*]}.
-OpenShift and Kubernetes requires go version 1.4 or greater.
-Please install Go version 1.4 or later.
-
-EOF
-      exit 2
-    fi
-  fi
-
-  export GOBIN="${OS_OUTPUT_BINPATH}"
-  export GOPATH=${OS_ROOT}/Godeps/_workspace:${OS_GOPATH}
 }
 
 # This will take $@ from $GOPATH/bin and copy them to the appropriate
@@ -335,17 +374,11 @@ os::build::place_bins() {
       # The substitution on platform_src below will replace all slashes with
       # underscores.  It'll transform darwin/amd64 -> darwin_amd64.
       local platform_src="/${platform//\//_}"
-      if [[ $platform == $host_platform ]]; then
-        platform_src=""
-      fi
 
       # Skip this directory if the platform has no binaries.
-      local full_binpath_src="${OS_OUTPUT_BINPATH}${platform_src}"
-      if [[ ! -d "${full_binpath_src}" ]]; then
+      if [[ ! -d "${OS_OUTPUT_BINPATH}/${platform}" ]]; then
         continue
       fi
-
-      mkdir -p "${OS_OUTPUT_BINPATH}/${platform}"
 
       # Create an array of binaries to release. Append .exe variants if the platform is windows.
       local -a binaries=()
@@ -355,14 +388,6 @@ os::build::place_bins() {
           binaries+=("${binary}.exe")
         else
           binaries+=("${binary}")
-        fi
-      done
-
-      # Move the specified release binaries to the shared binary output directory.
-      for binary in "${binaries[@]}"; do
-        path="${full_binpath_src}/${binary}"
-        if [[ -f "${path}" ]]; then
-          mv "${path}" "${OS_OUTPUT_BINPATH}/${platform}/"
         fi
       done
 
@@ -431,6 +456,9 @@ os::build::archive_zip() {
   local archive_name="${archive_name:-$default_name}"
   echo "++ Creating ${archive_name}"
   for file in "$@"; do
+    pushd "${release_binpath}" &> /dev/null
+      sha256sum "${file}"
+    popd &>/dev/null
     zip "${OS_LOCAL_RELEASEPATH}/${archive_name}" -qj "${release_binpath}/${file}"
   done
 }
@@ -442,8 +470,72 @@ os::build::archive_tar() {
   local archive_name="${archive_name:-$default_name}"
   echo "++ Creating ${archive_name}"
   pushd "${release_binpath}" &> /dev/null
-  tar -czf "${OS_LOCAL_RELEASEPATH}/${archive_name}" --transform="s,^\.,${base_name}," $@
+  find . -type f -exec sha256sum {} \;
+  if [[ -n "$(which bsdtar)" ]]; then
+    bsdtar -czf "${OS_LOCAL_RELEASEPATH}/${archive_name}" -s ",^\.,${base_name}," $@
+  else
+    tar -czf "${OS_LOCAL_RELEASEPATH}/${archive_name}" --transform="s,^\.,${base_name}," $@
+  fi
   popd &>/dev/null
+}
+
+# Checks if the filesystem on a partition that the provided path points to is
+# supporting hard links.
+#
+# Input:
+#  $1 - the path where the hardlinks support test will be done.
+# Returns:
+#  0 - if hardlinks are supported
+#  non-zero - if hardlinks aren't supported
+os::build::is_hardlink_supported() {
+  local path="$1"
+  # Determine if FS supports hard links
+  local temp_file=$(TMPDIR="${path}" mktemp)
+  ln "${temp_file}" "${temp_file}.link" &> /dev/null && unlink "${temp_file}.link" || local supported=$?
+  rm -f "${temp_file}"
+  return ${supported:-0}
+}
+
+# Extract a tar.gz compressed archive in a given directory. If the
+# archive contains hardlinks and the underlying filesystem is not
+# supporting hardlinks then the a hard dereference will be done.
+#
+# Input:
+#   $1 - path to archive file
+#   $2 - directory where the archive will be extracted
+os::build::extract_tar() {
+  local archive_file="$1"
+  local change_dir="$2"
+
+  local tar_flags="--strip-components=1"
+
+  # Unpack archive
+  echo "++ Extracting $(basename ${archive_file})"
+  if os::build::is_hardlink_supported "${change_dir}" ; then
+    # Ensure that tar won't try to set an owner when extracting to an
+    # nfs mount. Setting ownership on an nfs mount is likely to fail
+    # even for root.
+    local mount_type=$(df -P -T "${change_dir}" | tail -n +2 | awk '{print $2}')
+    if [[ "${mount_type}" = "nfs" ]]; then
+      tar_flags="${tar_flags} --no-same-owner"
+    fi
+    tar mxzf "${archive_file}" ${tar_flags} -C "${change_dir}"
+  else
+    local temp_dir=$(TMPDIR=/dev/shm/ mktemp -d)
+    tar mxzf "${archive_file}" ${tar_flags} -C "${temp_dir}"
+    pushd "${temp_dir}" &> /dev/null
+    tar cO --hard-dereference * | tar xf - -C "${change_dir}"
+    popd &>/dev/null
+    rm -rf "${temp_dir}"
+  fi
+}
+
+# os::build::release_sha calculates a SHA256 checksum over the contents of the
+# built release directory.
+os::build::release_sha() {
+  pushd "${OS_LOCAL_RELEASEPATH}" &> /dev/null
+  sha256sum * > CHECKSUM
+  popd &> /dev/null
 }
 
 # os::build::make_openshift_binary_symlinks makes symlinks for the openshift
@@ -476,19 +568,19 @@ os::build::detect_local_release_tars() {
     echo "There is no release .commit identifier ${OS_LOCAL_RELEASEPATH}"
     return 2
   fi
-  local primary=$(find ${OS_LOCAL_RELEASEPATH} -maxdepth 1 -type f -name openshift-origin-server-*-${platform}*)
+  local primary=$(find ${OS_LOCAL_RELEASEPATH} -maxdepth 1 -type f -name openshift-origin-server-*-${platform}* \( -name *.tar.gz -or -name *.zip \))
   if [[ $(echo "${primary}" | wc -l) -ne 1 || -z "${primary}" ]]; then
     echo "There should be exactly one ${platform} server tar in $OS_LOCAL_RELEASEPATH"
     return 2
   fi
 
-  local client=$(find ${OS_LOCAL_RELEASEPATH} -maxdepth 1 -type f -name openshift-origin-client-tools-*-${platform}*)
+  local client=$(find ${OS_LOCAL_RELEASEPATH} -maxdepth 1 -type f -name openshift-origin-client-tools-*-${platform}* \( -name *.tar.gz -or -name *.zip \))
   if [[ $(echo "${client}" | wc -l) -ne 1 || -z "${primary}" ]]; then
     echo "There should be exactly one ${platform} client tar in $OS_LOCAL_RELEASEPATH"
     return 2
   fi
 
-  local image=$(find ${OS_LOCAL_RELEASEPATH} -maxdepth 1 -type f -name openshift-origin-image*-${platform}*)
+  local image=$(find ${OS_LOCAL_RELEASEPATH} -maxdepth 1 -type f -name openshift-origin-image*-${platform}* \( -name *.tar.gz -or -name *.zip \))
   if [[ $(echo "${image}" | wc -l) -ne 1 || -z "${image}" ]]; then
     echo "There should be exactly one ${platform} image tar in $OS_LOCAL_RELEASEPATH"
     return 2
@@ -582,11 +674,10 @@ os::build::ldflag() {
   local val=${2}
 
   GO_VERSION=($(go version))
-
-  if [[ -z $(echo "${GO_VERSION[2]}" | grep -E 'go1.5') ]]; then
-    echo "-X ${OS_GO_PACKAGE}/pkg/version.${key} ${val}"
+  if [[ -n $(echo "${GO_VERSION[2]}" | grep -E 'go1.4') ]]; then
+    echo "-X ${key} ${val}"
   else
-    echo "-X ${OS_GO_PACKAGE}/pkg/version.${key}=${val}"
+    echo "-X ${key}=${val}"
   fi
 }
 
@@ -603,19 +694,12 @@ os::build::ldflags() {
 
   declare -a ldflags=()
 
-  ldflags+=($(os::build::ldflag "majorFromGit" "${OS_GIT_MAJOR}"))
-  ldflags+=($(os::build::ldflag "minorFromGit" "${OS_GIT_MINOR}"))
-  ldflags+=($(os::build::ldflag "versionFromGit" "${OS_GIT_VERSION}"))
-  ldflags+=($(os::build::ldflag "commitFromGit" "${OS_GIT_COMMIT}"))
-
-  GO_VERSION=($(go version))
-  if [[ -z $(echo "${GO_VERSION[2]}" | grep -E 'go1.5') ]]; then
-    ldflags+=(-X "k8s.io/kubernetes/pkg/version.gitCommit" "${KUBE_GIT_COMMIT}")
-    ldflags+=(-X "k8s.io/kubernetes/pkg/version.gitVersion" "${KUBE_GIT_VERSION}")
-  else
-    ldflags+=(-X "k8s.io/kubernetes/pkg/version.gitCommit=${KUBE_GIT_COMMIT}")
-    ldflags+=(-X "k8s.io/kubernetes/pkg/version.gitVersion=${KUBE_GIT_VERSION}")
-  fi
+  ldflags+=($(os::build::ldflag "${OS_GO_PACKAGE}/pkg/version.majorFromGit" "${OS_GIT_MAJOR}"))
+  ldflags+=($(os::build::ldflag "${OS_GO_PACKAGE}/pkg/version.minorFromGit" "${OS_GIT_MINOR}"))
+  ldflags+=($(os::build::ldflag "${OS_GO_PACKAGE}/pkg/version.versionFromGit" "${OS_GIT_VERSION}"))
+  ldflags+=($(os::build::ldflag "${OS_GO_PACKAGE}/pkg/version.commitFromGit" "${OS_GIT_COMMIT}"))
+  ldflags+=($(os::build::ldflag "k8s.io/kubernetes/pkg/version.gitCommit" "${OS_GIT_COMMIT}"))
+  ldflags+=($(os::build::ldflag "k8s.io/kubernetes/pkg/version.gitVersion" "${KUBE_GIT_VERSION}"))
 
   # The -ldflags parameter takes a single string, so join the output.
   echo "${ldflags[*]-}"

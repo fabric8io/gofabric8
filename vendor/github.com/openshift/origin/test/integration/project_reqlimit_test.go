@@ -7,6 +7,7 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/labels"
 
@@ -19,12 +20,12 @@ import (
 	testserver "github.com/openshift/origin/test/util/server"
 )
 
-func setupProjectRequestLimitTest(t *testing.T, pluginConfig *requestlimit.ProjectRequestLimitConfig) (kclient.Interface, client.Interface, *kclient.Config) {
+func setupProjectRequestLimitTest(t *testing.T, pluginConfig *requestlimit.ProjectRequestLimitConfig) (kclient.Interface, client.Interface, *restclient.Config) {
+	testutil.RequireEtcd(t)
 	masterConfig, err := testserver.DefaultMasterOptions()
 	if err != nil {
 		t.Fatalf("error creating config: %v", err)
 	}
-	masterConfig.AdmissionConfig.PluginOrderOverride = []string{"OriginNamespaceLifecycle", "BuildByStrategy", "ProjectRequestLimit"}
 	masterConfig.AdmissionConfig.PluginConfig = map[string]configapi.AdmissionPluginConfig{
 		"ProjectRequestLimit": {
 			Configuration: pluginConfig,
@@ -166,7 +167,7 @@ func TestProjectRequestLimitSingleConfig(t *testing.T) {
 	})
 }
 
-func testProjectRequestLimitAdmission(t *testing.T, errorPrefix string, clientConfig *kclient.Config, tests map[string]bool) {
+func testProjectRequestLimitAdmission(t *testing.T, errorPrefix string, clientConfig *restclient.Config, tests map[string]bool) {
 	for user, expectSuccess := range tests {
 		oclient, _, _, err := testutil.GetClientForUser(*clientConfig, user)
 		if err != nil {

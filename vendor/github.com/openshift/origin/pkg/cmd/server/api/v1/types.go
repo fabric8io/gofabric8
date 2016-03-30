@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 )
@@ -68,6 +69,23 @@ type NodeConfig struct {
 
 	// IPTablesSyncPeriod is how often iptable rules are refreshed
 	IPTablesSyncPeriod string `json:"iptablesSyncPeriod"`
+
+	// VolumeConfig contains options for configuring volumes on the node.
+	VolumeConfig VolumeConfig `json:"volumeConfig"`
+}
+
+// VolumeConfig contains options for configuring volumes on the node.
+type VolumeConfig struct {
+	// LocalQuota contains options for controlling local volume quota on the node.
+	LocalQuota LocalQuota `json:"localQuota"`
+}
+
+// LocalQuota contains options for controlling local volume quota on the node.
+type LocalQuota struct {
+	// FSGroup can be specified to enable a quota on local storage use per unique FSGroup ID.
+	// At present this is only implemented for emptyDir volumes, and if the underlying
+	// volumeDirectory is on an XFS filesystem.
+	PerFSGroup *resource.Quantity `json:"perFSGroup"`
 }
 
 // NodeAuthConfig holds authn/authz configuration options
@@ -269,11 +287,54 @@ type PolicyConfig struct {
 
 	// OpenShiftInfrastructureNamespace is the namespace where OpenShift infrastructure resources live (like controller service accounts)
 	OpenShiftInfrastructureNamespace string `json:"openshiftInfrastructureNamespace"`
+
+	// UserAgentMatchingConfig controls how API calls from *voluntarily* identifying clients will be handled.  THIS DOES NOT DEFEND AGAINST MALICIOUS CLIENTS!
+	UserAgentMatchingConfig UserAgentMatchingConfig `json:"userAgentMatchingConfig"`
+}
+
+// UserAgentMatchingConfig controls how API calls from *voluntarily* identifying clients will be handled.  THIS DOES NOT DEFEND AGAINST MALICIOUS CLIENTS!
+type UserAgentMatchingConfig struct {
+	// If this list is non-empty, then a User-Agent must match one of the UserAgentRegexes to be allowed
+	RequiredClients []UserAgentMatchRule `json:"requiredClients"`
+
+	// If this list is non-empty, then a User-Agent must not match any of the UserAgentRegexes
+	DeniedClients []UserAgentDenyRule `json:"deniedClients"`
+
+	// DefaultRejectionMessage is the message shown when rejecting a client.  If it is not a set, a generic message is given.
+	DefaultRejectionMessage string `json:"defaultRejectionMessage"`
+}
+
+// UserAgentMatchRule describes how to match a given request based on User-Agent and HTTPVerb
+type UserAgentMatchRule struct {
+	// UserAgentRegex is a regex that is checked against the User-Agent.
+	// Known variants of oc clients
+	// 1. oc accessing kube resources: oc/v1.2.0 (linux/amd64) kubernetes/bc4550d
+	// 2. oc accessing openshift resources: oc/v1.1.3 (linux/amd64) openshift/b348c2f
+	// 3. openshift kubectl accessing kube resources:  openshift/v1.2.0 (linux/amd64) kubernetes/bc4550d
+	// 4. openshit kubectl accessing openshift resources: openshift/v1.1.3 (linux/amd64) openshift/b348c2f
+	// 5. oadm accessing kube resources: oadm/v1.2.0 (linux/amd64) kubernetes/bc4550d
+	// 6. oadm accessing openshift resources: oadm/v1.1.3 (linux/amd64) openshift/b348c2f
+	// 7. openshift cli accessing kube resources: openshift/v1.2.0 (linux/amd64) kubernetes/bc4550d
+	// 8. openshift cli accessing openshift resources: openshift/v1.1.3 (linux/amd64) openshift/b348c2f
+	Regex string `json:"regex"`
+
+	// HTTPVerbs specifies which HTTP verbs should be matched.  An empty list means "match all verbs".
+	HTTPVerbs []string `json:"httpVerbs"`
+}
+
+// UserAgentDenyRule adds a rejection message that can be used to help a user figure out how to get an approved client
+type UserAgentDenyRule struct {
+	UserAgentMatchRule `json:", inline"`
+
+	// RejectionMessage is the message shown when rejecting a client.  If it is not a set, the default message is used.
+	RejectionMessage string `json:"rejectionMessage"`
 }
 
 // RoutingConfig holds the necessary configuration options for routing to subdomains
 type RoutingConfig struct {
 	// Subdomain is the suffix appended to $service.$namespace. to form the default route hostname
+	// DEPRECATED: This field is being replaced by routers setting their own defaults. This is the
+	// "default" route.
 	Subdomain string `json:"subdomain"`
 }
 
@@ -287,6 +348,11 @@ type MasterNetworkConfig struct {
 	HostSubnetLength uint `json:"hostSubnetLength"`
 	// ServiceNetwork is the CIDR string to specify the service networks
 	ServiceNetworkCIDR string `json:"serviceNetworkCIDR"`
+	// ExternalIPNetworkCIDRs controls what values are acceptable for the service external IP field. If empty, no externalIP
+	// may be set. It may contain a list of CIDRs which are checked for access. If a CIDR is prefixed with !, IPs in that
+	// CIDR will be rejected. Rejections will be applied first, then the IP checked against one of the allowed CIDRs. You
+	// should ensure this range does not overlap with your nodes, pods, or service CIDRs for security reasons.
+	ExternalIPNetworkCIDRs []string `json:"externalIPNetworkCIDRs"`
 }
 
 // ImageConfig holds the necessary configuration options for building image names for system components
@@ -605,7 +671,8 @@ type LDAPPasswordIdentityProvider struct {
 	// BindDN is an optional DN to bind with during the search phase.
 	BindDN string `json:"bindDN"`
 	// BindPassword is an optional password to bind with during the search phase.
-	BindPassword string `json:"bindPassword"`
+	BindPassword StringSource `json:"bindPassword"`
+
 	// Insecure, if true, indicates the connection should not use TLS.
 	// Cannot be set to true with a URL scheme of "ldaps://"
 	// If false, "ldaps://" URLs connect using TLS, and "ldap://" URLs are upgraded to a TLS connection using StartTLS as specified in https://tools.ietf.org/html/rfc2830
@@ -667,6 +734,12 @@ type RequestHeaderIdentityProvider struct {
 	ClientCA string `json:"clientCA"`
 	// Headers is the set of headers to check for identity information
 	Headers []string `json:"headers"`
+	// PreferredUsernameHeaders is the set of headers to check for the preferred username
+	PreferredUsernameHeaders []string `json:"preferredUsernameHeaders"`
+	// NameHeaders is the set of headers to check for the display name
+	NameHeaders []string `json:"nameHeaders"`
+	// EmailHeaders is the set of headers to check for the email address
+	EmailHeaders []string `json:"emailHeaders"`
 }
 
 // GitHubIdentityProvider provides identities for users authenticating using GitHub credentials
@@ -676,7 +749,7 @@ type GitHubIdentityProvider struct {
 	// ClientID is the oauth client ID
 	ClientID string `json:"clientID"`
 	// ClientSecret is the oauth client secret
-	ClientSecret string `json:"clientSecret"`
+	ClientSecret StringSource `json:"clientSecret"`
 	// Organizations optionally restricts which organizations are allowed to log in
 	Organizations []string `json:"organizations"`
 }
@@ -693,7 +766,7 @@ type GitLabIdentityProvider struct {
 	// ClientID is the oauth client ID
 	ClientID string `json:"clientID"`
 	// ClientSecret is the oauth client secret
-	ClientSecret string `json:"clientSecret"`
+	ClientSecret StringSource `json:"clientSecret"`
 }
 
 // GoogleIdentityProvider provides identities for users authenticating using Google credentials
@@ -703,7 +776,7 @@ type GoogleIdentityProvider struct {
 	// ClientID is the oauth client ID
 	ClientID string `json:"clientID"`
 	// ClientSecret is the oauth client secret
-	ClientSecret string `json:"clientSecret"`
+	ClientSecret StringSource `json:"clientSecret"`
 
 	// HostedDomain is the optional Google App domain (e.g. "mycompany.com") to restrict logins to
 	HostedDomain string `json:"hostedDomain"`
@@ -720,7 +793,7 @@ type OpenIDIdentityProvider struct {
 	// ClientID is the oauth client ID
 	ClientID string `json:"clientID"`
 	// ClientSecret is the oauth client secret
-	ClientSecret string `json:"clientSecret"`
+	ClientSecret StringSource `json:"clientSecret"`
 
 	// ExtraScopes are any scopes to request in addition to the standard "openid" scope.
 	ExtraScopes []string `json:"extraScopes"`
@@ -868,6 +941,28 @@ type AssetExtensionsConfig struct {
 	HTML5Mode bool `json:"html5Mode"`
 }
 
+// StringSource allows specifying a string inline, or externally via env var or file.
+// When it contains only a string value, it marshals to a simple JSON string.
+type StringSource struct {
+	// StringSourceSpec specifies the string value, or external location
+	StringSourceSpec `json:",inline"`
+}
+
+// StringSourceSpec specifies a string value, or external location
+type StringSourceSpec struct {
+	// Value specifies the cleartext value, or an encrypted value if keyFile is specified.
+	Value string `json:"value"`
+
+	// Env specifies an envvar containing the cleartext value, or an encrypted value if the keyFile is specified.
+	Env string `json:"env"`
+
+	// File references a file containing the cleartext value, or an encrypted value if a keyFile is specified.
+	File string `json:"file"`
+
+	// KeyFile references a file containing the key to use to decrypt the value.
+	KeyFile string `json:"keyFile"`
+}
+
 // LDAPSyncConfig holds the necessary configuration options to define an LDAP group sync
 type LDAPSyncConfig struct {
 	unversioned.TypeMeta `json:",inline"`
@@ -877,7 +972,8 @@ type LDAPSyncConfig struct {
 	// BindDN is an optional DN to bind to the LDAP server with
 	BindDN string `json:"bindDN"`
 	// BindPassword is an optional password to bind with during the search phase.
-	BindPassword string `json:"bindPassword"`
+	BindPassword StringSource `json:"bindPassword"`
+
 	// Insecure, if true, indicates the connection should not use TLS.
 	// Cannot be set to true with a URL scheme of "ldaps://"
 	// If false, "ldaps://" URLs connect using TLS, and "ldap://" URLs are upgraded to a TLS connection using StartTLS as specified in https://tools.ietf.org/html/rfc2830

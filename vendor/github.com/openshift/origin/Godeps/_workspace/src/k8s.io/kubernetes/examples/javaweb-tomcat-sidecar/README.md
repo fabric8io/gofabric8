@@ -1,29 +1,5 @@
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-
-<h2>PLEASE NOTE: This document applies to the HEAD of the source tree</h2>
-
-If you are using a released version of Kubernetes, you should
-refer to the docs that go with that version.
-
-Documentation for other releases can be found at
-[releases.k8s.io](http://releases.k8s.io).
-</strong>
---
-
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
@@ -41,7 +17,7 @@ This sidecar mode brings a new workflow for Java users:
 
 ![](workflow.png?raw=true "Workflow")
 
-As you can see, user can create a `sample:v2` container as sidecar to "provide" war file to Tomcat by copying it to the shared `emptyDir` volume. And Pod will make sure the two containers compose an "atomic" scheduling unit, which is perfect for this case. Thus, your application version management will be totally seperated from web server management.
+As you can see, user can create a `sample:v2` container as sidecar to "provide" war file to Tomcat by copying it to the shared `emptyDir` volume. And Pod will make sure the two containers compose an "atomic" scheduling unit, which is perfect for this case. Thus, your application version management will be totally separated from web server management.
 
 For example, if you are going to change the configurations of your Tomcat:
 
@@ -207,6 +183,13 @@ $ kubectl delete -f examples/javaweb-tomcat-sidecar/javaweb-2.yaml
 ```
 
 
+
+
+
+
+<!-- BEGIN MUNGE: IS_VERSIONED -->
+<!-- TAG IS_VERSIONED -->
+<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

@@ -26,7 +26,7 @@ import (
 )
 
 var _ = Describe("Secrets", func() {
-	f := NewFramework("secrets")
+	f := NewDefaultFramework("secrets")
 
 	It("should be consumable from pods in volume [Conformance]", func() {
 		name := "secret-test-" + string(util.NewUUID())
@@ -131,7 +131,7 @@ var _ = Describe("Secrets", func() {
 				Containers: []api.Container{
 					{
 						Name:    "secret-env-test",
-						Image:   "gcr.io/google_containers/busybox",
+						Image:   "gcr.io/google_containers/busybox:1.24",
 						Command: []string{"sh", "-c", "env"},
 						Env: []api.EnvVar{
 							{

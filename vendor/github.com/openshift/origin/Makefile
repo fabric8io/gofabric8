@@ -10,9 +10,11 @@
 
 OUT_DIR = _output
 OUT_PKG_DIR = Godeps/_workspace/pkg
+OS_OUTPUT_GOPATH ?= 1
 
 export GOFLAGS
 export TESTFLAGS
+export OS_OUTPUT_GOPATH
 
 # Build code.
 #
@@ -45,6 +47,7 @@ check: | build verify
 # Example:
 #   make verify
 verify: build
+	hack/build-go.sh test/extended/extended.test test/extended/networking/extended.test test/integration/integration.test -tags='integration docker'
 	hack/verify-upstream-commits.sh
 	hack/verify-gofmt.sh
 	hack/verify-govet.sh
@@ -53,6 +56,7 @@ verify: build
 	hack/verify-generated-completions.sh
 	hack/verify-generated-docs.sh
 	hack/verify-generated-swagger-spec.sh
+	VERIFY=true hack/update-generated-swagger-descriptions.sh
 .PHONY: verify
 
 # Run unit tests.
@@ -68,7 +72,7 @@ verify: build
 #   make test-unit
 #   make test-unit WHAT=pkg/build GOFLAGS=-v
 test-unit:
-	TEST_KUBE=1 hack/test-go.sh $(WHAT) $(TESTS) $(TESTFLAGS)
+	TEST_KUBE=true GOTEST_FLAGS="$(TESTFLAGS)" hack/test-go.sh $(WHAT) $(TESTS)
 .PHONY: test-unit
 
 # Run integration tests. Compiles its own tests, cannot be run
@@ -142,7 +146,7 @@ clean:
 # Example:
 #   make release
 release: clean
-	hack/build-release.sh
+	OS_ONLY_BUILD_PLATFORMS="linux/amd64" hack/build-release.sh
 	hack/build-images.sh
 	hack/extract-release.sh
 .PHONY: release
@@ -155,6 +159,14 @@ release-binaries: clean
 	hack/build-release.sh
 	hack/extract-release.sh
 .PHONY: release-binaries
+
+# Build the cross compiled release binaries
+#
+# Example:
+#   make build-cross
+build-cross: clean
+	hack/build-cross.sh
+.PHONY: build-cross
 
 # Install travis dependencies
 #

@@ -10,7 +10,7 @@
 %global kube_plugin_path /usr/libexec/kubernetes/kubelet-plugins/net/exec/redhat~openshift-ovs-subnet
 
 # docker_version is the version of docker requires by packages
-%global docker_version 1.8.2
+%global docker_version 1.9.1
 # tuned_version is the version of tuned requires by packages
 %global tuned_version  2.3
 # openvswitch_version is the version of openvswitch requires by packages
@@ -87,6 +87,13 @@ Obsoletes:      openshift-master < %{package_refector_version}
 %description master
 %{summary}
 
+%package tests
+Summary: %{product_name} Test Suite
+Requires:       %{name} = %{version}-%{release}
+
+%description tests
+%{summary}
+
 %package node
 Summary:        %{product_name} Node
 Requires:       %{name} = %{version}-%{release}
@@ -140,7 +147,6 @@ Requires:       %{name} = %{version}-%{release}
 
 %package pod
 Summary:        %{product_name} Pod
-Requires:       %{name} = %{version}-%{release}
 
 %description pod
 %{summary}
@@ -194,6 +200,7 @@ for cmd in oc openshift dockerregistry recycle
 do
         go install -ldflags "%{ldflags}" %{import_path}/cmd/${cmd}
 done
+go test -c -o _build/bin/extended.test -ldflags "%{ldflags}" %{import_path}/test/extended
 
 %if 0%{?make_redistributable}
 # Build clients for other platforms
@@ -216,6 +223,8 @@ do
   echo "+++ INSTALLING ${bin}"
   install -p -m 755 _build/bin/${bin} %{buildroot}%{_bindir}/${bin}
 done
+install -d %{buildroot}%{_libexecdir}/%{name}
+install -p -m 755 _build/bin/extended.test %{buildroot}%{_libexecdir}/%{name}/
 
 %if 0%{?make_redistributable}
 # Install client executable for windows and mac
@@ -332,6 +341,10 @@ if [ -d "%{_sharedstatedir}/openshift" ]; then
     ln -s %{_sharedstatedir}/openshift %{_sharedstatedir}/origin
   fi
 fi
+
+%files tests
+%{_libexecdir}/%{name}
+%{_libexecdir}/%{name}/extended.test
 
 
 %files master

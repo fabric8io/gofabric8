@@ -6,7 +6,8 @@ import (
 	kadmission "k8s.io/kubernetes/pkg/admission"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/auth/user"
-	"k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	clientsetfake "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
+	testingcore "k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 )
@@ -80,11 +81,11 @@ func TestExecAdmit(t *testing.T) {
 	}
 
 	for k, v := range testCases {
-		tc := testclient.NewSimpleFake()
-		tc.PrependReactor("get", "pods", func(action testclient.Action) (handled bool, ret runtime.Object, err error) {
+		tc := clientsetfake.NewSimpleClientset(v.pod)
+		tc.PrependReactor("get", "pods", func(action testingcore.Action) (handled bool, ret runtime.Object, err error) {
 			return true, v.pod, nil
 		})
-		tc.AddWatchReactor("*", testclient.DefaultWatchReactor(watch.NewFake(), nil))
+		tc.AddWatchReactor("*", testingcore.DefaultWatchReactor(watch.NewFake(), nil))
 
 		// create the admission plugin
 		p := NewSCCExecRestrictions(tc)
@@ -109,10 +110,5 @@ func TestExecAdmit(t *testing.T) {
 			t.Errorf("%s: no actions found", k)
 		}
 
-		if v.shouldHaveClientAction {
-			if len(v.pod.Spec.ServiceAccountName) != 0 {
-				t.Errorf("%s: sa name should have been cleared: %v", k, v.pod.Spec.ServiceAccountName)
-			}
-		}
 	}
 }

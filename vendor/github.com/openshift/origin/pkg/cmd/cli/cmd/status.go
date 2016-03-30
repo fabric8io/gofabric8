@@ -51,6 +51,7 @@ type StatusOptions struct {
 
 	logsCommandName             string
 	securityPolicyCommandFormat string
+	setProbeCommandName         string
 }
 
 // NewCmdStatus implements the OpenShift cli status command.
@@ -88,8 +89,9 @@ func (o *StatusOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, args 
 		return kcmdutil.UsageError(cmd, "no arguments should be provided")
 	}
 
-	o.logsCommandName = fmt.Sprintf("%s logs -p", cmd.Parent().CommandPath())
+	o.logsCommandName = fmt.Sprintf("%s logs", cmd.Parent().CommandPath())
 	o.securityPolicyCommandFormat = "oadm policy add-scc-to-user anyuid -n %s -z %s"
+	o.setProbeCommandName = fmt.Sprintf("%s set probe", cmd.Parent().CommandPath())
 
 	client, kclient, err := f.Clients()
 	if err != nil {
@@ -117,8 +119,10 @@ func (o *StatusOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, args 
 		Server:  config.Host,
 		Suggest: o.verbose,
 
+		// TODO: Remove these and reference them inside the markers using constants.
 		LogsCommandName:             o.logsCommandName,
 		SecurityPolicyCommandFormat: o.securityPolicyCommandFormat,
+		SetProbeCommandName:         o.setProbeCommandName,
 	}
 
 	o.out = out
