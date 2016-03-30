@@ -27,7 +27,6 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
-	awscloud "k8s.io/kubernetes/pkg/cloudprovider/providers/aws"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/mount"
@@ -100,15 +99,15 @@ func (plugin *awsElasticBlockStorePlugin) newBuilderInternal(spec *volume.Spec, 
 
 	return &awsElasticBlockStoreBuilder{
 		awsElasticBlockStore: &awsElasticBlockStore{
-			podUID:   podUID,
-			volName:  spec.Name(),
-			volumeID: volumeID,
-			manager:  manager,
-			mounter:  mounter,
-			plugin:   plugin,
+			podUID:    podUID,
+			volName:   spec.Name(),
+			volumeID:  volumeID,
+			partition: partition,
+			manager:   manager,
+			mounter:   mounter,
+			plugin:    plugin,
 		},
 		fsType:      fsType,
-		partition:   partition,
 		readOnly:    readOnly,
 		diskMounter: &mount.SafeFormatAndMount{plugin.host.GetMounter(), exec.New()}}, nil
 }
@@ -169,7 +168,7 @@ type ebsManager interface {
 	// Detaches the disk from the kubelet's host machine.
 	DetachDisk(c *awsElasticBlockStoreCleaner) error
 	// Creates a volume
-	CreateVolume(provisioner *awsElasticBlockStoreProvisioner) (volumeID string, volumeSizeGB int, err error)
+	CreateVolume(provisioner *awsElasticBlockStoreProvisioner) (volumeID string, volumeSizeGB int, labels map[string]string, err error)
 	// Deletes a volume
 	DeleteVolume(deleter *awsElasticBlockStoreDeleter) error
 }
@@ -181,6 +180,8 @@ type awsElasticBlockStore struct {
 	podUID  types.UID
 	// Unique id of the PD, used to find the disk resource in the provider.
 	volumeID string
+	// Specifies the partition to mount
+	partition string
 	// Utility interface that provides API calls to the provider to attach/detach disks.
 	manager ebsManager
 	// Mounter interface that provides system calls to mount the global path to the pod local path.
@@ -196,22 +197,10 @@ func detachDiskLogError(ebs *awsElasticBlockStore) {
 	}
 }
 
-// getVolumeProvider returns the AWS Volumes interface
-func (ebs *awsElasticBlockStore) getVolumeProvider() (awscloud.Volumes, error) {
-	cloud := ebs.plugin.host.GetCloudProvider()
-	volumes, ok := cloud.(awscloud.Volumes)
-	if !ok {
-		return nil, fmt.Errorf("Cloud provider does not support volumes")
-	}
-	return volumes, nil
-}
-
 type awsElasticBlockStoreBuilder struct {
 	*awsElasticBlockStore
 	// Filesystem type, optional.
 	fsType string
-	// Specifies the partition to mount
-	partition string
 	// Specifies whether the disk will be attached as read-only.
 	readOnly bool
 	// diskMounter provides the interface that is used to mount the actual block device.
@@ -304,6 +293,7 @@ func makeGlobalPDPath(host volume.VolumeHost, volumeID string) string {
 	return path.Join(host.GetPluginDir(awsElasticBlockStorePluginName), "mounts", name)
 }
 
+// Reverses the mapping done in makeGlobalPDPath
 func getVolumeIDFromGlobalMount(host volume.VolumeHost, globalPath string) (string, error) {
 	basePath := path.Join(host.GetPluginDir(awsElasticBlockStorePluginName), "mounts")
 	rel, err := filepath.Rel(basePath, globalPath)
@@ -419,7 +409,7 @@ type awsElasticBlockStoreProvisioner struct {
 var _ volume.Provisioner = &awsElasticBlockStoreProvisioner{}
 
 func (c *awsElasticBlockStoreProvisioner) Provision(pv *api.PersistentVolume) error {
-	volumeID, sizeGB, err := c.manager.CreateVolume(c)
+	volumeID, sizeGB, labels, err := c.manager.CreateVolume(c)
 	if err != nil {
 		return err
 	}
@@ -427,6 +417,16 @@ func (c *awsElasticBlockStoreProvisioner) Provision(pv *api.PersistentVolume) er
 	pv.Spec.Capacity = api.ResourceList{
 		api.ResourceName(api.ResourceStorage): resource.MustParse(fmt.Sprintf("%dGi", sizeGB)),
 	}
+
+	if len(labels) != 0 {
+		if pv.Labels == nil {
+			pv.Labels = make(map[string]string)
+		}
+		for k, v := range labels {
+			pv.Labels[k] = v
+		}
+	}
+
 	return nil
 }
 
@@ -449,7 +449,7 @@ func (c *awsElasticBlockStoreProvisioner) NewPersistentVolumeTemplate() (*api.Pe
 			},
 			PersistentVolumeSource: api.PersistentVolumeSource{
 				AWSElasticBlockStore: &api.AWSElasticBlockStoreVolumeSource{
-					VolumeID:  "dummy",
+					VolumeID:  volume.ProvisionedVolumeName,
 					FSType:    "ext4",
 					Partition: 0,
 					ReadOnly:  false,

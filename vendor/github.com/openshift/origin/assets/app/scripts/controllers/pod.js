@@ -42,6 +42,42 @@ angular.module('openshiftConsole')
       $scope.metricsAvailable = available;
     });
 
+    var setLogVars = function(pod) {
+      $scope.logOptions.container = $routeParams.container || pod.spec.containers[0].name;
+      $scope.logCanRun = !(_.includes(['New', 'Pending', 'Unknown'], pod.status.phase));
+    };
+
+    var setContainerVars = function() {
+      if(!$scope.pod) {
+        return;
+      }
+      var containerStatus = _.find($scope.pod.status.containerStatuses, { name: $scope.logOptions.container });
+      var state = _.get(containerStatus, 'state');
+      var statusKey = _.head(_.keys(state));
+      var knownKey = _.includes(['running', 'waiting', 'terminated'], statusKey) ? statusKey : '';
+      var lastState = _.get(containerStatus, 'lastState');
+      var lastStatusKey = _.head(_.keys(lastState));
+      var isWaiting =  _.get(containerStatus, 'state.waiting');
+
+      angular.extend($scope, {
+        containerStatusKey: knownKey,
+        containerStateReason: _.get(state, [statusKey, 'reason'])
+      });
+
+      if(isWaiting) {
+        angular.extend($scope, {
+          lasStatusKey: lastStatusKey,
+          containerStartTime:  _.get(lastState, [lastStatusKey, 'startedAt']),
+          containerEndTime:  _.get(lastState, [lastStatusKey, 'finishedAt'])
+        });
+      } else {
+        angular.extend($scope, {
+          containerStartTime: _.get(state, [statusKey, 'startedAt']),
+          containerEndTime: _.get(state, [statusKey, 'finishedAt'])
+        });
+      }
+    };
+
     ProjectsService
       .get($routeParams.project)
       .then(_.spread(function(project, context) {
@@ -55,8 +91,8 @@ angular.module('openshiftConsole')
           function(pod) {
             $scope.loaded = true;
             $scope.pod = pod;
-            $scope.logOptions.container = $routeParams.container || pod.spec.containers[0].name;
-            $scope.logCanRun = !(_.includes(['New', 'Pending', 'Unknown'], pod.status.phase));
+            setLogVars(pod);
+            setContainerVars();
             var pods = {};
             pods[pod.metadata.name] = pod;
             ImageStreamResolver.fetchReferencedImageStreamImages(pods, $scope.imagesByDockerReference, $scope.imageStreamImageRefByDockerReference, context);
@@ -70,6 +106,8 @@ angular.module('openshiftConsole')
                 };
               }
               $scope.pod = pod;
+              setLogVars(pod);
+              setContainerVars();
             }));
           },
           // failure
@@ -82,6 +120,10 @@ angular.module('openshiftConsole')
             };
           }
         );
+
+        // covers container picker if multiple containers
+        // outside of the above watch to avoid repeatedly generating new watches.
+        $scope.$watch('logOptions.container', setContainerVars);
 
         // Sets up subscription for imageStreams
         watches.push(DataService.watch("imagestreams", context, function(imageStreams) {

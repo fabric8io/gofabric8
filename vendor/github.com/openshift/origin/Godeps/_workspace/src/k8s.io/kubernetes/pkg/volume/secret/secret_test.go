@@ -21,26 +21,30 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"runtime"
 	"strings"
 	"testing"
 
 	"k8s.io/kubernetes/pkg/api"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/volume"
 	"k8s.io/kubernetes/pkg/volume/empty_dir"
+	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 	"k8s.io/kubernetes/pkg/volume/util"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func newTestHost(t *testing.T, client client.Interface) (string, volume.VolumeHost) {
+func newTestHost(t *testing.T, clientset clientset.Interface) (string, volume.VolumeHost) {
 	tempDir, err := ioutil.TempDir("/tmp", "secret_volume_test.")
 	if err != nil {
 		t.Fatalf("can't make a temp rootdir: %v", err)
 	}
 
-	return tempDir, volume.NewFakeVolumeHost(tempDir, client, empty_dir.ProbeVolumePlugins())
+	return tempDir, volumetest.NewFakeVolumeHost(tempDir, clientset, empty_dir.ProbeVolumePlugins())
 }
 
 func TestCanSupport(t *testing.T) {
@@ -72,7 +76,7 @@ func TestPlugin(t *testing.T) {
 
 		volumeSpec    = volumeSpec(testVolumeName, testName)
 		secret        = secret(testNamespace, testName)
-		client        = testclient.NewSimpleFake(&secret)
+		client        = fake.NewSimpleClientset(&secret)
 		pluginMgr     = volume.VolumePluginMgr{}
 		rootDir, host = newTestHost(t, client)
 	)
@@ -121,7 +125,16 @@ func TestPlugin(t *testing.T) {
 		}
 	}
 	doTestSecretDataInVolume(volumePath, secret, t)
-	doTestCleanAndTeardown(plugin, testPodUID, testVolumeName, volumePath, t)
+	defer doTestCleanAndTeardown(plugin, testPodUID, testVolumeName, volumePath, t)
+
+	// Metrics only supported on linux
+	metrics, err := builder.GetMetrics()
+	if runtime.GOOS == "linux" {
+		assert.NotEmpty(t, metrics)
+		assert.NoError(t, err)
+	} else {
+		t.Skipf("Volume metrics not supported on %s", runtime.GOOS)
+	}
 }
 
 // Test the case where the 'ready' file has been created and the pod volume dir
@@ -135,7 +148,7 @@ func TestPluginIdempotent(t *testing.T) {
 
 		volumeSpec    = volumeSpec(testVolumeName, testName)
 		secret        = secret(testNamespace, testName)
-		client        = testclient.NewSimpleFake(&secret)
+		client        = fake.NewSimpleClientset(&secret)
 		pluginMgr     = volume.VolumePluginMgr{}
 		rootDir, host = newTestHost(t, client)
 	)
@@ -196,7 +209,7 @@ func TestPluginReboot(t *testing.T) {
 
 		volumeSpec    = volumeSpec(testVolumeName, testName)
 		secret        = secret(testNamespace, testName)
-		client        = testclient.NewSimpleFake(&secret)
+		client        = fake.NewSimpleClientset(&secret)
 		pluginMgr     = volume.VolumePluginMgr{}
 		rootDir, host = newTestHost(t, client)
 	)

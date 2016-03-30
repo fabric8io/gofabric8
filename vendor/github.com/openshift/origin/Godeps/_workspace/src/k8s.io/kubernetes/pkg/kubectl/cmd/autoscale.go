@@ -35,10 +35,10 @@ Looks up a deployment or replication controller by name and creates an autoscale
 An autoscaler can automatically increase or decrease number of pods deployed within the system as needed.`
 
 	autoscaleExample = `# Auto scale a deployment "foo", with the number of pods between 2 to 10, target CPU utilization at a default value that server applies:
-$ kubectl autoscale deployment foo --min=2 --max=10
+kubectl autoscale deployment foo --min=2 --max=10
 
 # Auto scale a replication controller "foo", with the number of pods between 1 to 5, target CPU utilization at 80%:
-$ kubectl autoscale rc foo --max=5 --cpu-percent=80`
+kubectl autoscale rc foo --max=5 --cpu-percent=80`
 )
 
 func NewCmdAutoscale(f *cmdutil.Factory, out io.Writer) *cobra.Command {
@@ -64,6 +64,7 @@ func NewCmdAutoscale(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	usage := "Filename, directory, or URL to a file identifying the resource to autoscale."
 	kubectl.AddJsonFilenameFlag(cmd, &filenames, usage)
 	cmdutil.AddApplyAnnotationFlags(cmd)
+	cmdutil.AddRecordFlag(cmd)
 	return cmd
 }
 
@@ -135,9 +136,15 @@ func RunAutoscale(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []
 		ClientMapper: resource.ClientMapperFunc(f.ClientForMapping),
 		Decoder:      f.Decoder(true),
 	}
-	hpa, err := resourceMapper.InfoForObject(object)
+	hpa, err := resourceMapper.InfoForObject(object, nil)
 	if err != nil {
 		return err
+	}
+	if cmdutil.ShouldRecord(cmd, hpa) {
+		if err := cmdutil.RecordChangeCause(hpa.Object, f.Command()); err != nil {
+			return err
+		}
+		object = hpa.Object
 	}
 	// TODO: extract this flag to a central location, when such a location exists.
 	if cmdutil.GetFlagBool(cmd, "dry-run") {

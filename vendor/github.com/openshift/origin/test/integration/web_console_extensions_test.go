@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -15,7 +15,10 @@ import (
 	"strings"
 	"testing"
 
+	knet "k8s.io/kubernetes/pkg/util/net"
+
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
+	testutil "github.com/openshift/origin/test/util"
 	testserver "github.com/openshift/origin/test/util/server"
 )
 
@@ -51,6 +54,7 @@ func TestWebConsoleExtensions(t *testing.T) {
 	}
 
 	// Build master config.
+	testutil.RequireEtcd(t)
 	masterOptions, err := testserver.DefaultMasterOptions()
 	if err != nil {
 		t.Fatalf("Failed creating master configuration: %v", err)
@@ -162,11 +166,11 @@ func TestWebConsoleExtensions(t *testing.T) {
 		},
 	}
 
-	transport := &http.Transport{
+	transport := knet.SetTransportDefaults(&http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-	}
+	})
 
 	for k, tc := range testcases {
 		testURL := masterOptions.AssetConfig.PublicURL + tc.URL

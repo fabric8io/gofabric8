@@ -54,7 +54,7 @@ os::cmd::expect_success_and_text 'oc get istag' 'wildfly'
 # test image stream tag operations
 os::cmd::expect_success_and_text 'oc get istag/wildfly:latest -o jsonpath={.generation}' '2'
 os::cmd::expect_success_and_text 'oc get istag/wildfly:latest -o jsonpath={.tag.from.kind}' 'ImageStreamTag'
-os::cmd::expect_success_and_text 'oc get istag/wildfly:latest -o jsonpath={.tag.from.name}' '8.1'
+os::cmd::expect_success_and_text 'oc get istag/wildfly:latest -o jsonpath={.tag.from.name}' '10.0'
 os::cmd::expect_success 'oc annotate istag/wildfly:latest foo=bar'
 os::cmd::expect_success_and_text 'oc get istag/wildfly:latest -o jsonpath={.metadata.annotations.foo}' 'bar'
 os::cmd::expect_success_and_text 'oc get istag/wildfly:latest -o jsonpath={.tag.annotations.foo}' 'bar'
@@ -97,16 +97,28 @@ echo "imageStreams: ok"
 os::cmd::expect_success_and_text "oc get is/mysql --template='{{(index .spec.tags 1).from.kind}}'" 'DockerImage'
 os::cmd::expect_success_and_text "oc get is/mysql --template='{{(index .spec.tags 2).from.kind}}'" 'ImageStreamTag'
 os::cmd::expect_success_and_text "oc get is/mysql --template='{{(index .spec.tags 2).from.name}}'" '5.6'
+# import existing tag (implicit latest)
 os::cmd::expect_success_and_text 'oc import-image mysql' 'sha256:'
 os::cmd::expect_success_and_text "oc get is/mysql --template='{{(index .spec.tags 1).from.kind}}'" 'DockerImage'
 os::cmd::expect_success_and_text "oc get is/mysql --template='{{(index .spec.tags 2).from.kind}}'" 'ImageStreamTag'
 os::cmd::expect_success_and_text "oc get is/mysql --template='{{(index .spec.tags 2).from.name}}'" '5.6'
 # should prevent changing source
-os::cmd::expect_failure_and_text 'oc import-image mysql --from=mysql' "use the 'tag' command if you want to change the source"
+os::cmd::expect_failure_and_text 'oc import-image mysql --from=docker.io/mysql' "use the 'tag' command if you want to change the source"
 os::cmd::expect_success 'oc describe is/mysql'
+# import existing tag (explicit)
 os::cmd::expect_success_and_text 'oc import-image mysql:5.6' "sha256:"
 os::cmd::expect_success_and_text 'oc import-image mysql:latest' "sha256:"
+# import existing image stream creating new tag
+os::cmd::expect_success_and_text 'oc import-image mysql:external --from=docker.io/mysql' "sha256:"
+os::cmd::expect_success_and_text "oc get istag/mysql:external --template='{{.tag.from.kind}}'" 'DockerImage'
+os::cmd::expect_success_and_text "oc get istag/mysql:external --template='{{.tag.from.name}}'" 'docker.io/mysql'
 os::cmd::expect_success 'oc delete is/mysql'
+# import creates new image stream with single tag
+os::cmd::expect_failure_and_text 'oc import-image mysql:latest --from=docker.io/mysql:latest' '\-\-confirm'
+os::cmd::expect_success_and_text 'oc import-image mysql:latest --from=docker.io/mysql:latest --confirm' 'sha256:'
+os::cmd::expect_success_and_text "oc get is/mysql --template='{{(len .spec.tags)}}'" '1'
+os::cmd::expect_success 'oc delete is/mysql'
+# import creates new image stream with all tags
 os::cmd::expect_failure_and_text 'oc import-image mysql --from=mysql --all' '\-\-confirm'
 os::cmd::expect_success_and_text 'oc import-image mysql --from=mysql --all --confirm' 'sha256:'
 name=$(oc get istag/mysql:latest --template='{{ .image.metadata.name }}')
@@ -156,7 +168,6 @@ os::cmd::expect_success_and_text "oc describe is/newrepo" '\* tag is scheduled'
 os::cmd::expect_success 'oc tag --source=docker mysql:5.7 newrepo:latest --insecure'
 os::cmd::expect_success_and_text "oc describe is/newrepo" '\! tag is insecure'
 os::cmd::expect_success_and_not_text "oc describe is/newrepo" '\* tag is scheduled'
-oc get -o yaml is/newrepo
 os::cmd::expect_success_and_text "oc get is/newrepo --template='{{(index .spec.tags 0).importPolicy.insecure}}'" 'true'
 
 # test creating streams that don't exist

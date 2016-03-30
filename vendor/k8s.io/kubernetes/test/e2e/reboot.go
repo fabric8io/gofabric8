@@ -25,6 +25,7 @@ import (
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/util/sets"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -44,7 +45,7 @@ const (
 	rebootPodReadyAgainTimeout = 5 * time.Minute
 )
 
-var _ = Describe("Reboot [Disruptive]", func() {
+var _ = Describe("Reboot [Disruptive] [Feature:Reboot]", func() {
 	var f *Framework
 
 	BeforeEach(func() {
@@ -81,7 +82,7 @@ var _ = Describe("Reboot [Disruptive]", func() {
 		}
 	})
 
-	f = NewFramework("reboot")
+	f = NewDefaultFramework("reboot")
 
 	It("each node by ordering clean reboot and ensure they function upon restart", func() {
 		// clean shutdown and restart
@@ -157,7 +158,7 @@ func testReboot(c *client.Client, rebootCmd string) {
 	}
 }
 
-func printStatusAndLogsForNotReadyPods(c *client.Client, oldPods, newPods []*api.Pod) {
+func printStatusAndLogsForNotReadyPods(c *client.Client, ns string, podNames []string, pods []*api.Pod) {
 	printFn := func(id, log string, err error, previous bool) {
 		prefix := "Retrieving log for container"
 		if previous {
@@ -169,25 +170,27 @@ func printStatusAndLogsForNotReadyPods(c *client.Client, oldPods, newPods []*api
 			Logf("%s %s:\n%s\n", prefix, id, log)
 		}
 	}
-	for _, oldPod := range oldPods {
-		for _, p := range newPods {
-			if p.Namespace != oldPod.Namespace || p.Name != oldPod.Name {
-				continue
+	podNameSet := sets.NewString(podNames...)
+	for _, p := range pods {
+		if p.Namespace != ns {
+			continue
+		}
+		if !podNameSet.Has(p.Name) {
+			continue
+		}
+		if ok, _ := podRunningReady(p); ok {
+			continue
+		}
+		Logf("Status for not ready pod %s/%s: %+v", p.Namespace, p.Name, p.Status)
+		// Print the log of the containers if pod is not running and ready.
+		for _, container := range p.Status.ContainerStatuses {
+			cIdentifer := fmt.Sprintf("%s/%s/%s", p.Namespace, p.Name, container.Name)
+			log, err := getPodLogs(c, p.Namespace, p.Name, container.Name)
+			printFn(cIdentifer, log, err, false)
+			// Get log from the previous container.
+			if container.RestartCount > 0 {
+				printFn(cIdentifer, log, err, true)
 			}
-			if ok, _ := podRunningReady(p); !ok {
-				Logf("Status for not ready pod %s/%s: %+v", p.Namespace, p.Name, p.Status)
-				// Print the log of the containers if pod is not running and ready.
-				for _, container := range p.Status.ContainerStatuses {
-					cIdentifer := fmt.Sprintf("%s/%s/%s", p.Namespace, p.Name, container.Name)
-					log, err := getPodLogs(c, p.Namespace, p.Name, container.Name)
-					printFn(cIdentifer, log, err, false)
-					// Get log from the previous container.
-					if container.RestartCount > 0 {
-						printFn(cIdentifer, log, err, true)
-					}
-				}
-			}
-			break
 		}
 	}
 }
@@ -205,7 +208,7 @@ func printStatusAndLogsForNotReadyPods(c *client.Client, oldPods, newPods []*api
 func rebootNode(c *client.Client, provider, name, rebootCmd string) bool {
 	// Setup
 	ns := api.NamespaceSystem
-	ps := newPodStore(c, ns, labels.Everything(), fields.OneTermEqualSelector(client.PodHost, name))
+	ps := newPodStore(c, ns, labels.Everything(), fields.OneTermEqualSelector(api.PodHostField, name))
 	defer ps.Stop()
 
 	// Get the node initially.
@@ -242,6 +245,7 @@ func rebootNode(c *client.Client, provider, name, rebootCmd string) bool {
 	// For each pod, we do a sanity check to ensure it's running / healthy
 	// now, as that's what we'll be checking later.
 	if !checkPodsRunningReady(c, ns, podNames, podReadyBeforeTimeout) {
+		printStatusAndLogsForNotReadyPods(c, ns, podNames, pods)
 		return false
 	}
 
@@ -265,7 +269,7 @@ func rebootNode(c *client.Client, provider, name, rebootCmd string) bool {
 	// running / healthy.
 	if !checkPodsRunningReady(c, ns, podNames, rebootPodReadyAgainTimeout) {
 		newPods := ps.List()
-		printStatusAndLogsForNotReadyPods(c, pods, newPods)
+		printStatusAndLogsForNotReadyPods(c, ns, podNames, newPods)
 		return false
 	}
 

@@ -360,7 +360,7 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 		AllowPrivilegedContainer: true,
 		AllowHostNetwork:         true,
 		AllowHostPorts:           true,
-		AllowHostDirVolumePlugin: true,
+		Volumes:                  []kapi.FSType{kapi.FSTypeAll},
 		SELinuxContext: kapi.SELinuxContextStrategyOptions{
 			Type: kapi.SELinuxStrategyRunAsAny,
 		},

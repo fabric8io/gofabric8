@@ -42,10 +42,10 @@ const (
 
 JSON and YAML formats are accepted.`
 	create_example = `# Create a pod using the data in pod.json.
-$ kubectl create -f ./pod.json
+kubectl create -f ./pod.json
 
 # Create a pod based on the JSON passed into stdin.
-$ cat pod.json | kubectl create -f -`
+cat pod.json | kubectl create -f -`
 )
 
 func NewCmdCreate(f *cmdutil.Factory, out io.Writer) *cobra.Command {
@@ -73,10 +73,13 @@ func NewCmdCreate(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmdutil.AddValidateFlags(cmd)
 	cmdutil.AddOutputFlagsForMutation(cmd)
 	cmdutil.AddApplyAnnotationFlags(cmd)
+	cmdutil.AddRecordFlag(cmd)
 
 	// create subcommands
 	cmd.AddCommand(NewCmdCreateNamespace(f, out))
 	cmd.AddCommand(NewCmdCreateSecret(f, out))
+	cmd.AddCommand(NewCmdCreateConfigMap(f, out))
+	cmd.AddCommand(NewCmdCreateServiceAccount(f, out))
 	return cmd
 }
 
@@ -120,6 +123,12 @@ func RunCreate(f *cmdutil.Factory, cmd *cobra.Command, out io.Writer, options *C
 			return cmdutil.AddSourceToErr("creating", info.Source, err)
 		}
 
+		if cmdutil.ShouldRecord(cmd, info) {
+			if err := cmdutil.RecordChangeCause(info.Object, f.Command()); err != nil {
+				return cmdutil.AddSourceToErr("creating", info.Source, err)
+			}
+		}
+
 		if err := createAndRefresh(info); err != nil {
 			return cmdutil.AddSourceToErr("creating", info.Source, err)
 		}
@@ -150,7 +159,7 @@ func printObjectSpecificMessage(obj runtime.Object, out io.Writer) {
 cluster.  If you want to expose this service to the external internet, you may
 need to set up firewall rules for the service port(s) (%s) to serve traffic.
 
-See http://releases.k8s.io/HEAD/docs/user-guide/services-firewalls.md for more details.
+See http://releases.k8s.io/release-1.2/docs/user-guide/services-firewalls.md for more details.
 `,
 				makePortsString(obj.Spec.Ports, true))
 			out.Write([]byte(msg))
@@ -227,7 +236,7 @@ func RunCreateSubcommand(f *cmdutil.Factory, cmd *cobra.Command, out io.Writer, 
 		RESTMapper:   mapper,
 		ClientMapper: resource.ClientMapperFunc(f.ClientForMapping),
 	}
-	info, err := resourceMapper.InfoForObject(obj)
+	info, err := resourceMapper.InfoForObject(obj, nil)
 	if err != nil {
 		return err
 	}

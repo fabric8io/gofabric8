@@ -7,6 +7,7 @@ import (
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
 
+	templateapi "github.com/openshift/origin/pkg/template/api"
 	exutil "github.com/openshift/origin/test/extended/util"
 	"github.com/openshift/origin/test/extended/util/db"
 	testutil "github.com/openshift/origin/test/util"
@@ -80,7 +81,7 @@ func replicationTestFactory(oc *exutil.CLI, tc testCase) func() {
 		_, err := exutil.SetupHostPathVolumes(oc.AdminKubeREST().PersistentVolumes(), oc.Namespace(), "512Mi", 1)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
-		err = testutil.WaitForPolicyUpdate(oc.REST(), oc.Namespace(), "create", "templates", true)
+		err = testutil.WaitForPolicyUpdate(oc.REST(), oc.Namespace(), "create", templateapi.Resource("templates"), true)
 		o.Expect(err).NotTo(o.HaveOccurred())
 
 		err = oc.Run("new-app").Args("-f", tc.TemplatePath).Execute()
@@ -114,12 +115,12 @@ func replicationTestFactory(oc *exutil.CLI, tc testCase) func() {
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			// Make sure data is present on master
-			err = exutil.WaitForQueryOutput(oc, master, 10*time.Second, false, fmt.Sprintf("SELECT * FROM %s\\G;", table), "col1: val1\ncol2: val2")
+			err = exutil.WaitForQueryOutputContains(oc, master, 10*time.Second, false, fmt.Sprintf("SELECT * FROM %s\\G;", table), "col1: val1\ncol2: val2")
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			// Make sure data was replicated to all slaves
 			for _, slave := range slaves {
-				err = exutil.WaitForQueryOutput(oc, slave, 90*time.Second, false, fmt.Sprintf("SELECT * FROM %s\\G;", table), "col1: val1\ncol2: val2")
+				err = exutil.WaitForQueryOutputContains(oc, slave, 90*time.Second, false, fmt.Sprintf("SELECT * FROM %s\\G;", table), "col1: val1\ncol2: val2")
 				o.Expect(err).NotTo(o.HaveOccurred())
 			}
 

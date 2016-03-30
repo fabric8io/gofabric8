@@ -49,6 +49,9 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 
 		Convert_api_VolumeSource_To_v1_VolumeSource,
 		Convert_v1_VolumeSource_To_api_VolumeSource,
+
+		Convert_v1_SecurityContextConstraints_To_api_SecurityContextConstraints,
+		Convert_api_SecurityContextConstraints_To_v1_SecurityContextConstraints,
 	)
 	if err != nil {
 		// If one of the conversion functions is malformed, detect it immediately.
@@ -62,6 +65,7 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 		"PersistentVolumeClaim",
 		"Service",
 		"ServiceAccount",
+		"ConfigMap",
 	} {
 		err = api.Scheme.AddFieldLabelConversionFunc("v1", kind,
 			func(label, value string) (string, string, error) {
@@ -89,7 +93,8 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 				"metadata.annotations",
 				"status.phase",
 				"status.podIP",
-				"spec.nodeName":
+				"spec.nodeName",
+				"spec.restartPolicy":
 				return label, value, nil
 				// This is for backwards compatibility with old v1 clients which send spec.host
 			case "spec.host":
@@ -323,7 +328,7 @@ func Convert_api_PodSpec_To_v1_PodSpec(in *api.PodSpec, out *PodSpec, s conversi
 			return err
 		}
 
-		// the host namespace fields have to be handled here for backward compatibilty
+		// the host namespace fields have to be handled here for backward compatibility
 		// with v1.0.0
 		out.HostPID = in.SecurityContext.HostPID
 		out.HostNetwork = in.SecurityContext.HostNetwork
@@ -464,6 +469,8 @@ func Convert_api_ServiceSpec_To_v1_ServiceSpec(in *api.ServiceSpec, out *Service
 	for _, ip := range in.ExternalIPs {
 		out.DeprecatedPublicIPs = append(out.DeprecatedPublicIPs, ip)
 	}
+	// Carry conversion
+	out.DeprecatedPortalIP = in.ClusterIP
 	return nil
 }
 
@@ -559,7 +566,7 @@ func Convert_v1_ResourceList_To_api_ResourceList(in *ResourceList, out *api.Reso
 		return nil
 	}
 
-	Converted := make(api.ResourceList)
+	converted := make(api.ResourceList)
 	for key, val := range *in {
 		value := val.Copy()
 
@@ -568,10 +575,10 @@ func Convert_v1_ResourceList_To_api_ResourceList(in *ResourceList, out *api.Reso
 		const milliScale = 3
 		value.Amount.Round(value.Amount, milliScale, inf.RoundUp)
 
-		Converted[api.ResourceName(key)] = *value
+		converted[api.ResourceName(key)] = *value
 	}
 
-	*out = Converted
+	*out = converted
 	return nil
 }
 
@@ -670,5 +677,26 @@ func Convert_v1_MetadataFile_To_api_DownwardAPIVolumeFile(in *MetadataFile, out 
 		return err
 	}
 
+	return nil
+}
+
+func Convert_v1_SecurityContextConstraints_To_api_SecurityContextConstraints(in *SecurityContextConstraints, out *api.SecurityContextConstraints, s conversion.Scope) error {
+	return autoConvert_v1_SecurityContextConstraints_To_api_SecurityContextConstraints(in, out, s)
+}
+
+func Convert_api_SecurityContextConstraints_To_v1_SecurityContextConstraints(in *api.SecurityContextConstraints, out *SecurityContextConstraints, s conversion.Scope) error {
+	if err := autoConvert_api_SecurityContextConstraints_To_v1_SecurityContextConstraints(in, out, s); err != nil {
+		return err
+	}
+
+	if in.Volumes != nil {
+		for _, v := range in.Volumes {
+			// set the Allow* fields based on the existence in the volume slice
+			switch v {
+			case api.FSTypeHostPath, api.FSTypeAll:
+				out.AllowHostDirVolumePlugin = true
+			}
+		}
+	}
 	return nil
 }

@@ -10,39 +10,50 @@
             <div ng-if="!loaded">Loading...</div>
             <h1>
               {{buildConfigName}}
+              <span class="pficon pficon-warning-triangle-o"
+                    ng-if="paused"
+                    aria-hidden="true"
+                    data-toggle="tooltip"
+                    data-original-title="Building from build configuration {{buildConfig.metadata.name}} has been paused.">
+              </span>
               <div class="pull-right dropdown" ng-if="buildConfig">
                 <!-- Primary Actions -->
                 <button
                     class="btn btn-default hidden-xs"
                     ng-click="startBuild()"
-                    ng-disabled="!canBuild()">
+                    ng-disabled="!canBuild">
                   Start Build
                 </button>
 
                 <!-- Secondary Actions -->
-                <a href="" class="dropdown-toggle resource-actions-dropdown" data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
+                <button type="button" class="dropdown-toggle actions-dropdown-btn btn btn-default hidden-xs" data-toggle="dropdown">
+                  Actions
+                  <span class="caret" aria-hidden="true"></span>
+                </button>
+                <a href=""
+                   class="dropdown-toggle actions-dropdown-kebab visible-xs-inline"
+                   data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
                 <ul class="dropdown-menu actions action-button">
-                  <li class="visible-xs-inline" ng-class="{ disabled: !canBuild() }">
+                  <li class="visible-xs-inline" ng-class="{ disabled: !canBuild }">
                     <a href=""
                       role="button"
-                      ng-attr-aria-disabled="{{canBuild() ? undefined : 'true'}}"
-                      ng-class="{ 'disabled-link': !canBuild() }"
-                      ng-click="startBuild()"
-                    ><i class="fa fa-play fa-fw" aria-hidden="true"></i> Start Build</a>
+                      ng-attr-aria-disabled="{{canBuild ? undefined : 'true'}}"
+                      ng-class="{ 'disabled-link': !canBuild }"
+                      ng-click="startBuild()">Start Build</a>
                   </li>
                   <li>
-                    <a ng-href="{{buildConfig | editResourceURL}}" role="button"><i class="fa fa-pencil fa-fw" aria-hidden="true"></i> Edit</a>
+                    <a ng-href="{{buildConfig | editResourceURL}}" role="button">Edit</a>
                   </li>
                   <li>
                     <edit-link
                       resource="buildConfig"
-                      kind="buildconfigs"
+                      kind="BuildConfig"
                       alerts="alerts">
                     </edit-link>
                   </li>
                   <li>
                     <delete-link
-                      resource-type="buildconfig"
+                      kind="BuildConfig"
                       resource-name="{{buildConfig.metadata.name}}"
                       project-name="{{buildConfig.metadata.namespace}}"
                       alerts="alerts">
@@ -86,11 +97,6 @@
                       </button>
                     </div>
 
-                    <!-- A filter is hiding all builds (and a message is already displayed above saying that).
-                         Show a simple "No builds." message rather than the full empty state message. -->
-                    <div ng-if="(unfilteredBuilds | hashSize) > 0 && (builds | hashSize) === 0">
-                      No builds.
-                    </div>
                     <!-- Show the latest build and a chart of the recent build duration and status. -->
                     <div ng-if="builds && (builds | hashSize) > 0" class="build-config-summary">
                       <!-- Show the latest build status first. -->
@@ -124,7 +130,10 @@
 
                       <build-trends-chart builds="builds"></build-trends-chart>
                     </div>
-                    <div ng-if="loaded">
+                    <div ng-if="loaded && (unfilteredBuilds | hashSize) > 0">
+                      <div class="table-filter-wrapper">
+                        <project-filter></project-filter>
+                      </div>
                       <table class="table table-bordered table-hover table-mobile">
                         <thead>
                           <tr>
@@ -146,7 +155,7 @@
                               <span ng-if="!(build | annotation : 'buildNumber')">
                                 <a ng-href="{{build | navigateResourceURL}}">{{build.metadata.name}}</a>
                               </span>
-                              <span ng-if="build.status.message" class="pficon pficon-warning-triangle-o" style="cursor: help;" data-toggle="popover" data-placement="right" data-trigger="hover" dynamic-content="{{build.status.message}}"></span>
+                              <span ng-if="build.status.message" class="pficon pficon-warning-triangle-o" style="cursor: help;" data-toggle="popover" data-trigger="hover" dynamic-content="{{build.status.message}}"></span>
                             </td>
                             <td data-title="Status">
                               <div row class="status">
@@ -205,7 +214,7 @@
                                     <dt>Dockerfile:</dt><dd></dd>
                                     <div ui-ace="{
                                       mode: 'dockerfile',
-                                      theme: 'eclipse',
+                                      theme: 'dreamweaver',
                                       onLoad: aceLoaded,
                                       rendererOptions: {
                                         fadeFoldWidgets: true,

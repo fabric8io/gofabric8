@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
@@ -27,6 +27,7 @@ type testRequest struct {
 }
 
 func TestNodeAuth(t *testing.T) {
+	testutil.RequireEtcd(t)
 	// Server config
 	masterConfig, nodeConfig, adminKubeConfigFile, err := testserver.StartTestAllInOne()
 	if err != nil {
@@ -50,9 +51,9 @@ func TestNodeAuth(t *testing.T) {
 	// Client configs for lesser users
 	masterKubeletClientConfig := configapi.GetKubeletClientConfig(*masterConfig)
 
-	anonymousConfig := clientcmd.AnonymousClientConfig(*adminConfig)
+	anonymousConfig := clientcmd.AnonymousClientConfig(adminConfig)
 
-	badTokenConfig := clientcmd.AnonymousClientConfig(*adminConfig)
+	badTokenConfig := clientcmd.AnonymousClientConfig(adminConfig)
 	badTokenConfig.BearerToken = "bad-token"
 
 	bobClient, _, bobConfig, err := testutil.GetClientForUser(*adminConfig, "bob")
@@ -81,10 +82,10 @@ func TestNodeAuth(t *testing.T) {
 	}
 
 	// Wait for policy cache
-	if err := testutil.WaitForClusterPolicyUpdate(bobClient, "get", "nodes/metrics", true); err != nil {
+	if err := testutil.WaitForClusterPolicyUpdate(bobClient, "get", kapi.Resource("nodes/metrics"), true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := testutil.WaitForClusterPolicyUpdate(sa1Client, "get", "nodes/metrics", true); err != nil {
+	if err := testutil.WaitForClusterPolicyUpdate(sa1Client, "get", kapi.Resource("nodes/metrics"), true); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -98,7 +99,7 @@ func TestNodeAuth(t *testing.T) {
 	}
 	nodeTLS := configapi.UseTLS(nodeConfig.ServingInfo)
 
-	kubeletClientConfig := func(config *kclient.Config) *kubeletclient.KubeletClientConfig {
+	kubeletClientConfig := func(config *restclient.Config) *kubeletclient.KubeletClientConfig {
 		return &kubeletclient.KubeletClientConfig{
 			Port:            uint(nodePortInt),
 			EnableHttps:     nodeTLS,

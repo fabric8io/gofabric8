@@ -1,29 +1,5 @@
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-
-<h2>PLEASE NOTE: This document applies to the HEAD of the source tree</h2>
-
-If you are using a released version of Kubernetes, you should
-refer to the docs that go with that version.
-
-Documentation for other releases can be found at
-[releases.k8s.io](http://releases.k8s.io).
-</strong>
---
-
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
@@ -160,7 +136,7 @@ host="redis"
 
 q = rediswq.RedisWQ(name="job2", host="redis")
 print("Worker with sessionID: " +  q.sessionID())
-print("Inital queue state: empty=" + str(q.empty()))
+print("Initial queue state: empty=" + str(q.empty()))
 while not q.empty():
   item = q.lease(lease_secs=10, block=True, timeout=2) 
   if item is not None:
@@ -217,20 +193,15 @@ Here is the job definition:
 <!-- BEGIN MUNGE: EXAMPLE job.yaml -->
 
 ```yaml
-apiVersion: extensions/v1beta1
+apiVersion: batch/v1
 kind: Job
 metadata:
   name: job-wq-2
 spec:
-  selector:
-    matchLabels:
-      app: job-wq-2
   parallelism: 2
   template:
     metadata:
       name: job-wq-2
-      labels:
-        app: job-wq-2
     spec:
       containers:
       - name: c
@@ -283,7 +254,7 @@ Events:
 
 $ kubectl logs pods/job-wq-2-7r7b2
 Worker with sessionID: bbd72d0a-9e5c-4dd6-abf6-416cc267991f
-Inital queue state: empty=False
+Initial queue state: empty=False
 Working on banana
 Working on date
 Working on lemon
@@ -300,6 +271,13 @@ If you have a continuous stream of background processing work to run, then
 consider running your background workers with a `replicationController` instead,
 and consider running a background processing library such as
 https://github.com/resque/resque.
+
+
+
+
+<!-- BEGIN MUNGE: IS_VERSIONED -->
+<!-- TAG IS_VERSIONED -->
+<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

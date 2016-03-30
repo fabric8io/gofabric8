@@ -38,10 +38,9 @@ import (
 	"k8s.io/kubernetes/pkg/apiserver/metrics"
 	"k8s.io/kubernetes/pkg/healthz"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
 	utilerrors "k8s.io/kubernetes/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/util/flushwriter"
-	utilnet "k8s.io/kubernetes/pkg/util/net"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/wsstream"
 	"k8s.io/kubernetes/pkg/version"
 
@@ -52,16 +51,6 @@ import (
 
 func init() {
 	metrics.Register()
-}
-
-// monitorFilter creates a filter that reports the metrics for a given resource and action.
-func monitorFilter(action, resource string) restful.FilterFunction {
-	return func(req *restful.Request, res *restful.Response, chain *restful.FilterChain) {
-		reqStart := time.Now()
-		chain.ProcessFilter(req, res)
-		httpCode := res.StatusCode()
-		metrics.Monitor(&action, &resource, utilnet.GetHTTPClient(req.Request), &httpCode, reqStart)
-	}
 }
 
 // mux is an object that can register http handlers.
@@ -77,11 +66,6 @@ type Mux interface {
 // This object should contain all parameterization necessary for running a particular API version
 type APIGroupVersion struct {
 	Storage map[string]rest.Storage
-
-	// NonDefaultGroupVersionKinds is a map of resource[/subresource] to the group/version/kind to use for serialization of the rest.Storage kind.
-	// Missing entries simply preserve existing behavior (uses .GroupVersion + rest.Storage kind).
-	// This allows a single rest.Storage to be registered in multiple APIGroupVersions with different serializations in each one.
-	NonDefaultGroupVersionKinds map[string]unversioned.GroupVersionKind
 
 	Root string
 
@@ -112,6 +96,12 @@ type APIGroupVersion struct {
 	Context api.RequestContextMapper
 
 	MinRequestTimeout time.Duration
+
+	// SubresourceGroupVersionKind contains the GroupVersionKind overrides for each subresource that is
+	// accessible from this API group version. The GroupVersionKind is that of the external version of
+	// the subresource. The key of this map should be the path of the subresource. The keys here should
+	// match the keys in the Storage map above for subresources.
+	SubresourceGroupVersionKind map[string]unversioned.GroupVersionKind
 }
 
 type ProxyDialerFunc func(network, addr string) (net.Conn, error)
@@ -173,13 +163,10 @@ func (g *APIGroupVersion) newInstaller() *APIInstaller {
 
 // TODO: document all handlers
 // InstallSupport registers the APIServer support functions
-func InstallSupport(mux Mux, ws *restful.WebService, enableResettingMetrics bool, checks ...healthz.HealthzChecker) {
+func InstallSupport(mux Mux, ws *restful.WebService, checks ...healthz.HealthzChecker) {
 	// TODO: convert healthz and metrics to restful and remove container arg
 	healthz.InstallHandler(mux, checks...)
 	mux.Handle("/metrics", prometheus.Handler())
-	if enableResettingMetrics {
-		mux.HandleFunc("/resetMetrics", metrics.Reset)
-	}
 
 	// Set up a service to return the git code version.
 	ws.Path("/version")
@@ -237,10 +224,14 @@ func serviceErrorHandler(s runtime.NegotiatedSerializer, requestResolver *Reques
 }
 
 // Adds a service to return the supported api versions at the legacy /api.
-func AddApiWebService(s runtime.NegotiatedSerializer, container *restful.Container, apiPrefix string, versions []string) {
+func AddApiWebService(s runtime.NegotiatedSerializer, container *restful.Container, apiPrefix string, getAPIVersionsFunc func(req *restful.Request) *unversioned.APIVersions) {
 	// TODO: InstallREST should register each version automatically
 
-	versionHandler := APIVersionHandler(s, versions[:]...)
+	// Because in release 1.1, /api returns response with empty APIVersion, we
+	// use StripVersionNegotiatedSerializer to keep the response backwards
+	// compatible.
+	ss := StripVersionNegotiatedSerializer{s}
+	versionHandler := APIVersionHandler(ss, getAPIVersionsFunc)
 	ws := new(restful.WebService)
 	ws.Path(apiPrefix)
 	ws.Doc("get available API versions")
@@ -252,9 +243,52 @@ func AddApiWebService(s runtime.NegotiatedSerializer, container *restful.Contain
 	container.Add(ws)
 }
 
+// stripVersionEncoder strips APIVersion field from the encoding output. It's
+// used to keep the responses at the discovery endpoints backward compatible
+// with release-1.1, when the responses have empty APIVersion.
+type stripVersionEncoder struct {
+	encoder    runtime.Encoder
+	serializer runtime.Serializer
+}
+
+func (c stripVersionEncoder) EncodeToStream(obj runtime.Object, w io.Writer, overrides ...unversioned.GroupVersion) error {
+	buf := bytes.NewBuffer([]byte{})
+	err := c.encoder.EncodeToStream(obj, buf, overrides...)
+	if err != nil {
+		return err
+	}
+	roundTrippedObj, gvk, err := c.serializer.Decode(buf.Bytes(), nil, nil)
+	if err != nil {
+		return err
+	}
+	gvk.Group = ""
+	gvk.Version = ""
+	roundTrippedObj.GetObjectKind().SetGroupVersionKind(gvk)
+	return c.serializer.EncodeToStream(roundTrippedObj, w)
+}
+
+// StripVersionNegotiatedSerializer will return stripVersionEncoder when
+// EncoderForVersion is called. See comments for stripVersionEncoder.
+type StripVersionNegotiatedSerializer struct {
+	runtime.NegotiatedSerializer
+}
+
+func (n StripVersionNegotiatedSerializer) EncoderForVersion(serializer runtime.Serializer, gv unversioned.GroupVersion) runtime.Encoder {
+	encoder := n.NegotiatedSerializer.EncoderForVersion(serializer, gv)
+	return stripVersionEncoder{encoder, serializer}
+}
+
+func keepUnversioned(group string) bool {
+	return group == "" || group == "extensions"
+}
+
 // Adds a service to return the supported api versions at /apis.
-func AddApisWebService(s runtime.NegotiatedSerializer, container *restful.Container, apiPrefix string, f func() []unversioned.APIGroup) {
-	rootAPIHandler := RootAPIHandler(s, f)
+func AddApisWebService(s runtime.NegotiatedSerializer, container *restful.Container, apiPrefix string, f func(req *restful.Request) []unversioned.APIGroup) {
+	// Because in release 1.1, /apis returns response with empty APIVersion, we
+	// use StripVersionNegotiatedSerializer to keep the response backwards
+	// compatible.
+	ss := StripVersionNegotiatedSerializer{s}
+	rootAPIHandler := RootAPIHandler(ss, f)
 	ws := new(restful.WebService)
 	ws.Path(apiPrefix)
 	ws.Doc("get available API versions")
@@ -269,7 +303,14 @@ func AddApisWebService(s runtime.NegotiatedSerializer, container *restful.Contai
 // Adds a service to return the supported versions, preferred version, and name
 // of a group. E.g., a such web service will be registered at /apis/extensions.
 func AddGroupWebService(s runtime.NegotiatedSerializer, container *restful.Container, path string, group unversioned.APIGroup) {
-	groupHandler := GroupHandler(s, group)
+	ss := s
+	if keepUnversioned(group.Name) {
+		// Because in release 1.1, /apis/extensions returns response with empty
+		// APIVersion, we use StripVersionNegotiatedSerializer to keep the
+		// response backwards compatible.
+		ss = StripVersionNegotiatedSerializer{s}
+	}
+	groupHandler := GroupHandler(ss, group)
 	ws := new(restful.WebService)
 	ws.Path(path)
 	ws.Doc("get information of a group")
@@ -284,7 +325,14 @@ func AddGroupWebService(s runtime.NegotiatedSerializer, container *restful.Conta
 // Adds a service to return the supported resources, E.g., a such web service
 // will be registered at /apis/extensions/v1.
 func AddSupportedResourcesWebService(s runtime.NegotiatedSerializer, ws *restful.WebService, groupVersion unversioned.GroupVersion, apiResources []unversioned.APIResource) {
-	resourceHandler := SupportedResourcesHandler(s, groupVersion, apiResources)
+	ss := s
+	if keepUnversioned(groupVersion.Group) {
+		// Because in release 1.1, /apis/extensions/v1beta1 returns response
+		// with empty APIVersion, we use StripVersionNegotiatedSerializer to
+		// keep the response backwards compatible.
+		ss = StripVersionNegotiatedSerializer{s}
+	}
+	resourceHandler := SupportedResourcesHandler(ss, groupVersion, apiResources)
 	ws.Route(ws.GET("/").To(resourceHandler).
 		Doc("get available resources").
 		Operation("getAPIResources").
@@ -298,16 +346,16 @@ func handleVersion(req *restful.Request, resp *restful.Response) {
 }
 
 // APIVersionHandler returns a handler which will list the provided versions as available.
-func APIVersionHandler(s runtime.NegotiatedSerializer, versions ...string) restful.RouteFunction {
+func APIVersionHandler(s runtime.NegotiatedSerializer, getAPIVersionsFunc func(req *restful.Request) *unversioned.APIVersions) restful.RouteFunction {
 	return func(req *restful.Request, resp *restful.Response) {
-		writeNegotiated(s, unversioned.GroupVersion{}, resp.ResponseWriter, req.Request, http.StatusOK, &unversioned.APIVersions{Versions: versions})
+		writeNegotiated(s, unversioned.GroupVersion{}, resp.ResponseWriter, req.Request, http.StatusOK, getAPIVersionsFunc(req))
 	}
 }
 
 // RootAPIHandler returns a handler which will list the provided groups and versions as available.
-func RootAPIHandler(s runtime.NegotiatedSerializer, f func() []unversioned.APIGroup) restful.RouteFunction {
+func RootAPIHandler(s runtime.NegotiatedSerializer, f func(req *restful.Request) []unversioned.APIGroup) restful.RouteFunction {
 	return func(req *restful.Request, resp *restful.Response) {
-		writeNegotiated(s, unversioned.GroupVersion{}, resp.ResponseWriter, req.Request, http.StatusOK, &unversioned.APIGroupList{Groups: f()})
+		writeNegotiated(s, unversioned.GroupVersion{}, resp.ResponseWriter, req.Request, http.StatusOK, &unversioned.APIGroupList{Groups: f(req)})
 	}
 }
 
@@ -348,7 +396,7 @@ func write(statusCode int, gv unversioned.GroupVersion, s runtime.NegotiatedSeri
 		if wsstream.IsWebSocketRequest(req) {
 			r := wsstream.NewReader(out, true)
 			if err := r.Copy(w, req); err != nil {
-				util.HandleError(fmt.Errorf("error encountered while streaming results via websocket: %v", err))
+				utilruntime.HandleError(fmt.Errorf("error encountered while streaming results via websocket: %v", err))
 			}
 			return
 		}
@@ -397,7 +445,7 @@ func errorNegotiated(err error, s runtime.NegotiatedSerializer, gv unversioned.G
 // errorJSONFatal renders an error to the response, and if codec fails will render plaintext.
 // Returns the HTTP status code of the error.
 func errorJSONFatal(err error, codec runtime.Encoder, w http.ResponseWriter) int {
-	util.HandleError(fmt.Errorf("apiserver was unable to write a JSON response: %v", err))
+	utilruntime.HandleError(fmt.Errorf("apiserver was unable to write a JSON response: %v", err))
 	status := errToAPIStatus(err)
 	code := int(status.Code)
 	output, err := runtime.Encode(codec, status)

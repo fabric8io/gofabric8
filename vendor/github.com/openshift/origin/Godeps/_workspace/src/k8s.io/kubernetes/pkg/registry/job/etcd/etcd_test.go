@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	// Ensure that extensions/v1beta1 package is initialized.
 	_ "k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
@@ -33,7 +34,8 @@ import (
 
 func newStorage(t *testing.T) (*REST, *StatusREST, *etcdtesting.EtcdTestServer) {
 	etcdStorage, server := registrytest.NewEtcdStorage(t, extensions.GroupName)
-	jobStorage, statusStorage := NewREST(etcdStorage, generic.UndecoratedStorage)
+	restOptions := generic.RESTOptions{etcdStorage, generic.UndecoratedStorage, 1}
+	jobStorage, statusStorage := NewREST(restOptions)
 	return jobStorage, statusStorage, server
 }
 
@@ -48,9 +50,10 @@ func validNewJob() *extensions.Job {
 		Spec: extensions.JobSpec{
 			Completions: &completions,
 			Parallelism: &parallelism,
-			Selector: &extensions.LabelSelector{
+			Selector: &unversioned.LabelSelector{
 				MatchLabels: map[string]string{"a": "b"},
 			},
+			ManualSelector: newBool(true),
 			Template: api.PodTemplateSpec{
 				ObjectMeta: api.ObjectMeta{
 					Labels: map[string]string{"a": "b"},
@@ -84,7 +87,7 @@ func TestCreate(t *testing.T) {
 		&extensions.Job{
 			Spec: extensions.JobSpec{
 				Completions: validJob.Spec.Completions,
-				Selector:    &extensions.LabelSelector{},
+				Selector:    &unversioned.LabelSelector{},
 				Template:    validJob.Spec.Template,
 			},
 		},
@@ -108,7 +111,7 @@ func TestUpdate(t *testing.T) {
 		// invalid updateFunc
 		func(obj runtime.Object) runtime.Object {
 			object := obj.(*extensions.Job)
-			object.Spec.Selector = &extensions.LabelSelector{}
+			object.Spec.Selector = &unversioned.LabelSelector{}
 			return object
 		},
 		func(obj runtime.Object) runtime.Object {
@@ -163,3 +166,9 @@ func TestWatch(t *testing.T) {
 }
 
 // TODO: test update /status
+
+func newBool(val bool) *bool {
+	p := new(bool)
+	*p = val
+	return p
+}

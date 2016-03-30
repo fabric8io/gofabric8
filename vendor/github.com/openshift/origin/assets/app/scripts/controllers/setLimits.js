@@ -13,8 +13,6 @@ angular.module('openshiftConsole')
       Navigate.toErrorPage("Replication controller and deployment config can't both be provided.");
     }
 
-    $scope.hideCPU = LimitRangesService.hideCPUComputeResources();
-
     var type, displayName;
     if ($routeParams.dcName) {
       type = "deploymentconfigs";
@@ -62,6 +60,14 @@ angular.module('openshiftConsole')
     ProjectsService
       .get($routeParams.project)
       .then(_.spread(function(project, context) {
+        // Update project breadcrumb with display name.
+        $scope.breadcrumbs[0].title = $filter('displayName')(project);
+
+        // Check if requests or limits are calculated. Memory limit is never calculated.
+        $scope.cpuRequestCalculated = LimitRangesService.isRequestCalculated('cpu', project);
+        $scope.cpuLimitCalculated = LimitRangesService.isLimitCalculated('cpu', project);
+        $scope.memoryRequestCalculated = LimitRangesService.isRequestCalculated('memory', project);
+
         DataService.get(type, $scope.name, context).then(
           function(result) {
             var resource = angular.copy(result);
@@ -92,9 +98,9 @@ angular.module('openshiftConsole')
 
         var validatePodLimits = function() {
           if (!$scope.hideCPU) {
-            $scope.cpuProblems = LimitRangesService.validatePodLimits($scope.limitRanges, 'cpu', $scope.containers);
+            $scope.cpuProblems = LimitRangesService.validatePodLimits($scope.limitRanges, 'cpu', $scope.containers, project);
           }
-          $scope.memoryProblems = LimitRangesService.validatePodLimits($scope.limitRanges, 'memory', $scope.containers);
+          $scope.memoryProblems = LimitRangesService.validatePodLimits($scope.limitRanges, 'memory', $scope.containers, project);
         };
 
         DataService.list("limitranges", context, function(limitRanges) {

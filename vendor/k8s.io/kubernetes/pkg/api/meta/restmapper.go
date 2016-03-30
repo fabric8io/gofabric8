@@ -82,6 +82,10 @@ type DefaultRESTMapper struct {
 	interfacesFunc VersionInterfacesFunc
 }
 
+func (m *DefaultRESTMapper) String() string {
+	return fmt.Sprintf("DefaultRESTMapper{kindToPluralResource=%v}", m.kindToPluralResource)
+}
+
 var _ RESTMapper = &DefaultRESTMapper{}
 
 // VersionInterfacesFunc returns the appropriate typer, and metadata accessor for a
@@ -112,57 +116,51 @@ func NewDefaultRESTMapper(defaultGroupVersions []unversioned.GroupVersion, f Ver
 	}
 }
 
-func (m *DefaultRESTMapper) Add(kind unversioned.GroupVersionKind, scope RESTScope, mixedCase bool) {
-	plural, singular := KindToResource(kind, mixedCase)
-	lowerPlural := plural.GroupVersion().WithResource(strings.ToLower(plural.Resource))
-	lowerSingular := singular.GroupVersion().WithResource(strings.ToLower(singular.Resource))
+func (m *DefaultRESTMapper) Add(kind unversioned.GroupVersionKind, scope RESTScope) {
+	plural, singular := KindToResource(kind)
 
 	m.singularToPlural[singular] = plural
 	m.pluralToSingular[plural] = singular
-	m.singularToPlural[lowerSingular] = lowerPlural
-	m.pluralToSingular[lowerPlural] = lowerSingular
 
-	if _, mixedCaseExists := m.resourceToKind[plural]; !mixedCaseExists {
-		m.resourceToKind[plural] = kind
-		m.resourceToKind[singular] = kind
-	}
-
-	if _, lowerCaseExists := m.resourceToKind[lowerPlural]; !lowerCaseExists && (lowerPlural != plural) {
-		m.resourceToKind[lowerPlural] = kind
-		m.resourceToKind[lowerSingular] = kind
-	}
+	m.resourceToKind[singular] = kind
+	m.resourceToKind[plural] = kind
 
 	m.kindToPluralResource[kind] = plural
 	m.kindToScope[kind] = scope
 }
 
+// unpluralizedSuffixes is a list of resource suffixes that are the same plural and singular
+// This is only is only necessary because some bits of code are lazy and don't actually use the RESTMapper like they should.
+// TODO eliminate this so that different callers can correctly map to resources.  This probably means updating all
+// callers to use the RESTMapper they mean.
+var unpluralizedSuffixes = []string{
+	"endpoints",
+	"securitycontextconstraints",
+}
+
 // KindToResource converts Kind to a resource name.
-func KindToResource(kind unversioned.GroupVersionKind, mixedCase bool) (plural, singular unversioned.GroupVersionResource) {
+func KindToResource(kind unversioned.GroupVersionKind) ( /*plural*/ unversioned.GroupVersionResource /*singular*/, unversioned.GroupVersionResource) {
 	kindName := kind.Kind
 	if len(kindName) == 0 {
-		return
+		return unversioned.GroupVersionResource{}, unversioned.GroupVersionResource{}
 	}
-	if mixedCase {
-		// Legacy support for mixed case names
-		singular = kind.GroupVersion().WithResource(strings.ToLower(kindName[:1]) + kindName[1:])
-	} else {
-		singular = kind.GroupVersion().WithResource(strings.ToLower(kindName))
-	}
+	singularName := strings.ToLower(kindName)
+	singular := kind.GroupVersion().WithResource(singularName)
 
-	singularName := singular.Resource
-	if strings.HasSuffix(singularName, "endpoints") || strings.HasSuffix(singularName, "securitycontextconstraints") {
-		plural = singular
-	} else {
-		switch string(singularName[len(singularName)-1]) {
-		case "s":
-			plural = kind.GroupVersion().WithResource(singularName + "es")
-		case "y":
-			plural = kind.GroupVersion().WithResource(strings.TrimSuffix(singularName, "y") + "ies")
-		default:
-			plural = kind.GroupVersion().WithResource(singularName + "s")
+	for _, skip := range unpluralizedSuffixes {
+		if strings.HasSuffix(singularName, skip) {
+			return singular, singular
 		}
 	}
-	return
+
+	switch string(singularName[len(singularName)-1]) {
+	case "s":
+		return kind.GroupVersion().WithResource(singularName + "es"), singular
+	case "y":
+		return kind.GroupVersion().WithResource(strings.TrimSuffix(singularName, "y") + "ies"), singular
+	}
+
+	return kind.GroupVersion().WithResource(singularName + "s"), singular
 }
 
 // ResourceSingularizer implements RESTMapper
@@ -186,23 +184,18 @@ func (m *DefaultRESTMapper) ResourceSingularizer(resourceType string) (string, e
 		}
 
 		if currSingular.Resource != singular.Resource {
-			return resourceType, fmt.Errorf("multiple possibilities found %v has been defined", resources)
+			return resourceType, fmt.Errorf("multiple possibile singular resources (%v) found for %v", resources, resourceType)
 		}
 	}
 
 	if singular.IsEmpty() {
-		return resourceType, fmt.Errorf("no singular of resource %v has been defined", resources[0])
+		return resourceType, fmt.Errorf("no singular of resource %v has been defined", resourceType)
 	}
 
 	return singular.Resource, nil
 }
 
 func (m *DefaultRESTMapper) ResourcesFor(resource unversioned.GroupVersionResource) ([]unversioned.GroupVersionResource, error) {
-	resource.Resource = strings.ToLower(resource.Resource)
-	if resource.Version == runtime.APIVersionInternal {
-		resource.Version = ""
-	}
-
 	hasResource := len(resource.Resource) > 0
 	hasGroup := len(resource.Group) > 0
 	hasVersion := len(resource.Version) > 0
@@ -275,11 +268,6 @@ func (m *DefaultRESTMapper) ResourceFor(resource unversioned.GroupVersionResourc
 		return resources[0], nil
 	}
 
-	preferredResources := getMostPreferredVersionForResource(resources)
-	if len(preferredResources) == 1 {
-		return preferredResources[0], nil
-	}
-
 	return unversioned.GroupVersionResource{}, &AmbiguousResourceError{PartialResource: resource, MatchingResources: resources}
 }
 
@@ -342,64 +330,11 @@ func (m *DefaultRESTMapper) KindFor(resource unversioned.GroupVersionResource) (
 	if err != nil {
 		return unversioned.GroupVersionKind{}, err
 	}
-
-	// TODO for each group, choose the most preferred (first) version.  This keeps us consistent with code today.
-	// eventually, we'll need a RESTMapper that is aware of what's available server-side and deconflicts that with
-	// user preferences
-	preferredKinds := getMostPreferredVersionForKind(kinds)
-	if len(preferredKinds) == 1 {
-		return preferredKinds[0], nil
+	if len(kinds) == 1 {
+		return kinds[0], nil
 	}
 
 	return unversioned.GroupVersionKind{}, &AmbiguousResourceError{PartialResource: resource, MatchingKinds: kinds}
-}
-
-// getMostPreferredVersionForKind chooses the first group,version,kind for a given group,kind and skips the rest
-// this has the effect of choose the most preferred
-func getMostPreferredVersionForKind(kinds []unversioned.GroupVersionKind) []unversioned.GroupVersionKind {
-	observedGroupKinds := []unversioned.GroupKind{}
-	oneVersionPerGroupKind := []unversioned.GroupVersionKind{}
-	for _, kind := range kinds {
-		alreadyObserved := false
-		for _, currObserved := range observedGroupKinds {
-			if kind.GroupKind() == currObserved {
-				alreadyObserved = true
-				break
-			}
-		}
-		if alreadyObserved {
-			continue
-		}
-
-		observedGroupKinds = append(observedGroupKinds, kind.GroupKind())
-		oneVersionPerGroupKind = append(oneVersionPerGroupKind, kind)
-	}
-
-	return oneVersionPerGroupKind
-}
-
-// getMostPreferredVersionForResource chooses the first group,version,resource for a given group,resource and skips the rest
-// this has the effect of choose the most preferred
-func getMostPreferredVersionForResource(resources []unversioned.GroupVersionResource) []unversioned.GroupVersionResource {
-	observedGroupResources := []unversioned.GroupResource{}
-	oneVersionPerGroupResource := []unversioned.GroupVersionResource{}
-	for _, resource := range resources {
-		alreadyObserved := false
-		for _, currObserved := range observedGroupResources {
-			if resource.GroupResource() == currObserved {
-				alreadyObserved = true
-				break
-			}
-		}
-		if alreadyObserved {
-			continue
-		}
-
-		observedGroupResources = append(observedGroupResources, resource.GroupResource())
-		oneVersionPerGroupResource = append(oneVersionPerGroupResource, resource)
-	}
-
-	return oneVersionPerGroupResource
 }
 
 type kindByPreferredGroupVersion struct {
@@ -571,10 +506,4 @@ func (m *DefaultRESTMapper) AliasesForResource(alias string) ([]string, bool) {
 		return res, true
 	}
 	return nil, false
-}
-
-// ResourceIsValid takes a partial resource and checks if it's valid
-func (m *DefaultRESTMapper) ResourceIsValid(resource unversioned.GroupVersionResource) bool {
-	_, err := m.KindFor(resource)
-	return err == nil
 }

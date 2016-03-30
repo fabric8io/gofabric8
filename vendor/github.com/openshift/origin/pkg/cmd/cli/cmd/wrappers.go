@@ -4,12 +4,16 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
+	"k8s.io/kubernetes/pkg/kubectl/cmd/config"
+	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	kvalidation "k8s.io/kubernetes/pkg/util/validation"
 
+	cmdconfig "github.com/openshift/origin/pkg/cmd/cli/config"
 	"github.com/openshift/origin/pkg/cmd/cli/describe"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
@@ -146,13 +150,16 @@ JSON and YAML formats are accepted.`
 )
 
 // NewCmdCreate is a wrapper for the Kubernetes cli create command
-func NewCmdCreate(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
+func NewCmdCreate(parentName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
 	cmd := kcmd.NewCmdCreate(f.Factory, out)
 	cmd.Long = createLong
-	cmd.Example = fmt.Sprintf(createExample, fullName)
+	cmd.Example = fmt.Sprintf(createExample, parentName)
 
 	// create subcommands
-	cmd.AddCommand(NewCmdCreateRoute(fullName, f, out))
+	cmd.AddCommand(NewCmdCreateRoute(parentName, f, out))
+
+	adjustCmdExamples(cmd, parentName, "create")
+
 	return cmd
 }
 
@@ -169,7 +176,7 @@ const (
 // NewCmdExec is a wrapper for the Kubernetes cli exec command
 func NewCmdExec(fullName string, f *clientcmd.Factory, cmdIn io.Reader, cmdOut, cmdErr io.Writer) *cobra.Command {
 	cmd := kcmd.NewCmdExec(f.Factory, cmdIn, cmdOut, cmdErr)
-	cmd.Use = "exec POD [-c CONTAINER] [options] -- COMMAND [args...]"
+	cmd.Use = "exec [options] POD [-c CONTAINER] -- COMMAND [args...]"
 	cmd.Long = execLong
 	cmd.Example = fmt.Sprintf(execExample, fullName)
 	return cmd
@@ -299,7 +306,7 @@ const (
 	runLong = `Create and run a particular image, possibly replicated
 
 Creates a deployment config to manage the created container(s). You can choose to run in the
-foreground for an interactive container execution.  You may pass 'run-controller/v1' to
+foreground for an interactive container execution.  You may pass 'run/v1' to
 --generator to create a replication controller instead of a deployment config.`
 
 	runExample = `  # Starts a single instance of nginx.
@@ -330,12 +337,13 @@ foreground for an interactive container execution.  You may pass 'run-controller
 
 // NewCmdRun is a wrapper for the Kubernetes cli run command
 func NewCmdRun(fullName string, f *clientcmd.Factory, in io.Reader, out, errout io.Writer) *cobra.Command {
-	cmd := kcmd.NewCmdRun(f.Factory, in, out, errout)
+	opts := &kcmd.RunOptions{DefaultRestartAlwaysGenerator: "deploymentconfig/v1", DefaultGenerator: kcmdutil.RunPodV1GeneratorName}
+	cmd := kcmd.NewCmdRunWithOptions(f.Factory, opts, in, out, errout)
 	cmd.Long = runLong
 	cmd.Example = fmt.Sprintf(runExample, fullName)
 	cmd.SuggestFor = []string{"image"}
 	cmd.Flags().Set("generator", "")
-	cmd.Flag("generator").Usage = "The name of the API generator to use.  Default is 'run/v1' if --restart=Always, otherwise the default is 'run-pod/v1'."
+	cmd.Flag("generator").Usage = "The name of the API generator to use.  Default is 'deploymentconfig/v1' if --restart=Always, otherwise the default is 'run-pod/v1'."
 	cmd.Flag("generator").DefValue = ""
 	cmd.Flag("generator").Changed = false
 	return cmd
@@ -546,9 +554,60 @@ saved copy to include the latest resource version.`
   $ %[1]s edit svc/docker-registry --output-version=v1beta3 -o json`
 )
 
-func NewCmdEdit(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
-	cmd := kcmd.NewCmdEdit(f.Factory, out)
+func NewCmdEdit(fullName string, f *clientcmd.Factory, out, errout io.Writer) *cobra.Command {
+	cmd := kcmd.NewCmdEdit(f.Factory, out, errout)
 	cmd.Long = editLong
 	cmd.Example = fmt.Sprintf(editExample, fullName)
 	return cmd
+}
+
+const (
+	configLong = `
+Manage the client config files
+
+The client stores configuration in the current user's home directory (under the .kube directory as
+config). When you login the first time, a new config file is created, and subsequent project changes with the
+'project' command will set the current context. These subcommands allow you to manage the config directly.
+
+Reference: https://github.com/kubernetes/kubernetes/blob/master/docs/user-guide/kubeconfig-file.md`
+
+	configExample = `  # Change the config context to use
+  %[1]s %[2]s use-context my-context
+
+  # Set the value of a config preference
+  %[1]s %[2]s set preferences.some true`
+)
+
+func NewCmdConfig(parentName, name string) *cobra.Command {
+	pathOptions := &config.PathOptions{
+		GlobalFile:       cmdconfig.RecommendedHomeFile,
+		EnvVar:           cmdconfig.OpenShiftConfigPathEnvVar,
+		ExplicitFileFlag: cmdconfig.OpenShiftConfigFlagName,
+
+		GlobalFileSubpath: cmdconfig.OpenShiftConfigHomeDirFileName,
+
+		LoadingRules: cmdconfig.NewOpenShiftClientConfigLoadingRules(),
+	}
+	pathOptions.LoadingRules.DoNotResolvePaths = true
+
+	cmd := config.NewCmdConfig(pathOptions, os.Stdout)
+	cmd.Short = "Change configuration files for the client"
+	cmd.Long = configLong
+	cmd.Example = fmt.Sprintf(configExample, parentName, name)
+	adjustCmdExamples(cmd, parentName, name)
+	return cmd
+}
+
+func adjustCmdExamples(cmd *cobra.Command, parentName string, name string) {
+	for _, subCmd := range cmd.Commands() {
+		adjustCmdExamples(subCmd, parentName, cmd.Name())
+	}
+	cmd.Example = strings.Replace(cmd.Example, "kubectl", parentName, -1)
+	tabbing := "  "
+	examples := []string{}
+	scanner := bufio.NewScanner(strings.NewReader(cmd.Example))
+	for scanner.Scan() {
+		examples = append(examples, tabbing+strings.TrimSpace(scanner.Text()))
+	}
+	cmd.Example = strings.Join(examples, "\n")
 }

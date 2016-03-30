@@ -23,6 +23,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
@@ -43,19 +44,19 @@ If --current-replicas or --resource-version is specified, it is validated before
 scale is attempted, and it is guaranteed that the precondition holds true when the
 scale is sent to the server.`
 	scale_example = `# Scale replication controller named 'foo' to 3.
-$ kubectl scale --replicas=3 rc/foo
+kubectl scale --replicas=3 rc/foo
 
 # Scale a resource identified by type and name specified in "foo.yaml" to 3.
-$ kubectl scale --replicas=3 -f foo.yaml
+kubectl scale --replicas=3 -f foo.yaml
 
 # If the deployment named mysql's current size is 2, scale mysql to 3.
-$ kubectl scale --current-replicas=2 --replicas=3 deployment/mysql
+kubectl scale --current-replicas=2 --replicas=3 deployment/mysql
 
 # Scale multiple replication controllers.
-$ kubectl scale --replicas=5 rc/foo rc/bar rc/baz
+kubectl scale --replicas=5 rc/foo rc/bar rc/baz
 
 # Scale job named 'cron' to 3.
-$ kubectl scale --replicas=3 job/cron`
+kubectl scale --replicas=3 job/cron`
 )
 
 // NewCmdScale returns a cobra command with the appropriate configuration and flags to run scale
@@ -82,6 +83,7 @@ func NewCmdScale(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd.MarkFlagRequired("replicas")
 	cmd.Flags().Duration("timeout", 0, "The length of time to wait before giving up on a scale operation, zero means don't wait.")
 	cmdutil.AddOutputFlagsForMutation(cmd)
+	cmdutil.AddRecordFlag(cmd)
 
 	usage := "Filename, directory, or URL to a file identifying the resource to set a new size"
 	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
@@ -148,6 +150,24 @@ func RunScale(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []stri
 		if err := scaler.Scale(info.Namespace, info.Name, uint(count), precondition, retry, waitForReplicas); err != nil {
 			errs = append(errs, err)
 			continue
+		}
+		if cmdutil.ShouldRecord(cmd, info) {
+			patchBytes, err := cmdutil.ChangeResourcePatch(info, f.Command())
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			mapping := info.ResourceMapping()
+			client, err := f.ClientForMapping(mapping)
+			if err != nil {
+				return err
+			}
+			helper := resource.NewHelper(client, mapping)
+			_, err = helper.Patch(info.Namespace, info.Name, api.StrategicMergePatchType, patchBytes)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
 		}
 		cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, "scaled")
 	}

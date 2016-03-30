@@ -18,15 +18,20 @@ package metrics
 
 import (
 	"fmt"
-	"strings"
+	"time"
 
 	"k8s.io/kubernetes/pkg/api"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/master/ports"
 	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/util/system"
 
 	"github.com/golang/glog"
+)
+
+const (
+	ProxyTimeout = 2 * time.Minute
 )
 
 type MetricsCollection struct {
@@ -46,11 +51,6 @@ type MetricsGrabber struct {
 	registeredMaster          bool
 }
 
-// TODO: find a better way of figuring out if given node is a registered master.
-func isMasterNode(node *api.Node) bool {
-	return strings.HasSuffix(node.Name, "master")
-}
-
 func NewMetricsGrabber(c *client.Client, kubelets bool, scheduler bool, controllers bool, apiServer bool) (*MetricsGrabber, error) {
 	registeredMaster := false
 	masterName := ""
@@ -62,7 +62,7 @@ func NewMetricsGrabber(c *client.Client, kubelets bool, scheduler bool, controll
 		glog.Warning("Can't find any Nodes in the API server to grab metrics from")
 	}
 	for _, node := range nodeList.Items {
-		if isMasterNode(&node) {
+		if system.IsMasterNode(&node) {
 			registeredMaster = true
 			masterName = node.Name
 			break
@@ -85,8 +85,8 @@ func NewMetricsGrabber(c *client.Client, kubelets bool, scheduler bool, controll
 	}, nil
 }
 
-func (g *MetricsGrabber) GrabFromKubelet(nodeName string, unknownMetrics sets.String) (KubeletMetrics, error) {
-	nodes, err := g.client.Nodes().List(api.ListOptions{FieldSelector: fields.Set{client.ObjectNameField: nodeName}.AsSelector()})
+func (g *MetricsGrabber) GrabFromKubelet(nodeName string) (KubeletMetrics, error) {
+	nodes, err := g.client.Nodes().List(api.ListOptions{FieldSelector: fields.Set{api.ObjectNameField: nodeName}.AsSelector()})
 	if err != nil {
 		return KubeletMetrics{}, err
 	}
@@ -94,10 +94,10 @@ func (g *MetricsGrabber) GrabFromKubelet(nodeName string, unknownMetrics sets.St
 		return KubeletMetrics{}, fmt.Errorf("Error listing nodes with name %v, got %v", nodeName, nodes.Items)
 	}
 	kubeletPort := nodes.Items[0].Status.DaemonEndpoints.KubeletEndpoint.Port
-	return g.grabFromKubeletInternal(nodeName, kubeletPort, unknownMetrics)
+	return g.grabFromKubeletInternal(nodeName, kubeletPort)
 }
 
-func (g *MetricsGrabber) grabFromKubeletInternal(nodeName string, kubeletPort int, unknownMetrics sets.String) (KubeletMetrics, error) {
+func (g *MetricsGrabber) grabFromKubeletInternal(nodeName string, kubeletPort int) (KubeletMetrics, error) {
 	if kubeletPort <= 0 || kubeletPort > 65535 {
 		return KubeletMetrics{}, fmt.Errorf("Invalid Kubelet port %v. Skipping Kubelet's metrics gathering.", kubeletPort)
 	}
@@ -105,7 +105,7 @@ func (g *MetricsGrabber) grabFromKubeletInternal(nodeName string, kubeletPort in
 	if err != nil {
 		return KubeletMetrics{}, err
 	}
-	return parseKubeletMetrics(output, unknownMetrics)
+	return parseKubeletMetrics(output)
 }
 
 func (g *MetricsGrabber) GrabFromScheduler(unknownMetrics sets.String) (SchedulerMetrics, error) {
@@ -173,7 +173,7 @@ func (g *MetricsGrabber) Grab(unknownMetrics sets.String) (MetricsCollection, er
 		} else {
 			for _, node := range nodes.Items {
 				kubeletPort := node.Status.DaemonEndpoints.KubeletEndpoint.Port
-				metrics, err := g.grabFromKubeletInternal(node.Name, kubeletPort, nil)
+				metrics, err := g.grabFromKubeletInternal(node.Name, kubeletPort)
 				if err != nil {
 					errs = append(errs, err)
 				}

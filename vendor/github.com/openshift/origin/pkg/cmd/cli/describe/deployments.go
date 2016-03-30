@@ -133,11 +133,9 @@ func (d *DeploymentConfigDescriber) Describe(namespace, name string) (string, er
 			formatString(out, "Latest Version", strconv.Itoa(deploymentConfig.Status.LatestVersion))
 		}
 
-		printTriggers(deploymentConfig.Spec.Triggers, out)
-
-		formatString(out, "Strategy", deploymentConfig.Spec.Strategy.Type)
-		printStrategy(deploymentConfig.Spec.Strategy, out)
 		printDeploymentConfigSpec(deploymentConfig.Spec, out)
+		fmt.Fprintln(out)
+
 		if deploymentConfig.Status.Details != nil && len(deploymentConfig.Status.Details.Message) > 0 {
 			fmt.Fprintf(out, "Warning:\t%s\n", deploymentConfig.Status.Details.Message)
 		}
@@ -167,6 +165,7 @@ func (d *DeploymentConfigDescriber) Describe(namespace, name string) (string, er
 		}
 
 		if events != nil {
+			fmt.Fprintln(out)
 			kctl.DescribeEvents(events, out)
 		}
 		return nil
@@ -247,26 +246,28 @@ func printTriggers(triggers []deployapi.DeploymentTriggerPolicy, w *tabwriter.Wr
 	formatString(w, "Triggers", desc)
 }
 
-func printDeploymentConfigSpec(spec deployapi.DeploymentConfigSpec, w io.Writer) error {
-	fmt.Fprint(w, "Template:\n")
+func printDeploymentConfigSpec(spec deployapi.DeploymentConfigSpec, w *tabwriter.Writer) error {
+	// Selector
+	formatString(w, "Selector", formatLabels(spec.Selector))
 
+	// Replicas
+	test := ""
 	if spec.Test {
-		fmt.Fprintf(w, "  Selector:\t%s\n  Replicas:\t%d (test, will be scaled down between deployments)\n",
-			formatLabels(spec.Selector),
-			spec.Replicas)
-	} else {
-		fmt.Fprintf(w, "  Selector:\t%s\n  Replicas:\t%d\n",
-			formatLabels(spec.Selector),
-			spec.Replicas)
+		test = " (test, will be scaled down between deployments)"
 	}
+	formatString(w, "Replicas", fmt.Sprintf("%d%s", spec.Replicas, test))
 
-	fmt.Fprintf(w, "  Containers:\n  NAME\tIMAGE\tENV\n")
-	for _, container := range spec.Template.Spec.Containers {
-		fmt.Fprintf(w, "  %s\t%s\t%s\n",
-			container.Name,
-			container.Image,
-			formatLabels(convertEnv(container.Env)))
-	}
+	// Triggers
+	printTriggers(spec.Triggers, w)
+
+	// Strategy
+	formatString(w, "Strategy", spec.Strategy.Type)
+	printStrategy(spec.Strategy, w)
+
+	// Pod template
+	fmt.Fprintf(w, "Template:\n")
+	kctl.DescribePodTemplate(spec.Template, w)
+
 	return nil
 }
 

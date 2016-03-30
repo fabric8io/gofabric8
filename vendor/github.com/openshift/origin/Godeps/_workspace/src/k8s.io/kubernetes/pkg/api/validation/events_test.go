@@ -87,7 +87,7 @@ func TestValidateEvent(t *testing.T) {
 					Namespace:  api.NamespaceDefault,
 				},
 			},
-			false,
+			true,
 		}, {
 			&api.Event{
 				ObjectMeta: api.ObjectMeta{
@@ -126,7 +126,7 @@ func TestValidateEvent(t *testing.T) {
 					Namespace:  "foo",
 				},
 			},
-			false,
+			true,
 		}, {
 			&api.Event{
 				ObjectMeta: api.ObjectMeta{
@@ -152,7 +152,7 @@ func TestValidateEvent(t *testing.T) {
 					Namespace:  "foo",
 				},
 			},
-			false,
+			true,
 		}, {
 			&api.Event{
 				ObjectMeta: api.ObjectMeta{
@@ -160,7 +160,8 @@ func TestValidateEvent(t *testing.T) {
 					Namespace: "foo",
 				},
 				InvolvedObject: api.ObjectReference{
-					APIVersion: "extensions",
+					// must register in v1beta1 to be true
+					APIVersion: "extensions/v1beta1",
 					Kind:       "Job",
 					Namespace:  "foo",
 				},

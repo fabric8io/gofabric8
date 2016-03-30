@@ -19,7 +19,7 @@ func convert_v1_BuildConfig_To_api_BuildConfig(in *BuildConfig, out *newer.Build
 	// strip off any default imagechange triggers where the buildconfig's
 	// "from" is not an ImageStreamTag, because those triggers
 	// will never be invoked.
-	imageRef := buildutil.GetImageStreamForStrategy(out.Spec.Strategy)
+	imageRef := buildutil.GetInputReference(out.Spec.Strategy)
 	hasIST := imageRef != nil && imageRef.Kind == "ImageStreamTag"
 	for _, trigger := range out.Spec.Triggers {
 		if trigger.Type != newer.ImageChangeBuildTriggerType {
@@ -212,12 +212,14 @@ func convert_v1_BuildStrategy_To_api_BuildStrategy(in *BuildStrategy, out *newer
 
 func addConversionFuncs(scheme *runtime.Scheme) {
 	err := scheme.AddDefaultingFuncs(
+		func(source *BuildSource) {
+			if (source != nil) && (source.Type == BuildSourceBinary) && (source.Binary == nil) {
+				source.Binary = &BinaryBuildSource{}
+			}
+		},
 		func(strategy *BuildStrategy) {
-			if (strategy != nil) && (strategy.Type == DockerBuildStrategyType) {
-				//  initialize DockerStrategy to a default state if it's not set.
-				if strategy.DockerStrategy == nil {
-					strategy.DockerStrategy = &DockerBuildStrategy{}
-				}
+			if (strategy != nil) && (strategy.Type == DockerBuildStrategyType) && (strategy.DockerStrategy == nil) {
+				strategy.DockerStrategy = &DockerBuildStrategy{}
 			}
 		},
 		func(obj *SourceBuildStrategy) {

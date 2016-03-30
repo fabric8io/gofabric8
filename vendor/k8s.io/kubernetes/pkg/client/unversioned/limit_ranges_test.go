@@ -17,17 +17,13 @@ limitations under the License.
 package unversioned_test
 
 import (
-	. "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/client/unversioned/testclient/simple"
-)
-
-import (
 	"net/url"
 	"testing"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/api/testapi"
+	"k8s.io/kubernetes/pkg/client/unversioned/testclient/simple"
 )
 
 func getLimitRangesResourceName() string {
@@ -162,39 +158,6 @@ func TestLimitRangeUpdate(t *testing.T) {
 	response, err := c.Setup(t).LimitRanges(ns).Update(limitRange)
 	defer c.Close()
 	c.Validate(t, response, err)
-}
-
-func TestInvalidLimitRangeUpdate(t *testing.T) {
-	ns := api.NamespaceDefault
-	limitRange := &api.LimitRange{
-		ObjectMeta: api.ObjectMeta{
-			Name: "abc",
-		},
-		Spec: api.LimitRangeSpec{
-			Limits: []api.LimitRangeItem{
-				{
-					Type: api.LimitTypePod,
-					Max: api.ResourceList{
-						api.ResourceCPU:    resource.MustParse("100"),
-						api.ResourceMemory: resource.MustParse("10000"),
-					},
-					Min: api.ResourceList{
-						api.ResourceCPU:    resource.MustParse("0"),
-						api.ResourceMemory: resource.MustParse("100"),
-					},
-				},
-			},
-		},
-	}
-	c := &simple.Client{
-		Request:  simple.Request{Method: "PUT", Path: testapi.Default.ResourcePath(getLimitRangesResourceName(), ns, "abc"), Query: simple.BuildQueryValues(nil)},
-		Response: simple.Response{StatusCode: 200, Body: limitRange},
-	}
-	_, err := c.Setup(t).LimitRanges(ns).Update(limitRange)
-	defer c.Close()
-	if err == nil {
-		t.Errorf("Expected an error due to missing ResourceVersion")
-	}
 }
 
 func TestLimitRangeDelete(t *testing.T) {

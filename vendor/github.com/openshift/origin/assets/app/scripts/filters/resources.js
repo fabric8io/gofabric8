@@ -174,7 +174,7 @@ angular.module('openshiftConsole')
       var icon = annotationFilter(resource, "iconClass");
       if (!icon) {
         if (kind === "template") {
-          return "fa fa-bolt";
+          return "fa fa-clone";
         }
 
         return "";
@@ -294,19 +294,19 @@ angular.module('openshiftConsole')
        return true;
     };
   })
-  .filter('routeWebURL', function(){
-    return function(route){
+  .filter('routeWebURL', function(routeHostFilter){
+    return function(route, host){
         var scheme = (route.spec.tls && route.spec.tls.tlsTerminationType !== "") ? "https" : "http";
-        var url = scheme + "://" + route.spec.host;
+        var url = scheme + "://" + (host || routeHostFilter(route));
         if (route.spec.path) {
             url += route.spec.path;
         }
         return url;
     };
   })
-  .filter('routeLabel', function() {
-    return function(route) {
-      var label = route.spec.host;
+  .filter('routeLabel', function(routeHostFilter) {
+    return function(route, host) {
+      var label = (host || routeHostFilter(route));
       if (route.spec.path) {
         label += route.spec.path;
       }
@@ -779,24 +779,31 @@ angular.module('openshiftConsole')
       }
     };
   })
-  .filter('humanizeResourceType', function() {
+  .filter('humanizeKind', function (startCaseFilter) {
+    return startCaseFilter;
+  })
+  .filter('humanizeQuotaResource', function() {
     return function(resourceType) {
+      if (!resourceType) {
+        return resourceType;
+      }
+
       var nameFormatMap = {
-        'build': 'Build',
-        'buildconfig': 'Build Config',
-        'deployment': 'Deployment',
-        'deploymentconfig': 'Deployment Config',
-        'imagestream': 'Image Stream',
+        'configmaps': 'Config Maps',
+        'cpu': 'CPU (Request)',
+        'limits.cpu': 'CPU (Limit)',
+        'limits.memory': 'Memory (Limit)',
+        'memory': 'Memory (Request)',
+        'openshift.io/imagesize': 'Image Size',
+        'openshift.io/imagestreamsize': 'Image Stream Size',
+        'openshift.io/projectimagessize': 'Project Image Size',
         'persistentvolumeclaims': 'Persistent Volume Claims',
-        'pod': 'Pod',
         'pods': 'Pods',
-        'project': 'Project',
-        'resourcequotas': 'Resource Quotas',
-        'replicationcontroller': 'Replication Controller',
         'replicationcontrollers': 'Replication Controllers',
-        'route': 'Route',
+        'requests.cpu': 'CPU (Request)',
+        'requests.memory': 'Memory (Request)',
+        'resourcequotas': 'Resource Quotas',
         'secrets': 'Secrets',
-        'service': 'Service',
         'services': 'Services'
       };
       return nameFormatMap[resourceType] || resourceType;
@@ -844,5 +851,69 @@ angular.module('openshiftConsole')
       }
 
       return portDisplayValue(servicePort.port, servicePort.targetPort, servicePort.protocol);
+    };
+  })
+  .filter('podStatus', function() {
+    // Return results that match kubernetes/pkg/kubectl/resource_printer.go
+    return function(pod) {
+      if (!pod || (!pod.metadata.deletionTimestamp && !pod.status)) {
+        return '';
+      }
+
+      if (pod.metadata.deletionTimestamp) {
+        return 'Terminating';
+      }
+
+      var reason = pod.status.reason || pod.status.phase;
+
+      // Print detailed container reasons if available. Only the last will be
+      // displayed if multiple containers have this detail.
+      angular.forEach(pod.status.containerStatuses, function(containerStatus) {
+        var containerReason = _.get(containerStatus, 'state.waiting.reason') || _.get(containerStatus, 'state.terminated.reason'),
+            signal,
+            exitCode;
+
+        if (containerReason) {
+          reason = containerReason;
+          return;
+        }
+
+        signal = _.get(containerStatus, 'state.terminated.signal');
+        if (signal) {
+          reason = "Signal: " + signal;
+          return;
+        }
+
+        exitCode = _.get(containerStatus, 'state.terminated.exitCode');
+        if (exitCode) {
+          reason = "Exit Code: " + exitCode;
+        }
+      });
+
+      return reason;
+    };
+  })
+  .filter('routeIngressCondition', function() {
+    return function(ingress, type) {
+      if (!ingress) {
+        return null;
+      }
+      return _.find(ingress.conditions, {type: type});
+    };
+  })
+  .filter('routeHost', function() {
+    return function (route) {
+      if (!route.status.ingress) {
+        return route.spec.host;
+      }
+      var oldestAdmittedIngress = null;
+      angular.forEach(route.status.ingress, function(ingress) {
+        if (_.some(ingress.conditions, { type: "Admitted", status: "True" }) &&
+            (!oldestAdmittedIngress || oldestAdmittedIngress.lastTransitionTime > ingress.lastTransitionTime)) {
+          oldestAdmittedIngress = ingress;
+        }
+      });
+
+      return oldestAdmittedIngress ? oldestAdmittedIngress.host : route.spec.host;
     };
   });

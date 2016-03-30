@@ -80,7 +80,7 @@ const (
 // InstallAPI registers endpoints for an OAuth2 server into the provided mux,
 // then returns an array of strings indicating what endpoints were started
 // (these are format strings that will expect to be sent a single string value).
-func (c *AuthConfig) InstallAPI(container *restful.Container) []string {
+func (c *AuthConfig) InstallAPI(container *restful.Container) ([]string, error) {
 	// TODO: register into container
 	mux := container.ServeMux
 
@@ -172,7 +172,7 @@ func (c *AuthConfig) InstallAPI(container *restful.Container) []string {
 	return []string{
 		fmt.Sprintf("Started OAuth2 API at %%s%s", OpenShiftOAuthAPIPrefix),
 		fmt.Sprintf("Started Login endpoint at %%s%s", OpenShiftLoginPrefix),
-	}
+	}, nil
 }
 
 func (c *AuthConfig) getErrorHandler() (*errorpage.ErrorPage, error) {
@@ -465,20 +465,36 @@ func (c *AuthConfig) getAuthenticationHandler(mux cmdutil.Mux, errorHandler hand
 func (c *AuthConfig) getOAuthProvider(identityProvider configapi.IdentityProvider) (external.Provider, error) {
 	switch provider := identityProvider.Provider.(type) {
 	case (*configapi.GitHubIdentityProvider):
-		return github.NewProvider(identityProvider.Name, provider.ClientID, provider.ClientSecret, provider.Organizations), nil
+		clientSecret, err := configapi.ResolveStringValue(provider.ClientSecret)
+		if err != nil {
+			return nil, err
+		}
+		return github.NewProvider(identityProvider.Name, provider.ClientID, clientSecret, provider.Organizations), nil
 
 	case (*configapi.GitLabIdentityProvider):
 		transport, err := cmdutil.TransportFor(provider.CA, "", "")
 		if err != nil {
 			return nil, err
 		}
-		return gitlab.NewProvider(identityProvider.Name, transport, provider.URL, provider.ClientID, provider.ClientSecret)
+		clientSecret, err := configapi.ResolveStringValue(provider.ClientSecret)
+		if err != nil {
+			return nil, err
+		}
+		return gitlab.NewProvider(identityProvider.Name, transport, provider.URL, provider.ClientID, clientSecret)
 
 	case (*configapi.GoogleIdentityProvider):
-		return google.NewProvider(identityProvider.Name, provider.ClientID, provider.ClientSecret, provider.HostedDomain)
+		clientSecret, err := configapi.ResolveStringValue(provider.ClientSecret)
+		if err != nil {
+			return nil, err
+		}
+		return google.NewProvider(identityProvider.Name, provider.ClientID, clientSecret, provider.HostedDomain)
 
 	case (*configapi.OpenIDIdentityProvider):
 		transport, err := cmdutil.TransportFor(provider.CA, "", "")
+		if err != nil {
+			return nil, err
+		}
+		clientSecret, err := configapi.ResolveStringValue(provider.ClientSecret)
 		if err != nil {
 			return nil, err
 		}
@@ -490,7 +506,7 @@ func (c *AuthConfig) getOAuthProvider(identityProvider configapi.IdentityProvide
 
 		config := openid.Config{
 			ClientID:     provider.ClientID,
-			ClientSecret: provider.ClientSecret,
+			ClientSecret: clientSecret,
 
 			Scopes: scopes.List(),
 
@@ -533,9 +549,13 @@ func (c *AuthConfig) getPasswordAuthenticator(identityProvider configapi.Identit
 			return nil, fmt.Errorf("Error parsing LDAPPasswordIdentityProvider URL: %v", err)
 		}
 
+		bindPassword, err := configapi.ResolveStringValue(provider.BindPassword)
+		if err != nil {
+			return nil, err
+		}
 		clientConfig, err := ldaputil.NewLDAPClientConfig(provider.URL,
 			provider.BindDN,
-			provider.BindPassword,
+			bindPassword,
 			provider.CA,
 			provider.Insecure)
 		if err != nil {
@@ -607,7 +627,7 @@ func (c *AuthConfig) getAuthenticationRequestHandler() (authenticator.Request, e
 			if err != nil {
 				return nil, err
 			}
-			authRequestHandlers = append(authRequestHandlers, basicauthrequest.NewBasicAuthAuthentication(passwordAuthenticator, true))
+			authRequestHandlers = append(authRequestHandlers, basicauthrequest.NewBasicAuthAuthentication(identityProvider.Name, passwordAuthenticator, true))
 
 		} else {
 			switch provider := identityProvider.Provider.(type) {
@@ -615,7 +635,10 @@ func (c *AuthConfig) getAuthenticationRequestHandler() (authenticator.Request, e
 				var authRequestHandler authenticator.Request
 
 				authRequestConfig := &headerrequest.Config{
-					UserNameHeaders: provider.Headers,
+					IDHeaders:                provider.Headers,
+					NameHeaders:              provider.NameHeaders,
+					EmailHeaders:             provider.EmailHeaders,
+					PreferredUsernameHeaders: provider.PreferredUsernameHeaders,
 				}
 				authRequestHandler = headerrequest.NewAuthenticator(identityProvider.Name, authRequestConfig, identityMapper)
 

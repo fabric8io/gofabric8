@@ -51,10 +51,9 @@ func (svcStrategy) PrepareForCreate(obj runtime.Object) {
 
 // PrepareForUpdate clears fields that are not allowed to be set by end users on update.
 func (svcStrategy) PrepareForUpdate(obj, old runtime.Object) {
-	// TODO: once service has a status sub-resource we can enable this.
-	//newService := obj.(*api.Service)
-	//oldService := old.(*api.Service)
-	//newService.Status = oldService.Status
+	newService := obj.(*api.Service)
+	oldService := old.(*api.Service)
+	newService.Status = oldService.Status
 }
 
 // Validate validates a new service.
@@ -91,7 +90,7 @@ func (svcStrategy) Export(obj runtime.Object, exact bool) error {
 		return nil
 	}
 	if t.Spec.ClusterIP != api.ClusterIPNone {
-		t.Spec.ClusterIP = ""
+		t.Spec.ClusterIP = "<unknown>"
 	}
 	if t.Spec.Type == api.ServiceTypeNodePort {
 		for i := range t.Spec.Ports {
@@ -117,4 +116,24 @@ func MatchServices(label labels.Selector, field fields.Selector) generic.Matcher
 
 func ServiceToSelectableFields(service *api.Service) fields.Set {
 	return generic.ObjectMetaFieldsSet(service.ObjectMeta, true)
+}
+
+type serviceStatusStrategy struct {
+	svcStrategy
+}
+
+// StatusStrategy is the default logic invoked when updating service status.
+var StatusStrategy = serviceStatusStrategy{Strategy}
+
+// PrepareForUpdate clears fields that are not allowed to be set by end users on update of status
+func (serviceStatusStrategy) PrepareForUpdate(obj, old runtime.Object) {
+	newService := obj.(*api.Service)
+	oldService := old.(*api.Service)
+	// status changes are not allowed to update spec
+	newService.Spec = oldService.Spec
+}
+
+// ValidateUpdate is the default update validation for an end user updating status
+func (serviceStatusStrategy) ValidateUpdate(ctx api.Context, obj, old runtime.Object) field.ErrorList {
+	return validation.ValidateServiceStatusUpdate(obj.(*api.Service), old.(*api.Service))
 }

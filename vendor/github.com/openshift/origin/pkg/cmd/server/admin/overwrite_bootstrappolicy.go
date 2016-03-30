@@ -23,7 +23,6 @@ import (
 	policyetcd "github.com/openshift/origin/pkg/authorization/registry/policy/etcd"
 	policybindingregistry "github.com/openshift/origin/pkg/authorization/registry/policybinding"
 	policybindingetcd "github.com/openshift/origin/pkg/authorization/registry/policybinding/etcd"
-	roleregistry "github.com/openshift/origin/pkg/authorization/registry/role"
 	rolestorage "github.com/openshift/origin/pkg/authorization/registry/role/policybased"
 	rolebindingstorage "github.com/openshift/origin/pkg/authorization/registry/rolebinding/policybased"
 	"k8s.io/kubernetes/pkg/storage"
@@ -33,9 +32,9 @@ import (
 	clusterpolicyetcd "github.com/openshift/origin/pkg/authorization/registry/clusterpolicy/etcd"
 	clusterpolicybindingregistry "github.com/openshift/origin/pkg/authorization/registry/clusterpolicybinding"
 	clusterpolicybindingetcd "github.com/openshift/origin/pkg/authorization/registry/clusterpolicybinding/etcd"
-	clusterroleregistry "github.com/openshift/origin/pkg/authorization/registry/clusterrole"
 	clusterrolestorage "github.com/openshift/origin/pkg/authorization/registry/clusterrole/proxy"
 	clusterrolebindingstorage "github.com/openshift/origin/pkg/authorization/registry/clusterrolebinding/proxy"
+	"github.com/openshift/origin/pkg/authorization/rulevalidation"
 
 	"github.com/openshift/origin/pkg/cmd/cli/describe"
 	configapilatest "github.com/openshift/origin/pkg/cmd/server/api/latest"
@@ -129,7 +128,7 @@ func OverwriteBootstrapPolicy(storage storage.Interface, policyFile, createBoots
 		fmt.Fprintf(out, "Performing a dry run of policy overwrite:\n\n")
 	}
 
-	mapper := cmdclientcmd.ShortcutExpander{RESTMapper: kubectl.ShortcutExpander{RESTMapper: registered.GroupOrDie(authorizationapi.GroupName).RESTMapper}}
+	mapper := cmdclientcmd.ShortcutExpander{RESTMapper: kubectl.ShortcutExpander{RESTMapper: registered.RESTMapper()}}
 	typer := kapi.Scheme
 	clientMapper := resource.ClientMapperFunc(func(mapping *meta.RESTMapping) (resource.RESTClient, error) {
 		return nil, nil
@@ -150,10 +149,16 @@ func OverwriteBootstrapPolicy(storage storage.Interface, policyFile, createBoots
 	clusterPolicyRegistry := clusterpolicyregistry.NewRegistry(clusterpolicyetcd.NewStorage(storage))
 	clusterPolicyBindingRegistry := clusterpolicybindingregistry.NewRegistry(clusterpolicybindingetcd.NewStorage(storage))
 
-	roleRegistry := roleregistry.NewRegistry(rolestorage.NewVirtualStorage(policyRegistry))
-	roleBindingStorage := rolebindingstorage.NewVirtualStorage(policyRegistry, policyBindingRegistry, clusterPolicyRegistry, clusterPolicyBindingRegistry)
-	clusterRoleStorage := clusterrolestorage.NewClusterRoleStorage(clusterPolicyRegistry)
-	clusterRoleRegistry := clusterroleregistry.NewRegistry(clusterRoleStorage)
+	ruleResolver := rulevalidation.NewDefaultRuleResolver(
+		policyRegistry,
+		policyBindingRegistry,
+		clusterPolicyRegistry,
+		clusterPolicyBindingRegistry,
+	)
+
+	roleStorage := rolestorage.NewVirtualStorage(policyRegistry, ruleResolver)
+	roleBindingStorage := rolebindingstorage.NewVirtualStorage(policyBindingRegistry, ruleResolver)
+	clusterRoleStorage := clusterrolestorage.NewClusterRoleStorage(clusterPolicyRegistry, clusterPolicyBindingRegistry)
 	clusterRoleBindingStorage := clusterrolebindingstorage.NewClusterRoleBindingStorage(clusterPolicyRegistry, clusterPolicyBindingRegistry)
 
 	return r.Visit(func(info *resource.Info, err error) error {
@@ -171,8 +176,8 @@ func OverwriteBootstrapPolicy(storage storage.Interface, policyFile, createBoots
 			case *authorizationapi.Role:
 				ctx := kapi.WithNamespace(kapi.NewContext(), t.Namespace)
 				if change {
-					roleRegistry.DeleteRole(ctx, t.Name)
-					if _, err := roleRegistry.CreateRole(ctx, t); err != nil {
+					roleStorage.Delete(ctx, t.Name, nil)
+					if _, err := roleStorage.CreateRoleWithEscalation(ctx, t); err != nil {
 						return err
 					}
 				} else {
@@ -198,8 +203,8 @@ func OverwriteBootstrapPolicy(storage storage.Interface, policyFile, createBoots
 			case *authorizationapi.ClusterRole:
 				ctx := kapi.WithNamespace(kapi.NewContext(), t.Namespace)
 				if change {
-					clusterRoleRegistry.DeleteClusterRole(ctx, t.Name)
-					if _, err := clusterRoleRegistry.CreateClusterRole(ctx, t); err != nil {
+					clusterRoleStorage.Delete(ctx, t.Name, nil)
+					if _, err := clusterRoleStorage.CreateClusterRoleWithEscalation(ctx, t); err != nil {
 						return err
 					}
 				} else {
@@ -235,5 +240,5 @@ func OverwriteBootstrapPolicy(storage storage.Interface, policyFile, createBoots
 
 // newStorage returns an EtcdHelper for the provided storage version.
 func newStorage(client newetcdclient.Client, version, prefix string) (oshelper storage.Interface, err error) {
-	return etcdstorage.NewEtcdStorage(client, kapi.Codecs.LegacyCodec(unversioned.GroupVersion{Group: "", Version: version}), prefix), nil
+	return etcdstorage.NewEtcdStorage(client, kapi.Codecs.LegacyCodec(unversioned.GroupVersion{Group: "", Version: version}), prefix, false), nil
 }

@@ -17,7 +17,6 @@ limitations under the License.
 package flocker
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -25,16 +24,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/types"
+	utiltesting "k8s.io/kubernetes/pkg/util/testing"
 	"k8s.io/kubernetes/pkg/volume"
+	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 )
 
 const pluginName = "kubernetes.io/flocker"
 
 func newInitializedVolumePlugMgr(t *testing.T) (volume.VolumePluginMgr, string) {
 	plugMgr := volume.VolumePluginMgr{}
-	dir, err := ioutil.TempDir("", "flocker")
+	dir, err := utiltesting.MkTmpdir("flocker")
 	assert.NoError(t, err)
-	plugMgr.InitPlugins(ProbeVolumePlugins(), volume.NewFakeVolumeHost(dir, nil, nil))
+	plugMgr.InitPlugins(ProbeVolumePlugins(), volumetest.NewFakeVolumeHost(dir, nil, nil))
 	return plugMgr, dir
 }
 

@@ -12,7 +12,11 @@ import (
 )
 
 func ValidateLDAPSyncConfig(config *api.LDAPSyncConfig) ValidationResults {
-	validationResults := ValidateLDAPClientConfig(config.URL, config.BindDN, config.BindPassword, config.CA, config.Insecure, nil)
+	validationResults := ValidationResults{}
+
+	validationResults.Append(ValidateStringSource(config.BindPassword, field.NewPath("bindPassword")))
+	bindPassword, _ := api.ResolveStringValue(config.BindPassword)
+	validationResults.Append(ValidateLDAPClientConfig(config.URL, config.BindDN, bindPassword, config.CA, config.Insecure, nil))
 
 	schemaConfigsFound := []string{}
 
@@ -36,10 +40,10 @@ func ValidateLDAPSyncConfig(config *api.LDAPSyncConfig) ValidationResults {
 	}
 
 	if len(schemaConfigsFound) > 1 {
-		validationResults.AddErrors(field.Invalid(nil, config, fmt.Sprintf("only one schema-specific config is allowed; found %v", schemaConfigsFound)))
+		validationResults.AddErrors(field.Invalid(field.NewPath("schema"), config, fmt.Sprintf("only one schema-specific config is allowed; found %v", schemaConfigsFound)))
 	}
 	if len(schemaConfigsFound) == 0 {
-		validationResults.AddErrors(field.Invalid(nil, config, fmt.Sprintf("exactly one schema-specific config is required;  one of %v", []string{"rfc2307", "activeDirectory", "augmentedActiveDirectory"})))
+		validationResults.AddErrors(field.Required(field.NewPath("schema"), fmt.Sprintf("exactly one schema-specific config is required;  one of %v", []string{"rfc2307", "activeDirectory", "augmentedActiveDirectory"})))
 	}
 
 	return validationResults
@@ -65,7 +69,7 @@ func ValidateLDAPClientConfig(url, bindDN, bindPassword, CA string, insecure boo
 	if (len(bindDN) == 0) != (len(bindPassword) == 0) {
 		validationResults.AddErrors(field.Invalid(fldPath.Child("bindDN"), bindDN,
 			"bindDN and bindPassword must both be specified, or both be empty"))
-		validationResults.AddErrors(field.Invalid(fldPath.Child("bindPassword"), "<masked>",
+		validationResults.AddErrors(field.Invalid(fldPath.Child("bindPassword"), "(masked)",
 			"bindDN and bindPassword must both be specified, or both be empty"))
 	}
 

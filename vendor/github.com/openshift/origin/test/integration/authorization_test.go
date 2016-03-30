@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -23,6 +23,7 @@ import (
 )
 
 func TestAuthorizationRestrictedAccessForProjectAdmins(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -93,6 +94,7 @@ func waitForProject(t *testing.T, client client.Interface, projectName string, d
 }
 
 func TestAuthorizationResolution(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -175,6 +177,10 @@ func TestAuthorizationResolution(t *testing.T) {
 // TODO this list should start collapsing as we continue to tighten access on generated system ids
 var globalClusterAdminUsers = sets.NewString()
 var globalClusterAdminGroups = sets.NewString("system:cluster-admins", "system:masters")
+
+// This list includes the admins from above, plus users or groups known to have global view access
+var globalClusterReaderUsers = sets.NewString("system:serviceaccount:openshift-infra:namespace-controller")
+var globalClusterReaderGroups = sets.NewString("system:cluster-readers", "system:cluster-admins", "system:masters")
 
 type resourceAccessReviewTest struct {
 	description     string
@@ -276,6 +282,7 @@ func (test localResourceAccessReviewTest) run(t *testing.T) {
 }
 
 func TestAuthorizationResourceAccessReview(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -336,12 +343,12 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 			review:          localRequestWhoCanViewDeployments,
 			response: authorizationapi.ResourceAccessReviewResponse{
 				Users:     sets.NewString("harold", "valerie"),
-				Groups:    globalClusterAdminGroups,
+				Groups:    sets.NewString(),
 				Namespace: "hammer-project",
 			},
 		}
-		test.response.Users.Insert(globalClusterAdminUsers.List()...)
-		test.response.Groups.Insert("system:cluster-readers")
+		test.response.Users.Insert(globalClusterReaderUsers.List()...)
+		test.response.Groups.Insert(globalClusterReaderGroups.List()...)
 		test.run(t)
 	}
 	{
@@ -351,12 +358,12 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 			review:          localRequestWhoCanViewDeployments,
 			response: authorizationapi.ResourceAccessReviewResponse{
 				Users:     sets.NewString("mark", "edgar"),
-				Groups:    globalClusterAdminGroups,
+				Groups:    sets.NewString(),
 				Namespace: "mallet-project",
 			},
 		}
-		test.response.Users.Insert(globalClusterAdminUsers.List()...)
-		test.response.Groups.Insert("system:cluster-readers")
+		test.response.Users.Insert(globalClusterReaderUsers.List()...)
+		test.response.Groups.Insert(globalClusterReaderGroups.List()...)
 		test.run(t)
 	}
 
@@ -378,11 +385,12 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 			clientInterface: clusterAdminClient.ResourceAccessReviews(),
 			review:          requestWhoCanViewDeployments,
 			response: authorizationapi.ResourceAccessReviewResponse{
-				Users:  globalClusterAdminUsers,
-				Groups: globalClusterAdminGroups,
+				Users:  sets.NewString(),
+				Groups: sets.NewString(),
 			},
 		}
-		test.response.Groups.Insert("system:cluster-readers")
+		test.response.Users.Insert(globalClusterReaderUsers.List()...)
+		test.response.Groups.Insert(globalClusterReaderGroups.List()...)
 		test.run(t)
 	}
 
@@ -396,12 +404,12 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 			review:          localRequestWhoCanViewDeployments,
 			response: authorizationapi.ResourceAccessReviewResponse{
 				Users:     sets.NewString("edgar"),
-				Groups:    globalClusterAdminGroups,
+				Groups:    sets.NewString(),
 				Namespace: "mallet-project",
 			},
 		}
-		test.response.Users.Insert(globalClusterAdminUsers.List()...)
-		test.response.Groups.Insert("system:cluster-readers")
+		test.response.Users.Insert(globalClusterReaderUsers.List()...)
+		test.response.Groups.Insert(globalClusterReaderGroups.List()...)
 		test.run(t)
 	}
 }
@@ -465,7 +473,136 @@ func (test subjectAccessReviewTest) run(t *testing.T) {
 	}
 }
 
+func TestAuthorizationSubjectAccessReviewAPIGroup(t *testing.T) {
+	testutil.RequireEtcd(t)
+
+	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	clusterAdminClient, err := testutil.GetClusterAdminClient(clusterAdminKubeConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	clusterAdminClientConfig, err := testutil.GetClusterAdminClientConfig(clusterAdminKubeConfig)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, err = testserver.CreateNewProject(clusterAdminClient, *clusterAdminClientConfig, "hammer-project", "harold")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// SAR honors API Group
+	subjectAccessReviewTest{
+		description:    "cluster admin told harold can get extensions.horizontalpodautoscalers in project hammer-project",
+		localInterface: clusterAdminClient.LocalSubjectAccessReviews("hammer-project"),
+		localReview: &authorizationapi.LocalSubjectAccessReview{
+			User:   "harold",
+			Action: authorizationapi.AuthorizationAttributes{Verb: "get", Group: "extensions", Resource: "horizontalpodautoscalers"},
+		},
+		response: authorizationapi.SubjectAccessReviewResponse{
+			Allowed:   true,
+			Reason:    "allowed by rule in hammer-project",
+			Namespace: "hammer-project",
+		},
+	}.run(t)
+	subjectAccessReviewTest{
+		description:    "cluster admin told harold cannot get horizontalpodautoscalers (with no API group) in project hammer-project",
+		localInterface: clusterAdminClient.LocalSubjectAccessReviews("hammer-project"),
+		localReview: &authorizationapi.LocalSubjectAccessReview{
+			User:   "harold",
+			Action: authorizationapi.AuthorizationAttributes{Verb: "get", Group: "", Resource: "horizontalpodautoscalers"},
+		},
+		response: authorizationapi.SubjectAccessReviewResponse{
+			Allowed:   false,
+			Reason:    `User "harold" cannot get horizontalpodautoscalers in project "hammer-project"`,
+			Namespace: "hammer-project",
+		},
+	}.run(t)
+	subjectAccessReviewTest{
+		description:    "cluster admin told harold cannot get horizontalpodautoscalers (with invalid API group) in project hammer-project",
+		localInterface: clusterAdminClient.LocalSubjectAccessReviews("hammer-project"),
+		localReview: &authorizationapi.LocalSubjectAccessReview{
+			User:   "harold",
+			Action: authorizationapi.AuthorizationAttributes{Verb: "get", Group: "foo", Resource: "horizontalpodautoscalers"},
+		},
+		response: authorizationapi.SubjectAccessReviewResponse{
+			Allowed:   false,
+			Reason:    `User "harold" cannot get foo.horizontalpodautoscalers in project "hammer-project"`,
+			Namespace: "hammer-project",
+		},
+	}.run(t)
+	subjectAccessReviewTest{
+		description:    "cluster admin told harold cannot get horizontalpodautoscalers (with * API group) in project hammer-project",
+		localInterface: clusterAdminClient.LocalSubjectAccessReviews("hammer-project"),
+		localReview: &authorizationapi.LocalSubjectAccessReview{
+			User:   "harold",
+			Action: authorizationapi.AuthorizationAttributes{Verb: "get", Group: "*", Resource: "horizontalpodautoscalers"},
+		},
+		response: authorizationapi.SubjectAccessReviewResponse{
+			Allowed:   false,
+			Reason:    `User "harold" cannot get *.horizontalpodautoscalers in project "hammer-project"`,
+			Namespace: "hammer-project",
+		},
+	}.run(t)
+
+	// SAR honors API Group for cluster admin self SAR
+	subjectAccessReviewTest{
+		description:    "cluster admin told they can get extensions.horizontalpodautoscalers in project hammer-project",
+		localInterface: clusterAdminClient.LocalSubjectAccessReviews("any-project"),
+		localReview: &authorizationapi.LocalSubjectAccessReview{
+			Action: authorizationapi.AuthorizationAttributes{Verb: "get", Group: "extensions", Resource: "horizontalpodautoscalers"},
+		},
+		response: authorizationapi.SubjectAccessReviewResponse{
+			Allowed:   true,
+			Reason:    "allowed by cluster rule",
+			Namespace: "any-project",
+		},
+	}.run(t)
+	subjectAccessReviewTest{
+		description:    "cluster admin told they can get horizontalpodautoscalers (with no API group) in project any-project",
+		localInterface: clusterAdminClient.LocalSubjectAccessReviews("any-project"),
+		localReview: &authorizationapi.LocalSubjectAccessReview{
+			Action: authorizationapi.AuthorizationAttributes{Verb: "get", Group: "", Resource: "horizontalpodautoscalers"},
+		},
+		response: authorizationapi.SubjectAccessReviewResponse{
+			Allowed:   true,
+			Reason:    "allowed by cluster rule",
+			Namespace: "any-project",
+		},
+	}.run(t)
+	subjectAccessReviewTest{
+		description:    "cluster admin told they can get horizontalpodautoscalers (with invalid API group) in project any-project",
+		localInterface: clusterAdminClient.LocalSubjectAccessReviews("any-project"),
+		localReview: &authorizationapi.LocalSubjectAccessReview{
+			Action: authorizationapi.AuthorizationAttributes{Verb: "get", Group: "foo", Resource: "horizontalpodautoscalers"},
+		},
+		response: authorizationapi.SubjectAccessReviewResponse{
+			Allowed:   true,
+			Reason:    "allowed by cluster rule",
+			Namespace: "any-project",
+		},
+	}.run(t)
+	subjectAccessReviewTest{
+		description:    "cluster admin told they can get horizontalpodautoscalers (with * API group) in project any-project",
+		localInterface: clusterAdminClient.LocalSubjectAccessReviews("any-project"),
+		localReview: &authorizationapi.LocalSubjectAccessReview{
+			Action: authorizationapi.AuthorizationAttributes{Verb: "get", Group: "*", Resource: "horizontalpodautoscalers"},
+		},
+		response: authorizationapi.SubjectAccessReviewResponse{
+			Allowed:   true,
+			Reason:    "allowed by cluster rule",
+			Namespace: "any-project",
+		},
+	}.run(t)
+}
+
 func TestAuthorizationSubjectAccessReview(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -744,12 +881,12 @@ func TestAuthorizationSubjectAccessReview(t *testing.T) {
 			Namespace: "default",
 		},
 	}.run(t)
-
 }
 
 // TestOldLocalSubjectAccessReviewEndpoint checks to make sure that the old subject access review endpoint still functions properly
 // this is needed to support old docker registry images
 func TestOldLocalSubjectAccessReviewEndpoint(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -876,6 +1013,7 @@ func TestOldLocalSubjectAccessReviewEndpoint(t *testing.T) {
 // TestOldLocalResourceAccessReviewEndpoint checks to make sure that the old resource access review endpoint still functions properly
 // this is needed to support old who-can client
 func TestOldLocalResourceAccessReviewEndpoint(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -914,7 +1052,7 @@ func TestOldLocalResourceAccessReviewEndpoint(t *testing.T) {
 
 		expectedResponse := &authorizationapi.ResourceAccessReviewResponse{
 			Namespace: namespace,
-			Users:     sets.NewString("harold", "system:serviceaccount:hammer-project:builder"),
+			Users:     sets.NewString("harold", "system:serviceaccount:hammer-project:builder", "system:serviceaccount:openshift-infra:namespace-controller"),
 			Groups:    sets.NewString("system:cluster-admins", "system:masters", "system:serviceaccounts:hammer-project"),
 		}
 		if (actualResponse.Namespace != expectedResponse.Namespace) ||
@@ -941,7 +1079,7 @@ func TestOldLocalResourceAccessReviewEndpoint(t *testing.T) {
 
 		expectedResponse := &authorizationapi.ResourceAccessReviewResponse{
 			Namespace: namespace,
-			Users:     sets.NewString("harold", "system:serviceaccount:hammer-project:builder"),
+			Users:     sets.NewString("harold", "system:serviceaccount:hammer-project:builder", "system:serviceaccount:openshift-infra:namespace-controller"),
 			Groups:    sets.NewString("system:cluster-admins", "system:masters", "system:serviceaccounts:hammer-project"),
 		}
 		if (actualResponse.Namespace != expectedResponse.Namespace) ||

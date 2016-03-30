@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -16,6 +16,7 @@ import (
 func TestDeployScale(t *testing.T) {
 	const namespace = "test-deploy-scale"
 
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	checkErr(t, err)
 	clusterAdminClientConfig, err := testutil.GetClusterAdminClientConfig(clusterAdminKubeConfig)
@@ -52,8 +53,7 @@ func TestDeployScale(t *testing.T) {
 	}
 	updatedScale, err := osClient.DeploymentConfigs(namespace).UpdateScale(scaleUpdate)
 	if err != nil {
-		// If this complains about "Scale" not being registered in "v1", check the kind overrides in the API registration
-		// See "UPSTREAM: <carry>: allow specific, skewed group/versions" and NonDefaultGroupVersionKinds
+		// If this complains about "Scale" not being registered in "v1", check the kind overrides in the API registration in SubresourceGroupVersionKind
 		t.Fatalf("Couldn't update DeploymentConfig scale to %#v: %v", scaleUpdate, err)
 	}
 	if updatedScale.Spec.Replicas != 3 {

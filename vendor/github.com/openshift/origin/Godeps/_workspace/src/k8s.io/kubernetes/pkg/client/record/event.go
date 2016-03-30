@@ -24,9 +24,10 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 
 	"github.com/golang/glog"
@@ -120,7 +121,7 @@ func recordToSink(sink EventSink, event *api.Event, eventCorrelator *EventCorrel
 	event = &eventCopy
 	result, err := eventCorrelator.EventCorrelate(event)
 	if err != nil {
-		util.HandleError(err)
+		utilruntime.HandleError(err)
 	}
 	if result.Skip {
 		return
@@ -181,7 +182,7 @@ func recordEvent(sink EventSink, event *api.Event, patch []byte, updateExistingE
 	// If we can't contact the server, then hold everything while we keep trying.
 	// Otherwise, something about the event is malformed and we should abandon it.
 	switch err.(type) {
-	case *client.RequestConstructionError:
+	case *restclient.RequestConstructionError:
 		// We will construct the request the same next time, so don't keep trying.
 		glog.Errorf("Unable to construct event '%#v': '%v' (will not retry!)", event, err)
 		return true
@@ -216,7 +217,7 @@ func (eventBroadcaster *eventBroadcasterImpl) StartLogging(logf func(format stri
 func (eventBroadcaster *eventBroadcasterImpl) StartEventWatcher(eventHandler func(*api.Event)) watch.Interface {
 	watcher := eventBroadcaster.Watch()
 	go func() {
-		defer util.HandleCrash()
+		defer utilruntime.HandleCrash()
 		for {
 			watchEvent, open := <-watcher.ResultChan()
 			if !open {
@@ -262,6 +263,7 @@ func (recorder *recorderImpl) generateEvent(object runtime.Object, timestamp unv
 
 	go func() {
 		// NOTE: events should be a non-blocking operation
+		defer utilruntime.HandleCrash()
 		recorder.Action(watch.Added, event)
 	}()
 }

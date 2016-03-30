@@ -14,13 +14,14 @@ os::log::install_errexit
 
 # only works on Linux for now, all other platforms must build binaries themselves
 if [[ -z "$@" ]]; then
-  if os::build::detect_local_release_tars $(os::build::host_platform_friendly) >/dev/null; then
+  if [[ "${OS_RELEASE:-}" != "n" ]] && \
+    os::build::detect_local_release_tars $(os::build::host_platform_friendly) >/dev/null; then
     platform=$(os::build::host_platform)
     echo "++ Using release artifacts from ${OS_RELEASE_COMMIT} for ${platform} instead of building"
     mkdir -p "${OS_OUTPUT_BINPATH}/${platform}"
-    tar mxzf "${OS_PRIMARY_RELEASE_TAR}" --strip-components=1 -C "${OS_OUTPUT_BINPATH}/${platform}"
-    tar mxzf "${OS_CLIENT_RELEASE_TAR}" --strip-components=1 -C "${OS_OUTPUT_BINPATH}/${platform}"
-    tar mxzf "${OS_IMAGE_RELEASE_TAR}" --strip-components=1 -C "${OS_OUTPUT_BINPATH}/${platform}"
+    os::build::extract_tar "${OS_PRIMARY_RELEASE_TAR}" "${OS_OUTPUT_BINPATH}/${platform}"
+    os::build::extract_tar "${OS_CLIENT_RELEASE_TAR}" "${OS_OUTPUT_BINPATH}/${platform}"
+    os::build::extract_tar "${OS_IMAGE_RELEASE_TAR}" "${OS_OUTPUT_BINPATH}/${platform}"
 
     os::build::make_openshift_binary_symlinks
 

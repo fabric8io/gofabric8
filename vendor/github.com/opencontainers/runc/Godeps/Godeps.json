@@ -38,9 +38,9 @@
 			"Rev": "0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d"
 		},
 		{
-			"ImportPath": "github.com/docker/docker/pkg/units",
-			"Comment": "v1.4.1-4831-g0f5c9d3",
-			"Rev": "0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d"
+			"ImportPath": "github.com/docker/go-units",
+			"Comment": "v0.1.0",
+			"Rev": "9b001659dd36225e356b4467c465d732e745f53d"
 		},
 		{
 			"ImportPath": "github.com/godbus/dbus",
@@ -53,8 +53,8 @@
 		},
 		{
 			"ImportPath": "github.com/opencontainers/specs",
-			"Comment": "v0.1.1-55-gcf8dd12",
-			"Rev": "cf8dd120937acc3593708f99304c51cfd0f73240"
+			"Comment": "v0.2.0-40-ga7b5092",
+			"Rev": "a7b50925d8996923d99e1c50750131e20b743067"
 		},
 		{
 			"ImportPath": "github.com/seccomp/libseccomp-golang",

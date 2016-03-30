@@ -71,7 +71,7 @@ angular.module('openshiftConsole')
       }
     };
   })
-  .directive('copyToClipboardButton', function() {
+  .directive('copyToClipboardButton', function(IS_IOS) {
     return {
       restrict: 'E',
       scope: {
@@ -82,6 +82,11 @@ angular.module('openshiftConsole')
         $scope.id = _.uniqueId('clipboardJs');
       },
       link: function($scope, element) {
+        if (IS_IOS) {
+          $scope.hidden = true;
+          return;
+        }
+
         var node = $('button', element);
         var clipboard = new Clipboard( node.get(0) );
         clipboard.on('success', function (e) {
@@ -160,5 +165,16 @@ angular.module('openshiftConsole')
           $(window).off("resize", resized);
         });
       }
+    };
+  }).directive('onEnter', function(){
+    return function (scope, element, attrs) {
+      element.bind("keydown keypress", function (event) {
+        if(event.which === 13 && !scope.form.$invalid) {
+          scope.$apply(function (){
+            scope.$eval(attrs.onEnter);
+          });
+          event.preventDefault();
+        }
+      });
     };
   });

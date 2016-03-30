@@ -27,6 +27,10 @@ const (
 	DockerDefaultV1Registry = "index." + DockerDefaultRegistry
 	// DockerDefaultV2Registry is the host name of the default v2 registry
 	DockerDefaultV2Registry = "registry-1." + DockerDefaultRegistry
+
+	// containerImageEntrypointAnnotationFormatKey is a format used to identify the entrypoint of a particular
+	// container in a pod template. It is a JSON array of strings.
+	containerImageEntrypointAnnotationFormatKey = "openshift.io/container.%s.image.entrypoint"
 )
 
 // TODO remove (base, tag, id)
@@ -324,6 +328,12 @@ func ManifestMatchesImage(image *Image, newManifest []byte) (bool, error) {
 // from the raw DockerImageManifest data stored in the image.
 func ImageWithMetadata(image *Image) error {
 	if len(image.DockerImageManifest) == 0 {
+		return nil
+	}
+
+	if len(image.DockerImageLayers) > 0 && image.DockerImageMetadata.Size > 0 {
+		glog.V(5).Infof("Image metadata already filled for %s", image.Name)
+		// don't update image already filled
 		return nil
 	}
 
@@ -810,4 +820,26 @@ func PrioritizeTags(tags []string) {
 		finalTags = append(finalTags, v)
 	}
 	copy(tags, finalTags)
+}
+
+func ContainerImageEntrypointByAnnotation(annotations map[string]string, containerName string) ([]string, bool) {
+	s, ok := annotations[fmt.Sprintf(containerImageEntrypointAnnotationFormatKey, containerName)]
+	if !ok {
+		return nil, false
+	}
+	var arr []string
+	if err := json.Unmarshal([]byte(s), &arr); err != nil {
+		return nil, false
+	}
+	return arr, true
+}
+
+func SetContainerImageEntrypointAnnotation(annotations map[string]string, containerName string, cmd []string) {
+	key := fmt.Sprintf(containerImageEntrypointAnnotationFormatKey, containerName)
+	if len(cmd) == 0 {
+		delete(annotations, key)
+		return
+	}
+	s, _ := json.Marshal(cmd)
+	annotations[key] = string(s)
 }

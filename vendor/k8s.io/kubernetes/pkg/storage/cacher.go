@@ -30,7 +30,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/watch"
 
 	"github.com/golang/glog"
@@ -145,6 +145,14 @@ func NewCacherFromConfig(config CacherConfig) *Cacher {
 	watchCache := newWatchCache(config.CacheCapacity)
 	listerWatcher := newCacherListerWatcher(config.Storage, config.ResourcePrefix, config.NewListFunc)
 
+	// Give this error when it is constructed rather than when you get the
+	// first watch item, because it's much easier to track down that way.
+	if obj, ok := config.Type.(runtime.Object); ok {
+		if err := runtime.CheckCodec(config.Storage.Codec(), obj); err != nil {
+			panic("storage codec doesn't seem to match given type: " + err.Error())
+		}
+	}
+
 	cacher := &Cacher{
 		usable:     sync.RWMutex{},
 		storage:    config.Storage,
@@ -156,53 +164,57 @@ func NewCacherFromConfig(config CacherConfig) *Cacher {
 		keyFunc:    config.KeyFunc,
 		stopped:    false,
 		// We need to (potentially) stop both:
-		// - util.Until go-routine
+		// - wait.Until go-routine
 		// - reflector.ListAndWatch
 		// and there are no guarantees on the order that they will stop.
 		// So we will be simply closing the channel, and synchronizing on the WaitGroup.
 		stopCh: make(chan struct{}),
 		stopWg: sync.WaitGroup{},
 	}
+	// See startCaching method for explanation and where this is unlocked.
 	cacher.usable.Lock()
-	// See startCaching method for why explanation on it.
-	watchCache.SetOnReplace(func() { cacher.usable.Unlock() })
 	watchCache.SetOnEvent(cacher.processEvent)
 
 	stopCh := cacher.stopCh
 	cacher.stopWg.Add(1)
 	go func() {
-		util.Until(
+		defer cacher.stopWg.Done()
+		wait.Until(
 			func() {
 				if !cacher.isStopped() {
 					cacher.startCaching(stopCh)
 				}
-			}, 0, stopCh)
-		cacher.stopWg.Done()
+			}, time.Second, stopCh,
+		)
 	}()
 	return cacher
 }
 
 func (c *Cacher) startCaching(stopChannel <-chan struct{}) {
-	// Whenever we enter startCaching method, usable mutex is held.
-	// We explicitly do NOT Unlock it in this method, because we do
-	// not want to allow any Watch/List methods not explicitly redirected
-	// to the underlying storage when the cache is being initialized.
-	// Once the underlying cache is propagated, onReplace handler will
-	// be called, which will do the usable.Unlock() as configured in
-	// NewCacher().
-	// Note: the same behavior is also triggered every time we fall out of
-	// backend storage watch event window.
-	defer c.usable.Lock()
+	// The 'usable' lock is always 'RLock'able when it is safe to use the cache.
+	// It is safe to use the cache after a successful list until a disconnection.
+	// We start with usable (write) locked. The below OnReplace function will
+	// unlock it after a successful list. The below defer will then re-lock
+	// it when this function exits (always due to disconnection), only if
+	// we actually got a successful list. This cycle will repeat as needed.
+	successfulList := false
+	c.watchCache.SetOnReplace(func() {
+		successfulList = true
+		c.usable.Unlock()
+	})
+	defer func() {
+		if successfulList {
+			c.usable.Lock()
+		}
+	}()
 
 	c.terminateAllWatchers()
 	// Note that since onReplace may be not called due to errors, we explicitly
 	// need to retry it on errors under lock.
-	for {
-		if err := c.reflector.ListAndWatch(stopChannel); err != nil {
-			glog.Errorf("unexpected ListAndWatch error: %v", err)
-		} else {
-			break
-		}
+	// Also note that startCaching is called in a loop, so there's no need
+	// to have another loop here.
+	if err := c.reflector.ListAndWatch(stopChannel); err != nil {
+		glog.Errorf("unexpected ListAndWatch error: %v", err)
 	}
 }
 
@@ -313,7 +325,10 @@ func (c *Cacher) List(ctx context.Context, key string, resourceVersion string, f
 	}
 	filterFunc := filterFunction(key, c.keyFunc, filter)
 
-	objs, readResourceVersion := c.watchCache.WaitUntilFreshAndList(listRV)
+	objs, readResourceVersion, err := c.watchCache.WaitUntilFreshAndList(listRV)
+	if err != nil {
+		return fmt.Errorf("failed to wait for fresh list: %v", err)
+	}
 	for _, obj := range objs {
 		object, ok := obj.(runtime.Object)
 		if !ok {

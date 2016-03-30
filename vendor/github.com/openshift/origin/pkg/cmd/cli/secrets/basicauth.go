@@ -6,13 +6,14 @@ import (
 	"io"
 	"io/ioutil"
 
+	"github.com/spf13/cobra"
+
 	"k8s.io/kubernetes/pkg/api"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/util/term"
 
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
-
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -25,7 +26,7 @@ Create a new basic authentication secret
 Basic authentication secrets are used to authenticate against SCM servers.
 
 When creating applications, you may have a SCM server that requires basic authentication - username, password.
-In order for the nodes to clone source code on your behalf, they have to have the credentials. You can provide 
+In order for the nodes to clone source code on your behalf, they have to have the credentials. You can provide
 this information by creating a 'basicauth' secret and attaching it to your service account.`
 
 	createBasicAuthSecretExample = `  // If your basic authentication method requires only username and password or token, add it by using:
@@ -92,12 +93,10 @@ func NewCmdCreateBasicAuthSecret(name, fullName string, f *kcmdutil.Factory, rea
 	cmd.Flags().StringVar(&o.Username, "username", "", "Username for Git authentication")
 	cmd.Flags().StringVar(&o.Password, "password", "", "Password or token for Git authentication")
 	cmd.Flags().StringVar(&o.CertificatePath, "ca-cert", "", "Path to a certificate file")
-	cmd.Flags().StringVar(&o.GitConfigPath, "gitconfig", "", "Path to a .gitconfig file")
-	cmd.Flags().BoolVarP(&o.PromptForPassword, "prompt", "", false, "Prompt for password or token")
-
-	// autocompletion hints
 	cmd.MarkFlagFilename("ca-cert")
+	cmd.Flags().StringVar(&o.GitConfigPath, "gitconfig", "", "Path to a .gitconfig file")
 	cmd.MarkFlagFilename("gitconfig")
+	cmd.Flags().BoolVarP(&o.PromptForPassword, "prompt", "", false, "Prompt for password or token")
 
 	kcmdutil.AddPrinterFlags(cmd)
 
@@ -166,7 +165,7 @@ func (o *CreateBasicAuthSecretOptions) Complete(f *kcmdutil.Factory, args []stri
 		if len(o.Password) != 0 {
 			return errors.New("must provide either --prompt or --password flag")
 		}
-		if !cmdutil.IsTerminal(o.Reader) {
+		if !term.IsTerminal(o.Reader) {
 			return errors.New("provided reader is not a terminal")
 		}
 

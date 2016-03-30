@@ -14,6 +14,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
 	"github.com/openshift/origin/pkg/client"
@@ -149,7 +150,7 @@ func (r *REST) Create(ctx kapi.Context, obj runtime.Object) (runtime.Object, err
 		}
 	} else {
 		if len(inputMeta.ResourceVersion) > 0 && inputMeta.ResourceVersion != stream.ResourceVersion {
-			glog.V(4).Infof("DEBUG: mismatch between requested UID %s and located UID %s", inputMeta.UID, stream.UID)
+			glog.V(4).Infof("DEBUG: mismatch between requested ResourceVersion %s and located ResourceVersion %s", inputMeta.ResourceVersion, stream.ResourceVersion)
 			return nil, kapierrors.NewConflict(api.Resource("imagestream"), inputMeta.Name, fmt.Errorf("the image stream was updated from %q to %q", inputMeta.ResourceVersion, stream.ResourceVersion))
 		}
 		if len(inputMeta.UID) > 0 && inputMeta.UID != stream.UID {
@@ -179,12 +180,12 @@ func (r *REST) Create(ctx kapi.Context, obj runtime.Object) (runtime.Object, err
 			image := status.Image
 			ref, err := api.ParseDockerImageReference(image.DockerImageReference)
 			if err != nil {
-				util.HandleError(fmt.Errorf("unable to parse image reference during import: %v", err))
+				utilruntime.HandleError(fmt.Errorf("unable to parse image reference during import: %v", err))
 				continue
 			}
 			from, err := api.ParseDockerImageReference(spec.From.Name)
 			if err != nil {
-				util.HandleError(fmt.Errorf("unable to parse from reference during import: %v", err))
+				utilruntime.HandleError(fmt.Errorf("unable to parse from reference during import: %v", err))
 				continue
 			}
 

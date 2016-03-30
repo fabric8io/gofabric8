@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// +build test
+
 package container
 
 import (
@@ -50,6 +52,8 @@ func (self *MockContainerHandler) ContainerReference() (info.ContainerReference,
 	args := self.Called()
 	return args.Get(0).(info.ContainerReference), args.Error(1)
 }
+
+func (self *MockContainerHandler) Start() {}
 
 func (self *MockContainerHandler) Cleanup() {}
 

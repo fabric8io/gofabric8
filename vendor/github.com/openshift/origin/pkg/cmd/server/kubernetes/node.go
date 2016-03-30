@@ -1,8 +1,10 @@
 package kubernetes
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,8 +14,10 @@ import (
 	"github.com/golang/glog"
 	kubeletapp "k8s.io/kubernetes/cmd/kubelet/app"
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	"k8s.io/kubernetes/pkg/client/record"
 	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
+	cadvisortesting "k8s.io/kubernetes/pkg/kubelet/cadvisor/testing"
 	"k8s.io/kubernetes/pkg/kubelet/cm"
 	"k8s.io/kubernetes/pkg/kubelet/dockertools"
 	proxy "k8s.io/kubernetes/pkg/proxy"
@@ -23,9 +27,14 @@ import (
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	kexec "k8s.io/kubernetes/pkg/util/exec"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
+	utilnet "k8s.io/kubernetes/pkg/util/net"
+	"k8s.io/kubernetes/pkg/util/sysctl"
+	"k8s.io/kubernetes/pkg/volume"
 
+	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	dockerutil "github.com/openshift/origin/pkg/cmd/util/docker"
+	"github.com/openshift/origin/pkg/volume/emptydir"
 )
 
 type commandExecutor interface {
@@ -46,10 +55,74 @@ func (ce defaultCommandExecutor) Run(command string, args ...string) error {
 
 const minimumDockerAPIVersionWithPullByID = "1.18"
 
+// EnsureKubeletAccess performs a number of test operations that the Kubelet requires to properly function.
+// All errors here are fatal.
+func (c *NodeConfig) EnsureKubeletAccess() {
+	if _, err := os.Stat("/var/lib/docker"); os.IsPermission(err) {
+		c.HandleDockerError("Unable to view the /var/lib/docker directory - are you running as root?")
+	}
+	if c.Containerized {
+		if _, err := os.Stat("/rootfs"); os.IsPermission(err) || os.IsNotExist(err) {
+			glog.Fatal("error: Running in containerized mode, but cannot find the /rootfs directory - be sure to mount the host filesystem at /rootfs (read-only) in the container.")
+		}
+		if !sameFileStat(true, "/rootfs/sys", "/sys") {
+			glog.Fatal("error: Running in containerized mode, but the /sys directory in the container does not appear to match the host /sys directory - be sure to mount /sys into the container.")
+		}
+		if !sameFileStat(true, "/rootfs/var/run", "/var/run") {
+			glog.Fatal("error: Running in containerized mode, but the /var/run directory in the container does not appear to match the host /var/run directory - be sure to mount /var/run (read-write) into the container.")
+		}
+	}
+	// TODO: check whether we can mount disks (for volumes)
+	// TODO: check things cAdvisor needs to properly function
+	// TODO: test a cGroup move?
+}
+
+// sameFileStat checks whether the provided paths are the same file, to verify that a user has correctly
+// mounted those binaries
+func sameFileStat(requireMode bool, src, dst string) bool {
+	srcStat, err := os.Stat(src)
+	if err != nil {
+		glog.V(4).Infof("Unable to stat %q: %v", src, err)
+		return false
+	}
+	dstStat, err := os.Stat(dst)
+	if err != nil {
+		glog.V(4).Infof("Unable to stat %q: %v", dst, err)
+		return false
+	}
+	if requireMode && srcStat.Mode() != dstStat.Mode() {
+		glog.V(4).Infof("Mode mismatch between %q (%s) and %q (%s)", src, srcStat.Mode(), dst, dstStat.Mode())
+		return false
+	}
+	if !os.SameFile(srcStat, dstStat) {
+		glog.V(4).Infof("inode and device mismatch between %q (%s) and %q (%s)", src, srcStat, dst, dstStat)
+		return false
+	}
+	return true
+}
+
 // EnsureDocker attempts to connect to the Docker daemon defined by the helper,
 // and if it is unable to it will print a warning.
 func (c *NodeConfig) EnsureDocker(docker *dockerutil.Helper) {
-	dockerClient, dockerAddr := docker.GetClientOrExit()
+	dockerClient, dockerAddr, err := docker.GetClient()
+	if err != nil {
+		c.HandleDockerError(fmt.Sprintf("Unable to create a Docker client for %s - Docker must be installed and running to start containers.\n%v", dockerAddr, err))
+		return
+	}
+	if url, err := url.Parse(dockerAddr); err == nil && url.Scheme == "unix" && len(url.Path) > 0 {
+		s, err := os.Stat(url.Path)
+		switch {
+		case os.IsNotExist(err):
+			c.HandleDockerError(fmt.Sprintf("No Docker socket found at %s. Have you started the Docker daemon?", url.Path))
+			return
+		case os.IsPermission(err):
+			c.HandleDockerError(fmt.Sprintf("You do not have permission to connect to the Docker daemon (via %s). This process requires running as the root user.", url.Path))
+			return
+		case err == nil && s.IsDir():
+			c.HandleDockerError(fmt.Sprintf("The Docker socket at %s is a directory instead of a unix socket - check that you have configured your connection to the Docker daemon properly.", url.Path))
+			return
+		}
+	}
 	if err := dockerClient.Ping(); err != nil {
 		c.HandleDockerError(fmt.Sprintf("Docker could not be reached at %s.  Docker must be installed and running to start containers.\n%v", dockerAddr, err))
 		return
@@ -87,7 +160,7 @@ func (c *NodeConfig) EnsureDocker(docker *dockerutil.Helper) {
 // HandleDockerError handles an an error from the docker daemon
 func (c *NodeConfig) HandleDockerError(message string) {
 	if !c.AllowDisabledDocker {
-		glog.Fatalf("ERROR: %s", message)
+		glog.Fatalf("error: %s", message)
 	}
 	glog.Errorf("WARNING: %s", message)
 	c.DockerClient = &dockertools.FakeDockerClient{VersionInfo: dockerclient.Env([]string{"ApiVersion=1.18"})}
@@ -124,6 +197,52 @@ func (c *NodeConfig) initializeVolumeDir(ce commandExecutor, path string) (strin
 		}
 	}
 	return rootDirectory, nil
+}
+
+// EnsureLocalQuota checks if the node config specifies a local storage
+// perFSGroup quota, and if so will test that the volumeDirectory is on a
+// filesystem suitable for quota enforcement. If checks pass the k8s emptyDir
+// volume plugin will be replaced with a wrapper version which adds quota
+// functionality.
+func (c *NodeConfig) EnsureLocalQuota(nodeConfig configapi.NodeConfig) {
+	if nodeConfig.VolumeConfig.LocalQuota.PerFSGroup == nil {
+		return
+	}
+	glog.V(4).Info("Replacing empty-dir volume plugin with quota wrapper")
+	wrappedEmptyDirPlugin := false
+
+	quotaApplicator, err := emptydir.NewQuotaApplicator(nodeConfig.VolumeDirectory)
+	if err != nil {
+		glog.Fatalf("Could not set up local quota, %s", err)
+	}
+
+	// Create a volume spec with emptyDir we can use to search for the
+	// emptyDir plugin with CanSupport:
+	emptyDirSpec := &volume.Spec{
+		Volume: &kapi.Volume{
+			VolumeSource: kapi.VolumeSource{
+				EmptyDir: &kapi.EmptyDirVolumeSource{},
+			},
+		},
+	}
+
+	for idx, plugin := range c.KubeletConfig.VolumePlugins {
+		// Can't really do type checking or use a constant here as they are not exported:
+		if plugin.CanSupport(emptyDirSpec) {
+			wrapper := emptydir.EmptyDirQuotaPlugin{
+				Wrapped:         plugin,
+				Quota:           *nodeConfig.VolumeConfig.LocalQuota.PerFSGroup,
+				QuotaApplicator: quotaApplicator,
+			}
+			c.KubeletConfig.VolumePlugins[idx] = &wrapper
+			wrappedEmptyDirPlugin = true
+		}
+	}
+	// Because we can't look for the k8s emptyDir plugin by any means that would
+	// survive a refactor, error out if we couldn't find it:
+	if !wrappedEmptyDirPlugin {
+		glog.Fatal(errors.New("No plugin handling EmptyDir was found, unable to apply local quotas"))
+	}
 }
 
 // RunKubelet starts the Kubelet.
@@ -170,7 +289,7 @@ var defaultCadvisorInterface cadvisor.Interface = nil
 
 // SetFakeCadvisorInterfaceForIntegrationTest sets a fake cadvisor implementation to allow the node to run in integration tests
 func SetFakeCadvisorInterfaceForIntegrationTest() {
-	defaultCadvisorInterface = &cadvisor.Fake{}
+	defaultCadvisorInterface = &cadvisortesting.Fake{}
 }
 
 // defaultContainerManagerInterface holds the overridden default interface
@@ -182,62 +301,98 @@ func SetFakeContainerManagerInterfaceForIntegrationTest() {
 	defaultContainerManagerInterface = cm.NewStubContainerManager()
 }
 
-func (c *NodeConfig) RunSDN() {
-	if c.SDNPlugin != nil {
-		if err := c.SDNPlugin.StartNode(c.MTU); err != nil {
-			glog.Fatalf("SDN Node failed: %v", err)
-		}
+// RunPlugin starts the local SDN plugin, if enabled in configuration.
+func (c *NodeConfig) RunPlugin() {
+	if c.SDNPlugin == nil {
+		return
+	}
+	if err := c.SDNPlugin.StartNode(c.MTU); err != nil {
+		glog.Fatalf("error: SDN node startup failed: %v", err)
+	}
+}
+
+// ResetSysctlFromProxy resets the bridge-nf-call-iptables systctl that the Kube proxy sets, which
+// is required for normal Docker containers to talk to the SDN plugin on the local system.
+// Resolution is https://github.com/kubernetes/kubernetes/pull/20647
+func (c *NodeConfig) ResetSysctlFromProxy() {
+	if c.SDNPlugin == nil {
+		return
+	}
+	if err := sysctl.SetSysctl("net/bridge/bridge-nf-call-iptables", 0); err != nil {
+		glog.Warningf("Could not set net.bridge.bridge-nf-call-iptables sysctl: %s", err)
 	}
 }
 
 // RunProxy starts the proxy
 func (c *NodeConfig) RunProxy() {
 	protocol := utiliptables.ProtocolIpv4
-	if c.ProxyConfig.BindAddress.To4() == nil {
+	bindAddr := net.ParseIP(c.ProxyConfig.BindAddress)
+	if bindAddr.To4() == nil {
 		protocol = utiliptables.ProtocolIpv6
 	}
+
+	portRange := utilnet.ParsePortRangeOrDie(c.ProxyConfig.PortRange)
 
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(c.Client.Events(""))
 	recorder := eventBroadcaster.NewRecorder(kapi.EventSource{Component: "kube-proxy", Host: c.KubeletConfig.NodeName})
 
-	exec := kexec.New()
+	execer := kexec.New()
 	dbus := utildbus.New()
-	iptInterface := utiliptables.New(exec, dbus, protocol)
+	iptInterface := utiliptables.New(execer, dbus, protocol)
 
 	var proxier proxy.ProxyProvider
 	var endpointsHandler pconfig.EndpointsConfigHandler
 
-	switch c.ProxyConfig.ProxyMode {
-	case "iptables":
+	switch c.ProxyConfig.Mode {
+	case componentconfig.ProxyModeIPTables:
 		glog.V(0).Info("Using iptables Proxier.")
-		proxierIptables, err := iptables.NewProxier(iptInterface, exec, c.ProxyConfig.IptablesSyncPeriod, c.ProxyConfig.MasqueradeAll)
+		if c.ProxyConfig.IPTablesMasqueradeBit == nil {
+			// IPTablesMasqueradeBit must be specified or defaulted.
+			glog.Fatalf("Unable to read IPTablesMasqueradeBit from config")
+		}
+		proxierIptables, err := iptables.NewProxier(iptInterface, execer, c.ProxyConfig.IPTablesSyncPeriod.Duration, c.ProxyConfig.MasqueradeAll, *c.ProxyConfig.IPTablesMasqueradeBit)
 		if err != nil {
-			// This should be fatal, but that would break the integration tests
-			glog.Warningf("WARNING: Could not initialize Kubernetes Proxy. You must run this process as root to use the service proxy: %v", err)
-			return
+			if c.Containerized {
+				glog.Fatalf("error: Could not initialize Kubernetes Proxy: %v\n When running in a container, you must run the container in the host network namespace with --net=host and with --privileged", err)
+			} else {
+				glog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root to use the service proxy: %v", err)
+			}
 		}
 		proxier = proxierIptables
 		endpointsHandler = proxierIptables
 		// No turning back. Remove artifacts that might still exist from the userspace Proxier.
-		glog.V(0).Info("Tearing down userspace rules. Errors here are acceptable.")
+		glog.V(0).Info("Tearing down userspace rules.")
 		userspace.CleanupLeftovers(iptInterface)
-	case "userspace":
+	case componentconfig.ProxyModeUserspace:
 		glog.V(0).Info("Using userspace Proxier.")
+		// This is a proxy.LoadBalancer which NewProxier needs but has methods we don't need for
+		// our config.EndpointsConfigHandler.
 		loadBalancer := userspace.NewLoadBalancerRR()
+		// set EndpointsConfigHandler to our loadBalancer
 		endpointsHandler = loadBalancer
-		proxierUserspace, err := userspace.NewProxier(loadBalancer, c.ProxyConfig.BindAddress, iptInterface, c.ProxyConfig.PortRange, c.ProxyConfig.IptablesSyncPeriod, c.ProxyConfig.UDPIdleTimeout)
+
+		proxierUserspace, err := userspace.NewProxier(
+			loadBalancer,
+			bindAddr,
+			iptInterface,
+			*portRange,
+			c.ProxyConfig.IPTablesSyncPeriod.Duration,
+			c.ProxyConfig.UDPIdleTimeout.Duration,
+		)
 		if err != nil {
-			// This should be fatal, but that would break the integration tests
-			glog.Warningf("WARNING: Could not initialize Kubernetes Proxy. You must run this process as root to use the service proxy: %v", err)
-			return
+			if c.Containerized {
+				glog.Fatalf("error: Could not initialize Kubernetes Proxy: %v\n When running in a container, you must run the container in the host network namespace with --net=host and with --privileged", err)
+			} else {
+				glog.Fatalf("error: Could not initialize Kubernetes Proxy. You must run this process as root to use the service proxy: %v", err)
+			}
 		}
 		proxier = proxierUserspace
 		// Remove artifacts from the pure-iptables Proxier.
-		glog.V(0).Info("Tearing down pure-iptables proxy rules. Errors here are acceptable.")
+		glog.V(0).Info("Tearing down pure-iptables proxy rules.")
 		iptables.CleanupLeftovers(iptInterface)
 	default:
-		glog.Fatalf("Unknown proxy mode %q", c.ProxyConfig.ProxyMode)
+		glog.Fatalf("Unknown proxy mode %q", c.ProxyConfig.Mode)
 	}
 	iptInterface.AddReloadFunc(proxier.Sync)
 
@@ -247,7 +402,9 @@ func (c *NodeConfig) RunProxy() {
 	// are registered yet.
 	serviceConfig := pconfig.NewServiceConfig()
 	serviceConfig.RegisterHandler(proxier)
+
 	endpointsConfig := pconfig.NewEndpointsConfig()
+	// customized handling registration that inserts a filter if needed
 	if c.FilteringEndpointsHandler == nil {
 		endpointsConfig.RegisterHandler(endpointsHandler)
 	} else {
@@ -262,7 +419,7 @@ func (c *NodeConfig) RunProxy() {
 		endpointsConfig.Channel("api"))
 
 	recorder.Eventf(c.ProxyConfig.NodeRef, kapi.EventTypeNormal, "Starting", "Starting kube-proxy.")
-	glog.Infof("Started Kubernetes Proxy on %s", c.ProxyConfig.BindAddress.String())
+	glog.Infof("Started Kubernetes Proxy on %s", c.ProxyConfig.BindAddress)
 }
 
 // TODO: more generic location

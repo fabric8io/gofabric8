@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -91,6 +92,10 @@ func newS2IBuilder(dockerClient DockerClient, dockerSocket string, buildsClient 
 
 // Build executes STI build based on configured builder, S2I builder factory and S2I config validator
 func (s *S2IBuilder) Build() error {
+	if s.build.Spec.Strategy.SourceStrategy == nil {
+		return fmt.Errorf("the source to image builder must be used with the source strategy")
+	}
+
 	var push bool
 
 	contextDir := filepath.Clean(s.build.Spec.Source.ContextDir)
@@ -154,6 +159,15 @@ func (s *S2IBuilder) Build() error {
 	}
 
 	buildTag := randomBuildTag(s.build.Namespace, s.build.Name)
+	scriptDownloadProxyConfig, err := scriptProxyConfig(s.build)
+	if err != nil {
+		return err
+	}
+	if scriptDownloadProxyConfig != nil {
+		glog.V(2).Infof("Using HTTP proxy %v and HTTPS proxy %v for script download",
+			scriptDownloadProxyConfig.HTTPProxy,
+			scriptDownloadProxyConfig.HTTPSProxy)
+	}
 
 	config := &s2iapi.Config{
 		WorkingDir:     buildDir,
@@ -163,36 +177,42 @@ func (s *S2IBuilder) Build() error {
 
 		ScriptsURL: s.build.Spec.Strategy.SourceStrategy.Scripts,
 
-		BuilderImage: s.build.Spec.Strategy.SourceStrategy.From.Name,
-		Incremental:  s.build.Spec.Strategy.SourceStrategy.Incremental,
+		BuilderImage:       s.build.Spec.Strategy.SourceStrategy.From.Name,
+		Incremental:        s.build.Spec.Strategy.SourceStrategy.Incremental,
+		IncrementalFromTag: pushTag,
 
 		Environment:       buildEnvVars(s.build),
 		DockerNetworkMode: getDockerNetworkMode(),
 
-		Source:       sourceURI.String(),
-		Tag:          buildTag,
-		ContextDir:   s.build.Spec.Source.ContextDir,
-		CGroupLimits: s.cgLimits,
-		Injections:   injections,
+		Source:                    sourceURI.String(),
+		Tag:                       buildTag,
+		ContextDir:                s.build.Spec.Source.ContextDir,
+		CGroupLimits:              s.cgLimits,
+		Injections:                injections,
+		ScriptDownloadProxyConfig: scriptDownloadProxyConfig,
 	}
 
 	if s.build.Spec.Strategy.SourceStrategy.ForcePull {
 		glog.V(4).Infof("With force pull true, setting policies to %s", s2iapi.PullAlways)
-		config.PreviousImagePullPolicy = s2iapi.PullAlways
 		config.BuilderPullPolicy = s2iapi.PullAlways
 	} else {
 		glog.V(4).Infof("With force pull false, setting policies to %s", s2iapi.PullIfNotPresent)
-		config.PreviousImagePullPolicy = s2iapi.PullIfNotPresent
 		config.BuilderPullPolicy = s2iapi.PullIfNotPresent
 	}
+	config.PreviousImagePullPolicy = s2iapi.PullAlways
 
-	allowedUIDs := os.Getenv("ALLOWED_UIDS")
-	glog.V(2).Infof("The value of ALLOWED_UIDS is [%s]", allowedUIDs)
+	allowedUIDs := os.Getenv(api.AllowedUIDs)
+	glog.V(2).Infof("The value of %s is [%s]", api.AllowedUIDs, allowedUIDs)
 	if len(allowedUIDs) > 0 {
 		err := config.AllowedUIDs.Set(allowedUIDs)
 		if err != nil {
 			return err
 		}
+	}
+	dropCaps := os.Getenv(api.DropCapabilities)
+	glog.V(2).Infof("The value of %s is [%s]", api.DropCapabilities, dropCaps)
+	if len(dropCaps) > 0 {
+		config.DropCapabilities = strings.Split(dropCaps, ",")
 	}
 
 	if errs := s.validator.ValidateConfig(config); len(errs) != 0 {
@@ -236,6 +256,7 @@ func (s *S2IBuilder) Build() error {
 		glog.Warningf("Failed to remove temporary build tag %v: %v", buildTag, err)
 	}
 
+	defer glog.Flush()
 	if push {
 		// Get the Docker push authentication
 		pushAuthConfig, authPresent := dockercfg.NewHelper().GetDockerAuth(
@@ -264,7 +285,6 @@ func (s *S2IBuilder) Build() error {
 			return errors.New(msg)
 		}
 		glog.Infof("Successfully pushed %s", pushTag)
-		glog.Flush()
 	}
 	return nil
 }
@@ -330,4 +350,40 @@ func buildEnvVars(build *api.Build) map[string]string {
 		envVars[item.Key] = item.Value
 	}
 	return envVars
+}
+
+// scriptProxyConfig determines a proxy configuration for downloading
+// scripts from a URL. For now, it uses environment variables passed in
+// the strategy's environment. There is no preference given to either lowercase
+// or uppercase form of the variable.
+func scriptProxyConfig(build *api.Build) (*s2iapi.ProxyConfig, error) {
+	httpProxy := ""
+	httpsProxy := ""
+	for _, env := range build.Spec.Strategy.SourceStrategy.Env {
+		switch env.Name {
+		case "HTTP_PROXY", "http_proxy":
+			httpProxy = env.Value
+		case "HTTPS_PROXY", "https_proxy":
+			httpsProxy = env.Value
+		}
+	}
+	if len(httpProxy) == 0 && len(httpsProxy) == 0 {
+		return nil, nil
+	}
+	config := &s2iapi.ProxyConfig{}
+	if len(httpProxy) > 0 {
+		proxyURL, err := url.Parse(httpProxy)
+		if err != nil {
+			return nil, err
+		}
+		config.HTTPProxy = proxyURL
+	}
+	if len(httpsProxy) > 0 {
+		proxyURL, err := url.Parse(httpsProxy)
+		if err != nil {
+			return nil, err
+		}
+		config.HTTPSProxy = proxyURL
+	}
+	return config, nil
 }

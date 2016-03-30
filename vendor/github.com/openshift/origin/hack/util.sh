@@ -123,6 +123,13 @@ function configure_os_server {
 function start_os_server {
 	local sudo="${USE_SUDO:+sudo}"
 
+	local use_latest_images
+	if [[ -n "${USE_LATEST_IMAGES:-}" ]]; then
+		use_latest_images="true"
+	else
+		use_latest_images="false"
+	fi
+
 	echo "[INFO] `openshift version`"
 	echo "[INFO] Server logs will be at:    ${LOG_DIR}/openshift.log"
 	echo "[INFO] Test artifacts will be in: ${ARTIFACT_DIR}"
@@ -140,6 +147,7 @@ function start_os_server {
 	 --master-config=${MASTER_CONFIG_DIR}/master-config.yaml \
 	 --node-config=${NODE_CONFIG_DIR}/node-config.yaml \
 	 --loglevel=4 \
+	 --latest-images="${use_latest_images}" \
 	&>"${LOG_DIR}/openshift.log" &
 	export OS_PID=$!
 
@@ -196,10 +204,10 @@ function start_os_master {
 
 	echo "[INFO] OpenShift server start at: "
 	date
-	
-	wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/healthz" "apiserver: " 0.25 80
-	wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/healthz/ready" "apiserver(ready): " 0.25 80
-	
+
+	wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/healthz" "apiserver: " 0.25 160
+	wait_for_url "${API_SCHEME}://${API_HOST}:${API_PORT}/healthz/ready" "apiserver(ready): " 0.25 160
+
 	echo "[INFO] OpenShift server health checks done at: "
 	date
 }
@@ -435,10 +443,10 @@ function validate_response {
 
 
 # reset_tmp_dir will try to delete the testing directory.
-# If it fails will unmount all the mounts associated with 
+# If it fails will unmount all the mounts associated with
 # the test.
-# 
-# $1 expression for which the mounts should be checked 
+#
+# $1 expression for which the mounts should be checked
 reset_tmp_dir() {
 	local sudo="${USE_SUDO:+sudo}"
 
@@ -454,7 +462,7 @@ reset_tmp_dir() {
 	set -e
 }
 
-# kill_all_processes function will kill all 
+# kill_all_processes function will kill all
 # all processes created by the test script.
 function kill_all_processes()
 {
@@ -503,7 +511,7 @@ function delete_empty_logs() {
 
 # truncate_large_logs truncates large logs so we only download the last 20MB
 function truncate_large_logs() {
-	# Clean up large log files so they don't end up on jenkins		
+	# Clean up large log files so they don't end up on jenkins
 	local large_files=$(find "${ARTIFACT_DIR}" "${LOG_DIR}" -type f -name '*.log' \( -size +20M \))
 	for file in ${large_files}; do
 		cp "${file}" "${file}.tmp"
@@ -533,7 +541,7 @@ function cleanup_openshift {
 
 	set +e
 	dump_container_logs
-	
+
 	if [[ -e "${ADMIN_KUBECONFIG:-}" ]]; then
 		echo "[INFO] Dumping all resources to ${LOG_DIR}/export_all.json"
 		oc login -u system:admin -n default --config=${ADMIN_KUBECONFIG}
@@ -552,11 +560,19 @@ function cleanup_openshift {
 		if docker version >/dev/null 2>&1; then
 			echo "[INFO] Stopping k8s docker containers"; docker ps | awk 'index($NF,"k8s_")==1 { print $1 }' | xargs -l -r docker stop -t 1 >/dev/null
 			if [[ -z "${SKIP_IMAGE_CLEANUP-}" ]]; then
-				echo "[INFO] Removing k8s docker containers"; docker ps -a | awk 'index($NF,"k8s_")==1 { print $1 }' | xargs -l -r docker rm >/dev/null
+				echo "[INFO] Removing k8s docker containers"; docker ps -a | awk 'index($NF,"k8s_")==1 { print $1 }' | xargs -l -r docker rm -v >/dev/null
 			fi
 		fi
-		
+
+		echo "[INFO] Pruning etcd data directory..."
+		rm -rf "${ETCD_DATA_DIR}"
+
 		set -u
+	fi
+
+	if grep -q 'no Docker socket found' "${LOG_DIR}/openshift.log"; then 
+		# the Docker daemon crashed, we need the logs
+		journalctl --unit docker.service --since -4hours > "${LOG_DIR}/docker.log"
 	fi
 
 	delete_empty_logs
@@ -591,7 +607,7 @@ function install_router {
 	echo '{"kind":"ServiceAccount","apiVersion":"v1","metadata":{"name":"router"}}' | oc create -f - --config="${ADMIN_KUBECONFIG}"
 	oc get scc privileged -o json --config="${ADMIN_KUBECONFIG}" | sed '/\"users\"/a \"system:serviceaccount:default:router\",' | oc replace scc privileged -f - --config="${ADMIN_KUBECONFIG}"
         # Create a TLS certificate for the router
-        if [[ -n "${CREATE_ROUTER_CERT-}" ]]; then
+        if [[ -n "${CREATE_ROUTER_CERT:-}" ]]; then
             echo "[INFO] Generating router TLS certificate"
             oadm ca create-server-cert --signer-cert=${MASTER_CONFIG_DIR}/ca.crt \
                  --signer-key=${MASTER_CONFIG_DIR}/ca.key \
@@ -603,6 +619,14 @@ function install_router {
             ROUTER_DEFAULT_CERT="--default-cert=${MASTER_CONFIG_DIR}/router.pem"
         fi
         openshift admin router --create --credentials="${MASTER_CONFIG_DIR}/openshift-router.kubeconfig" --config="${ADMIN_KUBECONFIG}" --images="${USE_IMAGES}" --service-account=router ${ROUTER_DEFAULT_CERT-}
+
+        # Set the SYN eater to make router reloads more robust
+        if [[ -n "${DROP_SYN_DURING_RESTART:-}" ]]; then
+            # Rewrite the DC for the router to add the environment variable into the pod definition
+            echo "[INFO] Changing the router DC to drop SYN packets during a reload"
+            oc set env dc/router -c router DROP_SYN_DURING_RESTART=true
+        fi
+
 }
 
 # install registry for the extended tests
@@ -777,9 +801,9 @@ os::util::host_platform() {
 
 os::util::sed() {
   if [[ "$(go env GOHOSTOS)" == "darwin" ]]; then
-  	sed -i '' $@
+  	sed -i '' "$@"
   else
-  	sed -i'' $@
+  	sed -i'' "$@"
   fi
 }
 

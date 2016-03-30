@@ -23,31 +23,39 @@
                   </button>
 
                   <!-- Secondary Actions -->
-                  <a href="" class="dropdown-toggle resource-actions-dropdown" data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
+                  <button type="button" class="dropdown-toggle btn btn-default actions-dropdown-btn hidden-xs" data-toggle="dropdown">
+                    Actions
+                    <span class="caret" aria-hidden="true"></span>
+                  </button>
+                  <a href=""
+                     class="dropdown-toggle actions-dropdown-kebab visible-xs-inline"
+                     data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
                   <ul class="dropdown-menu actions action-button">
                     <li class="visible-xs-inline" ng-class="{ disabled: !canDeploy() }">
                       <a href=""
                         role="button"
                         ng-attr-aria-disabled="{{canDeploy() ? undefined : 'true'}}"
                         ng-class="{ 'disabled-link': !canDeploy() }"
-                        ng-click="startLatestDeployment()"
-                        ><i class="fa fa-play fa-fw" aria-hidden="true"></i> Deploy</a>
+                        ng-click="startLatestDeployment()">Deploy</a>
+                    </li>
+                    <li>
+                      <a ng-href="project/{{project.metadata.name}}/attach-pvc?deploymentconfig={{deploymentConfig.metadata.name}}"
+                         role="button">Attach Storage</a>
                     </li>
                     <li>
                       <a href="project/{{projectName}}/set-limits?dcName={{deploymentConfig.metadata.name}}"
-                        role="button"
-                        ><i class="fa fa-area-chart fa-fw" aria-hidden="true"></i> Set Resource Limits</a>
+                        role="button">Set Resource Limits</a>
                     </li>
                     <li>
                       <edit-link
                         resource="deploymentConfig"
-                        kind="deploymentconfigs"
+                        kind="DeploymentConfig"
                         alerts="alerts">
                       </edit-link>
                     </li>
                     <li>
                       <delete-link
-                        resource-type="deploymentconfig"
+                        kind="DeploymentConfig"
                         resource-name="{{deploymentConfig.metadata.name}}"
                         project-name="{{deploymentConfig.metadata.namespace}}"
                         alerts="alerts">
@@ -55,7 +63,7 @@
                     </li>
                   </ul>
                 </div>
-                <span ng-if="deploymentConfig.status.details.message" class="pficon pficon-warning-triangle-o" style="cursor: help;" data-toggle="popover" data-placement="right" data-trigger="hover" dynamic-content="{{deploymentConfig.status.details.message}}"></span>
+                <span ng-if="deploymentConfig.status.details.message" class="pficon pficon-warning-triangle-o" style="cursor: help;" data-toggle="popover" data-trigger="hover" dynamic-content="{{deploymentConfig.status.details.message}}"></span>
                 <small class="meta" ng-if="deploymentConfig">created <relative-timestamp timestamp="deploymentConfig.metadata.creationTimestamp"></relative-timestamp></small>
               </h1>
               <labels labels="deploymentConfig.metadata.labels" clickable="true" kind="deployments" title-kind="deployment configs" project-name="{{deploymentConfig.metadata.namespace}}" limit="3"></labels>
@@ -109,7 +117,9 @@
                                   detailed="true"></pod-template>
                           </dl>
                           <h4 style="margin-top: 20px;">Volumes</h4>
-                          <a ng-href="project/{{project.metadata.name}}/attach-pvc?deploymentconfig={{deploymentConfig.metadata.name}}">Attach storage</a>
+                          <p ng-if="!deploymentConfig.spec.template.spec.volumes.length">
+                            <a ng-href="project/{{project.metadata.name}}/attach-pvc?deploymentconfig={{deploymentConfig.metadata.name}}">Attach storage</a>
+                          </p>
                           <volumes volumes="deploymentConfig.spec.template.spec.volumes" namespace="project.metadata.name"></volumes>
                         </div>
                         <div class="col-lg-6">
@@ -143,6 +153,9 @@
                       <annotations annotations="deploymentConfig.metadata.annotations"></annotations>
                     </div>
                     <div ng-if="loaded">
+                      <div class="table-filter-wrapper">
+                        <project-filter></project-filter>
+                      </div>
                       <table class="table table-bordered table-hover table-mobile">
                         <thead>
                           <tr>

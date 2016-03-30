@@ -1,10 +1,12 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
 import (
 	"reflect"
 	"testing"
+
+	kapi "k8s.io/kubernetes/pkg/api"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	groupscmd "github.com/openshift/origin/pkg/cmd/admin/groups"
@@ -16,6 +18,7 @@ import (
 )
 
 func TestBasicUserBasedGroupManipulation(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -90,7 +93,7 @@ func TestBasicUserBasedGroupManipulation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := testutil.WaitForPolicyUpdate(valerieOpenshiftClient, "empty", "get", "pods", true); err != nil {
+	if err := testutil.WaitForPolicyUpdate(valerieOpenshiftClient, "empty", "get", kapi.Resource("pods"), true); err != nil {
 		t.Error(err)
 	}
 
@@ -103,6 +106,7 @@ func TestBasicUserBasedGroupManipulation(t *testing.T) {
 }
 
 func TestBasicGroupManipulation(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -150,7 +154,7 @@ func TestBasicGroupManipulation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := testutil.WaitForPolicyUpdate(valerieOpenshiftClient, "empty", "get", "pods", true); err != nil {
+	if err := testutil.WaitForPolicyUpdate(valerieOpenshiftClient, "empty", "get", kapi.Resource("pods"), true); err != nil {
 		t.Error(err)
 	}
 
@@ -172,6 +176,7 @@ func TestBasicGroupManipulation(t *testing.T) {
 }
 
 func TestGroupCommands(t *testing.T) {
+	testutil.RequireEtcd(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -20,7 +20,7 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/fields"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util"
@@ -95,7 +95,7 @@ func NewCmdStartBuild(fullName string, f *clientcmd.Factory, in io.Reader, out i
 	cmd.Flags().Bool("follow", false, "Start a build and watch its logs until it completes or fails")
 	cmd.Flags().Bool("wait", false, "Wait for a build to complete and exit with a non-zero return code if the build fails")
 
-	cmd.Flags().String("from-file", "", "A file use as the binary input for the build; example a pom.xml or Dockerfile. Will be the only file in the build source.")
+	cmd.Flags().String("from-file", "", "A file to use as the binary input for the build; example a pom.xml or Dockerfile. Will be the only file in the build source.")
 	cmd.Flags().String("from-dir", "", "A directory to archive and use as the binary input for a build.")
 	cmd.Flags().String("from-repo", "", "The path to a local source code repository to use as the binary input for a build.")
 	cmd.Flags().String("commit", "", "Specify the source code commit identifier the build should use; requires a build based on a Git repository")
@@ -540,9 +540,9 @@ func RunStartBuildWebHook(f *clientcmd.Factory, out io.Writer, webhook string, p
 	if hook.Scheme == "https" {
 		config, err := f.OpenShiftClientConfig.ClientConfig()
 		if err == nil {
-			if url, _, err := client.DefaultServerURL(config.Host, "", unversioned.GroupVersion{}, true); err == nil {
+			if url, _, err := restclient.DefaultServerURL(config.Host, "", unversioned.GroupVersion{}, true); err == nil {
 				if url.Host == hook.Host && url.Scheme == hook.Scheme {
-					if rt, err := client.TransportFor(config); err == nil {
+					if rt, err := restclient.TransportFor(config); err == nil {
 						httpClient = &http.Client{Transport: rt}
 					}
 				}
@@ -554,6 +554,7 @@ func RunStartBuildWebHook(f *clientcmd.Factory, out io.Writer, webhook string, p
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == 301 || resp.StatusCode == 302:
 		// TODO: follow redirect and display output

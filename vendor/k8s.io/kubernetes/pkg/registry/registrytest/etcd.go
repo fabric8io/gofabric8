@@ -36,8 +36,9 @@ import (
 )
 
 func NewEtcdStorage(t *testing.T, group string) (storage.Interface, *etcdtesting.EtcdTestServer) {
-	server := etcdtesting.NewEtcdTestClientServer(t)
-	storage := etcdstorage.NewEtcdStorage(server.Client, testapi.Groups[group].Codec(), etcdtest.PathPrefix())
+	// Use the unsecured etcd for these tests, since they spawn lots of connections and can hit the 1 minute unit test timeout
+	server := etcdtesting.NewUnsecuredEtcdTestClientServer(t)
+	storage := etcdstorage.NewEtcdStorage(server.Client, testapi.Groups[group].Codec(), etcdtest.PathPrefix(), false)
 	return storage, server
 }
 

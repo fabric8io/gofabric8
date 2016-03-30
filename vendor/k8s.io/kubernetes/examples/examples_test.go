@@ -32,7 +32,9 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	expvalidation "k8s.io/kubernetes/pkg/apis/extensions/validation"
 	"k8s.io/kubernetes/pkg/capabilities"
+	"k8s.io/kubernetes/pkg/registry/job"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 	"k8s.io/kubernetes/pkg/util/yaml"
 	schedulerapi "k8s.io/kubernetes/plugin/pkg/scheduler/api"
@@ -111,7 +113,10 @@ func validateObject(obj runtime.Object) (errors field.ErrorList) {
 		if t.Namespace == "" {
 			t.Namespace = api.NamespaceDefault
 		}
-		errors = expvalidation.ValidateJob(t)
+		// Job needs generateSelector called before validation, and job.Validate does this.
+		// See: https://github.com/kubernetes/kubernetes/issues/20951#issuecomment-187787040
+		t.ObjectMeta.UID = types.UID("fakeuid")
+		errors = job.Strategy.Validate(nil, t)
 	case *extensions.Ingress:
 		if t.Namespace == "" {
 			t.Namespace = api.NamespaceDefault
@@ -230,6 +235,8 @@ func TestExampleObjectSchemas(t *testing.T) {
 			"ingress":              &extensions.Ingress{},
 			"nginx-deployment":     &extensions.Deployment{},
 			"new-nginx-deployment": &extensions.Deployment{},
+			"replication":          &api.ReplicationController{},
+			"deployment":           &extensions.Deployment{},
 		},
 		"../docs/admin": {
 			"daemon": &extensions.DaemonSet{},
@@ -320,6 +327,7 @@ func TestExampleObjectSchemas(t *testing.T) {
 		},
 		"../docs/user-guide/node-selection": {
 			"pod": &api.Pod{},
+			"pod-with-node-affinity": &api.Pod{},
 		},
 		"../examples/openshift-origin": {
 			"openshift-origin-namespace": &api.Namespace{},
@@ -386,9 +394,6 @@ func TestExampleObjectSchemas(t *testing.T) {
 		"../examples/fibre_channel": {
 			"fc": &api.Pod{},
 		},
-		"../examples/extensions": {
-			"deployment": &extensions.Deployment{},
-		},
 		"../examples/javaweb-tomcat-sidecar": {
 			"javaweb":   &api.Pod{},
 			"javaweb-2": &api.Pod{},
@@ -400,6 +405,9 @@ func TestExampleObjectSchemas(t *testing.T) {
 			"redis-pod":     &api.Pod{},
 			"redis-service": &api.Service{},
 			"job":           &extensions.Job{},
+		},
+		"../examples/azure_file": {
+			"azure": &api.Pod{},
 		},
 	}
 

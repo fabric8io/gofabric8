@@ -27,13 +27,13 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/status"
 	"k8s.io/kubernetes/pkg/kubelet/util/format"
 	"k8s.io/kubernetes/pkg/types"
-	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 // Manager manages pod probing. It creates a probe "worker" for every container that specifies a
 // probe (AddPod). The worker periodically probes its assigned container and caches the results. The
-// manager usse the cached probe results to set the appropriate Ready state in the PodStatus when
+// manager use the cached probe results to set the appropriate Ready state in the PodStatus when
 // requested (UpdatePodStatus). Updating probe parameters is not currently supported.
 // TODO: Move liveness probing out of the runtime, to here.
 type Manager interface {
@@ -97,7 +97,7 @@ func NewManager(
 // Start syncing probe status. This should only be called once.
 func (m *manager) Start() {
 	// Start syncing readiness.
-	go util.Forever(m.updateReadiness, 0)
+	go wait.Forever(m.updateReadiness, 0)
 }
 
 // Key uniquely identifying container probes
@@ -171,7 +171,7 @@ func (m *manager) RemovePod(pod *api.Pod) {
 		for _, probeType := range [...]probeType{readiness, liveness} {
 			key.probeType = probeType
 			if worker, ok := m.workers[key]; ok {
-				close(worker.stop)
+				worker.stop()
 			}
 		}
 	}
@@ -188,7 +188,7 @@ func (m *manager) CleanupPods(activePods []*api.Pod) {
 
 	for key, worker := range m.workers {
 		if _, ok := desiredPods[key.podUID]; !ok {
-			close(worker.stop)
+			worker.stop()
 		}
 	}
 }
@@ -234,5 +234,5 @@ func (m *manager) updateReadiness() {
 	update := <-m.readinessManager.Updates()
 
 	ready := update.Result == results.Success
-	m.statusManager.SetContainerReadiness(update.Pod, update.ContainerID, ready)
+	m.statusManager.SetContainerReadiness(update.PodUID, update.ContainerID, ready)
 }

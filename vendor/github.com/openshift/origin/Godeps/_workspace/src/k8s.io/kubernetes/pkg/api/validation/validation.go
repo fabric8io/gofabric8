@@ -27,16 +27,18 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/endpoints"
+	utilpod "k8s.io/kubernetes/pkg/api/pod"
 	"k8s.io/kubernetes/pkg/api/resource"
+	apiservice "k8s.io/kubernetes/pkg/api/service"
 	"k8s.io/kubernetes/pkg/capabilities"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/validation"
 	"k8s.io/kubernetes/pkg/util/validation/field"
-
-	"github.com/golang/glog"
 )
 
 // TODO: delete this global variable when we enable the validation of common
@@ -44,6 +46,7 @@ import (
 var RepairMalformedUpdates bool = true
 
 const isNegativeErrorMsg string = `must be greater than or equal to 0`
+const isInvalidQuotaResource string = `must be a standard resource for quota`
 const fieldImmutableErrorMsg string = `field is immutable`
 const cIdentifierErrorMsg string = `must be a C identifier (matching regex ` + validation.CIdentifierFmt + `): e.g. "my_name" or "MyName"`
 const isNotIntegerErrorMsg string = `must be an integer`
@@ -84,6 +87,20 @@ func ValidateLabels(labels map[string]string, fldPath *field.Path) field.ErrorLi
 	return allErrs
 }
 
+// ValidateHasLabel requires that api.ObjectMeta has a Label with key and expectedValue
+func ValidateHasLabel(meta api.ObjectMeta, fldPath *field.Path, key, expectedValue string) field.ErrorList {
+	allErrs := field.ErrorList{}
+	actualValue, found := meta.Labels[key]
+	if !found {
+		allErrs = append(allErrs, field.Required(fldPath.Child("labels"), key+"="+expectedValue))
+		return allErrs
+	}
+	if actualValue != expectedValue {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("labels"), meta.Labels, "expected "+key+"="+expectedValue))
+	}
+	return allErrs
+}
+
 // ValidateAnnotations validates that a set of annotations are correctly defined.
 func ValidateAnnotations(annotations map[string]string, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
@@ -97,6 +114,34 @@ func ValidateAnnotations(annotations map[string]string, fldPath *field.Path) fie
 	if totalSize > (int64)(totalAnnotationSizeLimitB) {
 		allErrs = append(allErrs, field.TooLong(fldPath, "", totalAnnotationSizeLimitB))
 	}
+	return allErrs
+}
+
+func ValidatePodSpecificAnnotations(annotations map[string]string, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if annotations[api.AffinityAnnotationKey] != "" {
+		allErrs = append(allErrs, ValidateAffinityInPodAnnotations(annotations, fldPath)...)
+	}
+
+	if hostname, exists := annotations[utilpod.PodHostnameAnnotation]; exists && !validation.IsDNS1123Label(hostname) {
+		allErrs = append(allErrs, field.Invalid(fldPath, utilpod.PodHostnameAnnotation, DNS1123LabelErrorMsg))
+	}
+
+	if subdomain, exists := annotations[utilpod.PodSubdomainAnnotation]; exists && !validation.IsDNS1123Label(subdomain) {
+		allErrs = append(allErrs, field.Invalid(fldPath, utilpod.PodSubdomainAnnotation, DNS1123LabelErrorMsg))
+	}
+
+	return allErrs
+}
+
+func ValidateEndpointsSpecificAnnotations(annotations map[string]string, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	hostnamesMap, exists := annotations[endpoints.PodHostnamesAnnotation]
+	if exists && !isValidHostnamesMap(hostnamesMap) {
+		allErrs = append(allErrs, field.Invalid(fldPath, endpoints.PodHostnamesAnnotation,
+			`must be a valid json representation of map[string(IP)][HostRecord] e.g. "{"10.245.1.6":{"HostName":"my-webserver"}}"`))
+	}
+
 	return allErrs
 }
 
@@ -495,8 +540,24 @@ func validateVolumeSource(source *api.VolumeSource, fldPath *field.Path) field.E
 		}
 	}
 	if source.FlexVolume != nil {
+		if numVolumes > 0 {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Child("flexVolume"), "may not specifiy more than 1 volume type"))
+		} else {
+			numVolumes++
+			allErrs = append(allErrs, validateFlexVolumeSource(source.FlexVolume, fldPath.Child("flexVolume"))...)
+		}
+	}
+	if source.ConfigMap != nil {
+		if numVolumes > 0 {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Child("configMap"), "may not specifiy more than 1 volume type"))
+		} else {
+			numVolumes++
+			allErrs = append(allErrs, validateConfigMapVolumeSource(source.ConfigMap, fldPath.Child("configMap"))...)
+		}
+	}
+	if source.AzureFile != nil {
 		numVolumes++
-		allErrs = append(allErrs, validateFlexVolumeSource(source.FlexVolume, fldPath.Child("flexVolume"))...)
+		allErrs = append(allErrs, validateAzureFile(source.AzureFile, fldPath.Child("azureFile"))...)
 	}
 	if numVolumes == 0 {
 		allErrs = append(allErrs, field.Required(fldPath, "must specify a volume type"))
@@ -532,9 +593,6 @@ func validateISCSIVolumeSource(iscsi *api.ISCSIVolumeSource, fldPath *field.Path
 	if len(iscsi.IQN) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("iqn"), ""))
 	}
-	if len(iscsi.FSType) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("fsType"), ""))
-	}
 	if iscsi.Lun < 0 || iscsi.Lun > 255 {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("lun"), iscsi.Lun, InclusiveRangeErrorMsg(0, 255)))
 	}
@@ -545,10 +603,6 @@ func validateFCVolumeSource(fc *api.FCVolumeSource, fldPath *field.Path) field.E
 	allErrs := field.ErrorList{}
 	if len(fc.TargetWWNs) < 1 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("targetWWNs"), ""))
-	}
-
-	if len(fc.FSType) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("fsType"), ""))
 	}
 
 	if fc.Lun == nil {
@@ -566,9 +620,6 @@ func validateGCEPersistentDiskVolumeSource(pd *api.GCEPersistentDiskVolumeSource
 	if len(pd.PDName) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("pdName"), ""))
 	}
-	if len(pd.FSType) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("fsType"), ""))
-	}
 	if pd.Partition < 0 || pd.Partition > 255 {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("partition"), pd.Partition, pdPartitionErrorMsg))
 	}
@@ -580,9 +631,6 @@ func validateAWSElasticBlockStoreVolumeSource(PD *api.AWSElasticBlockStoreVolume
 	if len(PD.VolumeID) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("volumeID"), ""))
 	}
-	if len(PD.FSType) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("fsType"), ""))
-	}
 	if PD.Partition < 0 || PD.Partition > 255 {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("partition"), PD.Partition, pdPartitionErrorMsg))
 	}
@@ -593,6 +641,14 @@ func validateSecretVolumeSource(secretSource *api.SecretVolumeSource, fldPath *f
 	allErrs := field.ErrorList{}
 	if len(secretSource.SecretName) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("secretName"), ""))
+	}
+	return allErrs
+}
+
+func validateConfigMapVolumeSource(configMapSource *api.ConfigMapVolumeSource, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if len(configMapSource.Name) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("name"), ""))
 	}
 	return allErrs
 }
@@ -686,9 +742,6 @@ func validateRBDVolumeSource(rbd *api.RBDVolumeSource, fldPath *field.Path) fiel
 	if len(rbd.RBDImage) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("image"), ""))
 	}
-	if len(rbd.FSType) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("fsType"), ""))
-	}
 	return allErrs
 }
 
@@ -696,9 +749,6 @@ func validateCinderVolumeSource(cd *api.CinderVolumeSource, fldPath *field.Path)
 	allErrs := field.ErrorList{}
 	if len(cd.VolumeID) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("volumeID"), ""))
-	}
-	if len(cd.FSType) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("fsType"), ""))
 	}
 	return allErrs
 }
@@ -716,8 +766,16 @@ func validateFlexVolumeSource(fv *api.FlexVolumeSource, fldPath *field.Path) fie
 	if len(fv.Driver) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("driver"), ""))
 	}
-	if len(fv.FSType) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("fsType"), ""))
+	return allErrs
+}
+
+func validateAzureFile(azure *api.AzureFileVolumeSource, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if azure.SecretName == "" {
+		allErrs = append(allErrs, field.Required(fldPath.Child("secretName"), ""))
+	}
+	if azure.ShareName == "" {
+		allErrs = append(allErrs, field.Required(fldPath.Child("shareName"), ""))
 	}
 	return allErrs
 }
@@ -846,6 +904,10 @@ func ValidatePersistentVolume(pv *api.PersistentVolume) field.ErrorList {
 		numVolumes++
 		allErrs = append(allErrs, validateFlexVolumeSource(pv.Spec.FlexVolume, specPath.Child("flexVolume"))...)
 	}
+	if pv.Spec.AzureFile != nil {
+		numVolumes++
+		allErrs = append(allErrs, validateAzureFile(pv.Spec.AzureFile, specPath.Child("azureFile"))...)
+	}
 	if numVolumes == 0 {
 		allErrs = append(allErrs, field.Required(specPath, "must specify a volume type"))
 	}
@@ -890,8 +952,14 @@ func ValidatePersistentVolumeClaim(pvc *api.PersistentVolumeClaim) field.ErrorLi
 }
 
 func ValidatePersistentVolumeClaimUpdate(newPvc, oldPvc *api.PersistentVolumeClaim) field.ErrorList {
-	allErrs := field.ErrorList{}
-	allErrs = ValidatePersistentVolumeClaim(newPvc)
+	allErrs := ValidateObjectMetaUpdate(&newPvc.ObjectMeta, &oldPvc.ObjectMeta, field.NewPath("metadata"))
+	allErrs = append(allErrs, ValidatePersistentVolumeClaim(newPvc)...)
+	// if a pvc had a bound volume, we should not allow updates to resources or access modes
+	if len(oldPvc.Spec.VolumeName) != 0 {
+		if !api.Semantic.DeepEqual(newPvc.Spec, oldPvc.Spec) {
+			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec"), "spec is immutable once a claim has been bound to a volume"))
+		}
+	}
 	newPvc.Status = oldPvc.Status
 	return allErrs
 }
@@ -1057,6 +1125,8 @@ func validateVolumeMounts(mounts []api.VolumeMount, volumes sets.String, fldPath
 		}
 		if len(mnt.MountPath) == 0 {
 			allErrs = append(allErrs, field.Required(idxPath.Child("mountPath"), ""))
+		} else if strings.Contains(mnt.MountPath, ":") {
+			allErrs = append(allErrs, field.Invalid(idxPath.Child("mountPath"), mnt.MountPath, "must not contain ':'"))
 		}
 	}
 	return allErrs
@@ -1131,6 +1201,11 @@ func validateHTTPGetAction(http *api.HTTPGetAction, fldPath *field.Path) field.E
 	supportedSchemes := sets.NewString(string(api.URISchemeHTTP), string(api.URISchemeHTTPS))
 	if !supportedSchemes.Has(string(http.Scheme)) {
 		allErrors = append(allErrors, field.Invalid(fldPath.Child("scheme"), http.Scheme, fmt.Sprintf("must be one of %v", supportedSchemes.List())))
+	}
+	for _, header := range http.HTTPHeaders {
+		if !validation.IsHTTPHeaderName(header.Name) {
+			allErrors = append(allErrors, field.Invalid(fldPath.Child("httpHeaders"), header.Name, fmt.Sprintf("name must match %s", validation.HTTPHeaderNameFmt)))
+		}
 	}
 	return allErrors
 }
@@ -1314,7 +1389,9 @@ func validateImagePullSecrets(imagePullSecrets []api.LocalObjectReference, fldPa
 
 // ValidatePod tests if required fields in the pod are set.
 func ValidatePod(pod *api.Pod) field.ErrorList {
-	allErrs := ValidateObjectMeta(&pod.ObjectMeta, true, ValidatePodName, field.NewPath("metadata"))
+	fldPath := field.NewPath("metadata")
+	allErrs := ValidateObjectMeta(&pod.ObjectMeta, true, ValidatePodName, fldPath)
+	allErrs = append(allErrs, ValidatePodSpecificAnnotations(pod.ObjectMeta.Annotations, fldPath.Child("annotations"))...)
 	allErrs = append(allErrs, ValidatePodSpec(&pod.Spec, field.NewPath("spec"))...)
 	return allErrs
 }
@@ -1354,6 +1431,104 @@ func ValidatePodSpec(spec *api.PodSpec, fldPath *field.Path) field.ErrorList {
 	return allErrs
 }
 
+// ValidateNodeSelectorRequirement tests that the specified NodeSelectorRequirement fields has valid data
+func ValidateNodeSelectorRequirement(rq api.NodeSelectorRequirement, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	switch rq.Operator {
+	case api.NodeSelectorOpIn, api.NodeSelectorOpNotIn:
+		if len(rq.Values) == 0 {
+			allErrs = append(allErrs, field.Required(fldPath.Child("values"), "must be specified when `operator` is 'In' or 'NotIn'"))
+		}
+	case api.NodeSelectorOpExists, api.NodeSelectorOpDoesNotExist:
+		if len(rq.Values) > 0 {
+			allErrs = append(allErrs, field.Forbidden(fldPath.Child("values"), "may not be specified when `operator` is 'Exists' or 'DoesNotExist'"))
+		}
+
+	case api.NodeSelectorOpGt, api.NodeSelectorOpLt:
+		if len(rq.Values) != 1 {
+			allErrs = append(allErrs, field.Required(fldPath.Child("values"), "must be specified single value when `operator` is 'Lt' or 'Gt'"))
+		}
+	default:
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("operator"), rq.Operator, "not a valid selector operator"))
+	}
+	allErrs = append(allErrs, ValidateLabelName(rq.Key, fldPath.Child("key"))...)
+	return allErrs
+}
+
+// ValidateNodeSelectorTerm tests that the specified node selector term has valid data
+func ValidateNodeSelectorTerm(term api.NodeSelectorTerm, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	if len(term.MatchExpressions) == 0 {
+		return append(allErrs, field.Required(fldPath.Child("matchExpressions"), "must have at least one node selector requirement"))
+	}
+	for j, req := range term.MatchExpressions {
+		allErrs = append(allErrs, ValidateNodeSelectorRequirement(req, fldPath.Child("matchExpressions").Index(j))...)
+	}
+	return allErrs
+}
+
+// ValidateNodeSelector tests that the specified nodeSelector fields has valid data
+func ValidateNodeSelector(nodeSelector *api.NodeSelector, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	termFldPath := fldPath.Child("nodeSelectorTerms")
+	if len(nodeSelector.NodeSelectorTerms) == 0 {
+		return append(allErrs, field.Required(termFldPath, "must have at least one node selector term"))
+	}
+
+	for i, term := range nodeSelector.NodeSelectorTerms {
+		allErrs = append(allErrs, ValidateNodeSelectorTerm(term, termFldPath.Index(i))...)
+	}
+
+	return allErrs
+}
+
+// ValidatePreferredSchedulingTerms tests that the specified SoftNodeAffinity fields has valid data
+func ValidatePreferredSchedulingTerms(terms []api.PreferredSchedulingTerm, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	for i, term := range terms {
+		if term.Weight <= 0 || term.Weight > 100 {
+			allErrs = append(allErrs, field.Invalid(fldPath.Index(i).Child("weight"), term.Weight, "must be in the range 1-100"))
+		}
+
+		allErrs = append(allErrs, ValidateNodeSelectorTerm(term.Preference, fldPath.Index(i).Child("preference"))...)
+	}
+	return allErrs
+}
+
+// ValidateAffinityInPodAnnotations tests that the serialized Affinity in Pod.Annotations has valid data
+func ValidateAffinityInPodAnnotations(annotations map[string]string, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+
+	affinity, err := api.GetAffinityFromPodAnnotations(annotations)
+	if err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath, api.AffinityAnnotationKey, err.Error()))
+		return allErrs
+	}
+
+	if affinity.NodeAffinity != nil {
+		na := affinity.NodeAffinity
+
+		// TODO: Uncomment the next three lines once RequiredDuringSchedulingRequiredDuringExecution is implemented.
+		// if na.RequiredDuringSchedulingRequiredDuringExecution != nil {
+		//	allErrs = append(allErrs, ValidateNodeSelector(na.RequiredDuringSchedulingRequiredDuringExecution, fldPath.Child("requiredDuringSchedulingRequiredDuringExecution"))...)
+		// }
+
+		if na.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+			allErrs = append(allErrs, ValidateNodeSelector(na.RequiredDuringSchedulingIgnoredDuringExecution, fldPath.Child("requiredDuringSchedulingIgnoredDuringExecution"))...)
+		}
+
+		if len(na.PreferredDuringSchedulingIgnoredDuringExecution) > 0 {
+			allErrs = append(allErrs, ValidatePreferredSchedulingTerms(na.PreferredDuringSchedulingIgnoredDuringExecution, fldPath.Child("preferredDuringSchedulingIgnoredDuringExecution"))...)
+
+		}
+	}
+
+	return allErrs
+}
+
 // ValidatePodSecurityContext test that the specified PodSecurityContext has valid data.
 func ValidatePodSecurityContext(securityContext *api.PodSecurityContext, spec *api.PodSpec, specPath, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
@@ -1380,8 +1555,9 @@ func ValidatePodSecurityContext(securityContext *api.PodSecurityContext, spec *a
 // ValidatePodUpdate tests to see if the update is legal for an end user to make. newPod is updated with fields
 // that cannot be changed.
 func ValidatePodUpdate(newPod, oldPod *api.Pod) field.ErrorList {
-	allErrs := ValidateObjectMetaUpdate(&newPod.ObjectMeta, &oldPod.ObjectMeta, field.NewPath("metadata"))
-
+	fldPath := field.NewPath("metadata")
+	allErrs := ValidateObjectMetaUpdate(&newPod.ObjectMeta, &oldPod.ObjectMeta, fldPath)
+	allErrs = append(allErrs, ValidatePodSpecificAnnotations(newPod.ObjectMeta.Annotations, fldPath.Child("annotations"))...)
 	specPath := field.NewPath("spec")
 	if len(newPod.Spec.Containers) != len(oldPod.Spec.Containers) {
 		//TODO: Pinpoint the specific container that causes the invalid error after we have strategic merge diff
@@ -1400,13 +1576,13 @@ func ValidatePodUpdate(newPod, oldPod *api.Pod) field.ErrorList {
 		}
 	}
 
-	// validate updated spec.activeDeadlineSeconds.  two types of updated are allowed:
+	// validate updated spec.activeDeadlineSeconds.  two types of updates are allowed:
 	// 1.  from nil to a positive value
-	// 2.  from a positive value to a lesser positive value
+	// 2.  from a positive value to a lesser, non-negative value
 	if newPod.Spec.ActiveDeadlineSeconds != nil {
 		newActiveDeadlineSeconds := *newPod.Spec.ActiveDeadlineSeconds
-		if newActiveDeadlineSeconds <= 0 {
-			allErrs = append(allErrs, field.Invalid(specPath.Child("activeDeadlineSeconds"), newActiveDeadlineSeconds, "must be greater than 0"))
+		if newActiveDeadlineSeconds < 0 {
+			allErrs = append(allErrs, field.Invalid(specPath.Child("activeDeadlineSeconds"), newActiveDeadlineSeconds, isNegativeErrorMsg))
 			return allErrs
 		}
 		if oldPod.Spec.ActiveDeadlineSeconds != nil {
@@ -1440,7 +1616,6 @@ func ValidatePodUpdate(newPod, oldPod *api.Pod) field.ErrorList {
 		allErrs = append(allErrs, field.Forbidden(specPath, "pod updates may not change fields other than `containers[*].image` or `spec.activeDeadlineSeconds`"))
 	}
 
-	newPod.Status = oldPod.Status
 	return allErrs
 }
 
@@ -1557,11 +1732,17 @@ func ValidateService(service *api.Service) field.ErrorList {
 
 	if service.Spec.Type == api.ServiceTypeLoadBalancer {
 		portsPath := specPath.Child("ports")
+		includeProtocols := sets.NewString()
 		for i := range service.Spec.Ports {
 			portPath := portsPath.Index(i)
 			if !supportedPortProtocols.Has(string(service.Spec.Ports[i].Protocol)) {
 				allErrs = append(allErrs, field.Invalid(portPath.Child("protocol"), service.Spec.Ports[i].Protocol, "cannot create an external load balancer with non-TCP/UDP ports"))
+			} else {
+				includeProtocols.Insert(string(service.Spec.Ports[i].Protocol))
 			}
+		}
+		if includeProtocols.Len() > 1 {
+			allErrs = append(allErrs, field.Invalid(portsPath, service.Spec.Ports, "cannot create an external load balancer with mix protocols"))
 		}
 	}
 
@@ -1592,6 +1773,12 @@ func ValidateService(service *api.Service) field.ErrorList {
 			allErrs = append(allErrs, field.Duplicate(portPath.Child("nodePort"), port.NodePort))
 		}
 		nodePorts[key] = true
+	}
+
+	_, err := apiservice.GetLoadBalancerSourceRanges(service.Annotations)
+	if err != nil {
+		v := service.Annotations[apiservice.AnnotationLoadBalancerSourceRangesKey]
+		allErrs = append(allErrs, field.Invalid(field.NewPath("metadata", "annotations").Key(apiservice.AnnotationLoadBalancerSourceRangesKey), v, "must be a comma separated list of CIDRs e.g. 192.168.0.0/16,10.0.0.0/8"))
 	}
 
 	return allErrs
@@ -1629,11 +1816,14 @@ func validateServicePort(sp *api.ServicePort, requireName, isHeadlessService boo
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("targetPort"), sp.TargetPort, PortNameErrorMsg))
 	}
 
-	if isHeadlessService {
-		if sp.TargetPort.Type == intstr.String || (sp.TargetPort.Type == intstr.Int && sp.Port != sp.TargetPort.IntValue()) {
-			allErrs = append(allErrs, field.Invalid(fldPath.Child("port"), sp.Port, "must be equal to targetPort when clusterIP = None"))
-		}
-	}
+	// in the v1 API, targetPorts on headless services were tolerated.
+	// once we have version-specific validation, we can reject this on newer API versions, but until then, we have to tolerate it for compatibility.
+	//
+	// if isHeadlessService {
+	// 	if sp.TargetPort.Type == intstr.String || (sp.TargetPort.Type == intstr.Int && sp.Port != sp.TargetPort.IntValue()) {
+	// 		allErrs = append(allErrs, field.Invalid(fldPath.Child("targetPort"), sp.TargetPort, "must be equal to the value of 'port' when clusterIP = None"))
+	// 	}
+	// }
 
 	return allErrs
 }
@@ -1647,6 +1837,13 @@ func ValidateServiceUpdate(service, oldService *api.Service) field.ErrorList {
 	}
 
 	allErrs = append(allErrs, ValidateService(service)...)
+	return allErrs
+}
+
+// ValidateServiceStatusUpdate tests if required fields in the Service are set when updating status.
+func ValidateServiceStatusUpdate(service, oldService *api.Service) field.ErrorList {
+	allErrs := ValidateObjectMetaUpdate(&service.ObjectMeta, &oldService.ObjectMeta, field.NewPath("metadata"))
+	allErrs = append(allErrs, ValidateLoadBalancerStatus(&service.Status.LoadBalancer, field.NewPath("status", "loadBalancer"))...)
 	return allErrs
 }
 
@@ -1669,6 +1866,7 @@ func ValidateReplicationControllerStatusUpdate(controller, oldController *api.Re
 	allErrs := ValidateObjectMetaUpdate(&controller.ObjectMeta, &oldController.ObjectMeta, field.NewPath("metadata"))
 	statusPath := field.NewPath("status")
 	allErrs = append(allErrs, ValidateNonnegativeField(int64(controller.Status.Replicas), statusPath.Child("replicas"))...)
+	allErrs = append(allErrs, ValidateNonnegativeField(int64(controller.Status.FullyLabeledReplicas), statusPath.Child("fullyLabeledReplicas"))...)
 	allErrs = append(allErrs, ValidateNonnegativeField(int64(controller.Status.ObservedGeneration), statusPath.Child("observedGeneration"))...)
 	return allErrs
 }
@@ -1723,6 +1921,7 @@ func ValidatePodTemplateSpec(spec *api.PodTemplateSpec, fldPath *field.Path) fie
 	allErrs := field.ErrorList{}
 	allErrs = append(allErrs, ValidateLabels(spec.Labels, fldPath.Child("labels"))...)
 	allErrs = append(allErrs, ValidateAnnotations(spec.Annotations, fldPath.Child("annotations"))...)
+	allErrs = append(allErrs, ValidatePodSpecificAnnotations(spec.Annotations, fldPath.Child("annotations"))...)
 	allErrs = append(allErrs, ValidatePodSpec(&spec.Spec, fldPath.Child("spec"))...)
 	return allErrs
 }
@@ -1776,13 +1975,19 @@ func ValidateNodeUpdate(node, oldNode *api.Node) field.ErrorList {
 		addresses[address] = true
 	}
 
+	if len(oldNode.Spec.PodCIDR) == 0 {
+		// Allow the controller manager to assign a CIDR to a node if it doesn't have one.
+		oldNode.Spec.PodCIDR = node.Spec.PodCIDR
+	} else {
+		if oldNode.Spec.PodCIDR != node.Spec.PodCIDR {
+			allErrs = append(allErrs, field.Forbidden(field.NewPath("spec", "podCIDR"), "node updates may not change podCIDR except from \"\" to valid"))
+		}
+	}
 	// TODO: move reset function to its own location
 	// Ignore metadata changes now that they have been tested
 	oldNode.ObjectMeta = node.ObjectMeta
 	// Allow users to update capacity
 	oldNode.Status.Capacity = node.Status.Capacity
-	// Allow the controller manager to assign a CIDR to a node.
-	oldNode.Spec.PodCIDR = node.Spec.PodCIDR
 	// Allow users to unschedule node
 	oldNode.Spec.Unschedulable = node.Spec.Unschedulable
 	// Clear status
@@ -1814,6 +2019,57 @@ func validateResourceName(value string, fldPath *field.Path) field.ErrorList {
 	return field.ErrorList{}
 }
 
+// Validate container resource name
+// Refer to docs/design/resources.md for more details.
+func validateContainerResourceName(value string, fldPath *field.Path) field.ErrorList {
+	allErrs := validateResourceName(value, fldPath)
+	if len(strings.Split(value, "/")) == 1 {
+		if !api.IsStandardContainerResourceName(value) {
+			return append(allErrs, field.Invalid(fldPath, value, "must be a standard resource for containers"))
+		}
+	}
+	return field.ErrorList{}
+}
+
+// Validate resource names that can go in a resource quota
+// Refer to docs/design/resources.md for more details.
+func validateResourceQuotaResourceName(value string, fldPath *field.Path) field.ErrorList {
+	allErrs := validateResourceName(value, fldPath)
+	if len(strings.Split(value, "/")) == 1 {
+		if !api.IsStandardQuotaResourceName(value) {
+			return append(allErrs, field.Invalid(fldPath, value, isInvalidQuotaResource))
+		}
+	}
+	return field.ErrorList{}
+}
+
+// Validate limit range types
+func validateLimitRangeTypeName(value string, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if !validation.IsQualifiedName(value) {
+		return append(allErrs, field.Invalid(fldPath, value, qualifiedNameErrorMsg))
+	}
+
+	if len(strings.Split(value, "/")) == 1 {
+		if !api.IsStandardLimitRangeType(value) {
+			return append(allErrs, field.Invalid(fldPath, value, "must be a standard limit type or fully qualified"))
+		}
+	}
+
+	return allErrs
+}
+
+// Validate limit range resource name
+// limit types (other than Pod/Container) could contain storage not just cpu or memory
+func validateLimitRangeResourceName(limitType api.LimitType, value string, fldPath *field.Path) field.ErrorList {
+	switch limitType {
+	case api.LimitTypePod, api.LimitTypeContainer:
+		return validateContainerResourceName(value, fldPath)
+	default:
+		return validateResourceName(value, fldPath)
+	}
+}
+
 // ValidateLimitRange tests if required fields in the LimitRange are set.
 func ValidateLimitRange(limitRange *api.LimitRange) field.ErrorList {
 	allErrs := ValidateObjectMeta(&limitRange.ObjectMeta, true, ValidateLimitRangeName, field.NewPath("metadata"))
@@ -1824,6 +2080,8 @@ func ValidateLimitRange(limitRange *api.LimitRange) field.ErrorList {
 	for i := range limitRange.Spec.Limits {
 		idxPath := fldPath.Index(i)
 		limit := &limitRange.Spec.Limits[i]
+		allErrs = append(allErrs, validateLimitRangeTypeName(string(limit.Type), idxPath.Child("type"))...)
+
 		_, found := limitTypeSet[limit.Type]
 		if found {
 			allErrs = append(allErrs, field.Duplicate(idxPath.Child("type"), limit.Type))
@@ -1838,12 +2096,12 @@ func ValidateLimitRange(limitRange *api.LimitRange) field.ErrorList {
 		maxLimitRequestRatios := map[string]resource.Quantity{}
 
 		for k, q := range limit.Max {
-			allErrs = append(allErrs, validateResourceName(string(k), idxPath.Child("max").Key(string(k)))...)
+			allErrs = append(allErrs, validateLimitRangeResourceName(limit.Type, string(k), idxPath.Child("max").Key(string(k)))...)
 			keys.Insert(string(k))
 			max[string(k)] = q
 		}
 		for k, q := range limit.Min {
-			allErrs = append(allErrs, validateResourceName(string(k), idxPath.Child("min").Key(string(k)))...)
+			allErrs = append(allErrs, validateLimitRangeResourceName(limit.Type, string(k), idxPath.Child("min").Key(string(k)))...)
 			keys.Insert(string(k))
 			min[string(k)] = q
 		}
@@ -1857,19 +2115,19 @@ func ValidateLimitRange(limitRange *api.LimitRange) field.ErrorList {
 			}
 		} else {
 			for k, q := range limit.Default {
-				allErrs = append(allErrs, validateResourceName(string(k), idxPath.Child("default").Key(string(k)))...)
+				allErrs = append(allErrs, validateLimitRangeResourceName(limit.Type, string(k), idxPath.Child("default").Key(string(k)))...)
 				keys.Insert(string(k))
 				defaults[string(k)] = q
 			}
 			for k, q := range limit.DefaultRequest {
-				allErrs = append(allErrs, validateResourceName(string(k), idxPath.Child("defaultRequest").Key(string(k)))...)
+				allErrs = append(allErrs, validateLimitRangeResourceName(limit.Type, string(k), idxPath.Child("defaultRequest").Key(string(k)))...)
 				keys.Insert(string(k))
 				defaultRequests[string(k)] = q
 			}
 		}
 
 		for k, q := range limit.MaxLimitRequestRatio {
-			allErrs = append(allErrs, validateResourceName(string(k), idxPath.Child("maxLimitRequestRatio").Key(string(k)))...)
+			allErrs = append(allErrs, validateLimitRangeResourceName(limit.Type, string(k), idxPath.Child("maxLimitRequestRatio").Key(string(k)))...)
 			keys.Insert(string(k))
 			maxLimitRequestRatios[string(k)] = q
 		}
@@ -2013,6 +2271,14 @@ func ValidateSecret(secret *api.Secret) field.ErrorList {
 			break
 		}
 
+	case api.SecretTypeTLS:
+		if _, exists := secret.Data[api.TLSCertKey]; !exists {
+			allErrs = append(allErrs, field.Required(dataPath.Key(api.TLSCertKey), ""))
+		}
+		if _, exists := secret.Data[api.TLSPrivateKeyKey]; !exists {
+			allErrs = append(allErrs, field.Required(dataPath.Key(api.TLSPrivateKeyKey), ""))
+		}
+		// TODO: Verify that the key matches the cert.
 	default:
 		// no-op
 	}
@@ -2034,6 +2300,42 @@ func ValidateSecretUpdate(newSecret, oldSecret *api.Secret) field.ErrorList {
 	return allErrs
 }
 
+// ValidateConfigMapName can be used to check whether the given ConfigMap name is valid.
+// Prefix indicates this name will be used as part of generation, in which case
+// trailing dashes are allowed.
+func ValidateConfigMapName(name string, prefix bool) (bool, string) {
+	return NameIsDNSSubdomain(name, prefix)
+}
+
+// ValidateConfigMap tests whether required fields in the ConfigMap are set.
+func ValidateConfigMap(cfg *api.ConfigMap) field.ErrorList {
+	allErrs := field.ErrorList{}
+	allErrs = append(allErrs, ValidateObjectMeta(&cfg.ObjectMeta, true, ValidateConfigMapName, field.NewPath("metadata"))...)
+
+	totalSize := 0
+
+	for key, value := range cfg.Data {
+		if !IsSecretKey(key) {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("data").Key(key), key, fmt.Sprintf("must have at most %d characters and match regex %s", validation.DNS1123SubdomainMaxLength, SecretKeyFmt)))
+		}
+		totalSize += len(value)
+	}
+	if totalSize > api.MaxSecretSize {
+		allErrs = append(allErrs, field.TooLong(field.NewPath("data"), "", api.MaxSecretSize))
+	}
+
+	return allErrs
+}
+
+// ValidateConfigMapUpdate tests if required fields in the ConfigMap are set.
+func ValidateConfigMapUpdate(newCfg, oldCfg *api.ConfigMap) field.ErrorList {
+	allErrs := field.ErrorList{}
+	allErrs = append(allErrs, ValidateObjectMetaUpdate(&newCfg.ObjectMeta, &oldCfg.ObjectMeta, field.NewPath("metadata"))...)
+	allErrs = append(allErrs, ValidateConfigMap(newCfg)...)
+
+	return allErrs
+}
+
 func validateBasicResource(quantity resource.Quantity, fldPath *field.Path) field.ErrorList {
 	if quantity.Value() < 0 {
 		return field.ErrorList{field.Invalid(fldPath, quantity.Value(), "must be a valid resource quantity")}
@@ -2048,22 +2350,14 @@ func ValidateResourceRequirements(requirements *api.ResourceRequirements, fldPat
 	for resourceName, quantity := range requirements.Limits {
 		fldPath := limPath.Key(string(resourceName))
 		// Validate resource name.
-		allErrs = append(allErrs, validateResourceName(string(resourceName), fldPath)...)
+		allErrs = append(allErrs, validateContainerResourceName(string(resourceName), fldPath)...)
 		if api.IsStandardResourceName(string(resourceName)) {
 			allErrs = append(allErrs, validateBasicResource(quantity, fldPath.Key(string(resourceName)))...)
 		}
 		// Check that request <= limit.
 		requestQuantity, exists := requirements.Requests[resourceName]
 		if exists {
-			var requestValue, limitValue int64
-			requestValue = requestQuantity.Value()
-			limitValue = quantity.Value()
-			// Do a more precise comparison if possible (if the value won't overflow).
-			if requestValue <= resource.MaxMilliValue && limitValue <= resource.MaxMilliValue {
-				requestValue = requestQuantity.MilliValue()
-				limitValue = quantity.MilliValue()
-			}
-			if limitValue < requestValue {
+			if quantity.Cmp(requestQuantity) < 0 {
 				allErrs = append(allErrs, field.Invalid(fldPath, quantity.String(), "must be greater than or equal to request"))
 			}
 		}
@@ -2072,9 +2366,44 @@ func ValidateResourceRequirements(requirements *api.ResourceRequirements, fldPat
 	for resourceName, quantity := range requirements.Requests {
 		fldPath := reqPath.Key(string(resourceName))
 		// Validate resource name.
-		allErrs = append(allErrs, validateResourceName(string(resourceName), fldPath)...)
+		allErrs = append(allErrs, validateContainerResourceName(string(resourceName), fldPath)...)
 		if api.IsStandardResourceName(string(resourceName)) {
 			allErrs = append(allErrs, validateBasicResource(quantity, fldPath.Key(string(resourceName)))...)
+		}
+	}
+	return allErrs
+}
+
+// validateResourceQuotaScopes ensures that each enumerated hard resource constraint is valid for set of scopes
+func validateResourceQuotaScopes(resourceQuota *api.ResourceQuota) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if len(resourceQuota.Spec.Scopes) == 0 {
+		return allErrs
+	}
+	hardLimits := sets.NewString()
+	for k := range resourceQuota.Spec.Hard {
+		hardLimits.Insert(string(k))
+	}
+	fldPath := field.NewPath("spec", "scopes")
+	scopeSet := sets.NewString()
+	for _, scope := range resourceQuota.Spec.Scopes {
+		if !api.IsStandardResourceQuotaScope(string(scope)) {
+			allErrs = append(allErrs, field.Invalid(fldPath, resourceQuota.Spec.Scopes, "unsupported scope"))
+		}
+		for _, k := range hardLimits.List() {
+			if api.IsStandardQuotaResourceName(k) && !api.IsResourceQuotaScopeValidForResource(scope, k) {
+				allErrs = append(allErrs, field.Invalid(fldPath, resourceQuota.Spec.Scopes, "unsupported scope applied to resource"))
+			}
+		}
+		scopeSet.Insert(string(scope))
+	}
+	invalidScopePairs := []sets.String{
+		sets.NewString(string(api.ResourceQuotaScopeBestEffort), string(api.ResourceQuotaScopeNotBestEffort)),
+		sets.NewString(string(api.ResourceQuotaScopeTerminating), string(api.ResourceQuotaScopeNotTerminating)),
+	}
+	for _, invalidScopePair := range invalidScopePairs {
+		if scopeSet.HasAll(invalidScopePair.List()...) {
+			allErrs = append(allErrs, field.Invalid(fldPath, resourceQuota.Spec.Scopes, "conflicting scopes"))
 		}
 	}
 	return allErrs
@@ -2087,21 +2416,24 @@ func ValidateResourceQuota(resourceQuota *api.ResourceQuota) field.ErrorList {
 	fldPath := field.NewPath("spec", "hard")
 	for k, v := range resourceQuota.Spec.Hard {
 		resPath := fldPath.Key(string(k))
-		allErrs = append(allErrs, validateResourceName(string(k), resPath)...)
+		allErrs = append(allErrs, validateResourceQuotaResourceName(string(k), resPath)...)
 		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v, resPath)...)
 	}
+	allErrs = append(allErrs, validateResourceQuotaScopes(resourceQuota)...)
+
 	fldPath = field.NewPath("status", "hard")
 	for k, v := range resourceQuota.Status.Hard {
 		resPath := fldPath.Key(string(k))
-		allErrs = append(allErrs, validateResourceName(string(k), resPath)...)
+		allErrs = append(allErrs, validateResourceQuotaResourceName(string(k), resPath)...)
 		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v, resPath)...)
 	}
 	fldPath = field.NewPath("status", "used")
 	for k, v := range resourceQuota.Status.Used {
 		resPath := fldPath.Key(string(k))
-		allErrs = append(allErrs, validateResourceName(string(k), resPath)...)
+		allErrs = append(allErrs, validateResourceQuotaResourceName(string(k), resPath)...)
 		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v, resPath)...)
 	}
+
 	return allErrs
 }
 
@@ -2124,9 +2456,25 @@ func ValidateResourceQuotaUpdate(newResourceQuota, oldResourceQuota *api.Resourc
 	fldPath := field.NewPath("spec", "hard")
 	for k, v := range newResourceQuota.Spec.Hard {
 		resPath := fldPath.Key(string(k))
-		allErrs = append(allErrs, validateResourceName(string(k), resPath)...)
+		allErrs = append(allErrs, validateResourceQuotaResourceName(string(k), resPath)...)
 		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v, resPath)...)
 	}
+
+	// ensure scopes cannot change, and that resources are still valid for scope
+	fldPath = field.NewPath("spec", "scopes")
+	oldScopes := sets.NewString()
+	newScopes := sets.NewString()
+	for _, scope := range newResourceQuota.Spec.Scopes {
+		newScopes.Insert(string(scope))
+	}
+	for _, scope := range oldResourceQuota.Spec.Scopes {
+		oldScopes.Insert(string(scope))
+	}
+	if !oldScopes.Equal(newScopes) {
+		allErrs = append(allErrs, field.Invalid(fldPath, newResourceQuota.Spec.Scopes, "field is immutable"))
+	}
+	allErrs = append(allErrs, validateResourceQuotaScopes(newResourceQuota)...)
+
 	newResourceQuota.Status = oldResourceQuota.Status
 	return allErrs
 }
@@ -2141,13 +2489,13 @@ func ValidateResourceQuotaStatusUpdate(newResourceQuota, oldResourceQuota *api.R
 	fldPath := field.NewPath("status", "hard")
 	for k, v := range newResourceQuota.Status.Hard {
 		resPath := fldPath.Key(string(k))
-		allErrs = append(allErrs, validateResourceName(string(k), resPath)...)
+		allErrs = append(allErrs, validateResourceQuotaResourceName(string(k), resPath)...)
 		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v, resPath)...)
 	}
 	fldPath = field.NewPath("status", "used")
 	for k, v := range newResourceQuota.Status.Used {
 		resPath := fldPath.Key(string(k))
-		allErrs = append(allErrs, validateResourceName(string(k), resPath)...)
+		allErrs = append(allErrs, validateResourceQuotaResourceName(string(k), resPath)...)
 		allErrs = append(allErrs, validateResourceQuantityValue(string(k), v, resPath)...)
 	}
 	newResourceQuota.Spec = oldResourceQuota.Spec
@@ -2222,6 +2570,7 @@ func ValidateNamespaceFinalizeUpdate(newNamespace, oldNamespace *api.Namespace) 
 // ValidateEndpoints tests if required fields are set.
 func ValidateEndpoints(endpoints *api.Endpoints) field.ErrorList {
 	allErrs := ValidateObjectMeta(&endpoints.ObjectMeta, true, ValidateEndpointsName, field.NewPath("metadata"))
+	allErrs = append(allErrs, ValidateEndpointsSpecificAnnotations(endpoints.Annotations, field.NewPath("annotations"))...)
 	allErrs = append(allErrs, validateEndpointSubsets(endpoints.Subsets, field.NewPath("subsets"))...)
 	return allErrs
 }
@@ -2305,6 +2654,7 @@ func validateEndpointPort(port *api.EndpointPort, requireName bool, fldPath *fie
 func ValidateEndpointsUpdate(newEndpoints, oldEndpoints *api.Endpoints) field.ErrorList {
 	allErrs := ValidateObjectMetaUpdate(&newEndpoints.ObjectMeta, &oldEndpoints.ObjectMeta, field.NewPath("metadata"))
 	allErrs = append(allErrs, validateEndpointSubsets(newEndpoints.Subsets, field.NewPath("subsets"))...)
+	allErrs = append(allErrs, ValidateEndpointsSpecificAnnotations(newEndpoints.Annotations, field.NewPath("annotations"))...)
 	return allErrs
 }
 
@@ -2369,6 +2719,27 @@ func ValidateLoadBalancerStatus(status *api.LoadBalancerStatus, fldPath *field.P
 		}
 	}
 	return allErrs
+}
+
+func isValidHostnamesMap(serializedPodHostNames string) bool {
+	if len(serializedPodHostNames) == 0 {
+		return false
+	}
+	podHostNames := map[string]endpoints.HostRecord{}
+	err := json.Unmarshal([]byte(serializedPodHostNames), &podHostNames)
+	if err != nil {
+		return false
+	}
+
+	for ip, hostRecord := range podHostNames {
+		if !validation.IsDNS1123Label(hostRecord.HostName) {
+			return false
+		}
+		if net.ParseIP(ip) == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func ValidateSecurityContextConstraints(scc *api.SecurityContextConstraints) field.ErrorList {

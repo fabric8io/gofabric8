@@ -19,7 +19,6 @@ limitations under the License.
 package empty_dir
 
 import (
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -27,14 +26,16 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util/mount"
+	utiltesting "k8s.io/kubernetes/pkg/util/testing"
 	"k8s.io/kubernetes/pkg/volume"
+	volumetest "k8s.io/kubernetes/pkg/volume/testing"
 	"k8s.io/kubernetes/pkg/volume/util"
 )
 
 // Construct an instance of a plugin, by name.
 func makePluginUnderTest(t *testing.T, plugName, basePath string) volume.VolumePlugin {
 	plugMgr := volume.VolumePluginMgr{}
-	plugMgr.InitPlugins(ProbeVolumePlugins(), volume.NewFakeVolumeHost(basePath, nil, nil))
+	plugMgr.InitPlugins(ProbeVolumePlugins(), volumetest.NewFakeVolumeHost(basePath, nil, nil))
 
 	plug, err := plugMgr.FindPluginByName(plugName)
 	if err != nil {
@@ -44,7 +45,7 @@ func makePluginUnderTest(t *testing.T, plugName, basePath string) volume.VolumeP
 }
 
 func TestCanSupport(t *testing.T) {
-	tmpDir, err := ioutil.TempDir(os.TempDir(), "emptydirTest")
+	tmpDir, err := utiltesting.MkTmpdir("emptydirTest")
 	if err != nil {
 		t.Fatalf("can't make a temp dir: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestPluginRootContextSet(t *testing.T) {
 	doTestPlugin(t, pluginTestConfig{
 		medium:                 api.StorageMediumDefault,
 		rootContext:            "user:role:type:range",
-		expectedSELinuxContext: "user:role:type:range",
+		expectedSELinux:        "user:role:type:range",
 		expectedSetupMounts:    0,
 		expectedTeardownMounts: 0})
 }
@@ -100,7 +101,7 @@ func TestPluginTmpfs(t *testing.T) {
 	doTestPlugin(t, pluginTestConfig{
 		medium:                        api.StorageMediumMemory,
 		rootContext:                   "user:role:type:range",
-		expectedSELinuxContext:        "user:role:type:range",
+		expectedSELinux:               "user:role:type:range",
 		expectedSetupMounts:           1,
 		shouldBeMountedBeforeTeardown: true,
 		expectedTeardownMounts:        1})
@@ -111,7 +112,7 @@ type pluginTestConfig struct {
 	rootContext                   string
 	SELinuxOptions                *api.SELinuxOptions
 	idempotent                    bool
-	expectedSELinuxContext        string
+	expectedSELinux               string
 	expectedSetupMounts           int
 	shouldBeMountedBeforeTeardown bool
 	expectedTeardownMounts        int
@@ -119,7 +120,7 @@ type pluginTestConfig struct {
 
 // doTestPlugin sets up a volume and tears it back down.
 func doTestPlugin(t *testing.T, config pluginTestConfig) {
-	basePath, err := ioutil.TempDir(os.TempDir(), "emptydir_volume_test")
+	basePath, err := utiltesting.MkTmpdir("emptydir_volume_test")
 	if err != nil {
 		t.Fatalf("can't make a temp rootdir: %v", err)
 	}
@@ -251,7 +252,7 @@ func doTestPlugin(t *testing.T, config pluginTestConfig) {
 }
 
 func TestPluginBackCompat(t *testing.T) {
-	basePath, err := ioutil.TempDir(os.TempDir(), "emptydirTest")
+	basePath, err := utiltesting.MkTmpdir("emptydirTest")
 	if err != nil {
 		t.Fatalf("can't make a temp dir： %v", err)
 	}
@@ -280,7 +281,7 @@ func TestPluginBackCompat(t *testing.T) {
 // TestMetrics tests that MetricProvider methods return sane values.
 func TestMetrics(t *testing.T) {
 	// Create an empty temp directory for the volume
-	tmpDir, err := ioutil.TempDir(os.TempDir(), "empty_dir_test")
+	tmpDir, err := utiltesting.MkTmpdir("empty_dir_test")
 	if err != nil {
 		t.Fatalf("Can't make a tmp dir: %v", err)
 	}
@@ -300,7 +301,7 @@ func TestMetrics(t *testing.T) {
 	// Need to create the subdirectory
 	os.MkdirAll(builder.GetPath(), 0755)
 
-	expectedEmptyDirUsage, err := volume.FindEmptyDirectoryUsageOnTmpfs()
+	expectedEmptyDirUsage, err := volumetest.FindEmptyDirectoryUsageOnTmpfs()
 	if err != nil {
 		t.Errorf("Unexpected error finding expected empty directory usage on tmpfs: %v", err)
 	}

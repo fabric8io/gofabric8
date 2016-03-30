@@ -16,7 +16,7 @@
               Edit Build Config {{buildConfig.metadata.name}} - <small>{{strategyType}} Build Strategy</small>
             </h1>
             <fieldset ng-disabled="disableInputs">
-              <form class="edit-form" name="form" novalidate>
+              <form class="edit-form" name="form" novalidate ng-submit="save()">
                 <div class="resource-details">
                   <div class="row">
                     <div class="col-lg-6">
@@ -79,7 +79,7 @@
                             <label for="buildFrom">Dockerfile</label>
                               <div ui-ace="{
                                 mode: 'dockerfile',
-                                theme: 'eclipse',
+                                theme: 'dreamweaver',
                                 onLoad: aceLoaded,
                                 rendererOptions: {
                                   fadeFoldWidgets: true,
@@ -110,7 +110,7 @@
                                 Execute docker build without reusing cached instructions.
                                 <span class="help action-inline">
                                   <a href>
-                                    <i class="pficon pficon-help" data-toggle="tooltip" aria-hidden="true" data-placement="right" data-original-title="Will run the docker build with '--no-cache=true' flag">
+                                    <i class="pficon pficon-help" data-toggle="tooltip" aria-hidden="true" data-original-title="Will run the docker build with '--no-cache=true' flag">
                                     </i>
                                   </a>
                                 </span>
@@ -124,7 +124,7 @@
                                 Binary Input As File
                                 <span class="help action-inline">
                                   <a href>
-                                    <i class="pficon pficon-help" data-toggle="tooltip" data-placement="right" aria-hidden="true" data-original-title="Indicates that the provided binary input should be considered a single file within the build input. For example, specifying 'webapp.war' would place the provided binary as '/webapp.war' for the builder. If left empty, the Docker and Source build strategies assume this file is a zip, tar, or tar.gz file and extract it as the source. The custom strategy receives this binary as standard input. This filename may not contain slashes or be '..' or '.'."></i>
+                                    <i class="pficon pficon-help" data-toggle="tooltip" aria-hidden="true" data-original-title="Indicates that the provided binary input should be considered a single file within the build input. For example, specifying 'webapp.war' would place the provided binary as '/webapp.war' for the builder. If left empty, the Docker and Source build strategies assume this file is a zip, tar, or tar.gz file and extract it as the source. The custom strategy receives this binary as standard input. This filename may not contain slashes or be '..' or '.'."></i>
                                   </a>
                                 </span>
                               </label>
@@ -158,7 +158,7 @@
                                 <div class="col-sm-4">
                                  <div class="form-group">
                                     <label>Namespace</label>
-                                    <span ng-if="!isNamespaceAvailable(imageSourceOptions.pickedNamespace)" data-toggle="tooltip" data-placement="right" title="Selected Namespace is not available." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                    <span ng-if="!isNamespaceAvailable(imageSourceOptions.pickedNamespace)" data-toggle="tooltip" title="Selected Namespace is not available." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
                                     <select
                                       name="imageSourceNamespace"
                                       class="form-control"
@@ -173,8 +173,8 @@
                                 <div class="col-sm-4">
                                   <div class="form-group">
                                     <label>Image Stream</label>
-                                    <span  ng-if="inspectNamespace(imageSourceBuildFrom.imageStreams, imageSourceOptions.pickedImageStream) === 'empty'" data-toggle="tooltip" data-placement="right" title="Selected Namespace doesn't contain any Image Streams to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
-                                    <span  ng-if="inspectNamespace(imageSourceBuildFrom.imageStreams, imageSourceOptions.pickedImageStream) === 'noMatch'" data-toggle="tooltip" data-placement="right" title="Selected Namespace doesn't contain Image Stream choosen Tag" class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                    <span  ng-if="inspectNamespace(imageSourceBuildFrom.imageStreams, imageSourceOptions.pickedImageStream) === 'empty'" data-toggle="tooltip" title="Selected Namespace doesn't contain any Image Streams to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                    <span  ng-if="inspectNamespace(imageSourceBuildFrom.imageStreams, imageSourceOptions.pickedImageStream) === 'noMatch'" data-toggle="tooltip" title="Selected Namespace doesn't contain Image Stream choosen Tag" class="pficon pficon-error-circle-o" style="cursor: help;"></span>
                                     <select
                                       name="imageSourceImageStream"
                                       class="form-control"
@@ -189,8 +189,8 @@
                                 <div class="col-sm-4">
                                   <div class="form-group">
                                     <label>Tag</label>
-                                    <span ng-if="inspectTags(imageSourceBuildFrom.tags, imageSourceOptions.pickedImageStream, imageSourceOptions.pickedTag) === 'empty'" data-toggle="tooltip" data-placement="right" title="Selected Image Stream doesn't contain any tagged image to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
-                                    <span ng-if="inspectTags(imageSourceBuildFrom.tags, imageSourceOptions.pickedImageStream, imageSourceOptions.pickedTag) === 'noMatch'" data-toggle="tooltip" data-placement="right" title="Selected Image Stream doesn't contain choosen Tag." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                    <span ng-if="inspectTags(imageSourceBuildFrom.tags, imageSourceOptions.pickedImageStream, imageSourceOptions.pickedTag) === 'empty'" data-toggle="tooltip" title="Selected Image Stream doesn't contain any tagged image to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                    <span ng-if="inspectTags(imageSourceBuildFrom.tags, imageSourceOptions.pickedImageStream, imageSourceOptions.pickedTag) === 'noMatch'" data-toggle="tooltip" title="Selected Image Stream doesn't contain choosen Tag." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
                                     <select
                                       name="imageSourceTag"
                                       class="form-control"
@@ -237,7 +237,7 @@
                               <div class="form-group">
                                 <label for="buildFrom">Source and Destination Paths<span class="help action-inline">
                                   <a href>
-                                  <i class="pficon pficon-help" data-toggle="tooltip" data-placement="right" aria-hidden="true" data-original-title="Paths is a list of source and destination paths to copy from the image. At least one pair has to be specified."></i>
+                                  <i class="pficon pficon-help" data-toggle="tooltip" aria-hidden="true" data-original-title="Paths is a list of source and destination paths to copy from the image. At least one pair has to be specified."></i>
                                   </a>
                                 </span></label>
                                 <osc-key-values
@@ -255,7 +255,12 @@
 
 
                             <div class="multiple-image-source" ng-if="sourceImages.length !== 1">
-                              <label for="imageSourceFrom">Image Source From</label>
+                              <label for="imageSourceFrom">Image Source From<span class="help action-inline">
+                                <a href>
+                                  <i class="pficon pficon-info" style="cursor: help;" aria-hidden="true" data-toggle="tooltip" data-original-title="This Build Config contains more then one Image Source. To edit them use the YAML editor.">
+                                </i>
+                                </a>
+                              </span></label>
                               <div ng-repeat="fromObject in imageSourceFromObjects" class="imageSourceItem">
                                 {{selectTypes[fromObject.kind]}}: {{fromObject | imageObjectRef : buildConfig.metadata.namespace}}
                               </div>
@@ -283,7 +288,7 @@
                               <div class="col-sm-4">
                                 <div class="form-group">
                                   <label>Namespace</label>
-                                  <span  ng-if="!isNamespaceAvailable(builderOptions.pickedNamespace)" data-toggle="tooltip" data-placement="right" title="Selected Namespace is not available." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                  <span  ng-if="!isNamespaceAvailable(builderOptions.pickedNamespace)" data-toggle="tooltip" title="Selected Namespace is not available." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
                                   <select
                                     class="form-control"
                                     ng-model="builderOptions.pickedNamespace"
@@ -296,8 +301,8 @@
                               <div class="col-sm-4">
                                 <div class="form-group">
                                   <label>Image Stream</label>
-                                  <span  ng-if="inspectNamespace(buildFrom.imageStreams, builderOptions.pickedImageStream) === 'empty'" data-toggle="tooltip" data-placement="right" title="Selected Namespace doesn't contain any Image Streams to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
-                                  <span  ng-if="inspectNamespace(buildFrom.imageStreams, builderOptions.pickedImageStream) === 'noMatch'" data-toggle="tooltip" data-placement="right" title="Selected Namespace doesn't contain Image Stream choosen Tag" class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                  <span  ng-if="inspectNamespace(buildFrom.imageStreams, builderOptions.pickedImageStream) === 'empty'" data-toggle="tooltip" title="Selected Namespace doesn't contain any Image Streams to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                  <span  ng-if="inspectNamespace(buildFrom.imageStreams, builderOptions.pickedImageStream) === 'noMatch'" data-toggle="tooltip" title="Selected Namespace doesn't contain Image Stream choosen Tag" class="pficon pficon-error-circle-o" style="cursor: help;"></span>
                                   <select
                                     class="form-control"
                                     ng-model="builderOptions.pickedImageStream"
@@ -311,8 +316,8 @@
                               <div class="col-sm-4">
                                 <div class="form-group">
                                   <label>Tag</label>
-                                  <span ng-if="inspectTags(buildFrom.tags, builderOptions.pickedImageStream, builderOptions.pickedTag) === 'empty'" data-toggle="tooltip" data-placement="right" title="Selected Image Stream doesn't contain any tagged image to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
-                                  <span ng-if="inspectTags(buildFrom.tags, builderOptions.pickedImageStream, builderOptions.pickedTag) === 'noMatch'" data-toggle="tooltip" data-placement="right" title="Selected Image Stream doesn't contain choosen Tag." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                  <span ng-if="inspectTags(buildFrom.tags, builderOptions.pickedImageStream, builderOptions.pickedTag) === 'empty'" data-toggle="tooltip" title="Selected Image Stream doesn't contain any tagged image to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                  <span ng-if="inspectTags(buildFrom.tags, builderOptions.pickedImageStream, builderOptions.pickedTag) === 'noMatch'" data-toggle="tooltip" title="Selected Image Stream doesn't contain choosen Tag." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
                                   <select
                                     class="form-control"
                                     ng-model="builderOptions.pickedTag"
@@ -378,7 +383,7 @@
                               <div class="col-sm-4">
                                <div class="form-group">
                                   <label>Namespace</label>
-                                  <span  ng-if="!isNamespaceAvailable(outputOptions.pickedNamespace)" data-toggle="tooltip" data-placement="right" title="Selected Namespace is not available." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                  <span  ng-if="!isNamespaceAvailable(outputOptions.pickedNamespace)" data-toggle="tooltip" title="Selected Namespace is not available." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
                                   <select
                                     class="form-control"
                                     id="outputNamespace"
@@ -393,8 +398,8 @@
                               <div class="col-sm-4">
                                 <div class="form-group">
                                   <label>Image Stream</label>
-                                  <span  ng-if="inspectNamespace(pushTo.imageStreams, outputOptions.pickedImageStream) === 'empty'" data-toggle="tooltip" data-placement="right" title="Selected Namespace doesn't contain any Image Streams to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
-                                  <span  ng-if="inspectNamespace(pushTo.imageStreams, outputOptions.pickedImageStream) === 'noMatch'" data-toggle="tooltip" data-placement="right" title="Selected Namespace doesn't contain Image Stream choosen Tag" class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                  <span  ng-if="inspectNamespace(pushTo.imageStreams, outputOptions.pickedImageStream) === 'empty'" data-toggle="tooltip" title="Selected Namespace doesn't contain any Image Streams to build from." class="pficon pficon-error-circle-o" style="cursor: help;"></span>
+                                  <span  ng-if="inspectNamespace(pushTo.imageStreams, outputOptions.pickedImageStream) === 'noMatch'" data-toggle="tooltip" title="Selected Namespace doesn't contain Image Stream choosen Tag" class="pficon pficon-error-circle-o" style="cursor: help;"></span>
                                   <select
                                     class="form-control"
                                     id="outputImageStream"
@@ -410,7 +415,7 @@
                               <div class="col-sm-4">
                                 <div class="form-group">
                                   <label>Tag</label>
-                                  <span  ng-if="showOutputTagWarning(form)" data-toggle="tooltip" data-placement="right" title="Tag is already created and will be overridden on build." class="pficon pficon-warning-triangle-o" style="cursor: help;"></span>
+                                  <span  ng-if="showOutputTagWarning(form)" data-toggle="tooltip" title="Tag is already created and will be overridden on build." class="pficon pficon-warning-triangle-o" style="cursor: help;"></span>
                                   <div>
                                   <input class="form-control"
                                     id="outputTag"
@@ -451,7 +456,7 @@
                       <div class="section">
                         <h3>Environment Variables<span class="help action-inline">
                           <a href>
-                          <i class="pficon pficon-help" data-toggle="tooltip" data-placement="left" aria-hidden="true" data-original-title="Environment variables are used to configure and pass information to running containers.  These environment variables will be available during your build and at runtime."></i>
+                          <i class="pficon pficon-help" data-toggle="tooltip" aria-hidden="true" data-original-title="Environment variables are used to configure and pass information to running containers.  These environment variables will be available during your build and at runtime."></i>
                           </a>
                         </span></h3>
                         <div>
@@ -470,33 +475,35 @@
                           <div>
                             <div class="checkbox" ng-if="sources.git" >
                               <label>
-                                <input type="checkbox" ng-model="pickedTriggers['webhook']"/>
+                                <input type="checkbox" ng-model="triggers.present.webhook"/>
                                 Enable the webhook build trigger
                                 <span class="help action-inline">
                                   <a href>
-                                    <i class="pficon pficon-help" data-toggle="tooltip" data-placement="left" aria-hidden="true" data-original-title="The source repository must be configured to use the webhook to trigger a build when source is committed.">
+                                    <i class="pficon pficon-help" data-toggle="tooltip" aria-hidden="true" data-original-title="The source repository must be configured to use the webhook to trigger a build when source is committed.">
                                     </i>
                                   </a>
                                 </span>
                               </label>
                             </div>
+
                             <div class="checkbox">
                               <label>
-                                <input type="checkbox" ng-model="pickedTriggers['imageChange']" ng-disabled="builderOptions.pickedType === 'None'"/>
-                                Automatically build a new image when the builder image changes
-                                <span class="help action-inline">
-                                  <a href>
-                                    <i class="pficon pficon-help" data-placement="left" aria-hidden="true"
-                                    data-toggle="tooltip" data-original-title="Automatically building a new image when the builder image changes allows your code to always run on the latest updates.">
-                                  </i>
-                                  </a>
-                                </span>
+                                <input type="checkbox" ng-model="triggers.present.configChange"/>
+                                Automatically build a new image when the build configuration changes
                               </label>
                             </div>
+
                             <div class="checkbox">
                               <label>
-                                <input type="checkbox" ng-model="pickedTriggers['configChange']"/>
-                                Automatically build a new image when the build configuration changes
+                                <input type="checkbox" ng-model="triggers.present.imageChange" ng-disabled="builderOptions.pickedType === 'None'"/>
+                                  Automatically build a new image when the builder image changes
+                                  <span class="help action-inline">
+                                    <a href>
+                                      <i class="pficon pficon-help" aria-hidden="true"
+                                      data-toggle="tooltip" data-original-title="Automatically building a new image when the builder image changes allows your code to always run on the latest updates.">
+                                    </i>
+                                    </a>
+                                  </span>
                               </label>
                             </div>
                           </div>
@@ -504,18 +511,19 @@
                       </div>
                     </div>
                   </div>
-                    <div class="buttons gutter-top-bottom">
-                      <button class="btn btn-primary btn-lg"
-                          ng-click="save()"
-                          ng-disabled="form.$invalid || form.$pristine || disableInputs">
-                          Save
-                      </button>
-                      <a class="btn btn-default btn-lg"
-                        href="{{buildConfig.metadata.name | navigateResourceURL : 'BuildConfig' : projectName}}">
-                        Cancel
-                      </a>
-                    </div>
+                  <div class="buttons gutter-top-bottom">
+                    <button
+                      type="submit"
+                      class="btn btn-primary btn-lg"
+                        ng-disabled="form.$invalid || form.$pristine || disableInputs">
+                        Save
+                    </button>
+                    <a class="btn btn-default btn-lg"
+                      href="{{buildConfig.metadata.name | navigateResourceURL : 'BuildConfig' : projectName}}">
+                      Cancel
+                    </a>
                   </div>
+                </div>
               </form>
             </fieldset>
           </div>

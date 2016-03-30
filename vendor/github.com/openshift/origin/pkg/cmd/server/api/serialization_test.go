@@ -11,7 +11,6 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/runtime/serializer"
 	"k8s.io/kubernetes/pkg/types"
@@ -20,6 +19,7 @@ import (
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	configapiv1 "github.com/openshift/origin/pkg/cmd/server/api/v1"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	podnodeapi "github.com/openshift/origin/pkg/scheduler/admission/podnodeconstraints/api"
 
 	// install all APIs
 	_ "github.com/openshift/origin/pkg/cmd/server/api/install"
@@ -174,6 +174,19 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 				obj.MappingMethod = "claim"
 			}
 		},
+		func(s *configapi.StringSource, c fuzz.Continue) {
+			if c.RandBool() {
+				c.Fuzz(&s.Value)
+			} else {
+				c.Fuzz(&s.StringSourceSpec)
+			}
+		},
+		func(obj *podnodeapi.PodNodeConstraintsConfig, c fuzz.Continue) {
+			c.FuzzNoCustom(obj)
+			if obj.NodeSelectorLabelBlacklist == nil {
+				obj.NodeSelectorLabelBlacklist = []string{"kubernetes.io/hostname"}
+			}
+		},
 	)
 
 	f.Fuzz(item)
@@ -201,7 +214,7 @@ func roundTrip(t *testing.T, codec runtime.Codec, originalItem runtime.Object) {
 	name := reflect.TypeOf(item).Elem().Name()
 	data, err := runtime.Encode(codec, item)
 	if err != nil {
-		if conversion.IsNotRegisteredError(err) {
+		if runtime.IsNotRegisteredError(err) {
 			t.Logf("%v is not registered", name)
 		}
 		t.Errorf("%v: %v (%#v)", name, err, item)

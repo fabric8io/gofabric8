@@ -6,6 +6,7 @@
   "camelcase": false,
   "curly": true,
   "eqeqeq": true,
+  "expr" : true,
   "immed": true,
   "indent": 2,
   "latedef": true,
@@ -20,6 +21,7 @@
   "unused": true,
   "globals": {
     "angular": false,
+    "ansi_up": false,
     "c3": false,
     "d3": false,
     "hawtioPluginLoader": false,

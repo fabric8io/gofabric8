@@ -10,13 +10,14 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
 	kclientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
 	kcmdconfig "k8s.io/kubernetes/pkg/kubectl/cmd/config"
 	kubecmdconfig "k8s.io/kubernetes/pkg/kubectl/cmd/config"
 	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/util/term"
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/cli/config"
@@ -48,7 +49,7 @@ type LoginOptions struct {
 	// infra
 	StartingKubeConfig *kclientcmdapi.Config
 	DefaultNamespace   string
-	Config             *kclient.Config
+	Config             *restclient.Config
 	Reader             io.Reader
 	Out                io.Writer
 
@@ -74,16 +75,16 @@ func (o *LoginOptions) GatherInfo() error {
 
 // getClientConfig returns back the current clientConfig as we know it.  If there is no clientConfig, it builds one with enough information
 // to talk to a server.  This may involve user prompts.  This method is not threadsafe.
-func (o *LoginOptions) getClientConfig() (*kclient.Config, error) {
+func (o *LoginOptions) getClientConfig() (*restclient.Config, error) {
 	if o.Config != nil {
 		return o.Config, nil
 	}
 
-	clientConfig := &kclient.Config{}
+	clientConfig := &restclient.Config{}
 
 	if len(o.Server) == 0 {
 		// we need to have a server to talk to
-		if cmdutil.IsTerminal(o.Reader) {
+		if term.IsTerminal(o.Reader) {
 			for !o.serverProvided() {
 				defaultServer := defaultClusterURL
 				promptMsg := fmt.Sprintf("Server [%s]: ", defaultServer)
@@ -146,7 +147,7 @@ func (o *LoginOptions) getClientConfig() (*kclient.Config, error) {
 			if len(matchingClusters) > 0 {
 				clientConfig.Insecure = true
 
-			} else if cmdutil.IsTerminal(o.Reader) {
+			} else if term.IsTerminal(o.Reader) {
 				fmt.Fprintln(o.Out, "The server uses a certificate signed by an unknown authority.")
 				fmt.Fprintln(o.Out, "You can bypass the certificate check, but any data you send to the server could be intercepted by others.")
 
@@ -175,7 +176,7 @@ func (o *LoginOptions) getClientConfig() (*kclient.Config, error) {
 }
 
 // getMatchingClusters examines the kubeconfig for all clusters that point to the same server
-func getMatchingClusters(clientConfig kclient.Config, kubeconfig clientcmdapi.Config) sets.String {
+func getMatchingClusters(clientConfig restclient.Config, kubeconfig clientcmdapi.Config) sets.String {
 	ret := sets.String{}
 
 	for key, cluster := range kubeconfig.Clusters {

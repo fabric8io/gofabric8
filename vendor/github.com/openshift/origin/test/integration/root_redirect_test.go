@@ -1,4 +1,4 @@
-// +build integration,etcd
+// +build integration
 
 package integration
 
@@ -7,20 +7,24 @@ import (
 	"net/http"
 	"testing"
 
+	knet "k8s.io/kubernetes/pkg/util/net"
+
+	testutil "github.com/openshift/origin/test/util"
 	testserver "github.com/openshift/origin/test/util/server"
 )
 
 func TestRootRedirect(t *testing.T) {
+	testutil.RequireEtcd(t)
 	masterConfig, _, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	transport := &http.Transport{
+	transport := knet.SetTransportDefaults(&http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
-	}
+	})
 
 	req, err := http.NewRequest("GET", masterConfig.AssetConfig.MasterPublicURL, nil)
 	req.Header.Set("Accept", "*/*")

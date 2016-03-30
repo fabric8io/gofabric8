@@ -25,12 +25,14 @@ os::log::install_errexit
 NETWORKING_DEBUG=${NETWORKING_DEBUG:-false}
 
 # These strings filter the available tests.
-NETWORKING_E2E_FOCUS="${NETWORKING_E2E_FOCUS:-etworking}"
+NETWORKING_E2E_FOCUS="${NETWORKING_E2E_FOCUS:-etworking|Services}"
 NETWORKING_E2E_SKIP="${NETWORKING_E2E_SKIP:-}"
 
 DEFAULT_SKIP_LIST=(
-  # intra-pod test is currrently broken for origin
+  # Skip tests that require secrets.  Secrets are not supported by
+  # dind without docker >= 1.10.
   "Networking should function for intra-pod"
+  "openshift router"
 
   # DNS inside container fails in CI but works locally
   "should provide Internet connection for containers"
@@ -90,11 +92,13 @@ TEST_FAILURES=0
 function test-osdn-plugin() {
   local name=$1
   local plugin=$2
+  local isolation=$3
 
   os::log::info "Targeting ${name} plugin: ${plugin}"
   os::log::info "Launching a docker-in-docker cluster for the ${name} plugin"
   export OPENSHIFT_NETWORK_PLUGIN="${plugin}"
   export OPENSHIFT_CONFIG_ROOT="${BASETMPDIR}/${name}"
+  export OPENSHIFT_NETWORK_ISOLATION="${isolation}"
   # Images have already been built
   export OS_DIND_BUILD_IMAGES=0
   DIND_CLEANUP_REQUIRED=1
@@ -145,13 +149,6 @@ function run-extended-tests() {
 
   if [ -z "${skip_regex}" ]; then
       skip_regex=$(join '|' "${DEFAULT_SKIP_LIST[@]}")
-
-      local conf_path="${config_root}/openshift.local.config"
-      # Only the multitenant plugin can pass the isolation test
-      if ! grep -q 'redhat/openshift-ovs-multitenant' \
-           $(find "${conf_path}" -name 'node-config.yaml' | head -n 1); then
-        skip_regex="${skip_regex}|\[networking\] network isolation plugin"
-      fi
   fi
 
   export KUBECONFIG="${config_root}/openshift.local.config/master/admin.kubeconfig"
@@ -204,15 +201,13 @@ esac
 
 TEST_EXTRA_ARGS="$@"
 
-os::log::info "Building networking test binary"
-TEST_BINARY="${OS_OUTPUT_BINPATH}/networking.test"
-if [ -f "${TEST_BINARY}" ] &&
-   [ "${OPENSHIFT_SKIP_BUILD:-false}" = "true" ]; then
+if [[ "${OPENSHIFT_SKIP_BUILD:-false}" = "true" ]] &&
+     [[ -n $(os::build::find-binary extended.test) ]]; then
   os::log::warn "Skipping rebuild of test binary due to OPENSHIFT_SKIP_BUILD=true"
 else
-  os::build::setup_env
-  go test -c ./test/extended/networking -o "${TEST_BINARY}"
+  hack/build-go.sh test/extended/extended.test
 fi
+TEST_BINARY="${OS_ROOT}/$(os::build::find-binary extended.test)"
 
 os::log::info "Starting 'networking' extended tests"
 if [ "${CONFIG_ROOT}" != "" ]; then
@@ -264,10 +259,10 @@ else
   os::log::info "Ensuring that previous test cluster is shut down"
   ${CLUSTER_CMD} stop
 
-  test-osdn-plugin "subnet" "redhat/openshift-ovs-subnet"
+  test-osdn-plugin "subnet" "redhat/openshift-ovs-subnet" "false"
 
   # Avoid unnecessary go builds for subsequent deployments
   export OPENSHIFT_SKIP_BUILD=true
 
-  test-osdn-plugin "multitenant" "redhat/openshift-ovs-multitenant"
+  test-osdn-plugin "multitenant" "redhat/openshift-ovs-multitenant" "true"
 fi

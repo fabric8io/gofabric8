@@ -19,12 +19,23 @@ angular.module('openshiftConsoleExtensions', ['openshiftConsole'])
     };
   })
   .run(function(ProxyPod, BaseHref, HawtioExtension, $templateCache, $compile, AuthService) {
-    var template =
-      '<span class="connect-link" ng-show="jolokiaUrl" title="Connect to container">' +
-      '  <a ng-click="gotoContainerView($event, container, jolokiaUrl)" ng-href="jolokiaUrl">' +
-      '    <i class="fa fa-sign-in"></i>Connect' +
-      '  </a>' +
-      '</span>';
+
+    var template = [
+      '<div row ',
+        'class="icon-row" ',
+        'ng-show="jolokiaUrl" ',
+        'title="Connect to container">',
+        '<div>',
+          '<i class="fa fa-share" aria-hidden="true"></i>',
+        '</div>',
+        '<div flex>',
+          '<a ng-click="gotoContainerView($event, container, jolokiaUrl)" ng-href="jolokiaUrl">',
+            'Open Java Console',
+          '</a>',
+        '</div>',
+      '</div>'
+    ].join('');
+
     HawtioExtension.add('container-links', function ($scope) {
       var container = $scope.container;
       if (!container) {
@@ -39,6 +50,13 @@ angular.module('openshiftConsoleExtensions', ['openshiftConsole'])
       var pod = $scope.$eval('podTemplate');
       // TODO distinguish between pod and pod templates for now...
       if (!pod || !pod.status || pod.status.phase !== 'Running') {
+        return;
+      }
+      var containerStatuses = pod.status.containerStatuses;
+      var containerStatus = _.find(containerStatuses, function(status) {
+        return status.name === container.name;
+      });
+      if (!containerStatus || !containerStatus.ready) {
         return;
       }
       var podName = pod.metadata.name;

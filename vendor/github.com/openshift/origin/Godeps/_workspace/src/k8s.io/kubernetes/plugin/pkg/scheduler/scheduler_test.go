@@ -18,8 +18,10 @@ package scheduler
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -158,8 +160,34 @@ func TestScheduler(t *testing.T) {
 }
 
 func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
+	// Set up a channel through which we'll funnel log messages from the watcher.
+	// This way, we can guarantee that when the test ends no thread will still be
+	// trying to write to t.Logf (which it would if we handed t.Logf directly to
+	// StartLogging).
+	ch := make(chan string)
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case msg := <-ch:
+				t.Log(msg)
+			case <-done:
+				return
+			}
+		}
+	}()
 	eventBroadcaster := record.NewBroadcaster()
-	defer eventBroadcaster.StartLogging(t.Logf).Stop()
+	watcher := eventBroadcaster.StartLogging(func(format string, args ...interface{}) {
+		ch <- fmt.Sprintf(format, args...)
+	})
+	defer func() {
+		watcher.Stop()
+		close(done)
+		wg.Wait()
+	}()
 
 	// Setup modeler so we control the contents of all 3 stores: assumed,
 	// scheduled and queued
@@ -176,7 +204,7 @@ func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
 	// all entries inserted with fakeTime will expire.
 	ttl := 30 * time.Second
 	fakeTime := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
-	fakeClock := &util.FakeClock{Time: fakeTime}
+	fakeClock := util.NewFakeClock(fakeTime)
 	ttlPolicy := &cache.TTLPolicy{Ttl: ttl, Clock: fakeClock}
 	assumedPodsStore := cache.NewFakeExpirationStore(
 		cache.MetaNamespaceKeyFunc, nil, ttlPolicy, fakeClock)
@@ -274,7 +302,7 @@ func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
 	// Second scheduling pass will fail to schedule if the store hasn't expired
 	// the deleted pod. This would normally happen with a timeout.
 	//expirationPolicy.NeverExpire = util.NewStringSet()
-	fakeClock.Time = fakeClock.Time.Add(ttl + 1)
+	fakeClock.Step(ttl + 1)
 
 	called = make(chan struct{})
 	events = eventBroadcaster.StartEventWatcher(func(e *api.Event) {

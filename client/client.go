@@ -18,11 +18,12 @@ package client
 import (
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-func NewClient(f *cmdutil.Factory) (*client.Client, *client.Config) {
+func NewClient(f *cmdutil.Factory) (*client.Client, *restclient.Config) {
 	var err error
 	cfg, err := f.ClientConfig()
 	if err != nil {
@@ -37,7 +38,7 @@ func NewClient(f *cmdutil.Factory) (*client.Client, *client.Config) {
 	return c, cfg
 }
 
-func NewOpenShiftClient(cfg *client.Config) (*oclient.Client, *client.Config) {
+func NewOpenShiftClient(cfg *restclient.Config) (*oclient.Client, *restclient.Config) {
 	ocfg := *cfg
 	ocfg.APIPath = ""
 	c, err := oclient.New(&ocfg)

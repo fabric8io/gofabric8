@@ -18,6 +18,7 @@ package prober
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -26,12 +27,13 @@ import (
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/prober/results"
 	"k8s.io/kubernetes/pkg/probe"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/types"
+	"k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 func init() {
-	util.ReallyCrash = true
+	runtime.ReallyCrash = true
 }
 
 var defaultProbe *api.Probe = &api.Probe{
@@ -173,6 +175,31 @@ func TestCleanupPods(t *testing.T) {
 	}
 }
 
+func TestCleanupRepeated(t *testing.T) {
+	m := newTestManager()
+	defer cleanup(t, m)
+	podTemplate := api.Pod{
+		Spec: api.PodSpec{
+			Containers: []api.Container{{
+				Name:           "prober1",
+				ReadinessProbe: defaultProbe,
+				LivenessProbe:  defaultProbe,
+			}},
+		},
+	}
+
+	const numTestPods = 100
+	for i := 0; i < numTestPods; i++ {
+		pod := podTemplate
+		pod.UID = types.UID(strconv.Itoa(i))
+		m.AddPod(&pod)
+	}
+
+	for i := 0; i < 10; i++ {
+		m.CleanupPods([]*api.Pod{})
+	}
+}
+
 func TestUpdatePodStatus(t *testing.T) {
 	unprobed := api.ContainerStatus{
 		Name:        "unprobed_container",
@@ -253,13 +280,14 @@ func TestUpdatePodStatus(t *testing.T) {
 }
 
 func TestUpdateReadiness(t *testing.T) {
-	testPod := getTestPod(readiness, api.Probe{})
+	testPod := getTestPod()
+	setTestProbe(testPod, readiness, api.Probe{})
 	m := newTestManager()
 	defer cleanup(t, m)
 
 	// Start syncing readiness without leaking goroutine.
 	stopCh := make(chan struct{})
-	go util.Until(m.updateReadiness, 0, stopCh)
+	go wait.Until(m.updateReadiness, 0, stopCh)
 	defer func() {
 		close(stopCh)
 		// Send an update to exit updateReadiness()
@@ -270,9 +298,9 @@ func TestUpdateReadiness(t *testing.T) {
 	exec.set(probe.Success, nil)
 	m.prober.exec = &exec
 
-	m.statusManager.SetPodStatus(&testPod, getTestRunningStatus())
+	m.statusManager.SetPodStatus(testPod, getTestRunningStatus())
 
-	m.AddPod(&testPod)
+	m.AddPod(testPod)
 	probePaths := []probeKey{{testPodUID, testContainerName, readiness}}
 	if err := expectProbes(m, probePaths); err != nil {
 		t.Error(err)
@@ -331,7 +359,7 @@ func waitForWorkerExit(m *manager, workerPaths []probeKey) error {
 			continue // Already exited, no need to poll.
 		}
 		glog.Infof("Polling %v", w)
-		if err := wait.Poll(interval, util.ForeverTestTimeout, condition); err != nil {
+		if err := wait.Poll(interval, wait.ForeverTestTimeout, condition); err != nil {
 			return err
 		}
 	}
@@ -356,7 +384,7 @@ func waitForReadyStatus(m *manager, ready bool) error {
 		return status.ContainerStatuses[0].Ready == ready, nil
 	}
 	glog.Infof("Polling for ready state %v", ready)
-	if err := wait.Poll(interval, util.ForeverTestTimeout, condition); err != nil {
+	if err := wait.Poll(interval, wait.ForeverTestTimeout, condition); err != nil {
 		return err
 	}
 
@@ -377,7 +405,7 @@ func cleanup(t *testing.T, m *manager) {
 	if exited, _ := condition(); exited {
 		return // Already exited, no need to poll.
 	}
-	if err := wait.Poll(interval, util.ForeverTestTimeout, condition); err != nil {
+	if err := wait.Poll(interval, wait.ForeverTestTimeout, condition); err != nil {
 		t.Fatalf("Error during cleanup: %v", err)
 	}
 }

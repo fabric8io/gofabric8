@@ -10,7 +10,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"k8s.io/kubernetes/pkg/util"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 
 	"github.com/openshift/origin/pkg/auth/authenticator"
 	"github.com/openshift/origin/pkg/auth/oauth/handlers"
@@ -138,7 +138,7 @@ func (l *Login) handleLoginForm(w http.ResponseWriter, req *http.Request) {
 
 	csrf, err := l.csrf.Generate(w, req)
 	if err != nil {
-		util.HandleError(fmt.Errorf("unable to generate CSRF token: %v", err))
+		utilruntime.HandleError(fmt.Errorf("unable to generate CSRF token: %v", err))
 	}
 	form.Values.CSRF = csrf
 
@@ -152,22 +152,24 @@ func (l *Login) handleLogin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	then := req.FormValue("then")
-	user, password := req.FormValue("username"), req.FormValue("password")
-	if user == "" {
+	username, password := req.FormValue("username"), req.FormValue("password")
+	if username == "" {
 		failed(errorCodeUserRequired, w, req)
 		return
 	}
-	context, ok, err := l.auth.AuthenticatePassword(user, password)
+	user, ok, err := l.auth.AuthenticatePassword(username, password)
 	if err != nil {
-		glog.Errorf("Unable to authenticate password: %v", err)
+		glog.Errorf(`Error authenticating %q with provider %q: %v`, username, l.provider, err)
 		failed(errorpage.AuthenticationErrorCode(err), w, req)
 		return
 	}
 	if !ok {
+		glog.V(4).Infof(`Login with provider %q failed for %q`, l.provider, username)
 		failed(errorCodeAccessDenied, w, req)
 		return
 	}
-	l.auth.AuthenticationSucceeded(context, then, w, req)
+	glog.V(4).Infof(`Login with provider %q succeeded for %q: %#v`, l.provider, username, user)
+	l.auth.AuthenticationSucceeded(user, then, w, req)
 }
 
 // NewLoginFormRenderer creates a login form renderer that takes in an optional custom template to
@@ -248,6 +250,6 @@ func (r loginTemplateRenderer) Render(form LoginForm, w http.ResponseWriter, req
 	w.Header().Add("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	if err := r.loginTemplate.Execute(w, form); err != nil {
-		util.HandleError(fmt.Errorf("unable to render login template: %v", err))
+		utilruntime.HandleError(fmt.Errorf("unable to render login template: %v", err))
 	}
 }

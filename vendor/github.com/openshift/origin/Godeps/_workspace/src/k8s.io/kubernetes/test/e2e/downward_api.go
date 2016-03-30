@@ -26,7 +26,7 @@ import (
 )
 
 var _ = Describe("Downward API", func() {
-	framework := NewFramework("downward-api")
+	framework := NewDefaultFramework("downward-api")
 
 	It("should provide pod name and namespace as env vars [Conformance]", func() {
 		podName := "downward-api-" + string(util.NewUUID())
@@ -91,7 +91,7 @@ func testDownwardAPI(framework *Framework, podName string, env []api.EnvVar, exp
 			Containers: []api.Container{
 				{
 					Name:    "dapi-container",
-					Image:   "gcr.io/google_containers/busybox",
+					Image:   "gcr.io/google_containers/busybox:1.24",
 					Command: []string{"sh", "-c", "env"},
 					Env:     env,
 				},

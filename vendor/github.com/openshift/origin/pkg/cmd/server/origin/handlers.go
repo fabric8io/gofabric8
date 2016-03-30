@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 
 	restful "github.com/emicklei/go-restful"
+	"github.com/golang/glog"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
@@ -18,6 +20,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/openshift/origin/pkg/authorization/authorizer"
+	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/util/httprequest"
 )
 
@@ -26,14 +29,17 @@ import (
 func indexAPIPaths(osAPIVersions, kubeAPIVersions []string, handler http.Handler) http.Handler {
 	// TODO once we have a MuxHelper we will not need to hardcode this list of paths
 	rootPaths := []string{"/api",
+		"/apis",
 		"/controllers",
 		"/healthz",
 		"/healthz/ping",
 		"/healthz/ready",
-		"/logs/",
 		"/metrics",
 		"/oapi",
 		"/swaggerapi/"}
+
+	// This is for legacy clients
+	// Discovery of new API groups is done with a request to /apis
 	for _, path := range kubeAPIVersions {
 		rootPaths = append(rootPaths, "/api/"+path)
 	}
@@ -93,12 +99,16 @@ func (c *MasterConfig) authorizationFilter(handler http.Handler) http.Handler {
 // forbidden renders a simple forbidden error
 func forbidden(reason string, attributes authorizer.AuthorizationAttributes, w http.ResponseWriter, req *http.Request) {
 	kind := ""
+	resource := ""
+	group := ""
 	name := ""
 	// the attributes can be empty for two basic reasons:
 	// 1. malformed API request
 	// 2. not an API request at all
 	// In these cases, just assume default that will work better than nothing
 	if attributes != nil {
+		group = attributes.GetAPIGroup()
+		resource = attributes.GetResource()
 		kind = attributes.GetResource()
 		if len(attributes.GetAPIGroup()) > 0 {
 			kind = attributes.GetAPIGroup() + "." + kind
@@ -110,7 +120,7 @@ func forbidden(reason string, attributes authorizer.AuthorizationAttributes, w h
 	// We don't have direct access to kind or name (not that those apply either in the general case)
 	// We create a NewForbidden to stay close the API, but then we override the message to get a serialization
 	// that makes sense when a human reads it.
-	forbiddenError, _ := kapierrors.NewForbidden(unversioned.GroupResource{Group: attributes.GetAPIGroup(), Resource: attributes.GetResource()}, name, errors.New("") /*discarded*/).(*kapierrors.StatusError)
+	forbiddenError, _ := kapierrors.NewForbidden(unversioned.GroupResource{Group: group, Resource: resource}, name, errors.New("") /*discarded*/).(*kapierrors.StatusError)
 	forbiddenError.ErrStatus.Message = reason
 
 	formatted := &bytes.Buffer{}
@@ -161,6 +171,106 @@ func namespacingFilter(handler http.Handler, contextMapper kapi.RequestContextMa
 
 				ctx = kapi.WithNamespace(ctx, namespace)
 				contextMapper.Update(req, ctx)
+			}
+		}
+
+		handler.ServeHTTP(w, req)
+	})
+}
+
+type userAgentFilter struct {
+	regex   *regexp.Regexp
+	message string
+	verbs   sets.String
+}
+
+func newUserAgentFilter(config configapi.UserAgentMatchRule) (userAgentFilter, error) {
+	regex, err := regexp.Compile(config.Regex)
+	if err != nil {
+		return userAgentFilter{}, err
+	}
+	userAgentFilter := userAgentFilter{regex: regex, verbs: sets.NewString(config.HTTPVerbs...)}
+
+	return userAgentFilter, nil
+}
+
+func (f *userAgentFilter) matches(verb, userAgent string) bool {
+	if len(f.verbs) > 0 && !f.verbs.Has(verb) {
+		return false
+	}
+
+	return f.regex.MatchString(userAgent)
+}
+
+// versionSkewFilter adds a filter that may deny requests from skewed
+// oc clients, since we know that those clients will strip unknown fields which can lead to unexpected outcomes
+func (c *MasterConfig) versionSkewFilter(handler http.Handler) http.Handler {
+	infoResolver := &apiserver.RequestInfoResolver{APIPrefixes: sets.NewString("api", "osapi", "oapi", "apis"), GrouplessAPIPrefixes: sets.NewString("api", "osapi", "oapi")}
+
+	filterConfig := c.Options.PolicyConfig.UserAgentMatchingConfig
+	if len(filterConfig.RequiredClients) == 0 && len(filterConfig.DeniedClients) == 0 {
+		return handler
+	}
+
+	defaultMessage := filterConfig.DefaultRejectionMessage
+	if len(defaultMessage) == 0 {
+		defaultMessage = "the cluster administrator has disabled access for this client, please upgrade or consult your administrator"
+	}
+
+	// the structure of the legacyClientPolicyConfig is pretty easy to write, but its inefficient to use at runtime
+	// pre-process the config elements to make a more efficicent structure.
+	allowedFilters := []userAgentFilter{}
+	deniedFilters := []userAgentFilter{}
+	for _, config := range filterConfig.RequiredClients {
+		userAgentFilter, err := newUserAgentFilter(config)
+		if err != nil {
+			glog.Errorf("Failure to compile User-Agent regex %v: %v", config.Regex, err)
+			continue
+		}
+
+		allowedFilters = append(allowedFilters, userAgentFilter)
+	}
+	for _, config := range filterConfig.DeniedClients {
+		userAgentFilter, err := newUserAgentFilter(config.UserAgentMatchRule)
+		if err != nil {
+			glog.Errorf("Failure to compile User-Agent regex %v: %v", config.Regex, err)
+			continue
+		}
+		userAgentFilter.message = config.RejectionMessage
+		if len(userAgentFilter.message) == 0 {
+			userAgentFilter.message = defaultMessage
+		}
+
+		deniedFilters = append(deniedFilters, userAgentFilter)
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if requestInfo, err := infoResolver.GetRequestInfo(req); err == nil && !requestInfo.IsResourceRequest {
+			handler.ServeHTTP(w, req)
+			return
+		}
+
+		userAgent := req.Header.Get("User-Agent")
+
+		if len(allowedFilters) > 0 {
+			foundMatch := false
+			for _, filter := range allowedFilters {
+				if filter.matches(req.Method, userAgent) {
+					foundMatch = true
+					break
+				}
+			}
+
+			if !foundMatch {
+				forbidden(defaultMessage, nil, w, req)
+				return
+			}
+		}
+
+		for _, filter := range deniedFilters {
+			if filter.matches(req.Method, userAgent) {
+				forbidden(filter.message, nil, w, req)
+				return
 			}
 		}
 

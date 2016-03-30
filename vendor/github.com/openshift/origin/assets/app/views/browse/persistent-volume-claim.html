@@ -20,19 +20,24 @@
               </small>
               <small class="meta">created <relative-timestamp timestamp="pvc.metadata.creationTimestamp"></relative-timestamp></small>
               <div class="pull-right dropdown">
-                <a href="" class="dropdown-toggle resource-actions-dropdown" data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
+                <button type="button" class="dropdown-toggle btn btn-default actions-dropdown-btn hidden-xs" data-toggle="dropdown">
+                  Actions
+                  <span class="caret" aria-hidden="true"></span>
+                </button>
+                <a href=""
+                   class="dropdown-toggle actions-dropdown-kebab visible-xs-inline"
+                   data-toggle="dropdown"><i class="fa fa-ellipsis-v"></i><span class="sr-only">Actions</span></a>
                 <ul class="dropdown-menu actions action-button">
-                  <li>
+                  <li ng-if="!pvc.spec.volumeName">
                     <edit-link
                       resource="pvc"
-                      kind="persistentvolumeclaims"
+                      kind="PersistentVolumeClaim"
                       alerts="alerts">
                     </edit-link>
                   </li>
                   <li>
                     <delete-link
-                      resource-type="persistentvolumeclaim"
-                      type-display-name="Persistent Volume Claim"
+                      kind="PersistentVolumeClaim"
                       resource-name="{{pvc.metadata.name}}"
                       project-name="{{pvc.metadata.namespace}}"
                       alerts="alerts">
@@ -42,7 +47,7 @@
               </div>
             </h1>
             <labels labels="pvc.metadata.labels" clickable="true" kind="storage" project-name="{{pvc.metadata.namespace}}" limit="3"></labels>
-          </div><!-- /deployment -->          
+          </div><!-- /deployment -->
         </div>
       </div><!-- /middle-header-->
       <div class="middle-content">

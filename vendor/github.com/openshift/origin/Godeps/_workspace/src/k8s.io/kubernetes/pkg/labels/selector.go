@@ -20,8 +20,10 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/validation"
 )
@@ -70,6 +72,8 @@ const (
 	NotEqualsOperator    Operator = "!="
 	NotInOperator        Operator = "notin"
 	ExistsOperator       Operator = "exists"
+	GreaterThanOperator  Operator = "gt"
+	LessThanOperator     Operator = "lt"
 )
 
 func NewSelector() Selector {
@@ -104,7 +108,8 @@ type Requirement struct {
 // (2) If the operator is In or NotIn, the values set must be non-empty.
 // (3) If the operator is Equals, DoubleEquals, or NotEquals, the values set must contain one value.
 // (4) If the operator is Exists or DoesNotExist, the value set must be empty.
-// (5) The key is invalid due to its length, or sequence
+// (5) If the operator is Gt or Lt, the values set must contain only one value.
+// (6) The key is invalid due to its length, or sequence
 //     of characters. See validateLabelKey for more details.
 //
 // The empty string is a valid value in the input values set.
@@ -124,6 +129,15 @@ func NewRequirement(key string, op Operator, vals sets.String) (*Requirement, er
 	case ExistsOperator, DoesNotExistOperator:
 		if len(vals) != 0 {
 			return nil, fmt.Errorf("values set must be empty for exists and does not exist")
+		}
+	case GreaterThanOperator, LessThanOperator:
+		if len(vals) != 1 {
+			return nil, fmt.Errorf("for 'Gt', 'Lt' operators, exactly one value is required")
+		}
+		for val := range vals {
+			if _, err := strconv.ParseFloat(val, 64); err != nil {
+				return nil, fmt.Errorf("for 'Gt', 'Lt' operators, the value must be a number")
+			}
 		}
 	default:
 		return nil, fmt.Errorf("operator '%v' is not recognized", op)
@@ -162,6 +176,31 @@ func (r *Requirement) Matches(ls Labels) bool {
 		return ls.Has(r.key)
 	case DoesNotExistOperator:
 		return !ls.Has(r.key)
+	case GreaterThanOperator, LessThanOperator:
+		if !ls.Has(r.key) {
+			return false
+		}
+		lsValue, err := strconv.ParseFloat(ls.Get(r.key), 64)
+		if err != nil {
+			glog.V(10).Infof("Parse float failed for value %+v in label %+v, %+v", ls.Get(r.key), ls, err)
+			return false
+		}
+
+		// There should be only one strValue in r.strValues, and can be converted to a float number.
+		if len(r.strValues) != 1 {
+			glog.V(10).Infof("Invalid values count %+v of requirement %+v, for 'Gt', 'Lt' operators, exactly one value is required", len(r.strValues), r)
+			return false
+		}
+
+		var rValue float64
+		for strValue := range r.strValues {
+			rValue, err = strconv.ParseFloat(strValue, 64)
+			if err != nil {
+				glog.V(10).Infof("Parse float failed for value %+v in requirement %+v, for 'Gt', 'Lt' operators, the value must be a number", strValue, r)
+				return false
+			}
+		}
+		return (r.operator == GreaterThanOperator && lsValue > rValue) || (r.operator == LessThanOperator && lsValue < rValue)
 	default:
 		return false
 	}
@@ -210,6 +249,10 @@ func (r *Requirement) String() string {
 		buffer.WriteString(" in ")
 	case NotInOperator:
 		buffer.WriteString(" notin ")
+	case GreaterThanOperator:
+		buffer.WriteString(">")
+	case LessThanOperator:
+		buffer.WriteString("<")
 	case ExistsOperator, DoesNotExistOperator:
 		return buffer.String()
 	}
@@ -277,8 +320,10 @@ const (
 	DoesNotExistToken
 	DoubleEqualsToken
 	EqualsToken
+	GreaterThanToken
 	IdentifierToken // to represent keys and values
 	InToken
+	LessThanToken
 	NotEqualsToken
 	NotInToken
 	OpenParToken
@@ -292,7 +337,9 @@ var string2token = map[string]Token{
 	"!":     DoesNotExistToken,
 	"==":    DoubleEqualsToken,
 	"=":     EqualsToken,
+	">":     GreaterThanToken,
 	"in":    InToken,
+	"<":     LessThanToken,
 	"!=":    NotEqualsToken,
 	"notin": NotInToken,
 	"(":     OpenParToken,
@@ -312,7 +359,7 @@ func isWhitespace(ch byte) bool {
 // isSpecialSymbol detect if the character ch can be an operator
 func isSpecialSymbol(ch byte) bool {
 	switch ch {
-	case '=', '!', '(', ')', ',':
+	case '=', '!', '(', ')', ',', '>', '<':
 		return true
 	}
 	return false
@@ -526,7 +573,7 @@ func (p *Parser) parseRequirement() (*Requirement, error) {
 	switch operator {
 	case InOperator, NotInOperator:
 		values, err = p.parseValues()
-	case EqualsOperator, DoubleEqualsOperator, NotEqualsOperator:
+	case EqualsOperator, DoubleEqualsOperator, NotEqualsOperator, GreaterThanOperator, LessThanOperator:
 		values, err = p.parseExactValue()
 	}
 	if err != nil {
@@ -573,6 +620,10 @@ func (p *Parser) parseOperator() (op Operator, err error) {
 		op = EqualsOperator
 	case DoubleEqualsToken:
 		op = DoubleEqualsOperator
+	case GreaterThanToken:
+		op = GreaterThanOperator
+	case LessThanToken:
+		op = LessThanOperator
 	case NotInToken:
 		op = NotInOperator
 	case NotEqualsToken:
@@ -692,13 +743,25 @@ func (p *Parser) parseExactValue() (sets.String, error) {
 //  (5) A requirement with just !KEY requires that the KEY not exist.
 //
 func Parse(selector string) (Selector, error) {
-	p := &Parser{l: &Lexer{s: selector, pos: 0}}
-	items, error := p.parse()
-	if error == nil {
-		sort.Sort(ByKey(items)) // sort to grant determistic parsing
-		return internalSelector(items), error
+	parsedSelector, err := parse(selector)
+	if err == nil {
+		return parsedSelector, nil
 	}
-	return nil, error
+	return nil, err
+}
+
+// parse parses the string representation of the selector and returns the internalSelector struct.
+// The callers of this method can then decide how to return the internalSelector struct to their
+// callers. This function has two callers now, one returns a Selector interface and the other
+// returns a list of requirements.
+func parse(selector string) (internalSelector, error) {
+	p := &Parser{l: &Lexer{s: selector, pos: 0}}
+	items, err := p.parse()
+	if err != nil {
+		return nil, err
+	}
+	sort.Sort(ByKey(items)) // sort to grant determistic parsing
+	return internalSelector(items), err
 }
 
 var qualifiedNameErrorMsg string = fmt.Sprintf(`must be a qualified name (at most %d characters, matching regex %s), with an optional DNS subdomain prefix (at most %d characters, matching regex %s) and slash (/): e.g. "MyName" or "example.com/MyName"`, validation.QualifiedNameMaxLength, validation.QualifiedNameFmt, validation.DNS1123SubdomainMaxLength, validation.DNS1123SubdomainFmt)
@@ -736,4 +799,13 @@ func SelectorFromSet(ls Set) Selector {
 	// sort to have deterministic string representation
 	sort.Sort(ByKey(requirements))
 	return internalSelector(requirements)
+}
+
+// ParseToRequirements takes a string representing a selector and returns a list of
+// requirements. This function is suitable for those callers that perform additional
+// processing on selector requirements.
+// See the documentation for Parse() function for more details.
+// TODO: Consider exporting the internalSelector type instead.
+func ParseToRequirements(selector string) ([]Requirement, error) {
+	return parse(selector)
 }

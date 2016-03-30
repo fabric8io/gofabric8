@@ -15,6 +15,7 @@ source "${OS_ROOT}/hack/lib/log.sh"
 source "${OS_ROOT}/hack/lib/util/environment.sh"
 source "${OS_ROOT}/hack/cmd_util.sh"
 os::log::install_errexit
+os::util::environment::setup_time_vars
 
 function cleanup()
 {
@@ -22,6 +23,14 @@ function cleanup()
     pkill -P $$
     set +e
     kill_all_processes
+
+    echo "[INFO] Dumping etcd contents to ${ARTIFACT_DIR}/etcd_dump.json"
+    set_curl_args 0 1
+    curl -s ${clientcert_args} -L "${API_SCHEME}://${API_HOST}:${ETCD_PORT}/v2/keys/?recursive=true" > "${ARTIFACT_DIR}/etcd_dump.json"
+    echo
+
+    # we keep a JSON dump of etcd data so we do not need to keep the binary store
+    rm -rf "${ETCD_DATA_DIR}"
 
     if [ $out -ne 0 ]; then
         echo "[FAIL] !!!!! Test Failed !!!!"
@@ -77,8 +86,7 @@ os::log::start_system_logger
 unset KUBECONFIG
 
 # test wrapper functions
-${OS_ROOT}/hack/test-cmd_util.sh > ${LOG_DIR}/wrappers_test.log 2>&1
-
+${OS_ROOT}/hack/test-util.sh > ${LOG_DIR}/wrappers_test.log 2>&1
 
 # handle profiling defaults
 profile="${OPENSHIFT_PROFILE-}"
@@ -221,7 +229,7 @@ os::cmd::expect_failure_and_text "oc login ${KUBERNETES_MASTER} -u test-user --t
 os::cmd::expect_failure_and_text "oc login https://server1 https://server2.com" 'Only the server URL may be specified'
 # logs in with a valid certificate authority
 os::cmd::expect_success "oc login ${KUBERNETES_MASTER} --certificate-authority='${MASTER_CONFIG_DIR}/ca.crt' -u test-user -p anything --api-version=v1"
-os::cmd::expect_success_and_text "cat ${HOME}/.kube/config" "v1" 
+os::cmd::expect_success_and_text "cat ${HOME}/.kube/config" "v1"
 os::cmd::expect_success 'oc logout'
 # logs in skipping certificate check
 os::cmd::expect_success "oc login ${KUBERNETES_MASTER} --insecure-skip-tls-verify -u test-user -p anything"
@@ -273,6 +281,7 @@ mv ${HOME}/.kube/config ${HOME}/.kube/non-default-config
 echo "config files: ok"
 
 # from this point every command will use config from the KUBECONFIG env var
+export NODECONFIG="${NODE_CONFIG_DIR}/node-config.yaml"
 export KUBECONFIG="${HOME}/.kube/non-default-config"
 export CLUSTER_ADMIN_CONTEXT=$(oc config view --flatten -o template --template='{{index . "current-context"}}')
 

@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -35,19 +36,23 @@ import (
 	"k8s.io/kubernetes/pkg/admission"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	apiutil "k8s.io/kubernetes/pkg/api/util"
 	"k8s.io/kubernetes/pkg/apimachinery/registered"
+	"k8s.io/kubernetes/pkg/apis/autoscaling"
+	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/apiserver"
 	"k8s.io/kubernetes/pkg/apiserver/authenticator"
 	"k8s.io/kubernetes/pkg/capabilities"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	serviceaccountcontroller "k8s.io/kubernetes/pkg/controller/serviceaccount"
 	"k8s.io/kubernetes/pkg/genericapiserver"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 	"k8s.io/kubernetes/pkg/master"
+	"k8s.io/kubernetes/pkg/registry/cachesize"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/runtime/serializer/versioning"
 	"k8s.io/kubernetes/pkg/serviceaccount"
 	"k8s.io/kubernetes/pkg/storage"
 	etcdstorage "k8s.io/kubernetes/pkg/storage/etcd"
@@ -82,45 +87,46 @@ func verifyClusterIPFlags(s *options.APIServer) {
 	}
 }
 
-type newEtcdFunc func([]string, runtime.NegotiatedSerializer, string, string) (storage.Interface, error)
+// For testing.
+type newEtcdFunc func(runtime.NegotiatedSerializer, string, string, etcdstorage.EtcdConfig) (storage.Interface, error)
 
-func newEtcd(etcdServerList []string, ns runtime.NegotiatedSerializer, storageGroupVersionString, pathPrefix string) (etcdStorage storage.Interface, err error) {
+func newEtcd(ns runtime.NegotiatedSerializer, storageGroupVersionString, memoryGroupVersionString string, etcdConfig etcdstorage.EtcdConfig) (etcdStorage storage.Interface, err error) {
 	if storageGroupVersionString == "" {
 		return etcdStorage, fmt.Errorf("storageVersion is required to create a etcd storage")
 	}
 	storageVersion, err := unversioned.ParseGroupVersion(storageGroupVersionString)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("couldn't understand storage version %v: %v", storageGroupVersionString, err)
+	}
+	memoryVersion, err := unversioned.ParseGroupVersion(memoryGroupVersionString)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't understand memory version %v: %v", memoryGroupVersionString, err)
 	}
 
-	var storageConfig etcdstorage.EtcdConfig
-	storageConfig.ServerList = etcdServerList
-	storageConfig.Prefix = pathPrefix
+	var storageConfig etcdstorage.EtcdStorageConfig
+	storageConfig.Config = etcdConfig
 	s, ok := ns.SerializerForMediaType("application/json", nil)
 	if !ok {
 		return nil, fmt.Errorf("unable to find serializer for JSON")
 	}
-	storageConfig.Codec = runtime.NewCodec(ns.EncoderForVersion(s, storageVersion), ns.DecoderToVersion(s, unversioned.GroupVersion{Group: storageVersion.Group, Version: runtime.APIVersionInternal}))
+	glog.Infof("constructing etcd storage interface.\n  sv: %v\n  mv: %v\n", storageVersion, memoryVersion)
+	encoder := ns.EncoderForVersion(s, storageVersion)
+	decoder := ns.DecoderToVersion(s, memoryVersion)
+	if memoryVersion.Group != storageVersion.Group {
+		// Allow this codec to translate between groups.
+		if err = versioning.EnableCrossGroupEncoding(encoder, memoryVersion.Group, storageVersion.Group); err != nil {
+			return nil, fmt.Errorf("error setting up encoder for %v: %v", storageGroupVersionString, err)
+		}
+		if err = versioning.EnableCrossGroupDecoding(decoder, storageVersion.Group, memoryVersion.Group); err != nil {
+			return nil, fmt.Errorf("error setting up decoder for %v: %v", storageGroupVersionString, err)
+		}
+	}
+	storageConfig.Codec = runtime.NewCodec(encoder, decoder)
 	return storageConfig.NewStorage()
 }
 
-// convert to a map between group and groupVersions.
-func generateStorageVersionMap(legacyVersion string, storageVersions string) map[string]string {
-	storageVersionMap := map[string]string{}
-	if legacyVersion != "" {
-		storageVersionMap[""] = legacyVersion
-	}
-	if storageVersions != "" {
-		groupVersions := strings.Split(storageVersions, ",")
-		for _, gv := range groupVersions {
-			storageVersionMap[apiutil.GetGroup(gv)] = gv
-		}
-	}
-	return storageVersionMap
-}
-
 // parse the value of --etcd-servers-overrides and update given storageDestinations.
-func updateEtcdOverrides(overrides []string, storageVersions map[string]string, prefix string, storageDestinations *genericapiserver.StorageDestinations, newEtcdFn newEtcdFunc) {
+func updateEtcdOverrides(overrides []string, storageVersions map[string]string, etcdConfig etcdstorage.EtcdConfig, storageDestinations *genericapiserver.StorageDestinations, newEtcdFn newEtcdFunc) {
 	if len(overrides) == 0 {
 		return
 	}
@@ -149,7 +155,13 @@ func updateEtcdOverrides(overrides []string, storageVersions map[string]string, 
 		}
 
 		servers := strings.Split(tokens[1], ";")
-		etcdOverrideStorage, err := newEtcdFn(servers, api.Codecs, storageVersions[apigroup.GroupVersion.Group], prefix)
+		overrideEtcdConfig := etcdConfig
+		overrideEtcdConfig.ServerList = servers
+		// Note, internalGV will be wrong for things like batch or
+		// autoscalers, but they shouldn't be using the override
+		// storage.
+		internalGV := apigroup.GroupVersion.Group + "/__internal"
+		etcdOverrideStorage, err := newEtcdFn(api.Codecs, storageVersions[apigroup.GroupVersion.Group], internalGV, overrideEtcdConfig)
 		if err != nil {
 			glog.Fatalf("Invalid storage version or misconfigured etcd for %s: %v", tokens[0], err)
 		}
@@ -175,7 +187,7 @@ func Run(s *options.APIServer) error {
 	}
 	glog.Infof("Will report %v as public IP address.", s.AdvertiseAddress)
 
-	if len(s.EtcdServerList) == 0 {
+	if len(s.EtcdConfig.ServerList) == 0 {
 		glog.Fatalf("--etcd-servers must be specified")
 	}
 
@@ -210,9 +222,18 @@ func Run(s *options.APIServer) error {
 				installSSH = instances.AddSSHKeyToAllInstances
 			}
 		}
-
+		if s.KubeletConfig.Port == 0 {
+			glog.Fatalf("Must enable kubelet port if proxy ssh-tunneling is specified.")
+		}
 		// Set up the tunneler
-		tunneler = master.NewSSHTunneler(s.SSHUser, s.SSHKeyfile, installSSH)
+		// TODO(cjcullen): If we want this to handle per-kubelet ports or other
+		// kubelet listen-addresses, we need to plumb through options.
+		healthCheckPath := &url.URL{
+			Scheme: "https",
+			Host:   net.JoinHostPort("127.0.0.1", strconv.FormatUint(uint64(s.KubeletConfig.Port), 10)),
+			Path:   "healthz",
+		}
+		tunneler = master.NewSSHTunneler(s.SSHUser, s.SSHKeyfile, healthCheckPath, installSSH)
 
 		// Use the tunneler's dialer to connect to the kubelet
 		s.KubeletConfig.Dial = tunneler.Dial
@@ -233,8 +254,13 @@ func Run(s *options.APIServer) error {
 		glog.Fatalf("error in parsing runtime-config: %s", err)
 	}
 
-	clientConfig := &client.Config{
+	clientConfig := &restclient.Config{
 		Host: net.JoinHostPort(s.InsecureBindAddress.String(), strconv.Itoa(s.InsecurePort)),
+		// Increase QPS limits. The client is currently passed to all admission plugins,
+		// and those can be throttled in case of higher load on apiserver - see #22340 and #22422
+		// for more details. Once #22422 is fixed, we may want to remove it.
+		QPS:   50,
+		Burst: 100,
 	}
 	if len(s.DeprecatedStorageVersion) != 0 {
 		gv, err := unversioned.ParseGroupVersion(s.DeprecatedStorageVersion)
@@ -244,9 +270,9 @@ func Run(s *options.APIServer) error {
 		clientConfig.GroupVersion = &gv
 	}
 
-	client, err := client.New(clientConfig)
+	client, err := clientset.NewForConfig(clientConfig)
 	if err != nil {
-		glog.Fatalf("Invalid server address: %v", err)
+		glog.Errorf("Failed to create clientset: %v", err)
 	}
 
 	legacyV1Group, err := registered.Group(api.GroupName)
@@ -256,17 +282,18 @@ func Run(s *options.APIServer) error {
 
 	storageDestinations := genericapiserver.NewStorageDestinations()
 
-	storageVersions := generateStorageVersionMap(s.DeprecatedStorageVersion, s.StorageVersions)
+	storageVersions := s.StorageGroupsToGroupVersions()
 	if _, found := storageVersions[legacyV1Group.GroupVersion.Group]; !found {
 		glog.Fatalf("Couldn't find the storage version for group: %q in storageVersions: %v", legacyV1Group.GroupVersion.Group, storageVersions)
 	}
-	etcdStorage, err := newEtcd(s.EtcdServerList, api.Codecs, storageVersions[legacyV1Group.GroupVersion.Group], s.EtcdPathPrefix)
+	etcdStorage, err := newEtcd(api.Codecs, storageVersions[legacyV1Group.GroupVersion.Group], "/__internal", s.EtcdConfig)
 	if err != nil {
 		glog.Fatalf("Invalid storage version or misconfigured etcd: %v", err)
 	}
 	storageDestinations.AddAPIGroup("", etcdStorage)
 
 	if !apiGroupVersionOverrides["extensions/v1beta1"].Disable {
+		glog.Infof("Configuring extensions/v1beta1 storage destination")
 		expGroup, err := registered.Group(extensions.GroupName)
 		if err != nil {
 			glog.Fatalf("Extensions API is enabled in runtime config, but not enabled in the environment variable KUBE_API_VERSIONS. Error: %v", err)
@@ -274,14 +301,77 @@ func Run(s *options.APIServer) error {
 		if _, found := storageVersions[expGroup.GroupVersion.Group]; !found {
 			glog.Fatalf("Couldn't find the storage version for group: %q in storageVersions: %v", expGroup.GroupVersion.Group, storageVersions)
 		}
-		expEtcdStorage, err := newEtcd(s.EtcdServerList, api.Codecs, storageVersions[expGroup.GroupVersion.Group], s.EtcdPathPrefix)
+		expEtcdStorage, err := newEtcd(api.Codecs, storageVersions[expGroup.GroupVersion.Group], "extensions/__internal", s.EtcdConfig)
 		if err != nil {
 			glog.Fatalf("Invalid extensions storage version or misconfigured etcd: %v", err)
 		}
 		storageDestinations.AddAPIGroup(extensions.GroupName, expEtcdStorage)
+
+		// Since HPA has been moved to the autoscaling group, we need to make
+		// sure autoscaling has a storage destination. If the autoscaling group
+		// itself is on, it will overwrite this decision below.
+		storageDestinations.AddAPIGroup(autoscaling.GroupName, expEtcdStorage)
+
+		// Since Job has been moved to the batch group, we need to make
+		// sure batch has a storage destination. If the batch group
+		// itself is on, it will overwrite this decision below.
+		storageDestinations.AddAPIGroup(batch.GroupName, expEtcdStorage)
 	}
 
-	updateEtcdOverrides(s.EtcdServersOverrides, storageVersions, s.EtcdPathPrefix, &storageDestinations, newEtcd)
+	// autoscaling/v1/horizontalpodautoscalers is a move from extensions/v1beta1/horizontalpodautoscalers.
+	// The storage version needs to be either extensions/v1beta1 or autoscaling/v1.
+	// Users must roll forward while using 1.2, because we will require the latter for 1.3.
+	if !apiGroupVersionOverrides["autoscaling/v1"].Disable {
+		glog.Infof("Configuring autoscaling/v1 storage destination")
+		autoscalingGroup, err := registered.Group(autoscaling.GroupName)
+		if err != nil {
+			glog.Fatalf("Autoscaling API is enabled in runtime config, but not enabled in the environment variable KUBE_API_VERSIONS. Error: %v", err)
+		}
+		// Figure out what storage group/version we should use.
+		storageGroupVersion, found := storageVersions[autoscalingGroup.GroupVersion.Group]
+		if !found {
+			glog.Fatalf("Couldn't find the storage version for group: %q in storageVersions: %v", autoscalingGroup.GroupVersion.Group, storageVersions)
+		}
+
+		if storageGroupVersion != "autoscaling/v1" && storageGroupVersion != "extensions/v1beta1" {
+			glog.Fatalf("The storage version for autoscaling must be either 'autoscaling/v1' or 'extensions/v1beta1'")
+		}
+		glog.Infof("Using %v for autoscaling group storage version", storageGroupVersion)
+		autoscalingEtcdStorage, err := newEtcd(api.Codecs, storageGroupVersion, "extensions/__internal", s.EtcdConfig)
+		if err != nil {
+			glog.Fatalf("Invalid extensions storage version or misconfigured etcd: %v", err)
+		}
+		storageDestinations.AddAPIGroup(autoscaling.GroupName, autoscalingEtcdStorage)
+	}
+
+	// batch/v1/job is a move from extensions/v1beta1/job. The storage
+	// version needs to be either extensions/v1beta1 or batch/v1. Users
+	// must roll forward while using 1.2, because we will require the
+	// latter for 1.3.
+	if !apiGroupVersionOverrides["batch/v1"].Disable {
+		glog.Infof("Configuring batch/v1 storage destination")
+		batchGroup, err := registered.Group(batch.GroupName)
+		if err != nil {
+			glog.Fatalf("Batch API is enabled in runtime config, but not enabled in the environment variable KUBE_API_VERSIONS. Error: %v", err)
+		}
+		// Figure out what storage group/version we should use.
+		storageGroupVersion, found := storageVersions[batchGroup.GroupVersion.Group]
+		if !found {
+			glog.Fatalf("Couldn't find the storage version for group: %q in storageVersions: %v", batchGroup.GroupVersion.Group, storageVersions)
+		}
+
+		if storageGroupVersion != "batch/v1" && storageGroupVersion != "extensions/v1beta1" {
+			glog.Fatalf("The storage version for batch must be either 'batch/v1' or 'extensions/v1beta1'")
+		}
+		glog.Infof("Using %v for batch group storage version", storageGroupVersion)
+		batchEtcdStorage, err := newEtcd(api.Codecs, storageGroupVersion, "extensions/__internal", s.EtcdConfig)
+		if err != nil {
+			glog.Fatalf("Invalid extensions storage version or misconfigured etcd: %v", err)
+		}
+		storageDestinations.AddAPIGroup(batch.GroupName, batchEtcdStorage)
+	}
+
+	updateEtcdOverrides(s.EtcdServersOverrides, storageVersions, s.EtcdConfig, &storageDestinations, newEtcd)
 
 	n := s.ServiceClusterIPRange
 
@@ -309,6 +399,7 @@ func Run(s *options.APIServer) error {
 		OIDCClientID:              s.OIDCClientID,
 		OIDCCAFile:                s.OIDCCAFile,
 		OIDCUsernameClaim:         s.OIDCUsernameClaim,
+		OIDCGroupsClaim:           s.OIDCGroupsClaim,
 		ServiceAccountKeyFile:     s.ServiceAccountKeyFile,
 		ServiceAccountLookup:      s.ServiceAccountLookup,
 		ServiceAccountTokenGetter: serviceAccountGetter,
@@ -320,7 +411,7 @@ func Run(s *options.APIServer) error {
 	}
 
 	authorizationModeNames := strings.Split(s.AuthorizationMode, ",")
-	authorizer, err := apiserver.NewAuthorizerFromAuthorizationConfig(authorizationModeNames, s.AuthorizationPolicyFile)
+	authorizer, err := apiserver.NewAuthorizerFromAuthorizationConfig(authorizationModeNames, s.AuthorizationConfig)
 	if err != nil {
 		glog.Fatalf("Invalid Authorization Config: %v", err)
 	}
@@ -383,13 +474,23 @@ func Run(s *options.APIServer) error {
 			KubernetesServiceNodePort: s.KubernetesServiceNodePort,
 			Serializer:                api.Codecs,
 		},
-		EnableCoreControllers: true,
-		EventTTL:              s.EventTTL,
-		KubeletClient:         kubeletClient,
+		EnableCoreControllers:   true,
+		DeleteCollectionWorkers: s.DeleteCollectionWorkers,
+		EventTTL:                s.EventTTL,
+		KubeletClient:           kubeletClient,
 
 		Tunneler: tunneler,
 	}
-	m := master.New(config)
+
+	if s.EnableWatchCache {
+		cachesize.SetWatchCacheSizes(s.WatchCacheSizes)
+	}
+
+	m, err := master.New(config)
+	if err != nil {
+		return err
+	}
+
 	m.Run(s.ServerRunOptions)
 	return nil
 }
@@ -446,6 +547,23 @@ func parseRuntimeConfig(s *options.APIServer) (map[string]genericapiserver.APIGr
 	disableExtensions = !getRuntimeConfigValue(s, extensionsGroupVersion, !disableExtensions)
 	if disableExtensions {
 		apiGroupVersionOverrides[extensionsGroupVersion] = genericapiserver.APIGroupVersionOverride{
+			Disable: true,
+		}
+	}
+
+	disableAutoscaling := disableAllAPIs
+	autoscalingGroupVersion := "autoscaling/v1"
+	disableAutoscaling = !getRuntimeConfigValue(s, autoscalingGroupVersion, !disableAutoscaling)
+	if disableAutoscaling {
+		apiGroupVersionOverrides[autoscalingGroupVersion] = genericapiserver.APIGroupVersionOverride{
+			Disable: true,
+		}
+	}
+	disableBatch := disableAllAPIs
+	batchGroupVersion := "batch/v1"
+	disableBatch = !getRuntimeConfigValue(s, batchGroupVersion, !disableBatch)
+	if disableBatch {
+		apiGroupVersionOverrides[batchGroupVersion] = genericapiserver.APIGroupVersionOverride{
 			Disable: true,
 		}
 	}

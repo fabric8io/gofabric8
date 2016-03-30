@@ -22,8 +22,8 @@ import (
 	"github.com/openshift/origin/pkg/image/registry/imagestreamimage"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/util"
 	kerrors "k8s.io/kubernetes/pkg/util/errors"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -294,7 +294,7 @@ func addImagesToGraph(g graph.Graph, images *imageapi.ImageList, algorithm prune
 
 		manifest := imageapi.DockerImageManifest{}
 		if err := json.Unmarshal([]byte(image.DockerImageManifest), &manifest); err != nil {
-			util.HandleError(fmt.Errorf("unable to extract manifest from image: %v. This image's layers won't be pruned if the image is pruned now.", err))
+			utilruntime.HandleError(fmt.Errorf("unable to extract manifest from image: %v. This image's layers won't be pruned if the image is pruned now.", err))
 			continue
 		}
 
@@ -416,7 +416,7 @@ func addPodSpecToGraph(g graph.Graph, spec *kapi.PodSpec, predecessor gonum.Node
 
 		ref, err := imageapi.ParseDockerImageReference(container.Image)
 		if err != nil {
-			util.HandleError(fmt.Errorf("unable to parse DockerImageReference %q: %v", container.Image, err))
+			utilruntime.HandleError(fmt.Errorf("unable to parse DockerImageReference %q: %v", container.Image, err))
 			continue
 		}
 
@@ -495,7 +495,7 @@ func addBuildsToGraph(g graph.Graph, builds *buildapi.BuildList) {
 // to the image specified by strategy.from, as long as the image is managed by
 // OpenShift.
 func addBuildStrategyImageReferencesToGraph(g graph.Graph, strategy buildapi.BuildStrategy, predecessor gonum.Node) {
-	from := buildutil.GetImageStreamForStrategy(strategy)
+	from := buildutil.GetInputReference(strategy)
 	if from == nil {
 		glog.V(4).Infof("Unable to determine 'from' reference - skipping")
 		return
@@ -600,11 +600,11 @@ func subgraphWithoutPrunableImages(g graph.Graph, prunableImageIDs graph.NodeSet
 		func(g graph.Interface, node gonum.Node) bool {
 			return !prunableImageIDs.Has(node.ID())
 		},
-		func(g graph.Interface, head, tail gonum.Node, edgeKinds sets.String) bool {
-			if prunableImageIDs.Has(head.ID()) {
+		func(g graph.Interface, from, to gonum.Node, edgeKinds sets.String) bool {
+			if prunableImageIDs.Has(from.ID()) {
 				return false
 			}
-			if prunableImageIDs.Has(tail.ID()) {
+			if prunableImageIDs.Has(to.ID()) {
 				return false
 			}
 			return true
@@ -916,6 +916,11 @@ func deleteFromRegistry(registryClient *http.Client, url string) error {
 		}
 		defer resp.Body.Close()
 
+		// non-2xx/3xx response doesn't cause an error, so we need to check for it
+		// manually and return it to caller
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
+			return fmt.Errorf(resp.Status)
+		}
 		if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusAccepted {
 			glog.V(1).Infof("Unexpected status code in response: %d", resp.StatusCode)
 			decoder := json.NewDecoder(resp.Body)

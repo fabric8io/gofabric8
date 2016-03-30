@@ -18,7 +18,7 @@ package testclient
 
 import (
 	"k8s.io/kubernetes/pkg/api"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/watch"
 )
 
@@ -65,6 +65,15 @@ func (c *FakeServices) Update(service *api.Service) (*api.Service, error) {
 	return obj.(*api.Service), err
 }
 
+func (c *FakeServices) UpdateStatus(service *api.Service) (result *api.Service, err error) {
+	obj, err := c.Fake.Invokes(NewUpdateSubresourceAction("services", "status", c.Namespace, service), service)
+	if obj == nil {
+		return nil, err
+	}
+
+	return obj.(*api.Service), err
+}
+
 func (c *FakeServices) Delete(name string) error {
 	_, err := c.Fake.Invokes(NewDeleteAction("services", c.Namespace, name), &api.Service{})
 	return err
@@ -74,6 +83,6 @@ func (c *FakeServices) Watch(opts api.ListOptions) (watch.Interface, error) {
 	return c.Fake.InvokesWatch(NewWatchAction("services", c.Namespace, opts))
 }
 
-func (c *FakeServices) ProxyGet(scheme, name, port, path string, params map[string]string) client.ResponseWrapper {
+func (c *FakeServices) ProxyGet(scheme, name, port, path string, params map[string]string) restclient.ResponseWrapper {
 	return c.Fake.InvokesProxy(NewProxyGetAction("services", c.Namespace, scheme, name, port, path, params))
 }

@@ -1,7 +1,7 @@
 'use strict';
 
 angular.module("openshiftConsole")
-  .factory("RoutesService", function() {
+  .factory("RoutesService", function($filter) {
     var isPortNamed = function(port) {
       return angular.isString(port);
     };
@@ -62,6 +62,58 @@ angular.module("openshiftConsole")
       }
     };
 
+    var addIngressWarnings = function(route, warnings) {
+      angular.forEach(route.status.ingress, function(ingress) {
+        var condition = _.find(ingress.conditions, { type: "Admitted", status: "False" });
+        if (condition) {
+          var message = 'Requested host ' + ingress.host + ' was rejected by the router.';
+          if (condition.message || condition.reason) {
+            message += " Reason: " + (condition.message || condition.reason) + '.';
+          }
+          warnings.push(message);
+        }
+      });
+    };
+
+    var isAdmitted = function(route) {
+      // Consider the route admitted if any ingress has any condition matching
+      // { type: 'Admitted', status: 'True' }
+      return _.some(route.status.ingress, function(ingress) {
+        return _.some(ingress.conditions, {
+          type: 'Admitted',
+          status: 'True'
+        });
+      });
+    };
+
+    var isCustomHost = function(route) {
+      return $filter('annotation')(route, "openshift.io/host.generated") !== "true";
+    };
+
+    // Gets a score for the route to decide which to show on the overview.
+    var scoreRoute = function(route) {
+      var score = 0;
+      if (isAdmitted(route)) {
+        score += 5;
+      }
+
+      if (isCustomHost(route)) {
+        score += 3;
+      }
+
+      if (route.spec.tls) {
+        score += 1;
+      }
+
+      return score;
+    };
+
+    // Gets the preferred route to display between two routes
+    var getPreferredDisplayRoute = function(lhs, rhs) {
+      var leftScore = scoreRoute(lhs), rightScore = scoreRoute(rhs);
+      return (rightScore > leftScore) ? rhs : lhs;
+    };
+
     return {
       // Gets warnings about a route.
       //
@@ -74,14 +126,21 @@ angular.module("openshiftConsole")
       getRouteWarnings: function(route, service) {
         var warnings = [];
 
+        if (!route) {
+          return warnings;
+        }
+
         if (route.spec.to.kind === 'Service') {
           addRouteTargetWarnings(route, service, warnings);
         }
         addTLSWarnings(route, warnings);
 
+        addIngressWarnings(route, warnings);
+
         return warnings;
       },
 
-      getServicePortForRoute: getServicePortForRoute
+      getServicePortForRoute: getServicePortForRoute,
+      getPreferredDisplayRoute: getPreferredDisplayRoute
     };
   });

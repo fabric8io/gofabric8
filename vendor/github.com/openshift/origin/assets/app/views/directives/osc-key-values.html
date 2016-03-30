@@ -20,7 +20,8 @@
               autocapitalize="off"
               spellcheck="false"
               osc-input-validator="key"
-              osc-unique="entries">
+              osc-unique="entries"
+              on-enter="addEntry()">
           </div>
 
           <div
@@ -37,14 +38,20 @@
               autocorrect="off"
               autocapitalize="off"
               spellcheck="false"
-              osc-input-validator="value">
+              osc-input-validator="value"
+              on-enter="addEntry()">
           </div>
-          <button
-            class="btn btn-default"
+          <!-- We need to replace button tag with a link tag cause we are embedding this directive into different forms (BC edit
+          form, from image form) and in order to be able to submit the top level form with hitting Enter key we needed to replace buttons with links.
+          Based on: https://docs.angularjs.org/api/ng/directive/form#submitting-a-form-and-preventing-the-default-action -->
+          <a class="btn btn-default"
+            href=""
+            role="button"
             ng-click="addEntry()"
-            ng-disabled="form.$invalid || !key || !value">Add</button>
+            ng-disabled="form.$invalid || !key || !value">
+            Add
+          </a>
         </div>
-
 
         <div row class="has-error" ng-show="form.key.$error.oscUnique">
           <span class="help-block">
@@ -56,8 +63,7 @@
         <div row class="has-error" ng-show="form.key.$error.oscKeyValid">
           <span class="help-block">Please enter a valid {{setErrorText(keyValidator)}}
             <span class="help action-inline" ng-if="keyValidationTooltip">
-              <a href="" data-toggle="tooltip" data-placement="bottom"
-                data-original-title="{{keyValidationTooltip}}">
+              <a href="" data-toggle="tooltip" data-original-title="{{keyValidationTooltip}}">
                 <i class="pficon pficon-help"></i>
               </a>
             </span>
@@ -69,8 +75,7 @@
         <div row class="has-error" ng-show="form.value.$error.oscValueValid">
           <span class="help-block">Please enter a valid value
             <span class="help action-inline" ng-if="keyValidationTooltip">
-              <a href="" data-toggle="tooltip" data-placement="bottom"
-                data-original-title="{{valueValidationTooltip}}">
+              <a href="" data-toggle="tooltip" data-original-title="{{valueValidationTooltip}}">
                 <i class="pficon pficon-help"></i>
               </a>
             </span>
@@ -149,7 +154,7 @@
               <input
                 class="form-control"
                 type="text"
-                ng-value="{{value}}"
+                ng-value="value"
                 ng-model="value"
                 autocorrect="off"
                 autocapitalize="off"
