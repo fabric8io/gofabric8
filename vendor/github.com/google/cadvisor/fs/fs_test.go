@@ -20,7 +20,6 @@ import (
 	"os"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -99,7 +98,7 @@ func TestDirUsage(t *testing.T) {
 	fi, err := f.Stat()
 	as.NoError(err)
 	expectedSize := uint64(fi.Size())
-	size, err := fsInfo.GetDirUsage(dir, time.Minute)
+	size, err := fsInfo.GetDirUsage(dir)
 	as.NoError(err)
 	as.True(expectedSize <= size, "expected dir size to be at-least %d; got size: %d", expectedSize, size)
 }

@@ -21,7 +21,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -30,7 +29,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/docker/docker/pkg/mount"
 	"github.com/golang/glog"
@@ -116,7 +114,7 @@ func NewFsInfo(context Context) (FsInfo, error) {
 // return any information or error, as we want to report based on the actual partition where the
 // loopback file resides, inside of the loopback file itself.
 func (self *RealFsInfo) getDockerDeviceMapperInfo(dockerInfo map[string]string) (string, *partition, error) {
-	if storageDriver, ok := dockerInfo["Driver"]; ok && storageDriver != DeviceMapper.String() {
+	if storageDriver, ok := dockerInfo["Driver"]; ok && storageDriver != "devicemapper" {
 		return "", nil, nil
 	}
 
@@ -136,7 +134,7 @@ func (self *RealFsInfo) getDockerDeviceMapperInfo(dockerInfo map[string]string) 
 	}
 
 	return dev, &partition{
-		fsType:    DeviceMapper.String(),
+		fsType:    "devicemapper",
 		major:     major,
 		minor:     minor,
 		blockSize: blockSize,
@@ -246,30 +244,27 @@ func (self *RealFsInfo) GetFsInfoForPath(mountSet map[string]struct{}) ([]Fs, er
 		_, hasDevice := deviceSet[device]
 		if mountSet == nil || (hasMount && !hasDevice) {
 			var (
-				err error
-				fs  Fs
+				total, free, avail uint64
+				err                error
 			)
 			switch partition.fsType {
-			case DeviceMapper.String():
-				fs.Capacity, fs.Free, fs.Available, err = getDMStats(device, partition.blockSize)
-				fs.Type = DeviceMapper
-			case ZFS.String():
-				fs.Capacity, fs.Free, fs.Available, err = getZfstats(device)
-				fs.Type = ZFS
+			case "devicemapper":
+				total, free, avail, err = getDMStats(device, partition.blockSize)
+			case "zfs":
+				total, free, avail, err = getZfstats(device)
 			default:
-				fs.Capacity, fs.Free, fs.Available, fs.Inodes, fs.InodesFree, err = getVfsStats(partition.mountpoint)
-				fs.Type = VFS
+				total, free, avail, err = getVfsStats(partition.mountpoint)
 			}
 			if err != nil {
 				glog.Errorf("Stat fs failed. Error: %v", err)
 			} else {
 				deviceSet[device] = struct{}{}
-				fs.DeviceInfo = DeviceInfo{
+				deviceInfo := DeviceInfo{
 					Device: device,
 					Major:  uint(partition.major),
 					Minor:  uint(partition.minor),
 				}
-				fs.DiskStats = diskStatsMap[device]
+				fs := Fs{deviceInfo, total, free, avail, diskStatsMap[device]}
 				filesystems = append(filesystems, fs)
 			}
 		}
@@ -360,56 +355,27 @@ func (self *RealFsInfo) GetDirFsDevice(dir string) (*DeviceInfo, error) {
 	return nil, fmt.Errorf("could not find device with major: %d, minor: %d in cached partitions map", major, minor)
 }
 
-func (self *RealFsInfo) GetDirUsage(dir string, timeout time.Duration) (uint64, error) {
-	if dir == "" {
-		return 0, fmt.Errorf("invalid directory")
-	}
-	cmd := exec.Command("nice", "-n", "19", "du", "-s", dir)
-	stdoutp, err := cmd.StdoutPipe()
+func (self *RealFsInfo) GetDirUsage(dir string) (uint64, error) {
+	out, err := exec.Command("nice", "-n", "19", "du", "-s", dir).CombinedOutput()
 	if err != nil {
-		return 0, fmt.Errorf("failed to setup stdout for cmd %v - %v", cmd.Args, err)
+		return 0, fmt.Errorf("du command failed on %s with output %s - %s", dir, out, err)
 	}
-	stderrp, err := cmd.StderrPipe()
+	usageInKb, err := strconv.ParseUint(strings.Fields(string(out))[0], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to setup stderr for cmd %v - %v", cmd.Args, err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("failed to exec du - %v", err)
-	}
-	stdoutb, souterr := ioutil.ReadAll(stdoutp)
-	stderrb, _ := ioutil.ReadAll(stderrp)
-	timer := time.AfterFunc(timeout, func() {
-		glog.Infof("killing cmd %v due to timeout(%s)", cmd.Args, timeout.String())
-		cmd.Process.Kill()
-	})
-	err = cmd.Wait()
-	timer.Stop()
-	if err != nil {
-		return 0, fmt.Errorf("du command failed on %s with output stdout: %s, stderr: %s - %v", dir, string(stdoutb), string(stderrb), err)
-	}
-	stdout := string(stdoutb)
-	if souterr != nil {
-		glog.Errorf("failed to read from stdout for cmd %v - %v", cmd.Args, souterr)
-	}
-	usageInKb, err := strconv.ParseUint(strings.Fields(stdout)[0], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("cannot parse 'du' output %s - %s", stdout, err)
+		return 0, fmt.Errorf("cannot parse 'du' output %s - %s", out, err)
 	}
 	return usageInKb * 1024, nil
 }
 
-func getVfsStats(path string) (total uint64, free uint64, avail uint64, inodes uint64, inodesFree uint64, err error) {
+func getVfsStats(path string) (uint64, uint64, uint64, error) {
 	var s syscall.Statfs_t
-	if err = syscall.Statfs(path, &s); err != nil {
-		return 0, 0, 0, 0, 0, err
+	if err := syscall.Statfs(path, &s); err != nil {
+		return 0, 0, 0, err
 	}
-	total = uint64(s.Frsize) * s.Blocks
-	free = uint64(s.Frsize) * s.Bfree
-	avail = uint64(s.Frsize) * s.Bavail
-	inodes = uint64(s.Files)
-	inodesFree = uint64(s.Ffree)
-	return total, free, avail, inodes, inodesFree, nil
+	total := uint64(s.Frsize) * s.Blocks
+	free := uint64(s.Frsize) * s.Bfree
+	avail := uint64(s.Frsize) * s.Bavail
+	return total, free, avail, nil
 }
 
 func dockerStatusValue(status [][]string, target string) string {

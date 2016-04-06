@@ -30,12 +30,10 @@ func machineFsStatsFromV1(fsStats []v1.FsStats) []MachineFsStats {
 		ioDuration := time.Millisecond * time.Duration(stat.IoTime)
 		weightedDuration := time.Millisecond * time.Duration(stat.WeightedIoTime)
 		result = append(result, MachineFsStats{
-			Device:     stat.Device,
-			Type:       stat.Type,
-			Capacity:   &stat.Limit,
-			Usage:      &stat.Usage,
-			Available:  &stat.Available,
-			InodesFree: &stat.InodesFree,
+			Device:    stat.Device,
+			Capacity:  &stat.Limit,
+			Usage:     &stat.Usage,
+			Available: &stat.Available,
 			DiskStats: DiskStats{
 				ReadsCompleted:     &stat.ReadsCompleted,
 				ReadsMerged:        &stat.ReadsMerged,

@@ -44,14 +44,10 @@ type collectorInfo struct {
 
 	//regular expresssions for all metrics
 	regexps []*regexp.Regexp
-
-	// Limit for the number of srcaped metrics. If the count is higher,
-	// no metrics will be returned.
-	metricCountLimit int
 }
 
 //Returns a new collector using the information extracted from the configfile
-func NewCollector(collectorName string, configFile []byte, metricCountLimit int) (*GenericCollector, error) {
+func NewCollector(collectorName string, configFile []byte) (*GenericCollector, error) {
 	var configInJSON Config
 	err := json.Unmarshal(configFile, &configInJSON)
 	if err != nil {
@@ -87,18 +83,12 @@ func NewCollector(collectorName string, configFile []byte, metricCountLimit int)
 		minPollFrequency = minSupportedFrequency
 	}
 
-	if len(configInJSON.MetricsConfig) > metricCountLimit {
-		return nil, fmt.Errorf("Too many metrics defined: %d limit: %d", len(configInJSON.MetricsConfig), metricCountLimit)
-	}
-
 	return &GenericCollector{
 		name:       collectorName,
 		configFile: configInJSON,
 		info: &collectorInfo{
 			minPollingFrequency: minPollFrequency,
-			regexps:             regexprs,
-			metricCountLimit:    metricCountLimit,
-		},
+			regexps:             regexprs},
 	}, nil
 }
 
@@ -144,7 +134,6 @@ func (collector *GenericCollector) Collect(metrics map[string][]v1.MetricVal) (t
 	}
 
 	var errorSlice []error
-
 	for ind, metricConfig := range collector.configFile.MetricsConfig {
 		matchString := collector.info.regexps[ind].FindStringSubmatch(string(pageContent))
 		if matchString != nil {

@@ -166,12 +166,11 @@ func TestContainerStatsFromV1(t *testing.T) {
 			}},
 		},
 		Filesystem: []v1.FsStats{{
-			Device:     "dev0",
-			Limit:      500,
-			Usage:      100,
-			BaseUsage:  50,
-			Available:  300,
-			InodesFree: 100,
+			Device:    "dev0",
+			Limit:     500,
+			Usage:     100,
+			BaseUsage: 50,
+			Available: 300,
 		}},
 	}
 	expectedV2Stats := ContainerStats{
