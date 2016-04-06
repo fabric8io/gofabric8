@@ -150,6 +150,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printAddServiceAccount(c, f, "fluentd")
 					printAddServiceAccount(c, f, "gogs")
 					printAddServiceAccount(c, f, "router")
+					printAddServiceAccount(c, f, "registry")
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 						uri := fmt.Sprintf(baseConsoleUrl, consoleVersion)
@@ -374,6 +375,7 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 			"system:serviceaccount:" + ns + ":gerrit",
 			"system:serviceaccount:" + ns + ":jenkins",
 			"system:serviceaccount:" + ns + ":router",
+			"system:serviceaccount:" + ns + ":registry",
 			"system:serviceaccount:" + ns + ":gogs",
 			"system:serviceaccount:" + ns + ":fluentd",
 		},
