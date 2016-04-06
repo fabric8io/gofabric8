@@ -1,11 +1,7 @@
 # Changelog
 
-### 0.22.0 (2016-02-25)
-- Disk usage calculation bug fixes
-- Systemd integration bug fixes
-- Instance ID support for Azure and AWS
-- Limit number of custom metrics
-- Support opt out for disk and network metrics
+### 0.21.1 (2016-02-03)
+- Compatiblity with non-aufs storage drivers.
 
 ### 0.21.0 (2016-02-03)
 - Support for filesystem stats with docker v1.10

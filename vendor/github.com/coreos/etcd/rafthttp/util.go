@@ -20,9 +20,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/coreos/etcd/Godeps/_workspace/src/github.com/coreos/go-semver/semver"
 	"github.com/coreos/etcd/raft/raftpb"
 	"github.com/coreos/etcd/version"
+	"github.com/coreos/go-semver/semver"
 )
 
 func writeEntryTo(w io.Writer, ent *raftpb.Entry) error {

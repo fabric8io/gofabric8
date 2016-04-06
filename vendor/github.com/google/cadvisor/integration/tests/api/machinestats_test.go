@@ -20,7 +20,6 @@ import (
 
 	"github.com/google/cadvisor/integration/framework"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestMachineStatsIsReturned(t *testing.T) {
@@ -50,10 +49,6 @@ func TestMachineStatsIsReturned(t *testing.T) {
 			as.NotNil(fsStat.Capacity)
 			as.NotNil(fsStat.Usage)
 			as.NotNil(fsStat.ReadsCompleted)
-			require.NotEmpty(t, fsStat.Type)
-			if fsStat.Type == "vfs" {
-				as.NotEmpty(fsStat.InodesFree)
-			}
 		}
 	}
 }

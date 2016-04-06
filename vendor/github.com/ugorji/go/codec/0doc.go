@@ -186,7 +186,7 @@ package codec
 //             Name string
 //             Ys []Y
 //             Ys chan <- Y
-//             Ys func(Y) -> call this function for each entry
+//             Ys func(interface{}) -> call this interface for each entry in there.
 //        }
 //    - Consider adding a isZeroer interface { isZero() bool }
 //      It is used within isEmpty, for omitEmpty support.

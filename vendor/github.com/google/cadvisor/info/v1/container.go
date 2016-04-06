@@ -23,8 +23,6 @@ type CpuSpec struct {
 	Limit    uint64 `json:"limit"`
 	MaxLimit uint64 `json:"max_limit"`
 	Mask     string `json:"mask,omitempty"`
-	Quota    uint64 `json:"quota,omitempty"`
-	Period   uint64 `json:"period,omitempty"`
 }
 
 type MemorySpec struct {
@@ -399,9 +397,6 @@ type FsStats struct {
 	// The block device name associated with the filesystem.
 	Device string `json:"device,omitempty"`
 
-	// Type of the filesytem.
-	Type string `json:"type"`
-
 	// Number of bytes that can be consumed by the container on this filesystem.
 	Limit uint64 `json:"capacity"`
 
@@ -414,9 +409,6 @@ type FsStats struct {
 
 	// Number of bytes available for non-root user.
 	Available uint64 `json:"available"`
-
-	// Number of available Inodes
-	InodesFree uint64 `json:"inodes_free"`
 
 	// Number of reads completed
 	// This is the total number of reads completed successfully.

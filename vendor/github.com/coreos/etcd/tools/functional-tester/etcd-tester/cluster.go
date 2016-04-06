@@ -22,9 +22,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
 	etcdclient "github.com/coreos/etcd/client"
 	"github.com/coreos/etcd/tools/functional-tester/etcd-agent/client"
+	"golang.org/x/net/context"
 )
 
 const peerURLPort = 2380

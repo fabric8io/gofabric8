@@ -112,9 +112,6 @@ type MachineFsStats struct {
 	// The block device name associated with the filesystem.
 	Device string `json:"device"`
 
-	// Type of filesystem.
-	Type string `json:"type"`
-
 	// Number of bytes that can be consumed on this filesystem.
 	Capacity *uint64 `json:"capacity,omitempty"`
 
@@ -123,9 +120,6 @@ type MachineFsStats struct {
 
 	// Number of bytes available for non-root user on this filesystem.
 	Available *uint64 `json:"available,omitempty"`
-
-	// Number of inodes that are available on this filesystem.
-	InodesFree *uint64 `json:"inodes_free,omitempty"`
 
 	// DiskStats for this device.
 	DiskStats `json:"inline"`
