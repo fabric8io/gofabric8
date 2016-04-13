@@ -122,9 +122,12 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					uri := fmt.Sprintf(baseConsoleKubernetesUrl, consoleVersion)
 					filenames := []string{uri}
 
-					createCmd := cobra.Command{}
-					createCmd.Flags().StringSlice("filename", filenames, "")
-					err := kcmd.RunCreate(f, &createCmd, ioutil.Discard, nil)
+					createCmd := &cobra.Command{}
+					cmdutil.AddValidateFlags(createCmd)
+					cmdutil.AddOutputFlagsForMutation(createCmd)
+					cmdutil.AddApplyAnnotationFlags(createCmd)
+					cmdutil.AddRecordFlag(createCmd)
+					err := kcmd.RunCreate(f, createCmd, ioutil.Discard, &kcmd.CreateOptions{Filenames: filenames})
 					if err != nil {
 						printResult("fabric8 console", Failure, err)
 					} else {
