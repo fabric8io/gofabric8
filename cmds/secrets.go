@@ -39,6 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -66,37 +67,54 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 			util.Successf("%s\n\n", ns)
 
 			if confirmAction(cmd.Flags()) {
+				tapi.AddToScheme(api.Scheme)
+				tapiv1.AddToScheme(api.Scheme)
+				count := 0
+
 				typeOfMaster := util.TypeOfMaster(c)
 
-				if typeOfMaster == util.Kubernetes {
-					util.Fatal("Support for Kubernetes not yet available...\n")
+				catalogSelector := map[string]string{
+					"provider": "fabric8.io",
+					"kind":     "catalog",
+				}
+				configmaps, err := c.ConfigMaps(ns).List(api.ListOptions{
+					LabelSelector: labels.Set(catalogSelector).AsSelector(),
+				})
+				if err != nil {
+					fmt.Println("Failed to load Catalog configmaps %s", err)
 				} else {
-					oc, _ := client.NewOpenShiftClient(cfg)
-					t := getTemplates(oc, ns)
-
-					count := 0
-					// get all the Templates and find the annotations on any Pods
-					for _, i := range t.Items {
-						// convert TemplateList.Objects to Kubernetes resources
-						errs := runtime.DecodeList(i.Objects, api.Codecs.UniversalDecoder())
-						if len(errs) > 0 {
-							fmt.Println("Failed to decode templates", errs)
-							os.Exit(2)
-						}
-						for _, rc := range i.Objects {
-							switch rc := rc.(type) {
-							case *api.ReplicationController:
-								for secretType, secretDataIdentifiers := range rc.Spec.Template.Annotations {
-									count += createAndPrintSecrets(secretDataIdentifiers, secretType, c, f, cmd.Flags())
+					for _, configmap := range configmaps.Items {
+						for key, data := range configmap.Data {
+							obj, err := runtime.Decode(api.Codecs.UniversalDecoder(), []byte(data))
+							if err != nil {
+								util.Infof("Failed to decodeconfig map %s with key %s. Got error: %s", configmap.ObjectMeta.Name, key, err)
+							} else {
+								switch rc := obj.(type) {
+								case *api.ReplicationController:
+									for secretType, secretDataIdentifiers := range rc.Spec.Template.Annotations {
+										count += createAndPrintSecrets(secretDataIdentifiers, secretType, c, f, cmd.Flags())
+									}
+								case *tapi.Template:
+									count += processSecretsForTemplate(c, *rc, f, cmd)
 								}
 							}
 						}
 					}
+				}
 
-					if count == 0 {
-						util.Info("No secrets created as no fabric8 secrets annotations found in the templates\n")
-						util.Info("For more details see: https://github.com/fabric8io/fabric8/blob/master/docs/secretAnnotations.md\n")
+				if typeOfMaster != util.Kubernetes {
+					oc, _ := client.NewOpenShiftClient(cfg)
+					t := getTemplates(oc, ns)
+
+					// get all the Templates and find the annotations on any Pods
+					for _, i := range t.Items {
+						count += processSecretsForTemplate(c, i, f, cmd)
 					}
+				}
+
+				if count == 0 {
+					util.Info("No secrets created as no fabric8 secrets annotations found in the Fabric8 Catalog\n")
+					util.Info("For more details see: https://github.com/fabric8io/fabric8/blob/master/docs/secretAnnotations.md\n")
 				}
 			}
 		},
@@ -105,6 +123,33 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().BoolP("write-generated-keys", "", false, "Write generated secrets to the local filesystem")
 	cmd.PersistentFlags().BoolP("generate-secrets-data", "g", true, "Generate secrets data if secrets cannot be found to import from the local filesystem")
 	return cmd
+}
+
+func processSecretsForTemplate(c *k8sclient.Client, i tapi.Template, f *cmdutil.Factory, cmd *cobra.Command) int {
+	count := 0
+	// convert TemplateList.Objects to Kubernetes resources
+	errs := runtime.DecodeList(i.Objects, api.Codecs.UniversalDecoder())
+	if len(errs) > 0 {
+		fmt.Println("Failed to decode templates %v", errs)
+		os.Exit(2)
+	}
+	for _, rc := range i.Objects {
+		switch rc := rc.(type) {
+		case *api.ReplicationController:
+			for secretType, secretDataIdentifiers := range rc.Spec.Template.Annotations {
+				count += createAndPrintSecrets(secretDataIdentifiers, secretType, c, f, cmd.Flags())
+			}
+		}
+	}
+	return count
+}
+
+func getTemplates(c *oclient.Client, ns string) *tapi.TemplateList {
+	templates, err := c.Templates(ns).List(api.ListOptions{})
+	if err != nil {
+		util.Fatalf("No Templates found in namespace %s\n", ns)
+	}
+	return templates
 }
 
 func createSecret(c *k8sclient.Client, f *cmdutil.Factory, flags *flag.FlagSet, secretDataIdentifiers string, secretType string, keysNames []string) (Result, error) {
@@ -358,16 +403,6 @@ func generateSshKeyPair() Keypair {
 		pub:  []byte(pubBytes),
 		priv: []byte(priv_pem),
 	}
-}
-
-func getTemplates(c *oclient.Client, ns string) *tapi.TemplateList {
-	tapi.AddToScheme(api.Scheme)
-	tapiv1.AddToScheme(api.Scheme)
-	templates, err := c.Templates(ns).List(api.ListOptions{})
-	if err != nil {
-		util.Fatalf("No Templates found in namespace %s\n", ns)
-	}
-	return templates
 }
 
 func writeFile(path string, contents []byte) {
