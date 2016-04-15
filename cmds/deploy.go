@@ -94,6 +94,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 			domain := cmd.Flags().Lookup(domainFlag).Value.String()
 			apiserver := cmd.Flags().Lookup(apiServerFlag).Value.String()
+			typeOfMaster := util.TypeOfMaster(c)
 
 			if len(apiserver) == 0 {
 				apiserver = domain
@@ -104,7 +105,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			} else if confirmAction(cmd.Flags()) {
 				v := cmd.Flags().Lookup("fabric8-version").Value.String()
 
-				typeOfMaster := util.TypeOfMaster(c)
 				consoleVersion := f8ConsoleVersion(v, typeOfMaster)
 
 				versioniPaaS := cmd.Flags().Lookup(versioniPaaSFlag).Value.String()
@@ -117,6 +117,13 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				versionKubeflix = versionForUrl(versionKubeflix, kubeflixMetadataUrl)
 
 				util.Warnf("\nStarting fabric8 console deployment using %s...\n\n", consoleVersion)
+
+				oc, _ := client.NewOpenShiftClient(cfg)
+
+				aapi.AddToScheme(api.Scheme)
+				aapiv1.AddToScheme(api.Scheme)
+				tapi.AddToScheme(api.Scheme)
+				tapiv1.AddToScheme(api.Scheme)
 
 				if typeOfMaster == util.Kubernetes {
 					uri := fmt.Sprintf(baseConsoleKubernetesUrl, consoleVersion)
@@ -134,26 +141,23 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						printResult("fabric8 console", Success, nil)
 					}
 				} else {
-					oc, _ := client.NewOpenShiftClient(cfg)
-
 					r, err := verifyRestrictedSecurityContextConstraints(c, f)
 					printResult("SecurityContextConstraints restricted", r, err)
 					r, err = deployFabric8SecurityContextConstraints(c, f, ns)
 					printResult("SecurityContextConstraints fabric8", r, err)
-
-					aapi.AddToScheme(api.Scheme)
-					aapiv1.AddToScheme(api.Scheme)
 
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
 					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
 					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
 
-					printAddServiceAccount(c, f, "metrics")
 					printAddServiceAccount(c, f, "fluentd")
-					printAddServiceAccount(c, f, "gogs")
 					printAddServiceAccount(c, f, "router")
-					printAddServiceAccount(c, f, "registry")
+					/*
+					   printAddServiceAccount(c, f, "metrics")
+					   printAddServiceAccount(c, f, "gogs")
+					   printAddServiceAccount(c, f, "registry")
+					*/
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 						uri := fmt.Sprintf(baseConsoleUrl, consoleVersion)
@@ -171,8 +175,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						if err != nil {
 							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
 						}
-						tapi.AddToScheme(api.Scheme)
-						tapiv1.AddToScheme(api.Scheme)
 						var tmpl tapi.Template
 
 						err = api.Scheme.Convert(&v1tmpl, &tmpl)
@@ -194,6 +196,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						})
 
 						p.Process(&tmpl)
+
+						println("Creating fabric8 console resources")
 
 						for _, o := range tmpl.Objects {
 							switch o := o.(type) {
@@ -231,17 +235,20 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					} else {
 						printError("Ignoring the deploy of the fabric8 console", nil)
 					}
+				}
+				println("Created fabric8 console")
 
-					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
-						printError("Install DevOps templates", installTemplates(oc, f, versionDevOps, devopsTemplatesDistroUrl))
-						printError("Install iPaaS templates", installTemplates(oc, f, versioniPaaS, iPaaSTemplatesDistroUrl))
-						printError("Install Kubeflix templates", installTemplates(oc, f, versionKubeflix, kubeflixTemplatesDistroUrl))
-					} else {
-						printError("Ignoring the deploy of templates", nil)
-					}
+				if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
+					println("Installing templates!")
+					printError("Install DevOps templates", installTemplates(c, oc, f, versionDevOps, devopsTemplatesDistroUrl))
+					printError("Install iPaaS templates", installTemplates(c, oc, f, versioniPaaS, iPaaSTemplatesDistroUrl))
+					printError("Install Kubeflix templates", installTemplates(c, oc, f, versionKubeflix, kubeflixTemplatesDistroUrl))
+				} else {
+					printError("Ignoring the deploy of templates", nil)
+				}
 
+				if typeOfMaster != util.Kubernetes {
 					domain := cmd.Flags().Lookup(domainFlag).Value.String()
-
 					printError("Create routes", createRoutesForDomain(ns, domain, c, oc, f))
 				}
 			}
@@ -257,7 +264,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func installTemplates(c *oclient.Client, fac *cmdutil.Factory, v string, templateUrl string) error {
+func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Factory, v string, templateUrl string) error {
 	ns, _, err := fac.DefaultNamespace()
 	if err != nil {
 		util.Fatal("No default namespace")
@@ -322,17 +329,54 @@ func installTemplates(c *oclient.Client, fac *cmdutil.Factory, v string, templat
 		}
 
 		name := tmpl.ObjectMeta.Name
-		_, err = templates.Get(name)
-		if err == nil {
-			err = templates.Delete(name)
-			if err != nil {
-				util.Errorf("Could not delete template %s due to: %v\n", name, err)
+		typeOfMaster := util.TypeOfMaster(kc)
+		if typeOfMaster == util.Kubernetes {
+			appName := name
+			name = "catalog-" + appName
+
+			// lets install ConfigMaps for the templates
+			// TODO should the name have a prefix?
+			configmap := api.ConfigMap{
+				ObjectMeta: api.ObjectMeta{
+					Name:      name,
+					Namespace: ns,
+					Labels: map[string]string{
+						"name":     appName,
+						"provider": "fabric8.io",
+						"kind":     "catalog",
+					},
+				},
+				Data: map[string]string{
+					name + ".json": string(jsonData),
+				},
 			}
-		}
-		_, err = templates.Create(&tmpl)
-		if err != nil {
-			util.Fatalf("Failed to create template %v", err)
-			return err
+			configmaps := kc.ConfigMaps(ns)
+			_, err = configmaps.Get(name)
+			if err == nil {
+				err = configmaps.Delete(name)
+				if err != nil {
+					util.Errorf("Could not delete configmap %s due to: %v\n", name, err)
+				}
+			}
+			_, err = configmaps.Create(&configmap)
+			if err != nil {
+				util.Fatalf("Failed to create configmap %v", err)
+				return err
+			}
+		} else {
+			// lets install the OpenShift templates
+			_, err = templates.Get(name)
+			if err == nil {
+				err = templates.Delete(name)
+				if err != nil {
+					util.Errorf("Could not delete template %s due to: %v\n", name, err)
+				}
+			}
+			_, err = templates.Create(&tmpl)
+			if err != nil {
+				util.Fatalf("Failed to create template %v", err)
+				return err
+			}
 		}
 	}
 	return nil
