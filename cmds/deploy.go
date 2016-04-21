@@ -49,19 +49,19 @@ import (
 )
 
 const (
-	consoleMetadataUrl           = "https://repo1.maven.org/maven2/io/fabric8/apps/console/maven-metadata.xml"
-	baseConsoleUrl               = "https://repo1.maven.org/maven2/io/fabric8/apps/console/%[1]s/console-%[1]s-kubernetes.json"
-	consoleKubernetesMetadataUrl = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/maven-metadata.xml"
-	baseConsoleKubernetesUrl     = "https://repo1.maven.org/maven2/io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
+	consoleMetadataUrl           = "io/fabric8/apps/console/maven-metadata.xml"
+	baseConsoleUrl               = "io/fabric8/apps/console/%[1]s/console-%[1]s-kubernetes.json"
+	consoleKubernetesMetadataUrl = "io/fabric8/apps/console-kubernetes/maven-metadata.xml"
+	baseConsoleKubernetesUrl     = "io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
 
-	devopsTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/forge/distro/distro/%[1]s/distro-%[1]s-templates.zip"
-	devOpsMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/forge/distro/distro/maven-metadata.xml"
+	devopsTemplatesDistroUrl = "io/fabric8/forge/distro/distro/%[1]s/distro-%[1]s-templates.zip"
+	devOpsMetadataUrl        = "io/fabric8/forge/distro/distro/maven-metadata.xml"
 
-	kubeflixTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/kubeflix/distro/distro/%[1]s/distro-%[1]s-templates.zip"
-	kubeflixMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/kubeflix/distro/distro/maven-metadata.xml"
+	kubeflixTemplatesDistroUrl = "io/fabric8/kubeflix/distro/distro/%[1]s/distro-%[1]s-templates.zip"
+	kubeflixMetadataUrl        = "io/fabric8/kubeflix/distro/distro/maven-metadata.xml"
 
-	iPaaSTemplatesDistroUrl = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
-	iPaaSMetadataUrl        = "https://repo1.maven.org/maven2/io/fabric8/ipaas/distro/distro/maven-metadata.xml"
+	iPaaSTemplatesDistroUrl = "io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
+	iPaaSMetadataUrl        = "io/fabric8/ipaas/distro/distro/maven-metadata.xml"
 
 	Fabric8SCC    = "fabric8"
 	PrivilegedSCC = "privileged"
@@ -70,6 +70,7 @@ const (
 	versioniPaaSFlag    = "version-ipaas"
 	versionDevOpsFlag   = "version-devops"
 	versionKubeflixFlag = "version-kubeflix"
+	mavenRepoFlag       = "maven-repo"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -95,6 +96,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			domain := cmd.Flags().Lookup(domainFlag).Value.String()
 			apiserver := cmd.Flags().Lookup(apiServerFlag).Value.String()
 			typeOfMaster := util.TypeOfMaster(c)
+			mavenRepo := cmd.Flags().Lookup(mavenRepoFlag).Value.String()
+			if !strings.HasSuffix(mavenRepo, "/") {
+				mavenRepo = mavenRepo + "/"
+			}
+			util.Infof("Loading fabric8 releases from maven repository: %s", mavenRepo)
 
 			if len(apiserver) == 0 {
 				apiserver = domain
@@ -105,16 +111,16 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			} else if confirmAction(cmd.Flags()) {
 				v := cmd.Flags().Lookup("fabric8-version").Value.String()
 
-				consoleVersion := f8ConsoleVersion(v, typeOfMaster)
+				consoleVersion := f8ConsoleVersion(mavenRepo, v, typeOfMaster)
 
 				versioniPaaS := cmd.Flags().Lookup(versioniPaaSFlag).Value.String()
-				versioniPaaS = versionForUrl(versioniPaaS, iPaaSMetadataUrl)
+				versioniPaaS = versionForUrl(versioniPaaS, urlJoin(mavenRepo, iPaaSMetadataUrl))
 
 				versionDevOps := cmd.Flags().Lookup(versionDevOpsFlag).Value.String()
-				versionDevOps = versionForUrl(versionDevOps, devOpsMetadataUrl)
+				versionDevOps = versionForUrl(versionDevOps, urlJoin(mavenRepo, devOpsMetadataUrl))
 
 				versionKubeflix := cmd.Flags().Lookup(versionKubeflixFlag).Value.String()
-				versionKubeflix = versionForUrl(versionKubeflix, kubeflixMetadataUrl)
+				versionKubeflix = versionForUrl(versionKubeflix, urlJoin(mavenRepo, kubeflixMetadataUrl))
 
 				util.Warnf("\nStarting fabric8 console deployment using %s...\n\n", consoleVersion)
 
@@ -126,7 +132,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				tapiv1.AddToScheme(api.Scheme)
 
 				if typeOfMaster == util.Kubernetes {
-					uri := fmt.Sprintf(baseConsoleKubernetesUrl, consoleVersion)
+					uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleKubernetesUrl), consoleVersion)
 					filenames := []string{uri}
 
 					createCmd := &cobra.Command{}
@@ -160,7 +166,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					*/
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
-						uri := fmt.Sprintf(baseConsoleUrl, consoleVersion)
+						uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleUrl), consoleVersion)
 						resp, err := http.Get(uri)
 						if err != nil {
 							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
@@ -240,9 +246,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 					println("Installing templates!")
-					printError("Install DevOps templates", installTemplates(c, oc, f, versionDevOps, devopsTemplatesDistroUrl))
-					printError("Install iPaaS templates", installTemplates(c, oc, f, versioniPaaS, iPaaSTemplatesDistroUrl))
-					printError("Install Kubeflix templates", installTemplates(c, oc, f, versionKubeflix, kubeflixTemplatesDistroUrl))
+					printError("Install DevOps templates", installTemplates(c, oc, f, versionDevOps, urlJoin(mavenRepo, devopsTemplatesDistroUrl)))
+					printError("Install iPaaS templates", installTemplates(c, oc, f, versioniPaaS, urlJoin(mavenRepo, iPaaSTemplatesDistroUrl)))
+					printError("Install Kubeflix templates", installTemplates(c, oc, f, versionKubeflix, urlJoin(mavenRepo, kubeflixTemplatesDistroUrl)))
 				} else {
 					printError("Ignoring the deploy of templates", nil)
 				}
@@ -259,6 +265,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
 	cmd.PersistentFlags().String(versionDevOpsFlag, "latest", "The version to use for the Fabric8 DevOps templates")
 	cmd.PersistentFlags().String(versionKubeflixFlag, "latest", "The version to use for the Kubeflix templates")
+	cmd.PersistentFlags().String(mavenRepoFlag, "https://repo1.maven.org/maven2/", "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
@@ -547,10 +554,14 @@ func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string
 	return options.AddRole()
 }
 
-func f8ConsoleVersion(v string, typeOfMaster util.MasterType) string {
-	metadataUrl := consoleMetadataUrl
+func urlJoin(repo string, path string) string {
+	return repo + path
+}
+
+func f8ConsoleVersion(mavenRepo string, v string, typeOfMaster util.MasterType) string {
+	metadataUrl := urlJoin(mavenRepo, consoleMetadataUrl)
 	if typeOfMaster == util.Kubernetes {
-		metadataUrl = consoleKubernetesMetadataUrl
+		metadataUrl = urlJoin(mavenRepo, consoleKubernetesMetadataUrl)
 	}
 	return versionForUrl(v, metadataUrl)
 }
