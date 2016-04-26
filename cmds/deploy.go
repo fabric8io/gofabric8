@@ -146,6 +146,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					} else {
 						printResult("fabric8 console", Success, nil)
 					}
+					printAddServiceAccount(c, f, "fluentd")
 				} else {
 					r, err := verifyRestrictedSecurityContextConstraints(c, f)
 					printResult("SecurityContextConstraints restricted", r, err)
