@@ -60,6 +60,9 @@ const (
 	kubeflixTemplatesDistroUrl = "io/fabric8/kubeflix/distro/distro/%[1]s/distro-%[1]s-templates.zip"
 	kubeflixMetadataUrl        = "io/fabric8/kubeflix/distro/distro/maven-metadata.xml"
 
+	zipkinTemplatesDistroUrl = "io/fabric8/zipkin/packages/distro/%[1]s/distro-%[1]s-templates.zip"
+	zipkinMetadataUrl        = "io/fabric8/zipkin/packages/distro/maven-metadata.xml"
+
 	iPaaSTemplatesDistroUrl = "io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
 	iPaaSMetadataUrl        = "io/fabric8/ipaas/distro/distro/maven-metadata.xml"
 
@@ -70,6 +73,7 @@ const (
 	versioniPaaSFlag    = "version-ipaas"
 	versionDevOpsFlag   = "version-devops"
 	versionKubeflixFlag = "version-kubeflix"
+	versionZipkinFlag   = "version-zipkin"
 	mavenRepoFlag       = "maven-repo"
 )
 
@@ -121,6 +125,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				versionKubeflix := cmd.Flags().Lookup(versionKubeflixFlag).Value.String()
 				versionKubeflix = versionForUrl(versionKubeflix, urlJoin(mavenRepo, kubeflixMetadataUrl))
+
+				versionZipkin := cmd.Flags().Lookup(versionZipkinFlag).Value.String()
+				versionZipkin = versionForUrl(versionZipkin, urlJoin(mavenRepo, zipkinMetadataUrl))
 
 				util.Warnf("\nStarting fabric8 console deployment using %s...\n\n", consoleVersion)
 
@@ -250,6 +257,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printError("Install DevOps templates", installTemplates(c, oc, f, versionDevOps, urlJoin(mavenRepo, devopsTemplatesDistroUrl)))
 					printError("Install iPaaS templates", installTemplates(c, oc, f, versioniPaaS, urlJoin(mavenRepo, iPaaSTemplatesDistroUrl)))
 					printError("Install Kubeflix templates", installTemplates(c, oc, f, versionKubeflix, urlJoin(mavenRepo, kubeflixTemplatesDistroUrl)))
+					printError("Install Zipkin templates", installTemplates(c, oc, f, versionZipkin, urlJoin(mavenRepo, zipkinTemplatesDistroUrl)))
 				} else {
 					printError("Ignoring the deploy of templates", nil)
 				}
@@ -266,6 +274,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
 	cmd.PersistentFlags().String(versionDevOpsFlag, "latest", "The version to use for the Fabric8 DevOps templates")
 	cmd.PersistentFlags().String(versionKubeflixFlag, "latest", "The version to use for the Kubeflix templates")
+	cmd.PersistentFlags().String(versionZipkinFlag, "latest", "The version to use for the Zipkin templates")
 	cmd.PersistentFlags().String(mavenRepoFlag, "https://repo1.maven.org/maven2/", "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
