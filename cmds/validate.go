@@ -53,7 +53,7 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 			printValidationResult("Console", validateConsoleDeployment, c, f)
 
 			if util.TypeOfMaster(c) == util.Kubernetes {
-				printValidationResult("Templates", validateTemplateService, c, f)
+				printValidationResult("Jenkinshift Service", validateJenkinshiftService, c, f)
 			}
 
 			if util.TypeOfMaster(c) == util.OpenShift {
@@ -226,12 +226,12 @@ func validateSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory)
 	return Failure, err
 }
 
-func validateTemplateService(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func validateJenkinshiftService(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
 	}
-	svc, err := c.Services(ns).Get("templates")
+	svc, err := c.Services(ns).Get("jenkinshift")
 	if svc != nil {
 		return Success, err
 	}
