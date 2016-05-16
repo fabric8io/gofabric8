@@ -16,8 +16,10 @@
 package cmds
 
 import (
+	"net/http"
 	"strings"
 
+	"fmt"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
@@ -51,6 +53,9 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 			util.Successf("%s\n\n", ns)
 			printValidationResult("Service account", validateServiceAccount, c, f)
 			printValidationResult("Console", validateConsoleDeployment, c, f)
+
+			r, err := validateProxyServiceRestAPI(c, f, cfg.Host)
+			printResult("REST Proxy Service API", r, err)
 
 			if util.TypeOfMaster(c) == util.Kubernetes {
 				printValidationResult("Jenkinshift Service", validateJenkinshiftService, c, f)
@@ -131,6 +136,28 @@ func validateConsoleDeployment(c *k8sclient.Client, f *cmdutil.Factory) (Result,
 		return Success, err
 	}
 	return Failure, err
+}
+
+func validateProxyServiceRestAPI(c *k8sclient.Client, f *cmdutil.Factory, host string) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+	uri := host + "/api/v1/proxy/namespaces/" + ns + "/services/fabric8/"
+
+	resp, err := http.Get(uri)
+	if err != nil {
+		err = fmt.Errorf("Cannot query the API Server REST Proxy Service API at %s. Can the master node see the service IPs? Got error: %v", uri, err)
+		return Failure, err
+	}
+	defer resp.Body.Close()
+
+	statusCode := resp.StatusCode
+	if statusCode < 200 || statusCode >= 300 {
+		err = fmt.Errorf("Cannot query the API Server REST Proxy Service API at %s. Can the master node see the service IPs? Got status code: %d", uri, statusCode)
+		return Failure, err
+	}
+	return Success, err
 }
 
 func validatePersistenceVolumeClaims(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
