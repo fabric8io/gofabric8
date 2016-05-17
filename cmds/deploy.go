@@ -75,6 +75,9 @@ const (
 	versionKubeflixFlag = "version-kubeflix"
 	versionZipkinFlag   = "version-zipkin"
 	mavenRepoFlag       = "maven-repo"
+
+	typeLabel          = "type"
+	teamTypeLabelValue = "team"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -266,6 +269,20 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					domain := cmd.Flags().Lookup(domainFlag).Value.String()
 					printError("Create routes", createRoutesForDomain(ns, domain, c, oc, f))
 				}
+
+				// lets label the namespace/project as a developer team
+				nss := c.Namespaces()
+				namespace, err := nss.Get(ns)
+				if err != nil {
+					printError("Failed to load namespace", err)
+				} else {
+					if addLabelIfNotxisEt(&namespace.ObjectMeta, typeLabel, teamTypeLabelValue) {
+						_, err = nss.Update(namespace)
+						if err != nil {
+							printError("Failed to label namespace", err)
+						}
+					}
+				}
 			}
 		},
 	}
@@ -279,6 +296,19 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
+}
+
+func addLabelIfNotxisEt(metadata *api.ObjectMeta, name string, value string) bool {
+	if metadata.Labels == nil {
+		metadata.Labels = make(map[string]string)
+	}
+	labels := metadata.Labels
+	current := labels[name]
+	if len(current) == 0 {
+		labels[name] = value
+		return true
+	}
+	return false
 }
 
 func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Factory, v string, templateUrl string) error {
