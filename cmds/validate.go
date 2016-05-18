@@ -69,6 +69,7 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			printValidationResult("PersistentVolumeClaims", validatePersistenceVolumeClaims, c, f)
+			printValidationResult("ConfigMaps", validateConfigMaps, c, f)
 		},
 	}
 
@@ -272,6 +273,18 @@ func validateTemplates(c *oclient.Client, f *cmdutil.Factory) (Result, error) {
 	}
 	rc, err := c.Templates(ns).Get("management")
 	if rc != nil {
+		return Success, err
+	}
+	return Failure, err
+}
+
+func validateConfigMaps(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+	ns, _, err := f.DefaultNamespace()
+	if err != nil {
+		return Failure, err
+	}
+	list, err := c.ConfigMaps(ns).List(api.ListOptions{})
+	if err == nil && list != nil {
 		return Success, err
 	}
 	return Failure, err
