@@ -25,6 +25,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -75,6 +76,7 @@ const (
 	versionKubeflixFlag = "version-kubeflix"
 	versionZipkinFlag   = "version-zipkin"
 	mavenRepoFlag       = "maven-repo"
+	dockerRegistryFlag  = "docker-registry"
 
 	typeLabel          = "type"
 	teamTypeLabelValue = "team"
@@ -107,7 +109,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			if !strings.HasSuffix(mavenRepo, "/") {
 				mavenRepo = mavenRepo + "/"
 			}
-			util.Infof("Loading fabric8 releases from maven repository: %s", mavenRepo)
+			util.Infof("Loading fabric8 releases from maven repository: %s\n", mavenRepo)
+			dockerRegistry := cmd.Flags().Lookup(dockerRegistryFlag).Value.String()
+			if len(dockerRegistry) > 0 {
+				util.Infof("Loading fabric8 docker images from docker registry: %s\n", dockerRegistry)
+			}
 
 			if len(apiserver) == 0 {
 				apiserver = domain
@@ -257,10 +263,10 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 					println("Installing templates!")
-					printError("Install DevOps templates", installTemplates(c, oc, f, versionDevOps, urlJoin(mavenRepo, devopsTemplatesDistroUrl)))
-					printError("Install iPaaS templates", installTemplates(c, oc, f, versioniPaaS, urlJoin(mavenRepo, iPaaSTemplatesDistroUrl)))
-					printError("Install Kubeflix templates", installTemplates(c, oc, f, versionKubeflix, urlJoin(mavenRepo, kubeflixTemplatesDistroUrl)))
-					printError("Install Zipkin templates", installTemplates(c, oc, f, versionZipkin, urlJoin(mavenRepo, zipkinTemplatesDistroUrl)))
+					printError("Install DevOps templates", installTemplates(c, oc, f, versionDevOps, urlJoin(mavenRepo, devopsTemplatesDistroUrl), dockerRegistry))
+					printError("Install iPaaS templates", installTemplates(c, oc, f, versioniPaaS, urlJoin(mavenRepo, iPaaSTemplatesDistroUrl), dockerRegistry))
+					printError("Install Kubeflix templates", installTemplates(c, oc, f, versionKubeflix, urlJoin(mavenRepo, kubeflixTemplatesDistroUrl), dockerRegistry))
+					printError("Install Zipkin templates", installTemplates(c, oc, f, versionZipkin, urlJoin(mavenRepo, zipkinTemplatesDistroUrl), dockerRegistry))
 				} else {
 					printError("Ignoring the deploy of templates", nil)
 				}
@@ -293,6 +299,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(versionKubeflixFlag, "latest", "The version to use for the Kubeflix templates")
 	cmd.PersistentFlags().String(versionZipkinFlag, "latest", "The version to use for the Zipkin templates")
 	cmd.PersistentFlags().String(mavenRepoFlag, "https://repo1.maven.org/maven2/", "The maven repo used to find releases of fabric8")
+	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
@@ -311,7 +318,7 @@ func addLabelIfNotxisEt(metadata *api.ObjectMeta, name string, value string) boo
 	return false
 }
 
-func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Factory, v string, templateUrl string) error {
+func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Factory, v string, templateUrl string, dockerRegistry string) error {
 	ns, _, err := fac.DefaultNamespace()
 	if err != nil {
 		util.Fatal("No default namespace")
@@ -361,6 +368,14 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 		jsonData, err := ioutil.ReadAll(rc)
 		if err != nil {
 			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+		}
+		if len(dockerRegistry) > 0 {
+			// lets replace all the docker image names using a registry prefix
+			r, err := regexp.Compile("\"image\" : \"fabric8/")
+			if err != nil {
+				return err
+			}
+			jsonData = r.ReplaceAll(jsonData, []byte("\"image\" : \""+dockerRegistry+"/fabric8/"))
 		}
 		var v1tmpl tapiv1.Template
 		err = json.Unmarshal(jsonData, &v1tmpl)
