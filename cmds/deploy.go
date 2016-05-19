@@ -17,6 +17,7 @@ package cmds
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -149,6 +150,23 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				if typeOfMaster == util.Kubernetes {
 					uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleKubernetesUrl), consoleVersion)
+					if len(dockerRegistry) > 0 {
+						jsonData, err := loadJsonDataAndAppendDockerRegistryPrefix(uri, dockerRegistry)
+						if err == nil {
+							tmpFileName := "/tmp/fabric8-console.json"
+							t, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+							if err != nil {
+								util.Fatalf("Cannot open the converted fabric8 console template file: %v", err)
+							}
+							defer t.Close()
+
+							_, err = io.Copy(t, bytes.NewReader(jsonData))
+							if err != nil {
+								util.Fatalf("Cannot write the converted fabric8 console template file: %v", err)
+							}
+							uri = tmpFileName
+						}
+					}
 					filenames := []string{uri}
 
 					createCmd := &cobra.Command{}
@@ -184,15 +202,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 						uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleUrl), consoleVersion)
-						resp, err := http.Get(uri)
-						if err != nil {
-							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-						}
-						defer resp.Body.Close()
-						jsonData, err := ioutil.ReadAll(resp.Body)
-						if err != nil {
-							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-						}
+						jsonData, err := loadJsonDataAndAppendDockerRegistryPrefix(uri, dockerRegistry)
 						var v1tmpl tapiv1.Template
 						err = json.Unmarshal(jsonData, &v1tmpl)
 						if err != nil {
@@ -369,13 +379,9 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 		if err != nil {
 			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
 		}
-		if len(dockerRegistry) > 0 {
-			// lets replace all the docker image names using a registry prefix
-			r, err := regexp.Compile("\"image\" : \"fabric8/")
-			if err != nil {
-				return err
-			}
-			jsonData = r.ReplaceAll(jsonData, []byte("\"image\" : \""+dockerRegistry+"/fabric8/"))
+		jsonData, err = appendDockerRegistryPrefix(jsonData, dockerRegistry)
+		if err != nil {
+			util.Fatalf("Cannot append docker registry: %v", err)
 		}
 		var v1tmpl tapiv1.Template
 		err = json.Unmarshal(jsonData, &v1tmpl)
@@ -442,6 +448,34 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 		}
 	}
 	return nil
+}
+
+func loadJsonDataAndAppendDockerRegistryPrefix(uri string, dockerRegistry string) ([]byte, error) {
+	resp, err := http.Get(uri)
+	if err != nil {
+		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+	}
+	defer resp.Body.Close()
+	jsonData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+	}
+	jsonData, err = appendDockerRegistryPrefix(jsonData, dockerRegistry)
+	if err != nil {
+		util.Fatalf("Cannot append docker registry: %v", err)
+	}
+	return jsonData, nil
+}
+
+func appendDockerRegistryPrefix(jsonData []byte, dockerRegistry string) ([]byte, error) {
+	if len(dockerRegistry) <= 0 {
+		return jsonData, nil
+	}
+	r, err := regexp.Compile("\"image\" : \"fabric8/")
+	if err != nil {
+		return nil, err
+	}
+	return r.ReplaceAll(jsonData, []byte("\"image\" : \""+dockerRegistry+"/fabric8/")), nil
 }
 
 func createRoutes(c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory) error {
