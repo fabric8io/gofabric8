@@ -43,6 +43,7 @@ func main() {
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))
 	cmds.AddCommand(commands.NewCmdPull(f))
+	cmds.AddCommand(commands.NewCmdIngress(f))
 	cmds.AddCommand(commands.NewCmdRoutes(f))
 	cmds.AddCommand(commands.NewCmdSecrets(f))
 	cmds.AddCommand(commands.NewCmdVolume(f))
