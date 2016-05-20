@@ -43,15 +43,14 @@ func NewCmdIngress(f *cmdutil.Factory) *cobra.Command {
 				util.Fatal("No default namespace")
 				printResult("Get default namespace", Failure, err)
 			} else {
+				domain := cmd.Flags().Lookup(domainFlag).Value.String()
+
 				util.Info("Setting up ingress on your ")
 				util.Success(string(util.TypeOfMaster(c)))
 				util.Info(" installation at ")
 				util.Success(cfg.Host)
 				util.Info(" in namespace ")
-				util.Successf("%s\n\n", ns)
-
-				domain := cmd.Flags().Lookup(domainFlag).Value.String()
-
+				util.Successf("%s at domain %s\n\n", ns, domain)
 				err := createIngressForDomain(ns, domain, c, f)
 				printError("Create Ingress", err)
 			}
@@ -86,8 +85,9 @@ func createIngressForDomain(ns string, domain string, c *k8sclient.Client, fac *
 		typeName := serviceSpec.Type
 		found := false
 
-    // for now lets use the type of the service to know if we should create an ingress
-		if typeName == "LoadBalancer" {
+		// for now lets use the type of the service to know if we should create an ingress
+		// TODO we should probably add an annotation to disable ingress creation
+		if typeName == "LoadBalancer" && name != "fabric8" && name != "jenkinshift" {
 			for _, ingress := range ingresses.Items {
 				if ingress.GetName() == name {
 					found = true

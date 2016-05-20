@@ -72,6 +72,7 @@ const (
 	PrivilegedSCC = "privileged"
 	RestrictedSCC = "restricted"
 
+	runFlag             = "app"
 	versioniPaaSFlag    = "version-ipaas"
 	versionDevOpsFlag   = "version-devops"
 	versionKubeflixFlag = "version-kubeflix"
@@ -194,77 +195,14 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 					printAddServiceAccount(c, f, "fluentd")
 					printAddServiceAccount(c, f, "router")
-					/*
-					   printAddServiceAccount(c, f, "metrics")
-					   printAddServiceAccount(c, f, "gogs")
-					   printAddServiceAccount(c, f, "registry")
-					*/
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 						uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleUrl), consoleVersion)
 						jsonData, err := loadJsonDataAndAppendDockerRegistryPrefix(uri, dockerRegistry)
-						var v1tmpl tapiv1.Template
-						err = json.Unmarshal(jsonData, &v1tmpl)
 						if err != nil {
-							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+							printError("failed to apply docker registry prefix", err)
 						}
-						var tmpl tapi.Template
-
-						err = api.Scheme.Convert(&v1tmpl, &tmpl)
-						if err != nil {
-							util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-						}
-
-						generators := map[string]generator.Generator{
-							"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
-						}
-						p := template.NewProcessor(generators)
-
-						tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
-							Name:  "DOMAIN",
-							Value: domain,
-						}, tapi.Parameter{
-							Name:  "APISERVER",
-							Value: apiserver,
-						})
-
-						p.Process(&tmpl)
-
-						println("Creating fabric8 console resources")
-
-						for _, o := range tmpl.Objects {
-							switch o := o.(type) {
-							case *runtime.Unstructured:
-								var b []byte
-								b, err = json.Marshal(o.Object)
-								if err != nil {
-									break
-								}
-								req := c.Post().Body(b)
-								if o.Kind != "OAuthClient" {
-									req.Namespace(ns).Resource(strings.ToLower(o.TypeMeta.Kind + "s"))
-								} else {
-									req.AbsPath("oapi", "v1", strings.ToLower(o.TypeMeta.Kind+"s"))
-								}
-								res := req.Do()
-								if res.Error() != nil {
-									err = res.Error()
-									break
-								}
-								var statusCode int
-								res.StatusCode(&statusCode)
-								if statusCode != http.StatusCreated {
-									err = fmt.Errorf("Failed to create %s: %d", o.TypeMeta.Kind, statusCode)
-									break
-								}
-							}
-						}
-
-						if err != nil {
-							printResult("fabric8 console", Failure, err)
-						} else {
-							printResult("fabric8 console", Success, nil)
-						}
+						createTemplate(jsonData, "fabric8 console", ns, domain, apiserver, c)
 					} else {
 						printError("Ignoring the deploy of the fabric8 console", nil)
 					}
@@ -281,8 +219,20 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printError("Ignoring the deploy of templates", nil)
 				}
 
-				if typeOfMaster != util.Kubernetes {
-					domain := cmd.Flags().Lookup(domainFlag).Value.String()
+				appToRun := cmd.Flags().Lookup(runFlag).Value.String()
+				if len(appToRun) > 0 {
+					util.Info("\n\nInstalling: ")
+					util.Successf("%s\n\n", appToRun)
+					jsonData, err := loadTemplateData(ns, appToRun, c, oc)
+					if err != nil {
+						printError("Failed to load app "+appToRun, err)
+					}
+					createTemplate(jsonData, appToRun, ns, domain, apiserver, c)
+				}
+
+				if typeOfMaster == util.Kubernetes {
+					printError("Create ingress", createIngressForDomain(ns, domain, c, f))
+				} else {
 					printError("Create routes", createRoutesForDomain(ns, domain, c, oc, f))
 				}
 
@@ -310,9 +260,101 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(versionZipkinFlag, "latest", "The version to use for the Zipkin templates")
 	cmd.PersistentFlags().String(mavenRepoFlag, "https://repo1.maven.org/maven2/", "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
+	cmd.PersistentFlags().String(runFlag, "", "The name of the fabric8 app to startup")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
+}
+
+func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *oclient.Client) ([]byte, error) {
+	typeOfMaster := util.TypeOfMaster(c)
+	if typeOfMaster == util.Kubernetes {
+		catalogName := "catalog-" + templateName
+		configMap, err := c.ConfigMaps(ns).Get(catalogName)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range configMap.Data {
+			if strings.LastIndex(k, ".json") >= 0 {
+				return []byte(v), nil
+			}
+		}
+		return nil, fmt.Errorf("Could not find a key for the catalog %s which ends with `.json`", catalogName)
+
+	} else {
+		template, err := oc.Templates(ns).Get(templateName)
+		if err != nil {
+			return nil, err
+		}
+		objects := template.Objects
+		return json.Marshal(objects)
+	}
+	return nil, nil
+}
+
+func createTemplate(jsonData []byte, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client) {
+	var v1tmpl tapiv1.Template
+	err := json.Unmarshal(jsonData, &v1tmpl)
+	if err != nil {
+		util.Fatalf("Cannot get %s template to deploy: %v", templateName, err)
+	}
+	var tmpl tapi.Template
+
+	err = api.Scheme.Convert(&v1tmpl, &tmpl)
+	if err != nil {
+		util.Fatalf("Cannot get %s template to deploy: %v", templateName, err)
+	}
+
+	generators := map[string]generator.Generator{
+		"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
+	}
+	p := template.NewProcessor(generators)
+
+	tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
+		Name:  "DOMAIN",
+		Value: domain,
+	}, tapi.Parameter{
+		Name:  "APISERVER",
+		Value: apiserver,
+	})
+
+	p.Process(&tmpl)
+
+	println("Creating " + templateName + " resources")
+
+	for _, o := range tmpl.Objects {
+		switch o := o.(type) {
+		case *runtime.Unstructured:
+			var b []byte
+			b, err = json.Marshal(o.Object)
+			if err != nil {
+				break
+			}
+			req := c.Post().Body(b)
+			if o.Kind != "OAuthClient" {
+				req.Namespace(ns).Resource(strings.ToLower(o.TypeMeta.Kind + "s"))
+			} else {
+				req.AbsPath("oapi", "v1", strings.ToLower(o.TypeMeta.Kind+"s"))
+			}
+			res := req.Do()
+			if res.Error() != nil {
+				err = res.Error()
+				break
+			}
+			var statusCode int
+			res.StatusCode(&statusCode)
+			if statusCode != http.StatusCreated {
+				err = fmt.Errorf("Failed to create %s: %d", o.TypeMeta.Kind, statusCode)
+				break
+			}
+		}
+	}
+
+	if err != nil {
+		printResult(templateName, Failure, err)
+	} else {
+		printResult(templateName, Success, nil)
+	}
 }
 
 func addLabelIfNotxisEt(metadata *api.ObjectMeta, name string, value string) bool {

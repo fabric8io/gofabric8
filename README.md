@@ -23,6 +23,13 @@ gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy
 gofabric8 secrets -y
 ```
 
+
+To install the [fabric8 microservices platform]() then run the following:
+
+```sh
+gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy --app=cd-pipeline
+```
+
 ### Usage
 
 ```
