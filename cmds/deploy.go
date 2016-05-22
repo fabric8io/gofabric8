@@ -231,7 +231,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				if typeOfMaster == util.Kubernetes {
-					printError("Create ingress", createIngressForDomain(ns, domain, c, f))
+					// TODO currently ingress breaks jenkins accessing gogs so lets disable for now
+					//printError("Create ingress", createIngressForDomain(ns, domain, c, f))
 				} else {
 					printError("Create routes", createRoutesForDomain(ns, domain, c, oc, f))
 				}
@@ -260,7 +261,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(versionZipkinFlag, "latest", "The version to use for the Zipkin templates")
 	cmd.PersistentFlags().String(mavenRepoFlag, "https://repo1.maven.org/maven2/", "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
-	cmd.PersistentFlags().String(runFlag, "", "The name of the fabric8 app to startup")
+	cmd.PersistentFlags().String(runFlag, "", "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	return cmd
