@@ -69,6 +69,7 @@ const (
 	iPaaSMetadataUrl        = "io/fabric8/ipaas/distro/distro/maven-metadata.xml"
 
 	Fabric8SCC    = "fabric8"
+	Fabric8SASSCC = "fabric8-sa-group"
 	PrivilegedSCC = "privileged"
 	RestrictedSCC = "restricted"
 
@@ -188,6 +189,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printResult("SecurityContextConstraints restricted", r, err)
 					r, err = deployFabric8SecurityContextConstraints(c, f, ns)
 					printResult("SecurityContextConstraints fabric8", r, err)
+					r, err = deployFabric8SASSecurityContextConstraints(c, f, ns)
+					printResult("SecurityContextConstraints "+Fabric8SASSCC, r, err)
 
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
@@ -567,6 +570,38 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 			"system:serviceaccount:" + ns + ":fluentd",
 		},
 		Groups: []string{bootstrappolicy.ClusterAdminGroup, bootstrappolicy.NodesGroup},
+	}
+	_, err := c.SecurityContextConstraints().Get(name)
+	if err == nil {
+		err = c.SecurityContextConstraints().Delete(name)
+		if err != nil {
+			return Failure, err
+		}
+	}
+	_, err = c.SecurityContextConstraints().Create(&scc)
+	if err != nil {
+		util.Fatalf("Cannot create SecurityContextConstraints: %v\n", err)
+		util.Fatalf("Failed to create SecurityContextConstraints %v in namespace %s: %v\n", scc, ns, err)
+		return Failure, err
+	}
+	util.Infof("SecurityContextConstraints %s is setup correctly\n", name)
+	return Success, err
+}
+
+func deployFabric8SASSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory, ns string) (Result, error) {
+	name := Fabric8SASSCC
+	scc := kapi.SecurityContextConstraints{
+		ObjectMeta: kapi.ObjectMeta{
+			Name: name,
+		},
+		SELinuxContext: kapi.SELinuxContextStrategyOptions{
+			Type: kapi.SELinuxStrategyRunAsAny,
+		},
+		RunAsUser: kapi.RunAsUserStrategyOptions{
+			Type: kapi.RunAsUserStrategyRunAsAny,
+		},
+		Groups:  []string{"system:serviceaccounts"},
+		Volumes: []kapi.FSType{kapi.FSTypeGitRepo, kapi.FSTypeConfigMap, kapi.FSTypeSecret, kapi.FSTypeEmptyDir},
 	}
 	_, err := c.SecurityContextConstraints().Get(name)
 	if err == nil {
