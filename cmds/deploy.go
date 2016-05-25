@@ -287,8 +287,7 @@ func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *o
 		if err != nil {
 			return nil, err
 		}
-		objects := template.Objects
-		return json.Marshal(objects)
+		return json.Marshal(template)
 	}
 	return nil, nil
 }
@@ -297,13 +296,13 @@ func createTemplate(jsonData []byte, templateName string, ns string, domain stri
 	var v1tmpl tapiv1.Template
 	err := json.Unmarshal(jsonData, &v1tmpl)
 	if err != nil {
-		util.Fatalf("Cannot get %s template to deploy: %v", templateName, err)
+		util.Fatalf("Cannot get %s template to deploy. error: %v\ntemplate: %s", templateName, err, string(jsonData))
 	}
 	var tmpl tapi.Template
 
 	err = api.Scheme.Convert(&v1tmpl, &tmpl)
 	if err != nil {
-		util.Fatalf("Cannot get %s template to deploy: %v", templateName, err)
+		util.Fatalf("Cannot convert %s template to deploy: %v", templateName, err)
 	}
 
 	generators := map[string]generator.Generator{
