@@ -182,6 +182,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						printResult("fabric8 console", Success, nil)
 					}
 					printAddServiceAccount(c, f, "fluentd")
+					printAddServiceAccount(c, f, "registry")
 				} else {
 					r, err := verifyRestrictedSecurityContextConstraints(c, f)
 					printResult("SecurityContextConstraints restricted", r, err)
@@ -194,6 +195,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
 
 					printAddServiceAccount(c, f, "fluentd")
+					printAddServiceAccount(c, f, "registry")
 					printAddServiceAccount(c, f, "router")
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
