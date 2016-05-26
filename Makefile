@@ -37,28 +37,36 @@ BUILDFLAGS := -ldflags \
 build: *.go */*.go fmt
 	CGO_ENABLED=0 $(GO) build $(BUILDFLAGS) -o build/$(NAME) $(NAME).go
 
+test:
+	CGO_ENABLED=0 $(GO) test github.com/fabric8io/gofabric8/cmds
+
 install: *.go */*.go
 	GOBIN=${GOPATH}/bin $(GO) install $(BUILDFLAGS) $(NAME).go
 
 fmt:
 	@([[ ! -z "$(FORMATTED)" ]] && printf "Fixed unformatted files:\n$(FORMATTED)") || true
 
+arm:
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-arm $(NAME).go
+
 bootstrap:
 	$(GO) get -u github.com/Masterminds/glide
 	GO15VENDOREXPERIMENT=1 glide update --strip-vendor --strip-vcs --update-vendored
 
-release:
+release: test
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \
-		CGO_ENABLED=0 GOOS=$$os ARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
 		tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$(VERSION)-$$os-amd64.tar.gz build/$(NAME)-$$os-amd64 README.md LICENSE ; \
 	done
-	CGO_ENABLED=0 GOOS=windows ARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe $(NAME).go
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe $(NAME).go
 	zip --junk-paths release/$(NAME)-$(VERSION)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-arm $(NAME).go
+	tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$(VERSION)-linux-arm.tar.gz build/$(NAME)-linux-arm README.md LICENSE ;
 	go get -u github.com/progrium/gh-release
 	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)
 
 clean:
-		rm -rf build release
+	rm -rf build release
 
-.PHONY: release clean
+.PHONY: release clean arm

@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -158,8 +159,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				if typeOfMaster == util.Kubernetes {
 					uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleKubernetesUrl), consoleVersion)
-					if len(dockerRegistry) > 0 {
-						jsonData, err := loadJsonDataAndAppendDockerRegistryPrefix(uri, dockerRegistry)
+					if fabric8ImageAdaptionNeeded(dockerRegistry, goruntime.GOARCH) {
+						jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry)
 						if err == nil {
 							tmpFileName := "/tmp/fabric8-console.json"
 							t, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
@@ -209,7 +210,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 						uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleUrl), consoleVersion)
-						jsonData, err := loadJsonDataAndAppendDockerRegistryPrefix(uri, dockerRegistry)
+						jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry)
 						if err != nil {
 							printError("failed to apply docker registry prefix", err)
 						}
@@ -438,7 +439,7 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 		if err != nil {
 			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
 		}
-		jsonData, err = appendDockerRegistryPrefix(jsonData, dockerRegistry)
+		jsonData, err = adaptFabric8ImagesInResourceDescriptor(jsonData, dockerRegistry, goruntime.GOARCH)
 		if err != nil {
 			util.Fatalf("Cannot append docker registry: %v", err)
 		}
@@ -523,7 +524,7 @@ func replaceDomain(jsonData []byte, domain string, ns string, typeOfMaster util.
 	return []byte(text)
 }
 
-func loadJsonDataAndAppendDockerRegistryPrefix(uri string, dockerRegistry string) ([]byte, error) {
+func loadJsonDataAndAdaptFabric8Images(uri string, dockerRegistry string) ([]byte, error) {
 	resp, err := http.Get(uri)
 	if err != nil {
 		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
@@ -533,22 +534,43 @@ func loadJsonDataAndAppendDockerRegistryPrefix(uri string, dockerRegistry string
 	if err != nil {
 		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
 	}
-	jsonData, err = appendDockerRegistryPrefix(jsonData, dockerRegistry)
+	jsonData, err = adaptFabric8ImagesInResourceDescriptor(jsonData, dockerRegistry, goruntime.GOARCH)
 	if err != nil {
 		util.Fatalf("Cannot append docker registry: %v", err)
 	}
 	return jsonData, nil
 }
 
-func appendDockerRegistryPrefix(jsonData []byte, dockerRegistry string) ([]byte, error) {
-	if len(dockerRegistry) <= 0 {
+// Check whether mangling of source descriptors is needed
+func fabric8ImageAdaptionNeeded(dockerRegistry string, arch string) bool {
+	return len(dockerRegistry) > 0 || arch == "arm"
+}
+
+// Prepend a docker registry and add a conditional suffix when running under arm
+func adaptFabric8ImagesInResourceDescriptor(jsonData []byte, dockerRegistry string, arch string) ([]byte, error) {
+	if !fabric8ImageAdaptionNeeded(dockerRegistry, arch) {
 		return jsonData, nil
 	}
-	r, err := regexp.Compile("\"image\" : \"fabric8/")
+
+	var suffix string
+	if arch == "arm" {
+		suffix = "-arm"
+	} else {
+		suffix = ""
+	}
+
+	var registryReplacePart string
+	if len(dockerRegistry) <= 0 {
+		registryReplacePart = ""
+	} else {
+		registryReplacePart = dockerRegistry + "/"
+	}
+
+	r, err := regexp.Compile("(\"image\"\\s*:\\s*\")(fabric8/[^:\"]+)(:[^:\"]+)?\"")
 	if err != nil {
 		return nil, err
 	}
-	return r.ReplaceAll(jsonData, []byte("\"image\" : \""+dockerRegistry+"/fabric8/")), nil
+	return r.ReplaceAll(jsonData, []byte("${1}"+registryReplacePart+"${2}"+suffix+"${3}\"")), nil
 }
 
 func createRoutes(c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory) error {
