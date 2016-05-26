@@ -1,14 +1,12 @@
 # Authentication Guide
 
-**NOTE: The authentication feature is considered experimental. We may change workflow without warning in future releases.**
-
 ## Overview
 
 Authentication -- having users and roles in etcd -- was added in etcd 2.1. This guide will help you set up basic authentication in etcd.
 
 etcd before 2.1 was a completely open system; anyone with access to the API could change keys. In order to preserve backward compatibility and upgradability, this feature is off by default.
 
-For a full discussion of the RESTful API, see [the authentication API documentation](auth_api.md)
+For a full discussion of the RESTful API, see [the authentication API documentation][auth-api]
 
 ## Special Users and Roles
 
@@ -94,6 +92,7 @@ Roles are granted access to various parts of the keyspace, a single path at a ti
 Reading a path is simple; if the path ends in `*`, that key **and all keys prefixed with it**, are granted to holders of this role. If it does not end in `*`, only that key and that key alone is granted.
 
 Access can be granted as either read, write, or both, as in the following examples:
+
 ```
 # Give read access to keys under the /foo directory
 $ etcdctl role grant myrolename -path '/foo/*' -read
@@ -134,7 +133,7 @@ $ etcdctl role remove myrolename
 
 ## Enabling authentication
 
-The minimal steps to enabling auth follow. The administrator can set up users and roles before or after enabling authentication, as a matter of preference. 
+The minimal steps to enabling auth are as follows. The administrator can set up users and roles before or after enabling authentication, as a matter of preference. 
 
 Make sure the root user is created:
 
@@ -177,3 +176,5 @@ $ etcdctl -u user get foo
 ```
 
 Otherwise, all `etcdctl` commands remain the same. Users and roles can still be created and modified, but require authentication by a user with the root role.
+
+[auth-api]: auth_api.md

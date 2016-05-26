@@ -8,6 +8,7 @@ import (
 	"github.com/pborman/uuid"
 
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/storage"
 
 	"github.com/openshift/origin/pkg/auth/server/session"
@@ -26,6 +27,9 @@ type AuthConfig struct {
 	// AssetPublicAddresses contains valid redirectURI prefixes to direct browsers to the web console
 	AssetPublicAddresses []string
 
+	// KubeClient is kubeclient with enough permission for the auth API
+	KubeClient kclient.Interface
+
 	// EtcdHelper provides storage capabilities
 	EtcdHelper storage.Interface
 
@@ -38,9 +42,11 @@ type AuthConfig struct {
 	IdentityRegistry identityregistry.Registry
 
 	SessionAuth *session.Authenticator
+
+	HandlerWrapper handlerWrapper
 }
 
-func BuildAuthConfig(options configapi.MasterConfig) (*AuthConfig, error) {
+func BuildAuthConfig(options configapi.MasterConfig, kubeClient kclient.Interface) (*AuthConfig, error) {
 	etcdClient, err := etcd.MakeNewEtcdClient(options.EtcdClientInfo)
 	if err != nil {
 		return nil, err
@@ -68,13 +74,15 @@ func BuildAuthConfig(options configapi.MasterConfig) (*AuthConfig, error) {
 	}
 
 	var sessionAuth *session.Authenticator
+	var sessionHandlerWrapper handlerWrapper
 	if options.OAuthConfig.SessionConfig != nil {
 		secure := isHTTPS(options.OAuthConfig.MasterPublicURL)
-		auth, err := BuildSessionAuth(secure, options.OAuthConfig.SessionConfig)
+		auth, wrapper, err := buildSessionAuth(secure, options.OAuthConfig.SessionConfig)
 		if err != nil {
 			return nil, err
 		}
 		sessionAuth = auth
+		sessionHandlerWrapper = wrapper
 	}
 
 	// Build the list of valid redirect_uri prefixes for a login using the openshift-web-console client to redirect to
@@ -93,6 +101,8 @@ func BuildAuthConfig(options configapi.MasterConfig) (*AuthConfig, error) {
 	ret := &AuthConfig{
 		Options: *options.OAuthConfig,
 
+		KubeClient: kubeClient,
+
 		AssetPublicAddresses: assetPublicURLs,
 		EtcdHelper:           etcdHelper,
 		EtcdBackends:         etcdBackends,
@@ -101,18 +111,20 @@ func BuildAuthConfig(options configapi.MasterConfig) (*AuthConfig, error) {
 		UserRegistry:     userRegistry,
 
 		SessionAuth: sessionAuth,
+
+		HandlerWrapper: sessionHandlerWrapper,
 	}
 
 	return ret, nil
 }
 
-func BuildSessionAuth(secure bool, config *configapi.SessionConfig) (*session.Authenticator, error) {
+func buildSessionAuth(secure bool, config *configapi.SessionConfig) (*session.Authenticator, handlerWrapper, error) {
 	secrets, err := getSessionSecrets(config.SessionSecretsFile)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sessionStore := session.NewStore(secure, int(config.SessionMaxAgeSeconds), secrets...)
-	return session.NewAuthenticator(sessionStore, config.SessionName), nil
+	return session.NewAuthenticator(sessionStore, config.SessionName), sessionStore, nil
 }
 
 func getSessionSecrets(filename string) ([]string, error) {

@@ -40,7 +40,6 @@ readonly OS_IMAGE_COMPILE_TARGETS=(
   images/pod
   cmd/dockerregistry
   cmd/gitserver
-  cmd/recycle
 )
 readonly OS_SCRATCH_IMAGE_COMPILE_TARGETS=(
   examples/hello-openshift
@@ -69,6 +68,7 @@ readonly OS_ALL_BINARIES=("${OS_ALL_TARGETS[@]##*/}")
 readonly OPENSHIFT_BINARY_SYMLINKS=(
   openshift-router
   openshift-deploy
+  openshift-recycle
   openshift-sti-build
   openshift-docker-build
   origin
@@ -507,10 +507,18 @@ os::build::extract_tar() {
   local archive_file="$1"
   local change_dir="$2"
 
+  if [[ -z "${archive_file}" ]]; then
+    return 0
+  fi
+
   local tar_flags="--strip-components=1"
 
   # Unpack archive
   echo "++ Extracting $(basename ${archive_file})"
+  if [[ "${archive_file}" == *.zip ]]; then
+    unzip -o "${archive_file}" -d "${change_dir}"
+    return 0
+  fi
   if os::build::is_hardlink_supported "${change_dir}" ; then
     # Ensure that tar won't try to set an owner when extracting to an
     # nfs mount. Setting ownership on an nfs mount is likely to fail
@@ -571,19 +579,19 @@ os::build::detect_local_release_tars() {
   local primary=$(find ${OS_LOCAL_RELEASEPATH} -maxdepth 1 -type f -name openshift-origin-server-*-${platform}* \( -name *.tar.gz -or -name *.zip \))
   if [[ $(echo "${primary}" | wc -l) -ne 1 || -z "${primary}" ]]; then
     echo "There should be exactly one ${platform} server tar in $OS_LOCAL_RELEASEPATH"
-    return 2
+    [[ -z "${WARN-}" ]] && return 2
   fi
 
   local client=$(find ${OS_LOCAL_RELEASEPATH} -maxdepth 1 -type f -name openshift-origin-client-tools-*-${platform}* \( -name *.tar.gz -or -name *.zip \))
-  if [[ $(echo "${client}" | wc -l) -ne 1 || -z "${primary}" ]]; then
+  if [[ $(echo "${client}" | wc -l) -ne 1 || -z "${client}" ]]; then
     echo "There should be exactly one ${platform} client tar in $OS_LOCAL_RELEASEPATH"
-    return 2
+    [[ -n "${WARN-}" ]] || return 2
   fi
 
   local image=$(find ${OS_LOCAL_RELEASEPATH} -maxdepth 1 -type f -name openshift-origin-image*-${platform}* \( -name *.tar.gz -or -name *.zip \))
   if [[ $(echo "${image}" | wc -l) -ne 1 || -z "${image}" ]]; then
     echo "There should be exactly one ${platform} image tar in $OS_LOCAL_RELEASEPATH"
-    return 2
+    [[ -n "${WARN-}" ]] || return 2
   fi
 
   export OS_PRIMARY_RELEASE_TAR="${primary}"
@@ -808,10 +816,23 @@ os::build::gen-docs() {
   echo "Assets generated in ${dest}"
 }
 
+os::build::get-bin-output-path() {
+  local os_root="${1:-}"
+
+  if [[ -n "${os_root}" ]]; then
+    os_root="${os_root}/"
+  fi
+  echo ${os_root}_output/local/bin/$(os::build::host_platform)
+}
+
 # os::build::find-binary locates a locally built binary for the current
-# platform and returns the path to the binary.
+# platform and returns the path to the binary.  The base path to search
+# from will default to the current working directory but can be
+# overridden via the optional second argument.
 os::build::find-binary() {
   local bin="$1"
-  local path=$( (ls -t _output/local/bin/$(os::build::host_platform)/${bin}) 2>/dev/null || true | head -1 )
+  local os_root="${2:-}"
+
+  local path=$( (ls -t $(os::build::get-bin-output-path "${os_root}")/${bin}) 2>/dev/null || true | head -1 )
   echo "$path"
 }

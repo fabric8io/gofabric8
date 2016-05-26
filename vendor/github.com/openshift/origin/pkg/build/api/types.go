@@ -11,6 +11,8 @@ import (
 const (
 	// BuildAnnotation is an annotation that identifies a Pod as being for a Build
 	BuildAnnotation = "openshift.io/build.name"
+	// BuildConfigAnnotation is an annotation that identifies the BuildConfig that a Build was created from
+	BuildConfigAnnotation = "openshift.io/build-config.name"
 	// BuildNumberAnnotation is an annotation whose value is the sequential number for this Build
 	BuildNumberAnnotation = "openshift.io/build.number"
 	// BuildCloneAnnotation is an annotation whose value is the name of the build this build was cloned from
@@ -18,7 +20,11 @@ const (
 	// BuildPodNameAnnotation is an annotation whose value is the name of the pod running this build
 	BuildPodNameAnnotation = "openshift.io/build.pod-name"
 	// BuildLabel is the key of a Pod label whose value is the Name of a Build which is run.
+	// NOTE: The value for this label may not contain the entire Build name because it will be
+	// truncated to maximum label length.
 	BuildLabel = "openshift.io/build.name"
+	// BuildRunPolicyLabel represents the start policy used to to start the build.
+	BuildRunPolicyLabel = "openshift.io/build.start-policy"
 	// DefaultDockerLabelNamespace is the key of a Build label, whose values are build metadata.
 	DefaultDockerLabelNamespace = "io.openshift."
 	// OriginVersion is an environment variable key that indicates the version of origin that
@@ -30,6 +36,16 @@ const (
 	// DropCapabilities is an environment variable that contains a list of capabilities to drop when
 	// executing a Source build
 	DropCapabilities = "DROP_CAPS"
+	// BuildConfigLabel is the key of a Build label whose value is the ID of a BuildConfig
+	// on which the Build is based. NOTE: The value for this label may not contain the entire
+	// BuildConfig name because it will be truncated to maximum label length.
+	BuildConfigLabel = "openshift.io/build-config.name"
+	// BuildConfigLabelDeprecated was used as BuildConfigLabel before adding namespaces.
+	// We keep it for backward compatibility.
+	BuildConfigLabelDeprecated = "buildconfig"
+	// BuildConfigPausedAnnotation is an annotation that marks a BuildConfig as paused.
+	// New Builds cannot be instantiated from a paused BuildConfig.
+	BuildConfigPausedAnnotation = "openshift.io/build-config.paused"
 )
 
 // Build encapsulates the inputs needed to produce a new deployable image, as well as
@@ -333,6 +349,10 @@ type BuildStrategy struct {
 
 	// CustomStrategy holds the parameters to the Custom build strategy
 	CustomStrategy *CustomBuildStrategy
+
+	// JenkinsPipelineStrategy holds the parameters to the Jenkins Pipeline build strategy.
+	// This strategy is experimental.
+	JenkinsPipelineStrategy *JenkinsPipelineBuildStrategy
 }
 
 // BuildStrategyType describes a particular way of performing a build.
@@ -423,6 +443,18 @@ type SourceBuildStrategy struct {
 
 	// ForcePull describes if the builder should pull the images from registry prior to building.
 	ForcePull bool
+}
+
+// JenkinsPipelineStrategy holds parameters specific to a Jenkins Pipeline build.
+// This strategy is experimental.
+type JenkinsPipelineBuildStrategy struct {
+	// JenkinsfilePath is the optional path of the Jenkinsfile that will be used to configure the pipeline
+	// relative to the root of the context (contextDir). If both JenkinsfilePath & Jenkinsfile are
+	// both not specified, this defaults to Jenkinsfile in the root of the specified contextDir.
+	JenkinsfilePath string
+
+	// Jenkinsfile defines the optional raw contents of a Jenkinsfile which defines a Jenkins pipeline build.
+	Jenkinsfile string
 }
 
 // A BuildPostCommitSpec holds a build post commit hook specification. The hook
@@ -529,18 +561,6 @@ type BuildOutput struct {
 	PushSecret *kapi.LocalObjectReference
 }
 
-const (
-	// BuildConfigLabel is the key of a Build label whose value is the ID of a BuildConfig
-	// on which the Build is based.
-	BuildConfigLabel = "openshift.io/build-config.name"
-	// BuildConfigLabelDeprecated was used as BuildConfigLabel before adding namespaces.
-	// We keep it for backward compatibility.
-	BuildConfigLabelDeprecated = "buildconfig"
-	// BuildConfigPausedAnnotation is an annotation that marks a BuildConfig as paused.
-	// New Builds cannot be instantiated from a paused BuildConfig.
-	BuildConfigPausedAnnotation = "openshift.io/build-config.paused"
-)
-
 // BuildConfig is a template which can be used to create new builds.
 type BuildConfig struct {
 	unversioned.TypeMeta
@@ -559,9 +579,33 @@ type BuildConfigSpec struct {
 	// are defined, a new build can only occur as a result of an explicit client build creation.
 	Triggers []BuildTriggerPolicy
 
+	// RunPolicy describes how the new build created from this build
+	// configuration will be scheduled for execution.
+	// This is optional, if not specified we default to "Serial".
+	RunPolicy BuildRunPolicy
+
 	// BuildSpec is the desired build specification
 	BuildSpec
 }
+
+// BuildRunPolicy defines the behaviour of how the new builds are executed
+// from the existing build configuration.
+type BuildRunPolicy string
+
+const (
+	// BuildRunPolicyParallel schedules new builds immediately after they are
+	// created. Builds will be executed in parallel.
+	BuildRunPolicyParallel BuildRunPolicy = "Parallel"
+
+	// BuildRunPolicySerial schedules new builds to execute in a sequence as
+	// they are created. Every build gets queued up and will execute when the
+	// previous build completes. This is the default policy.
+	BuildRunPolicySerial BuildRunPolicy = "Serial"
+
+	// BuildRunPolicySerialLatestOnly schedules only the latest build to execute,
+	// cancelling all the previously queued build.
+	BuildRunPolicySerialLatestOnly BuildRunPolicy = "SerialLatestOnly"
+)
 
 // BuildConfigStatus contains current state of the build config object.
 type BuildConfigStatus struct {
@@ -573,6 +617,10 @@ type BuildConfigStatus struct {
 type WebHookTrigger struct {
 	// Secret used to validate requests.
 	Secret string
+
+	// AllowEnv determines whether the webhook can set environment variables; can only
+	// be set to true for GenericWebHook
+	AllowEnv bool
 }
 
 // ImageChangeTrigger allows builds to be triggered when an ImageStream changes
@@ -657,6 +705,9 @@ type BuildConfigList struct {
 type GenericWebHookEvent struct {
 	// Git is the git information, if any.
 	Git *GitInfo
+
+	// Env contains additional environment variables you want to pass into a builder container
+	Env []kapi.EnvVar
 }
 
 // GitInfo is the aggregated git information for a generic webhook post

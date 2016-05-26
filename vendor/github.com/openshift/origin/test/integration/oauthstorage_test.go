@@ -64,12 +64,13 @@ func TestOAuthStorage(t *testing.T) {
 	}
 	etcdHelper := etcdstorage.NewEtcdStorage(etcdClient, kapi.Codecs.LegacyCodec(groupMeta.GroupVersions...), etcdtest.PathPrefix(), false)
 
-	accessTokenStorage := accesstokenetcd.NewREST(etcdHelper)
-	accessTokenRegistry := accesstokenregistry.NewRegistry(accessTokenStorage)
-	authorizeTokenStorage := authorizetokenetcd.NewREST(etcdHelper)
-	authorizeTokenRegistry := authorizetokenregistry.NewRegistry(authorizeTokenStorage)
 	clientStorage := clientetcd.NewREST(etcdHelper)
 	clientRegistry := clientregistry.NewRegistry(clientStorage)
+
+	accessTokenStorage := accesstokenetcd.NewREST(etcdHelper, clientRegistry)
+	accessTokenRegistry := accesstokenregistry.NewRegistry(accessTokenStorage)
+	authorizeTokenStorage := authorizetokenetcd.NewREST(etcdHelper, clientRegistry)
+	authorizeTokenRegistry := authorizetokenregistry.NewRegistry(authorizeTokenStorage)
 
 	user := &testUser{UserName: "test", UserUID: "1"}
 	storage := registrystorage.New(accessTokenRegistry, authorizeTokenRegistry, clientRegistry, user)
@@ -120,7 +121,10 @@ func TestOAuthStorage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if storedClient.GetSecret() != "secret" {
+	if !storedClient.ValidateSecret("secret") {
+		t.Fatalf("unexpected stored client: %#v", storedClient)
+	}
+	if storedClient.ValidateSecret("secret2") {
 		t.Fatalf("unexpected stored client: %#v", storedClient)
 	}
 
@@ -141,7 +145,7 @@ func TestOAuthStorage(t *testing.T) {
 	config := &oauth2.Config{
 		ClientID:     "test",
 		ClientSecret: "",
-		Scopes:       []string{"a_scope"},
+		Scopes:       []string{"user:info"},
 		RedirectURL:  assertServer.URL + "/assert",
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  server.URL + "/authorize",

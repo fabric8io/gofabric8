@@ -11,7 +11,6 @@ import (
 	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
-	"github.com/golang/glog"
 
 	s2igit "github.com/openshift/source-to-image/pkg/scm/git"
 
@@ -61,7 +60,7 @@ func fetchSource(dockerClient DockerClient, dir string, build *api.Build, urlTim
 		sourceInfo, errs = gitClient.GetInfo(dir)
 		if len(errs) > 0 {
 			for _, e := range errs {
-				glog.Warningf("Error getting git info: %v", e)
+				glog.Infof("error: Unable to retrieve Git info: %v", e)
 			}
 		}
 	}
@@ -106,7 +105,7 @@ func fetchSource(dockerClient DockerClient, dir string, build *api.Build, urlTim
 // Since this is calling the 'git' binary, the proxy settings should be
 // available for this command.
 func checkRemoteGit(gitClient GitClient, url string, timeout time.Duration) error {
-	glog.V(4).Infof("git ls-remote %s --heads", url)
+	glog.V(4).Infof("git ls-remote --heads %s", url)
 
 	var (
 		out    string
@@ -208,8 +207,8 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 	glog.V(2).Infof("Cloning source from %s", gitSource.URI)
 
 	// Only use the quiet flag if Verbosity is not 5 or greater
-	quiet := !bool(glog.V(5))
-	if err := gitClient.CloneWithOptions(dir, gitSource.URI, git.CloneOptions{Recursive: !usingRef, Quiet: quiet}); err != nil {
+	quiet := !glog.Is(5)
+	if err := gitClient.CloneWithOptions(dir, gitSource.URI, git.CloneOptions{Recursive: !usingRef, Quiet: quiet, Shallow: !usingRef}); err != nil {
 		return true, err
 	}
 
@@ -230,6 +229,7 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 			return true, err
 		}
 	}
+
 	return true, nil
 }
 
@@ -276,7 +276,7 @@ func copyImageSource(dockerClient DockerClient, containerID, sourceDir, destDir 
 
 	glog.V(4).Infof("Extracting temporary tar %s to directory %s", tempFile.Name(), destDir)
 	var tarOutput io.Writer
-	if glog.V(4) {
+	if glog.Is(4) {
 		tarOutput = os.Stdout
 	}
 	return tarHelper.ExtractTarStreamWithLogging(destDir, file, tarOutput)
@@ -319,15 +319,20 @@ func extractSourceFromImage(dockerClient DockerClient, image, buildDir string, i
 		if err := dockerClient.PullImage(docker.PullImageOptions{Repository: image}, dockerAuth); err != nil {
 			return fmt.Errorf("error pulling image %v: %v", image, err)
 		}
+	}
 
+	containerConfig := &docker.Config{Image: image}
+	if inspect, err := dockerClient.InspectImage(image); err != nil {
+		return err
+	} else {
+		// In case the Docker image does not specify the entrypoint
+		if len(inspect.Config.Entrypoint) == 0 && len(inspect.Config.Cmd) == 0 {
+			containerConfig.Entrypoint = []string{"/fake-entrypoint"}
+		}
 	}
 
 	// Create container to copy from
-	container, err := dockerClient.CreateContainer(docker.CreateContainerOptions{
-		Config: &docker.Config{
-			Image: image,
-		},
-	})
+	container, err := dockerClient.CreateContainer(docker.CreateContainerOptions{Config: containerConfig})
 	if err != nil {
 		return fmt.Errorf("error creating source image container: %v", err)
 	}

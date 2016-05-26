@@ -7,7 +7,9 @@ set -o pipefail
 OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
 source "${OS_ROOT}/hack/util.sh"
 source "${OS_ROOT}/hack/cmd_util.sh"
+source "${OS_ROOT}/hack/lib/test/junit.sh"
 os::log::install_errexit
+trap os::test::junit::reconcile_output EXIT
 
 # Cleanup cluster resources created by this test
 (
@@ -17,6 +19,7 @@ os::log::install_errexit
 ) &>/dev/null
 
 
+os::test::junit::declare_suite_start "cmd/deployments"
 # This test validates deployments and the env command
 
 os::cmd::expect_success 'oc get deploymentConfigs'
@@ -26,7 +29,11 @@ os::cmd::expect_success 'oc describe deploymentConfigs test-deployment-config'
 os::cmd::expect_success_and_text 'oc get dc -o name' 'deploymentconfig/test-deployment-config'
 os::cmd::try_until_success 'oc get rc/test-deployment-config-1'
 os::cmd::expect_success_and_text 'oc describe dc test-deployment-config' 'deploymentconfig=test-deployment-config'
+os::cmd::expect_success_and_text 'oc status' 'dc/test-deployment-config deploys docker.io/openshift/origin-pod:latest'
+os::cmd::expect_success 'oc create -f examples/hello-openshift/hello-pod.json'
+os::cmd::try_until_text 'oc status' 'pod/hello-openshift runs openshift/hello-openshift'
 
+os::test::junit::declare_suite_start "cmd/deployments/env"
 # Patch a nil list
 os::cmd::expect_success 'oc env dc/test-deployment-config TEST=value'
 os::cmd::expect_success_and_text 'oc env dc/test-deployment-config --list' 'TEST=value'
@@ -66,10 +73,14 @@ os::cmd::expect_success_and_not_text 'oc env dc/test-deployment-config --list' '
 os::cmd::expect_success_and_not_text 'oc env dc/test-deployment-config --list' 'C=c'
 os::cmd::expect_success_and_not_text 'oc env dc/test-deployment-config --list' 'G=g'
 echo "env: ok"
+os::test::junit::declare_suite_end
+
+os::test::junit::declare_suite_start "cmd/deployments/config"
 os::cmd::expect_success 'oc deploy test-deployment-config'
 os::cmd::expect_success 'oc deploy dc/test-deployment-config'
 os::cmd::expect_success 'oc delete deploymentConfigs test-deployment-config'
 echo "deploymentConfigs: ok"
+os::test::junit::declare_suite_end
 
 os::cmd::expect_success 'oc delete all --all'
 # TODO: remove, flake caused by deployment controller updating the following dc
@@ -79,6 +90,7 @@ os::cmd::expect_success 'oc delete all --all'
 os::cmd::expect_success 'oc process -f examples/sample-app/application-template-dockerbuild.json -l app=dockerbuild | oc create -f -'
 os::cmd::try_until_success 'oc get rc/database-1'
 
+os::test::junit::declare_suite_start "cmd/deployments/rollback"
 os::cmd::expect_success 'oc rollback database --to-version=1 -o=yaml'
 os::cmd::expect_success 'oc rollback dc/database --to-version=1 -o=yaml'
 os::cmd::expect_success 'oc rollback dc/database --to-version=1 --dry-run'
@@ -87,7 +99,9 @@ os::cmd::expect_success 'oc rollback rc/database-1 -o=yaml'
 # should fail because there's no previous deployment
 os::cmd::expect_failure 'oc rollback database -o yaml'
 echo "rollback: ok"
+os::test::junit::declare_suite_end
 
+os::test::junit::declare_suite_start "cmd/deployments/stop"
 os::cmd::expect_success 'oc get dc/database'
 os::cmd::expect_success 'oc expose dc/database --name=fromdc'
 # should be a service
@@ -98,11 +112,15 @@ os::cmd::expect_success 'oc delete dc/database'
 os::cmd::expect_failure 'oc get dc/database'
 os::cmd::expect_failure 'oc get rc/database-1'
 echo "stop: ok"
+os::test::junit::declare_suite_end
 
+os::test::junit::declare_suite_start "cmd/deployments/autoscale"
 os::cmd::expect_success 'oc create -f test/integration/fixtures/test-deployment-config.yaml'
 os::cmd::expect_success 'oc autoscale dc/test-deployment-config --max 5'
 os::cmd::expect_success_and_text "oc get hpa/test-deployment-config --template='{{.spec.maxReplicas}}'" "5"
 os::cmd::expect_success 'oc delete dc/test-deployment-config'
 os::cmd::expect_success 'oc delete hpa/test-deployment-config'
 echo "autoscale: ok"
+os::test::junit::declare_suite_end
 
+os::test::junit::declare_suite_end

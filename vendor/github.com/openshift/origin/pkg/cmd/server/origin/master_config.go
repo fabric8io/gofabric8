@@ -17,6 +17,7 @@ import (
 	"k8s.io/kubernetes/pkg/apiserver"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientadapter "k8s.io/kubernetes/pkg/client/unversioned/adapters/internalclientset"
 	sacontroller "k8s.io/kubernetes/pkg/controller/serviceaccount"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 	"k8s.io/kubernetes/pkg/serviceaccount"
@@ -35,6 +36,7 @@ import (
 	authnregistry "github.com/openshift/origin/pkg/auth/oauth/registry"
 	"github.com/openshift/origin/pkg/auth/userregistry/identitymapper"
 	"github.com/openshift/origin/pkg/authorization/authorizer"
+	"github.com/openshift/origin/pkg/authorization/authorizer/scope"
 	policycache "github.com/openshift/origin/pkg/authorization/cache"
 	policyclient "github.com/openshift/origin/pkg/authorization/client"
 	clusterpolicyregistry "github.com/openshift/origin/pkg/authorization/registry/clusterpolicy"
@@ -68,14 +70,11 @@ import (
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
 
-const (
-	unauthenticatedUsername = "system:anonymous"
-)
-
 // MasterConfig defines the required parameters for starting the OpenShift master
 type MasterConfig struct {
 	Options configapi.MasterConfig
 
+	RuleResolver                  rulevalidation.AuthorizationRuleResolver
 	Authenticator                 authenticator.Request
 	Authorizer                    authorizer.Authorizer
 	AuthorizationAttributeBuilder authorizer.AuthorizationAttributeBuilder
@@ -180,7 +179,13 @@ func BuildMasterConfig(options configapi.MasterConfig) (*MasterConfig, error) {
 		admissionControlPluginNames = options.AdmissionConfig.PluginOrderOverride
 	}
 
-	authorizer := newAuthorizer(policyClient, options.ProjectConfig.ProjectRequestMessage)
+	ruleResolver := rulevalidation.NewDefaultRuleResolver(
+		rulevalidation.PolicyGetter(policyClient),
+		rulevalidation.BindingLister(policyClient),
+		rulevalidation.ClusterPolicyGetter(policyClient),
+		rulevalidation.ClusterBindingLister(policyClient),
+	)
+	authorizer := newAuthorizer(ruleResolver, policyClient, options.ProjectConfig.ProjectRequestMessage)
 
 	pluginInitializer := oadmission.PluginInitializer{
 		OpenshiftClient: privilegedLoopbackOpenShiftClient,
@@ -189,7 +194,7 @@ func BuildMasterConfig(options configapi.MasterConfig) (*MasterConfig, error) {
 	}
 
 	plugins := []admission.Interface{}
-	clientsetClient := internalclientset.FromUnversionedClient(privilegedLoopbackKubeClient)
+	clientsetClient := clientadapter.FromUnversionedClient(privilegedLoopbackKubeClient)
 	for _, pluginName := range admissionControlPluginNames {
 		configFile, err := pluginconfig.GetPluginConfig(options.AdmissionConfig.PluginConfig[pluginName])
 		if err != nil {
@@ -217,6 +222,7 @@ func BuildMasterConfig(options configapi.MasterConfig) (*MasterConfig, error) {
 	config := &MasterConfig{
 		Options: options,
 
+		RuleResolver:                  ruleResolver,
 		Authenticator:                 newAuthenticator(options, etcdHelper, serviceAccountTokenGetter, apiClientCAs, groupCache),
 		Authorizer:                    authorizer,
 		AuthorizationAttributeBuilder: newAuthorizationAttributeBuilder(requestContextMapper),
@@ -282,7 +288,7 @@ func newServiceAccountTokenGetter(options configapi.MasterConfig, client newetcd
 		if err != nil {
 			return nil, err
 		}
-		tokenGetter = sacontroller.NewGetterFromClient(internalclientset.FromUnversionedClient(kubeClient))
+		tokenGetter = sacontroller.NewGetterFromClient(clientadapter.FromUnversionedClient(kubeClient))
 	} else {
 		// When we're running in-process, go straight to etcd (using the KubernetesStorageVersion/KubernetesStoragePrefix, since service accounts are kubernetes objects)
 		codec := kapi.Codecs.LegacyCodec(unversioned.GroupVersion{Group: kapi.GroupName, Version: options.EtcdStorageConfig.KubernetesStorageVersion})
@@ -320,6 +326,7 @@ func newAuthenticator(config configapi.MasterConfig, etcdHelper storage.Interfac
 
 		authenticators = append(authenticators,
 			// if you have a bearer token, you're a human (usually)
+			// if you change this, have a look at the impersonationFilter where we attach groups to the impersonated user
 			group.NewGroupAdder(unionrequest.NewUnionAuthentication(tokenRequestAuthenticators...), []string{bootstrappolicy.AuthenticatedOAuthGroup}))
 	}
 
@@ -336,6 +343,7 @@ func newAuthenticator(config configapi.MasterConfig, etcdHelper storage.Interfac
 	ret := &unionrequest.Authenticator{
 		FailOnError: true,
 		Handlers: []authenticator.Request{
+			// if you change this, have a look at the impersonationFilter where we attach groups to the impersonated user
 			group.NewGroupAdder(unionrequest.NewUnionAuthentication(authenticators...), []string{bootstrappolicy.AuthenticatedGroup}),
 			anonymous.NewAuthenticator(),
 		},
@@ -364,23 +372,30 @@ func newReadOnlyCacheAndClient(etcdHelper storage.Interface) (cache policycache.
 	return
 }
 
-func newAuthorizer(policyClient policyclient.ReadOnlyPolicyClient, projectRequestDenyMessage string) authorizer.Authorizer {
-	authorizer := authorizer.NewAuthorizer(rulevalidation.NewDefaultRuleResolver(
-		rulevalidation.PolicyGetter(policyClient),
-		rulevalidation.BindingLister(policyClient),
-		rulevalidation.ClusterPolicyGetter(policyClient),
-		rulevalidation.ClusterBindingLister(policyClient),
-	), authorizer.NewForbiddenMessageResolver(projectRequestDenyMessage))
-	return authorizer
+func newAuthorizer(ruleResolver rulevalidation.AuthorizationRuleResolver, policyClient policyclient.ReadOnlyPolicyClient, projectRequestDenyMessage string) authorizer.Authorizer {
+	messageMaker := authorizer.NewForbiddenMessageResolver(projectRequestDenyMessage)
+	roleBasedAuthorizer := authorizer.NewAuthorizer(ruleResolver, messageMaker)
+	scopeLimitedAuthorizer := scope.NewAuthorizer(roleBasedAuthorizer, policyClient, messageMaker)
+	return scopeLimitedAuthorizer
 }
 
 func newAuthorizationAttributeBuilder(requestContextMapper kapi.RequestContextMapper) authorizer.AuthorizationAttributeBuilder {
-	authorizationAttributeBuilder := authorizer.NewAuthorizationAttributeBuilder(requestContextMapper, &apiserver.RequestInfoResolver{APIPrefixes: sets.NewString("api", "osapi", "oapi", "apis"), GrouplessAPIPrefixes: sets.NewString("api", "osapi", "oapi")})
+	// Default API request resolver
+	requestInfoResolver := &apiserver.RequestInfoResolver{APIPrefixes: sets.NewString("api", "osapi", "oapi", "apis"), GrouplessAPIPrefixes: sets.NewString("api", "osapi", "oapi")}
+	// Wrap with a resolver that detects unsafe requests and modifies verbs/resources appropriately so policy can address them separately
+	browserSafeRequestInfoResolver := authorizer.NewBrowserSafeRequestInfoResolver(
+		requestContextMapper,
+		sets.NewString(bootstrappolicy.AuthenticatedGroup),
+		requestInfoResolver,
+	)
+
+	authorizationAttributeBuilder := authorizer.NewAuthorizationAttributeBuilder(requestContextMapper, browserSafeRequestInfoResolver)
 	return authorizationAttributeBuilder
 }
 
 func getEtcdTokenAuthenticator(etcdHelper storage.Interface, groupMapper identitymapper.UserToGroupMapper) authenticator.Token {
-	accessTokenStorage := accesstokenetcd.NewREST(etcdHelper)
+	// this never does a create for access tokens, so we don't need to be able to validate scopes against the client
+	accessTokenStorage := accesstokenetcd.NewREST(etcdHelper, nil)
 	accessTokenRegistry := accesstokenregistry.NewRegistry(accessTokenStorage)
 
 	userStorage := useretcd.NewREST(etcdHelper)
@@ -545,7 +560,7 @@ func (c *MasterConfig) ImageStreamImportSecretClient() *osclient.Client {
 // ResourceQuotaManagerClients returns the client capable of retrieving resources needed for resource quota
 // evaluation
 func (c *MasterConfig) ResourceQuotaManagerClients() (*osclient.Client, *internalclientset.Clientset) {
-	return c.PrivilegedLoopbackOpenShiftClient, internalclientset.FromUnversionedClient(c.PrivilegedLoopbackKubernetesClient)
+	return c.PrivilegedLoopbackOpenShiftClient, clientadapter.FromUnversionedClient(c.PrivilegedLoopbackKubernetesClient)
 }
 
 // WebConsoleEnabled says whether web ui is not a disabled feature and asset service is configured.

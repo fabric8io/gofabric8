@@ -45,16 +45,16 @@ executing the rollback. This is useful if you're not quite sure what the outcome
 will be.`
 
 	rollbackExample = `  # Perform a rollback to the last successfully completed deployment for a deploymentconfig
-  $ %[1]s rollback frontend
+  %[1]s rollback frontend
 
   # See what a rollback to version 3 will look like, but don't perform the rollback
-  $ %[1]s rollback frontend --to-version=3 --dry-run
+  %[1]s rollback frontend --to-version=3 --dry-run
 
   # Perform a rollback to a specific deployment
-  $ %[1]s rollback frontend-2
+  %[1]s rollback frontend-2
 
   # Perform the rollback manually by piping the JSON of the new config back to %[1]s
-  $ %[1]s rollback frontend --output=json | %[1]s update deploymentConfigs deployment -f -`
+  %[1]s rollback frontend -o json | %[1]s replace dc/frontend -f -`
 )
 
 // NewCmdRollback creates a CLI rollback command.
@@ -130,7 +130,7 @@ func (o *RollbackOptions) Complete(f *clientcmd.Factory, args []string, out io.W
 	o.Namespace = namespace
 
 	// Set up client based support.
-	mapper, typer := f.Object()
+	mapper, typer := f.Object(false)
 	o.getBuilder = func() *resource.Builder {
 		return resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder())
 	}
@@ -222,7 +222,7 @@ func (o *RollbackOptions) Run() error {
 
 	// If this is a dry run, print and exit.
 	if o.DryRun {
-		describer := describe.NewDeploymentConfigDescriberForConfig(o.oc, o.kc, newConfig)
+		describer := describe.NewDeploymentConfigDescriber(o.oc, o.kc, newConfig)
 		description, err := describer.Describe(newConfig.Namespace, newConfig.Name)
 		if err != nil {
 			return err

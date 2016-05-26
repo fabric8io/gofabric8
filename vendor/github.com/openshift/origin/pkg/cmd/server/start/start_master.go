@@ -15,11 +15,12 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
+	cmapp "k8s.io/kubernetes/cmd/kube-controller-manager/app/options"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/capabilities"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/typed/dynamic"
+	clientadapter "k8s.io/kubernetes/pkg/client/unversioned/adapters/internalclientset"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
 
@@ -58,7 +59,7 @@ const masterLong = `Start a master server
 
 This command helps you launch a master server.  Running
 
-  $ %[1]s start master
+  %[1]s start master
 
 will start a master listening on all interfaces, launch an etcd server to store
 persistent data, and launch the Kubernetes system components. The server will run in the
@@ -318,7 +319,7 @@ func (o MasterOptions) CreateCerts() error {
 		APIServerCAFiles:   o.MasterArgs.APIServerCAFiles,
 		CABundleFile:       admin.DefaultCABundleFile(o.MasterArgs.ConfigDir.Value()),
 		PublicAPIServerURL: publicMasterAddr.String(),
-		Output:             o.Output,
+		Output:             cmdutil.NewGLogWriterV(3),
 	}
 	if err := mintAllCertsOptions.Validate(nil); err != nil {
 		return err
@@ -445,7 +446,7 @@ func StartAPI(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) error {
 	unprotectedInstallers := []origin.APIInstaller{}
 
 	if oc.Options.OAuthConfig != nil {
-		authConfig, err := origin.BuildAuthConfig(oc.Options)
+		authConfig, err := origin.BuildAuthConfig(oc.Options, oc.KubeClient())
 		if err != nil {
 			return err
 		}
@@ -526,9 +527,15 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 	oc.ControllerPlug.WaitForStart()
 	glog.Infof("Controllers starting (%s)", oc.Options.Controllers)
 
+	// Get configured options (or defaults) for k8s controllers
+	controllerManagerOptions := cmapp.NewCMServer()
+	if kc != nil && kc.ControllerManager != nil {
+		controllerManagerOptions = kc.ControllerManager
+	}
+
 	// Start these first, because they provide credentials for other controllers' clients
 	oc.RunServiceAccountsController()
-	oc.RunServiceAccountTokensController()
+	oc.RunServiceAccountTokensController(controllerManagerOptions)
 	// used by admission controllers
 	oc.RunServiceAccountPullSecretsControllers()
 	oc.RunSecurityAllocationController()
@@ -572,16 +579,21 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 			glog.Fatalf("Could not get client for pod gc controller: %v", err)
 		}
 
+		_, _, serviceLoadBalancerClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraServiceLoadBalancerControllerServiceAccountName)
+		if err != nil {
+			glog.Fatalf("Could not get client for pod gc controller: %v", err)
+		}
+
 		namespaceControllerClientConfig, _, namespaceControllerKubeClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraNamespaceControllerServiceAccountName)
 		if err != nil {
 			glog.Fatalf("Could not get client for namespace controller: %v", err)
 		}
-		namespaceControllerClientSet := internalclientset.FromUnversionedClient(namespaceControllerKubeClient)
+		namespaceControllerClientSet := clientadapter.FromUnversionedClient(namespaceControllerKubeClient)
 		namespaceControllerClientPool := dynamic.NewClientPool(namespaceControllerClientConfig, dynamic.LegacyAPIPathResolverFunc)
 
 		// called by admission control
 		kc.RunResourceQuotaManager()
-		oc.RunResourceQuotaManager(kc.ControllerManager)
+		oc.RunResourceQuotaManager(controllerManagerOptions)
 
 		// no special order
 		kc.RunNodeController()
@@ -607,9 +619,13 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 		kc.RunEndpointController()
 		kc.RunNamespaceController(namespaceControllerClientSet, namespaceControllerClientPool)
 		kc.RunPersistentVolumeClaimBinder(binderClient)
-		kc.RunPersistentVolumeProvisioner(provisionerClient)
+		if oc.Options.VolumeConfig.DynamicProvisioningEnabled {
+			kc.RunPersistentVolumeProvisioner(provisionerClient)
+		}
 		kc.RunPersistentVolumeClaimRecycler(oc.ImageFor("recycler"), recyclerClient, oc.Options.PolicyConfig.OpenShiftInfrastructureNamespace)
 		kc.RunGCController(gcClient)
+
+		kc.RunServiceLoadBalancerController(serviceLoadBalancerClient)
 
 		glog.Infof("Started Kubernetes Controllers")
 	} else {
@@ -631,6 +647,12 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 	oc.RunImageImportController()
 	oc.RunOriginNamespaceController()
 	oc.RunSDNController()
+
+	_, _, serviceServingCertClient, err := oc.GetServiceAccountClients(bootstrappolicy.ServiceServingCertServiceAccountName)
+	if err != nil {
+		glog.Fatalf("Could not get client: %v", err)
+	}
+	oc.RunServiceServingCertController(serviceServingCertClient)
 
 	glog.Infof("Started Origin Controllers")
 

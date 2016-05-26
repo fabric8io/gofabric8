@@ -43,6 +43,10 @@ install: *.go */*.go
 fmt:
 	@([[ ! -z "$(FORMATTED)" ]] && printf "Fixed unformatted files:\n$(FORMATTED)") || true
 
+bootstrap:
+	$(GO) get -u github.com/Masterminds/glide
+	GO15VENDOREXPERIMENT=1 glide update --strip-vendor --strip-vcs --update-vendored
+
 release:
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \

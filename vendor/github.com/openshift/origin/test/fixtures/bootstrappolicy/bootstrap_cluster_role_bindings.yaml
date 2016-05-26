@@ -41,7 +41,10 @@ items:
   subjects:
   - kind: SystemGroup
     name: system:cluster-admins
-  userNames: null
+  - kind: SystemUser
+    name: system:admin
+  userNames:
+  - system:admin
 - apiVersion: v1
   groupNames:
   - system:cluster-readers
@@ -209,6 +212,58 @@ items:
     name: system:authenticated
   - kind: SystemGroup
     name: system:unauthenticated
+  userNames: null
+- apiVersion: v1
+  groupNames:
+  - system:authenticated
+  kind: ClusterRoleBinding
+  metadata:
+    creationTimestamp: null
+    name: system:build-strategy-docker-binding
+  roleRef:
+    name: system:build-strategy-docker
+  subjects:
+  - kind: SystemGroup
+    name: system:authenticated
+  userNames: null
+- apiVersion: v1
+  groupNames:
+  - system:authenticated
+  kind: ClusterRoleBinding
+  metadata:
+    creationTimestamp: null
+    name: system:build-strategy-custom-binding
+  roleRef:
+    name: system:build-strategy-custom
+  subjects:
+  - kind: SystemGroup
+    name: system:authenticated
+  userNames: null
+- apiVersion: v1
+  groupNames:
+  - system:authenticated
+  kind: ClusterRoleBinding
+  metadata:
+    creationTimestamp: null
+    name: system:build-strategy-source-binding
+  roleRef:
+    name: system:build-strategy-source
+  subjects:
+  - kind: SystemGroup
+    name: system:authenticated
+  userNames: null
+- apiVersion: v1
+  groupNames:
+  - system:authenticated
+  kind: ClusterRoleBinding
+  metadata:
+    creationTimestamp: null
+    name: system:build-strategy-jenkinspipeline-binding
+  roleRef:
+    name: system:build-strategy-jenkinspipeline
+  subjects:
+  - kind: SystemGroup
+    name: system:authenticated
   userNames: null
 kind: List
 metadata: {}

@@ -16,7 +16,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/types"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/sets"
 
@@ -196,6 +196,10 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 				specs := []string{"", "ImageStreamTag", "ImageStreamImage"}
 				j.From.Kind = specs[c.Intn(len(specs))]
 			}
+		},
+		func(j *build.BuildConfigSpec, c fuzz.Continue) {
+			c.FuzzNoCustom(j)
+			j.RunPolicy = build.BuildRunPolicySerial
 		},
 		func(j *build.SourceBuildStrategy, c fuzz.Continue) {
 			c.FuzzNoCustom(j)
@@ -452,7 +456,7 @@ func roundTrip(t *testing.T, codec runtime.Codec, originalItem runtime.Object) {
 	}
 
 	if !kapi.Semantic.DeepEqual(originalItem, obj2) {
-		t.Errorf("1: %v: diff: %v\nCodec: %v\nData: %s\nSource: %s", name, util.ObjectDiff(originalItem, obj2), codec, string(data), util.ObjectGoPrintSideBySide(originalItem, obj2))
+		t.Errorf("1: %v: diff: %v\nCodec: %v\nData: %s\nSource: %s", name, diff.ObjectDiff(originalItem, obj2), codec, string(data), diff.ObjectGoPrintSideBySide(originalItem, obj2))
 		return
 	}
 
@@ -462,7 +466,7 @@ func roundTrip(t *testing.T, codec runtime.Codec, originalItem runtime.Object) {
 		return
 	}
 	if !kapi.Semantic.DeepEqual(originalItem, obj3) {
-		t.Errorf("3: %v: diff: %v\nCodec: %v", name, util.ObjectDiff(originalItem, obj3), codec)
+		t.Errorf("3: %v: diff: %v\nCodec: %v", name, diff.ObjectDiff(originalItem, obj3), codec)
 		return
 	}
 }

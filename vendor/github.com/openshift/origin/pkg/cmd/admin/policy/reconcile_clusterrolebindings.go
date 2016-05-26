@@ -41,7 +41,7 @@ type ReconcileClusterRoleBindingsOptions struct {
 
 const (
 	reconcileBindingsLong = `
-Replace cluster role bindings to match the recommended bootstrap policy
+Update cluster role bindings to match the recommended bootstrap policy
 
 This command will inspect the cluster role bindings against the recommended bootstrap policy.
 Any cluster role binding that does not match will be replaced by the recommended bootstrap role binding.
@@ -49,20 +49,20 @@ This command will not remove any additional cluster role bindings.
 
 You can see which recommended cluster role bindings have changed by choosing an output type.`
 
-	reconcileBindingsExample = `  # Display the cluster role bindings that would be modified
-  $ %[1]s
+	reconcileBindingsExample = `  # Display the names of cluster role bindings that would be modified
+  %[1]s -o name
 
   # Display the cluster role bindings that would be modified, removing any extra subjects
-  $ %[1]s --additive-only=false
+  %[1]s --additive-only=false
 
   # Update cluster role bindings that don't match the current defaults
-  $ %[1]s --confirm
+  %[1]s --confirm
 
   # Update cluster role bindings that don't match the current defaults, avoid adding roles to the system:authenticated group
-  $ %[1]s --confirm --exclude-groups=system:authenticated
+  %[1]s --confirm --exclude-groups=system:authenticated
 
   # Update cluster role bindings that don't match the current defaults, removing any extra subjects from the binding
-  $ %[1]s --confirm --additive-only=false`
+  %[1]s --confirm --additive-only=false`
 )
 
 // NewCmdReconcileClusterRoleBindings implements the OpenShift cli reconcile-cluster-role-bindings command
@@ -77,7 +77,7 @@ func NewCmdReconcileClusterRoleBindings(name, fullName string, f *clientcmd.Fact
 
 	cmd := &cobra.Command{
 		Use:     name + " [ClusterRoleName]...",
-		Short:   "Replace cluster role bindings to match the recommended bootstrap policy",
+		Short:   "Update cluster role bindings to match the recommended bootstrap policy",
 		Long:    reconcileBindingsLong,
 		Example: fmt.Sprintf(reconcileBindingsExample, fullName),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -117,7 +117,7 @@ func (o *ReconcileClusterRoleBindingsOptions) Complete(cmd *cobra.Command, f *cl
 
 	o.ExcludeSubjects = authorizationapi.BuildSubjects(excludeUsers, excludeGroups, uservalidation.ValidateUserName, uservalidation.ValidateGroupName)
 
-	mapper, _ := f.Object()
+	mapper, _ := f.Object(false)
 	for _, resourceString := range args {
 		resource, name, err := cmdutil.ResolveResource(authorizationapi.Resource("clusterroles"), resourceString, mapper)
 		if err != nil {
@@ -140,9 +140,6 @@ func (o *ReconcileClusterRoleBindingsOptions) Validate() error {
 	if o.RoleBindingClient == nil {
 		return errors.New("a role binding client is required")
 	}
-	if o.Output != "yaml" && o.Output != "json" && o.Output != "" {
-		return fmt.Errorf("unknown output specified: %s", o.Output)
-	}
 	return nil
 }
 
@@ -162,7 +159,8 @@ func (o *ReconcileClusterRoleBindingsOptions) RunReconcileClusterRoleBindings(cm
 		for _, item := range changedClusterRoleBindings {
 			list.Items = append(list.Items, item)
 		}
-		fn := cmdutil.VersionedPrintObject(f.PrintObject, cmd, o.Out)
+		mapper, _ := f.Object(false)
+		fn := cmdutil.VersionedPrintObject(f.PrintObject, cmd, mapper, o.Out)
 		if err := fn(list); err != nil {
 			return err
 		}

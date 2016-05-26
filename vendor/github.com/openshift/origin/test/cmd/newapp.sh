@@ -7,7 +7,9 @@ set -o pipefail
 OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
 source "${OS_ROOT}/hack/util.sh"
 source "${OS_ROOT}/hack/cmd_util.sh"
+source "${OS_ROOT}/hack/lib/test/junit.sh"
 os::log::install_errexit
+trap os::test::junit::reconcile_output EXIT
 
 # Cleanup cluster resources created by this test
 (
@@ -17,11 +19,14 @@ os::log::install_errexit
 ) &>/dev/null
 
 
+os::test::junit::declare_suite_start "cmd/newapp"
 # This test validates the new-app command
-
 os::cmd::expect_success_and_text 'oc new-app library/php mysql -o yaml' '3306'
-os::cmd::expect_success_and_text 'oc new-app library/php mysql --dry-run' "Image \"php\" runs as the 'root' user which may not be permitted by your cluster administrator"
+os::cmd::expect_success_and_text 'oc new-app library/php mysql --dry-run' "Image \"library/php\" runs as the 'root' user which may not be permitted by your cluster administrator"
 os::cmd::expect_failure 'oc new-app unknownhubimage -o yaml'
+os::cmd::expect_failure_and_text 'oc new-app docker.io/node~https://github.com/openshift/nodejs-ex' 'the image match \"docker.io/node\" for source repository \"https://github.com/openshift/nodejs-ex\" does not appear to be a source-to-image builder.'
+os::cmd::expect_failure_and_text 'oc new-app https://github.com/openshift/rails-ex' 'the image match \"ruby\" for source repository \"https://github.com/openshift/rails-ex\" does not appear to be a source-to-image builder.'
+os::cmd::expect_success 'oc new-app https://github.com/openshift/rails-ex --strategy=source --dry-run'
 # verify we can generate a Docker image based component "mongodb" directly
 os::cmd::expect_success_and_text 'oc new-app mongo -o yaml' 'image:\s*mongo'
 # the local image repository takes precedence over the Docker Hub "mysql" image
@@ -59,6 +64,7 @@ os::cmd::expect_success_and_text 'oc new-app ruby-helloworld-sample -o yaml' 'MY
 os::cmd::expect_success_and_text 'oc new-app ruby-helloworld-sample -o yaml' 'MYSQL_PASSWORD'
 os::cmd::expect_success_and_text 'oc new-app ruby-helloworld-sample -o yaml' 'ADMIN_USERNAME'
 os::cmd::expect_success_and_text 'oc new-app ruby-helloworld-sample -o yaml' 'ADMIN_PASSWORD'
+os::cmd::expect_success_and_text 'oc new-app ruby-helloworld-sample --param MYSQL_PASSWORD=hello -o yaml' 'hello'
 
 # verify we can create from a template when some objects in the template declare an app label
 # the app label should still be applied to the other objects in the template.
@@ -193,6 +199,15 @@ os::cmd::expect_success 'oc delete all -l app=ruby'
 jsonfile="${OS_ROOT}/test/fixtures/invalid.json"
 os::cmd::expect_failure_and_text "oc new-app '${jsonfile}'" "error: unable to load template file \"${jsonfile}\": at offset 8: invalid character '}' after object key"
 
+# a docker compose file should be transformed into an application by the import command
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml --dry-run' 'warning: not all docker-compose fields were honored'
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml --dry-run' 'db: cpuset is not supported'
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml -o name --dry-run' 'service/redis'
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml -o name --as-template=other --dry-run' 'template/other'
+os::cmd::expect_failure 'diff --suppress-common-lines -y <(oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml -o yaml) test/fixtures/app-scenarios/docker-compose/complex/docker-compose.imported.yaml | grep -v secret'
+
+# verify a docker-compose.yml schema 2 resource can be transformed, and that it sets env vars correctly.
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/wordpress/docker-compose.yml -o yaml --as-template=other --dry-run' 'value: wordpress'
 
 # check new-build
 os::cmd::expect_failure_and_text 'oc new-build mysql -o yaml' 'you must specify at least one source repository URL'
@@ -241,3 +256,4 @@ os::cmd::expect_success 'oc new-app https://github.com/openshift/ruby-hello-worl
 os::cmd::expect_success_and_not_text 'oc new-app https://github.com/openshift/ruby-hello-world --output-version=v1 -o=jsonpath="{.items[?(@.kind==\"BuildConfig\")].spec.source}"' 'dockerfile|binary'
 
 echo "new-app: ok"
+os::test::junit::declare_suite_end

@@ -20,10 +20,10 @@ PREFIX="github.com/coreos/etcd/Godeps/_workspace/src"
 ESCAPED_PREFIX=$(echo $PREFIX | sed -e 's/[\/&]/\\&/g')
 
 # directories containing protos to be built
-DIRS="./wal/walpb ./etcdserver/etcdserverpb ./snap/snappb ./raft/raftpb ./storage/storagepb"
+DIRS="./wal/walpb ./etcdserver/etcdserverpb ./snap/snappb ./raft/raftpb ./storage/storagepb ./lease/leasepb"
 
 # exact version of protoc-gen-gogo to build
-SHA="3f30c980d6e82173e5ec64b7499df1953488aaac"
+SHA="c57e439bad574c2e0877ff18d514badcfced004d"
 
 # set up self-contained GOPATH for building
 export GOPATH=${PWD}/gopath
@@ -42,6 +42,7 @@ ln -s "${PWD}" "${ETCD_ROOT}"
 # Ensure we have the right version of protoc-gen-gogo by building it every time.
 # TODO(jonboulle): vendor this instead of `go get`ting it.
 go get github.com/gogo/protobuf/{proto,protoc-gen-gogo,gogoproto}
+go get golang.org/x/tools/cmd/goimports
 pushd "${GOGOPROTO_ROOT}"
 	git reset --hard "${SHA}"
 	make install

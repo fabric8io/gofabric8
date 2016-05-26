@@ -37,13 +37,16 @@ func TestHandle_createPodOk(t *testing.T) {
 			},
 		},
 		podClient: &podClientImpl{
+			getPodFunc: func(namespace, name string) (*kapi.Pod, error) {
+				return nil, kerrors.NewNotFound(kapi.Resource("pods"), name)
+			},
 			createPodFunc: func(namespace string, pod *kapi.Pod) (*kapi.Pod, error) {
 				createdPod = pod
 				return pod, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
-			return expectedContainer, nil
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return expectedContainer
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -129,7 +132,7 @@ func TestHandle_makeContainerFail(t *testing.T) {
 
 	controller := &DeploymentController{
 		decodeConfig: func(deployment *kapi.ReplicationController) (*deployapi.DeploymentConfig, error) {
-			return deployutil.DecodeDeploymentConfig(deployment, kapi.Codecs.LegacyCodec(deployapi.SchemeGroupVersion))
+			return nil, fmt.Errorf("invalid serialized object reference")
 		},
 		deploymentClient: &deploymentClientImpl{
 			updateDeploymentFunc: func(namespace string, deployment *kapi.ReplicationController) (*kapi.ReplicationController, error) {
@@ -138,13 +141,16 @@ func TestHandle_makeContainerFail(t *testing.T) {
 			},
 		},
 		podClient: &podClientImpl{
+			getPodFunc: func(namespace, name string) (*kapi.Pod, error) {
+				return nil, kerrors.NewNotFound(kapi.Resource("pods"), name)
+			},
 			createPodFunc: func(namespace string, pod *kapi.Pod) (*kapi.Pod, error) {
 				t.Fatalf("unexpected call to create pod")
 				return nil, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
-			return nil, fmt.Errorf("couldn't make container")
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return nil
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -179,12 +185,15 @@ func TestHandle_createPodFail(t *testing.T) {
 			},
 		},
 		podClient: &podClientImpl{
+			getPodFunc: func(namespace, name string) (*kapi.Pod, error) {
+				return nil, kerrors.NewNotFound(kapi.Resource("pods"), name)
+			},
 			createPodFunc: func(namespace string, pod *kapi.Pod) (*kapi.Pod, error) {
 				return nil, fmt.Errorf("Failed to create pod %s", pod.Name)
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
-			return okContainer(), nil
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return okContainer()
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -232,8 +241,8 @@ func TestHandle_deployerPodAlreadyExists(t *testing.T) {
 				return nil, kerrors.NewAlreadyExists(kapi.Resource("Pod"), pod.Name)
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
-			return okContainer(), nil
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return okContainer()
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -282,8 +291,8 @@ func TestHandle_unrelatedPodAlreadyExists(t *testing.T) {
 				return nil, kerrors.NewAlreadyExists(kapi.Resource("Pod"), pod.Name)
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
-			return okContainer(), nil
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return okContainer()
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -329,9 +338,9 @@ func TestHandle_noop(t *testing.T) {
 				return &kapi.Pod{}, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
 			t.Fatalf("unexpected call to make container")
-			return nil, nil
+			return nil
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -383,9 +392,9 @@ func TestHandle_failedTest(t *testing.T) {
 				return nil, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
 			t.Fatalf("unexpected call to make container")
-			return nil, nil
+			return nil
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -443,9 +452,9 @@ func TestHandle_cleanupPodOk(t *testing.T) {
 				return pods, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
 			t.Fatalf("unexpected call to make container")
-			return nil, nil
+			return nil
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -504,9 +513,9 @@ func TestHandle_cleanupPodOkTest(t *testing.T) {
 				return pods, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
 			t.Fatalf("unexpected call to make container")
-			return nil, nil
+			return nil
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -561,9 +570,9 @@ func TestHandle_cleanupPodNoop(t *testing.T) {
 				return []kapi.Pod{}, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
 			t.Fatalf("unexpected call to make container")
-			return nil, nil
+			return nil
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -604,9 +613,9 @@ func TestHandle_cleanupPodFail(t *testing.T) {
 				return []kapi.Pod{{}}, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
 			t.Fatalf("unexpected call to make container")
-			return nil, nil
+			return nil
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -640,9 +649,12 @@ func TestHandle_cancelNew(t *testing.T) {
 				t.Fatalf("unexpected call to make container")
 				return nil, nil
 			},
+			getDeployerPodsForFunc: func(namespace, name string) ([]kapi.Pod, error) {
+				return []kapi.Pod{}, nil
+			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
-			return okContainer(), nil
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return okContainer()
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -656,8 +668,58 @@ func TestHandle_cancelNew(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if e, a := deployapi.DeploymentStatusFailed, deployutil.DeploymentStatusFor(updatedDeployment); e != a {
+	if e, a := deployapi.DeploymentStatusPending, deployutil.DeploymentStatusFor(updatedDeployment); e != a {
 		t.Fatalf("expected deployment status %s, got %s", e, a)
+	}
+}
+
+func TestHandle_cancelNewWithDeployers(t *testing.T) {
+	var updatedDeployment *kapi.ReplicationController
+	updatedDeployer := false
+
+	deployment, _ := deployutil.MakeDeployment(deploytest.OkDeploymentConfig(1), kapi.Codecs.LegacyCodec(deployapi.SchemeGroupVersion))
+	deployment.Annotations[deployapi.DeploymentStatusAnnotation] = string(deployapi.DeploymentStatusNew)
+	deployment.Annotations[deployapi.DeploymentCancelledAnnotation] = deployapi.DeploymentCancelledAnnotationValue
+
+	controller := &DeploymentController{
+		decodeConfig: func(deployment *kapi.ReplicationController) (*deployapi.DeploymentConfig, error) {
+			return deployutil.DecodeDeploymentConfig(deployment, kapi.Codecs.LegacyCodec(deployapi.SchemeGroupVersion))
+		},
+		deploymentClient: &deploymentClientImpl{
+			updateDeploymentFunc: func(namespace string, deployment *kapi.ReplicationController) (*kapi.ReplicationController, error) {
+				updatedDeployment = deployment
+				return updatedDeployment, nil
+			},
+		},
+		podClient: &podClientImpl{
+			createPodFunc: func(namespace string, pod *kapi.Pod) (*kapi.Pod, error) {
+				t.Fatalf("unexpected call to make container")
+				return nil, nil
+			},
+			updatePodFunc: func(namespace string, pod *kapi.Pod) (*kapi.Pod, error) {
+				updatedDeployer = true
+				return nil, nil
+			},
+			getDeployerPodsForFunc: func(namespace, name string) ([]kapi.Pod, error) {
+				return []kapi.Pod{*relatedPod(deployment)}, nil
+			},
+		},
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return okContainer()
+		},
+		recorder: &record.FakeRecorder{},
+	}
+
+	err := controller.Handle(deployment)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if e, a := deployapi.DeploymentStatusPending, deployutil.DeploymentStatusFor(updatedDeployment); e != a {
+		t.Fatalf("expected deployment status %s, got %s", e, a)
+	}
+	if !updatedDeployer {
+		t.Fatalf("expected deployer update")
 	}
 }
 
@@ -694,8 +756,8 @@ func TestHandle_cancelPendingRunning(t *testing.T) {
 				return pods, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
-			return okContainer(), nil
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return okContainer()
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -748,8 +810,8 @@ func TestHandle_deployerPodDisappeared(t *testing.T) {
 				return nil, kerrors.NewNotFound(kapi.Resource("Pod"), name)
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
-			return okContainer(), nil
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return okContainer()
 		},
 		recorder: &record.FakeRecorder{},
 	}
@@ -795,8 +857,8 @@ func TestDeployerCustomLabelsAndAnnotations(t *testing.T) {
 				return pod, nil
 			},
 		},
-		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
-			return okContainer(), nil
+		makeContainer: func(strategy *deployapi.DeploymentStrategy) *kapi.Container {
+			return okContainer()
 		},
 	}
 

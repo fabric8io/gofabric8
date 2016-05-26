@@ -12,7 +12,7 @@ import (
 	exutil "github.com/openshift/origin/test/extended/util"
 )
 
-var _ = g.Describe("[builds][Slow] source-to-image build with environment file in sources", func() {
+var _ = g.Describe("[builds][Slow] s2i build with environment file in sources", func() {
 	defer g.GinkgoRecover()
 	const (
 		buildTestPod     = "build-test-pod"
@@ -50,6 +50,9 @@ var _ = g.Describe("[builds][Slow] source-to-image build with environment file i
 
 			g.By("expecting the build is in Complete phase")
 			err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), buildName, exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
+			if err != nil {
+				exutil.DumpBuildLogs("test", oc)
+			}
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("getting the Docker image reference from ImageStream")

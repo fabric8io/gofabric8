@@ -2,7 +2,7 @@ package: github.com/fabric8io/gofabric8
 import:
 - package: github.com/daviddengcn/go-colortext
 - package: github.com/openshift/origin
-  version: v1.1.6
+  version: v1.3.0-alpha.1
   subpackages:
   - pkg/client
   - pkg/cmd/admin/policy
@@ -14,11 +14,14 @@ import:
   - pkg/template/generator
 - package: github.com/spf13/cobra
 - package: github.com/spf13/pflag
+- package: github.com/golang/glog
+  version: 44145f04b68cf362d9c4df2182967c2275eaefed
 - package: golang.org/x/crypto
-  subpackages:
-  - ssh
+  vcs: git
+  repo: https://github.com/golang/crypto.git
+  version: 5bcd134fee4dd1475da17714aac19c0aa0142e2f
 - package: k8s.io/kubernetes
-  version: release-1.2-stable-20160316
+  version: c2cc7fd2eafe14472098737b2c255ce4ca06d987
   repo: git@github.com:openshift/kubernetes.git
   vcs: git
   subpackages:
@@ -33,10 +36,13 @@ import:
   - pkg/runtime
   - pkg/util
 - package: github.com/Sirupsen/logrus
-  version: v0.7.3
+  version: 51fe59aca108dc5680109e7b2051cbdcfa5a253c
 - package: github.com/coreos/pkg
   subpackages:
   - capnslog
 - package: github.com/coreos/go-systemd
   subpackages:
   - journal
+- package: speter.net/go/exp/math/dec/inf
+  vcs: git
+  repo: git@github.com:go-inf/inf.git

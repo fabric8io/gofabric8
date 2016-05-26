@@ -5,6 +5,8 @@ import (
 	"io"
 	"reflect"
 
+	"github.com/golang/glog"
+
 	admission "k8s.io/kubernetes/pkg/admission"
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
@@ -26,6 +28,10 @@ func init() {
 		pluginConfig, err := readConfig(config)
 		if err != nil {
 			return nil, err
+		}
+		if pluginConfig == nil {
+			glog.Infof("Admission plugin %q is not configured so it will be disabled.", "PodNodeConstraints")
+			return nil, nil
 		}
 		return NewPodNodeConstraints(pluginConfig), nil
 	})
@@ -112,7 +118,7 @@ func (o *podNodeConstraints) Admit(attr admission.Attributes) error {
 		attr.GetSubresource() != "":
 		return nil
 	}
-	shouldCheck, err := shouldCheckResource(attr.GetResource(), attr.GetKind())
+	shouldCheck, err := shouldCheckResource(attr.GetResource().GroupResource(), attr.GetKind().GroupKind())
 	if err != nil {
 		return err
 	}
@@ -120,7 +126,7 @@ func (o *podNodeConstraints) Admit(attr admission.Attributes) error {
 		return nil
 	}
 	// Only check Create operation on pods
-	if attr.GetResource() == kapi.Resource("pods") && attr.GetOperation() != admission.Create {
+	if attr.GetResource().GroupResource() == kapi.Resource("pods") && attr.GetOperation() != admission.Create {
 		return nil
 	}
 	ps, err := o.getPodSpec(attr)
@@ -199,7 +205,7 @@ func (o *podNodeConstraints) checkPodsBindAccess(attr admission.Attributes) (boo
 		Resource: "pods/binding",
 		APIGroup: kapi.GroupName,
 	}
-	if attr.GetResource() == kapi.Resource("pods") {
+	if attr.GetResource().GroupResource() == kapi.Resource("pods") {
 		authzAttr.ResourceName = attr.GetName()
 	}
 	allow, _, err := o.authorizer.Authorize(ctx, authzAttr)

@@ -18,6 +18,7 @@ import (
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	buildutil "github.com/openshift/origin/pkg/build/util"
+	"github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/util/namer"
@@ -219,7 +220,7 @@ func (g *BuildGenerator) Instantiate(ctx kapi.Context, request *buildapi.BuildRe
 	}
 
 	if buildutil.IsPaused(bc) {
-		return nil, &GeneratorFatalError{fmt.Sprintf("can't instantiate from BuildConfig %s/%s: BuildConfig is paused", bc.Namespace, bc.Name)}
+		return nil, errors.NewInternalError(&GeneratorFatalError{fmt.Sprintf("can't instantiate from BuildConfig %s/%s: BuildConfig is paused", bc.Namespace, bc.Name)})
 	}
 
 	if err := g.checkLastVersion(bc, request.LastVersion); err != nil {
@@ -234,6 +235,11 @@ func (g *BuildGenerator) Instantiate(ctx kapi.Context, request *buildapi.BuildRe
 	if err != nil {
 		return nil, err
 	}
+
+	// Add labels and annotations from the buildrequest.  Existing label/annotations will take
+	// precedence because we don't want system annotations/labels (eg buildname) to get stomped on.
+	newBuild.Annotations = policy.MergeMaps(request.Annotations, newBuild.Annotations)
+	newBuild.Labels = policy.MergeMaps(request.Labels, newBuild.Labels)
 
 	if len(request.Env) > 0 {
 		updateBuildEnv(&newBuild.Spec.Strategy, request.Env)
@@ -324,7 +330,7 @@ func (g *BuildGenerator) Clone(ctx kapi.Context, request *buildapi.BuildRequest)
 		}
 
 		if buildutil.IsPaused(buildConfig) {
-			return nil, &GeneratorFatalError{fmt.Sprintf("can't instantiate from BuildConfig %s/%s: BuildConfig is paused", buildConfig.Namespace, buildConfig.Name)}
+			return nil, errors.NewInternalError(&GeneratorFatalError{fmt.Sprintf("can't instantiate from BuildConfig %s/%s: BuildConfig is paused", buildConfig.Namespace, buildConfig.Name)})
 		}
 	}
 
@@ -410,11 +416,13 @@ func (g *BuildGenerator) generateBuildFromConfig(ctx kapi.Context, bc *buildapi.
 		build.Annotations = make(map[string]string)
 	}
 	build.Annotations[buildapi.BuildNumberAnnotation] = strconv.Itoa(bc.Status.LastVersion)
+	build.Annotations[buildapi.BuildConfigAnnotation] = bcCopy.Name
 	if build.Labels == nil {
 		build.Labels = make(map[string]string)
 	}
 	build.Labels[buildapi.BuildConfigLabelDeprecated] = bcCopy.Name
 	build.Labels[buildapi.BuildConfigLabel] = bcCopy.Name
+	build.Labels[buildapi.BuildRunPolicyLabel] = string(bc.Spec.RunPolicy)
 
 	builderSecrets, err := g.FetchServiceAccountSecrets(bc.Namespace, serviceAccount)
 	if err != nil {

@@ -11,7 +11,7 @@ import (
 	exutil "github.com/openshift/origin/test/extended/util"
 )
 
-var _ = g.Describe("[builds][Slow] incremental source-to-image build", func() {
+var _ = g.Describe("[builds][Slow] incremental s2i build", func() {
 	defer g.GinkgoRecover()
 
 	const (
@@ -45,6 +45,9 @@ var _ = g.Describe("[builds][Slow] incremental source-to-image build", func() {
 
 			g.By("expecting the build is in Complete phase")
 			err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), buildName, exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
+			if err != nil {
+				exutil.DumpBuildLogs("initial-build", oc)
+			}
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("starting a test build using the image produced by the last build")

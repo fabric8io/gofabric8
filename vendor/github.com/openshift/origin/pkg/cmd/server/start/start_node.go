@@ -19,6 +19,7 @@ import (
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	configapilatest "github.com/openshift/origin/pkg/cmd/server/api/latest"
 	"github.com/openshift/origin/pkg/cmd/server/api/validation"
+	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
 	utilflags "github.com/openshift/origin/pkg/cmd/util/flags"
 	"github.com/openshift/origin/pkg/version"
@@ -36,7 +37,7 @@ Start a node
 
 This command helps you launch a node.  Running
 
-  $ %[1]s start node --config=<node-config>
+  %[1]s start node --config=<node-config>
 
 will start a node with given configuration file. The node will run in the
 foreground until you terminate the process.`
@@ -74,7 +75,7 @@ Start node network components
 
 This command helps you launch node networking.  Running
 
-  $ %[1]s start network --config=<node-config>
+  %[1]s start network --config=<node-config>
 
 will start the network proxy and SDN plugins with given configuration file. The proxy will
 run in the foreground until you terminate the process.`
@@ -86,7 +87,7 @@ func NewCommandStartNetwork(basename string, out io.Writer) (*cobra.Command, *No
 	cmd := &cobra.Command{
 		Use:   "network",
 		Short: "Launch node network",
-		Long:  fmt.Sprintf(nodeLong, basename),
+		Long:  fmt.Sprintf(networkLong, basename),
 		Run:   options.Run,
 	}
 
@@ -257,7 +258,7 @@ func (o NodeOptions) CreateNodeConfig() error {
 		APIServerCAFiles: []string{admin.DefaultCABundleFile(o.NodeArgs.MasterCertDir)},
 
 		NodeClientCAFile: getSignerOptions.CertFile,
-		Output:           o.Output,
+		Output:           cmdutil.NewGLogWriterV(3),
 	}
 
 	if err := createNodeConfigOptions.Validate(nil); err != nil {
@@ -309,16 +310,11 @@ func StartNode(nodeConfig configapi.NodeConfig, components *utilflags.ComponentF
 	if components.Enabled(ComponentKubelet) {
 		config.RunKubelet()
 	}
-	// SDN plugins get the opportunity to filter service rules, so they start first
 	if components.Enabled(ComponentPlugins) {
 		config.RunPlugin()
 	}
 	if components.Enabled(ComponentProxy) {
 		config.RunProxy()
-	}
-	// if we are running plugins in this process, reset the bridge ip rule
-	if components.Enabled(ComponentPlugins) {
-		config.ResetSysctlFromProxy()
 	}
 
 	return nil

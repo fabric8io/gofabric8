@@ -34,6 +34,7 @@ type AllInOneOptions struct {
 	NodeConfigFile     string
 	PrintIP            bool
 	ServiceNetworkCIDR string
+	Output             io.Writer
 }
 
 const allInOneLong = `
@@ -42,7 +43,7 @@ Start an all-in-one server
 This command helps you launch an all-in-one server, which allows you to run all of the
 components of an enterprise Kubernetes system on a server with Docker. Running:
 
-  $ %[1]s start
+  %[1]s start
 
 will start listening on all interfaces, launch an etcd server to store persistent
 data, and launch the Kubernetes system components. The server will run in the foreground until
@@ -59,7 +60,7 @@ You may also pass --kubeconfig=<path> to connect to an external Kubernetes clust
 
 // NewCommandStartAllInOne provides a CLI handler for 'start' command
 func NewCommandStartAllInOne(basename string, out io.Writer) (*cobra.Command, *AllInOneOptions) {
-	options := &AllInOneOptions{MasterOptions: &MasterOptions{Output: out}}
+	options := &AllInOneOptions{Output: out, MasterOptions: &MasterOptions{Output: out}}
 	options.MasterOptions.DefaultsFromName(basename)
 
 	cmds := &cobra.Command{
@@ -164,6 +165,9 @@ func (o AllInOneOptions) Validate(args []string) error {
 		return errors.New("config directory must have a value")
 	}
 
+	if len(o.NodeArgs.NodeName) == 0 {
+		return errors.New("--hostname must have a value")
+	}
 	// if we are not starting up using a config file, run the argument validation
 	if !o.IsRunFromConfig() {
 		if err := o.MasterOptions.MasterArgs.Validate(); err != nil {
@@ -205,13 +209,6 @@ func (o *AllInOneOptions) Complete() error {
 	o.NodeArgs.NodeName = strings.ToLower(o.NodeArgs.NodeName)
 	o.NodeArgs.MasterCertDir = o.MasterOptions.MasterArgs.ConfigDir.Value()
 
-	// in the all-in-one, default ClusterDNS to the master's address
-	if host, _, err := net.SplitHostPort(masterAddr.Host); err == nil {
-		if ip := net.ParseIP(host); ip != nil {
-			o.NodeArgs.ClusterDNS = ip
-		}
-	}
-
 	return nil
 }
 
@@ -227,7 +224,7 @@ func (o AllInOneOptions) StartAllInOne() error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(o.MasterOptions.Output, "%s\n", host)
+		fmt.Fprintf(o.Output, "%s\n", host)
 		return nil
 	}
 	masterOptions := *o.MasterOptions

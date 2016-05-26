@@ -28,24 +28,28 @@ func NewMemberCommand() cli.Command {
 		Usage: "member add, remove and list subcommands",
 		Subcommands: []cli.Command{
 			{
-				Name:   "list",
-				Usage:  "enumerate existing cluster members",
-				Action: actionMemberList,
+				Name:      "list",
+				Usage:     "enumerate existing cluster members",
+				ArgsUsage: " ",
+				Action:    actionMemberList,
 			},
 			{
-				Name:   "add",
-				Usage:  "add a new member to the etcd cluster",
-				Action: actionMemberAdd,
+				Name:      "add",
+				Usage:     "add a new member to the etcd cluster",
+				ArgsUsage: "<name> <peerURL>",
+				Action:    actionMemberAdd,
 			},
 			{
-				Name:   "remove",
-				Usage:  "remove an existing member from the etcd cluster",
-				Action: actionMemberRemove,
+				Name:      "remove",
+				Usage:     "remove an existing member from the etcd cluster",
+				ArgsUsage: "<memberID>",
+				Action:    actionMemberRemove,
 			},
 			{
-				Name:   "update",
-				Usage:  "update an existing member in the etcd cluster",
-				Action: actionMemberUpdate,
+				Name:      "update",
+				Usage:     "update an existing member in the etcd cluster",
+				ArgsUsage: "<memberID> <peerURLs>",
+				Action:    actionMemberUpdate,
 			},
 		},
 	}
@@ -59,17 +63,27 @@ func actionMemberList(c *cli.Context) {
 	mAPI := mustNewMembersAPI(c)
 	ctx, cancel := contextWithTotalTimeout(c)
 	defer cancel()
+
 	members, err := mAPI.List(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
+	leader, err := mAPI.Leader(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Failed to get leader: ", err)
+		os.Exit(1)
+	}
 
 	for _, m := range members {
+		isLeader := false
+		if m.ID == leader.ID {
+			isLeader = true
+		}
 		if len(m.Name) == 0 {
 			fmt.Printf("%s[unstarted]: peerURLs=%s\n", m.ID, strings.Join(m.PeerURLs, ","))
 		} else {
-			fmt.Printf("%s: name=%s peerURLs=%s clientURLs=%s\n", m.ID, m.Name, strings.Join(m.PeerURLs, ","), strings.Join(m.ClientURLs, ","))
+			fmt.Printf("%s: name=%s peerURLs=%s clientURLs=%s isLeader=%v\n", m.ID, m.Name, strings.Join(m.PeerURLs, ","), strings.Join(m.ClientURLs, ","), isLeader)
 		}
 	}
 }
@@ -158,7 +172,7 @@ func actionMemberRemove(c *cli.Context) {
 	// Actually attempt to remove the member.
 	err = mAPI.Remove(ctx, removalID)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Recieved an error trying to remove member %s: %s", removalID, err.Error())
+		fmt.Fprintf(os.Stderr, "Received an error trying to remove member %s: %s", removalID, err.Error())
 		os.Exit(1)
 	}
 

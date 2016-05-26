@@ -340,6 +340,45 @@ func TestInstantiateWithLastVersion(t *testing.T) {
 	}
 }
 
+func TestInstantiateWithLabelsAndAnnotations(t *testing.T) {
+	g := mockBuildGenerator()
+	c := g.Client.(Client)
+	c.GetBuildConfigFunc = func(ctx kapi.Context, name string) (*buildapi.BuildConfig, error) {
+		bc := mocks.MockBuildConfig(mocks.MockSource(), mocks.MockSourceStrategyForImageRepository(), mocks.MockOutput())
+		bc.Status.LastVersion = 1
+		return bc, nil
+	}
+	g.Client = c
+
+	req := &buildapi.BuildRequest{
+		ObjectMeta: kapi.ObjectMeta{
+			Annotations: map[string]string{
+				"a_1": "a_value1",
+				// build number is set as an annotation on the generated build, so we
+				// shouldn't be able to ovewrite it here.
+				buildapi.BuildNumberAnnotation: "bad_annotation",
+			},
+			Labels: map[string]string{
+				"l_1": "l_value1",
+				// testbclabel is defined as a label on the mockBuildConfig so we shouldn't
+				// be able to overwrite it here.
+				"testbclabel": "bad_label",
+			},
+		},
+	}
+
+	build, err := g.Instantiate(kapi.NewDefaultContext(), req)
+	if err != nil {
+		t.Errorf("Unexpected error %v", err)
+	}
+	if build.Annotations["a_1"] != "a_value1" || build.Annotations[buildapi.BuildNumberAnnotation] == "bad_annotation" {
+		t.Errorf("Build annotations were merged incorrectly: %v", build.Annotations)
+	}
+	if build.Labels["l_1"] != "l_value1" || build.Labels[buildapi.BuildLabel] == "bad_label" {
+		t.Errorf("Build labels were merged incorrectly: %v", build.Labels)
+	}
+}
+
 func TestFindImageTrigger(t *testing.T) {
 	defaultTrigger := &buildapi.ImageChangeTrigger{}
 	image1Trigger := &buildapi.ImageChangeTrigger{
@@ -626,6 +665,9 @@ func TestGenerateBuildFromConfig(t *testing.T) {
 	}
 	if build.Labels["testlabel"] != bc.Labels["testlabel"] {
 		t.Errorf("Build does not contain labels from BuildConfig")
+	}
+	if build.Annotations[buildapi.BuildConfigAnnotation] != bc.Name {
+		t.Errorf("Build does not contain annotation from BuildConfig")
 	}
 	if build.Labels[buildapi.BuildConfigLabel] != bc.Name {
 		t.Errorf("Build does not contain labels from BuildConfig")
@@ -1352,6 +1394,7 @@ func mockBuildGenerator() *BuildGenerator {
 	for _, s := range mocks.MockBuilderSecrets() {
 		fakeSecrets = append(fakeSecrets, s)
 	}
+	var b *buildapi.Build
 	return &BuildGenerator{
 		Secrets:         testclient.NewSimpleFake(fakeSecrets...),
 		ServiceAccounts: mocks.MockBuilderServiceAccount(mocks.MockBuilderSecrets()),
@@ -1363,10 +1406,14 @@ func mockBuildGenerator() *BuildGenerator {
 				return nil
 			},
 			CreateBuildFunc: func(ctx kapi.Context, build *buildapi.Build) error {
+				b = build
 				return nil
 			},
 			GetBuildFunc: func(ctx kapi.Context, name string) (*buildapi.Build, error) {
-				return &buildapi.Build{}, nil
+				if b == nil {
+					return &buildapi.Build{}, nil
+				}
+				return b, nil
 			},
 			GetImageStreamFunc: func(ctx kapi.Context, name string) (*imageapi.ImageStream, error) {
 				if name != imageRepoName {

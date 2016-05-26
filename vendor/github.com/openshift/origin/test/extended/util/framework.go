@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
 
 	kapi "k8s.io/kubernetes/pkg/api"
@@ -37,6 +39,101 @@ import (
 var TestContext e2e.TestContextType
 
 const pvPrefix = "pv-"
+
+// DumpBuildLogs will dump the latest build logs for a BuildConfig for debug purposes
+func DumpBuildLogs(bc string, oc *CLI) {
+	bldOuput, err := oc.Run("logs").Args("-f", "bc/"+bc).Output()
+	if err == nil {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n  build logs : %s\n\n", bldOuput)
+	} else {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n  got error on bld logs %v\n\n", err)
+	}
+
+	// if we suspect that we are filling up the registry file syste, call ExamineDiskUsage / ExaminePodDiskUsage
+	// also see if manipulations of the quota around /mnt/openshift-xfs-vol-dir exist in the extended test set up scripts
+	//ExamineDiskUsage()
+	//ExaminePodDiskUsage(oc)
+}
+
+// DumpDeploymentLogs will dump the latest deployment logs for a DeploymentConfig for debug purposes
+func DumpDeploymentLogs(dc string, oc *CLI) {
+	out, err := oc.Run("get").Args("pods", "-o", "json").Output()
+	if err == nil {
+		b := []byte(out)
+		var list kapi.PodList
+		err = json.Unmarshal(b, &list)
+		if err == nil {
+			for _, pod := range list.Items {
+				fmt.Fprintf(g.GinkgoWriter, "\n\n looking at pod %s to see if it is affiliated with %s \n\n", pod.ObjectMeta.Name, dc)
+				if strings.Contains(pod.ObjectMeta.Name, dc) {
+					podName := pod.ObjectMeta.Name
+
+					fmt.Fprintf(g.GinkgoWriter, "\n\n dumping logs for pod %s \n\n", podName)
+					depOuput, err := oc.Run("logs").Args("-f", "pod/"+podName).Output()
+					if err == nil {
+						fmt.Fprintf(g.GinkgoWriter, "\n\n  logs for pod %s : %s\n\n", podName, depOuput)
+					} else {
+						fmt.Fprintf(g.GinkgoWriter, "\n\n  got error on dep logs for %s:  %v\n\n", podName, err)
+					}
+				}
+			}
+		} else {
+			fmt.Fprintf(g.GinkgoWriter, "\n\n got json unmarshal err: %v\n\n", err)
+		}
+	} else {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n  got error on get pods: %v\n\n", err)
+	}
+
+}
+
+// ExamineDiskUsage will dump df output on the testing system; leveraging this as part of diagnosing
+// the registry's disk filling up during external tests on jenkins
+func ExamineDiskUsage() {
+	out, err := exec.Command("/bin/df", "-m").Output()
+	if err == nil {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n df -m output: %s\n\n", string(out))
+	} else {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n got error on df %v\n\n", err)
+	}
+}
+
+// ExaminePodDiskUsage will dump df/du output on registry pod; leveraging this as part of diagnosing
+// the registry's disk filling up during external tests on jenkins
+func ExaminePodDiskUsage(oc *CLI) {
+	out, err := oc.Run("get").Args("pods", "-o", "json", "-n", "default", "--config", KubeConfigPath()).Output()
+	var podName string
+	if err == nil {
+		b := []byte(out)
+		var list kapi.PodList
+		err = json.Unmarshal(b, &list)
+		if err == nil {
+			for _, pod := range list.Items {
+				fmt.Fprintf(g.GinkgoWriter, "\n\n looking at pod %s \n\n", pod.ObjectMeta.Name)
+				if strings.Contains(pod.ObjectMeta.Name, "docker-registry-") && !strings.Contains(pod.ObjectMeta.Name, "deploy") {
+					podName = pod.ObjectMeta.Name
+					break
+				}
+			}
+		} else {
+			fmt.Fprintf(g.GinkgoWriter, "\n\n got json unmarshal err: %v\n\n", err)
+		}
+	} else {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n  got error on get pods: %v\n\n", err)
+	}
+
+	out, err = oc.Run("exec").Args("-n", "default", podName, "df", "--config", KubeConfigPath()).Output()
+	if err == nil {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n df from registry pod: \n%s\n\n", out)
+	} else {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n got error on reg pod df: %v\n", err)
+	}
+	out, err = oc.Run("exec").Args("-n", "default", podName, "du", "/registry", "--config", KubeConfigPath()).Output()
+	if err == nil {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n du from registry pod: \n%s\n\n", out)
+	} else {
+		fmt.Fprintf(g.GinkgoWriter, "\n\n got error on reg pod du: %v\n", err)
+	}
+}
 
 // WriteObjectToFile writes the JSON representation of runtime.Object into a temporary
 // file.

@@ -3,10 +3,27 @@ package test
 import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
+
+const (
+	ImageStreamName      = "test-image-stream"
+	ImageID              = "00000000000000000000000000000001"
+	DockerImageReference = "registry:5000/openshift/test-image-stream@sha256:00000000000000000000000000000001"
+)
+
+func OkDeploymentConfig(version int) *deployapi.DeploymentConfig {
+	return &deployapi.DeploymentConfig{
+		ObjectMeta: kapi.ObjectMeta{
+			Name: "config",
+		},
+		Spec:   OkDeploymentConfigSpec(),
+		Status: OkDeploymentConfigStatus(version),
+	}
+}
 
 func OkDeploymentConfigSpec() deployapi.DeploymentConfigSpec {
 	return deployapi.DeploymentConfigSpec{
@@ -16,6 +33,7 @@ func OkDeploymentConfigSpec() deployapi.DeploymentConfigSpec {
 		Template: OkPodTemplate(),
 		Triggers: []deployapi.DeploymentTriggerPolicy{
 			OkImageChangeTrigger(),
+			OkConfigChangeTrigger(),
 		},
 	}
 }
@@ -28,18 +46,18 @@ func OkDeploymentConfigStatus(version int) deployapi.DeploymentConfigStatus {
 
 func OkImageChangeDetails() *deployapi.DeploymentDetails {
 	return &deployapi.DeploymentDetails{
-		Causes: []*deployapi.DeploymentCause{{
+		Causes: []deployapi.DeploymentCause{{
 			Type: deployapi.DeploymentTriggerOnImageChange,
 			ImageTrigger: &deployapi.DeploymentCauseImageTrigger{
 				From: kapi.ObjectReference{
-					Name: imageapi.JoinImageStreamTag("test-image-stream", imageapi.DefaultImageTag),
+					Name: imageapi.JoinImageStreamTag(ImageStreamName, imageapi.DefaultImageTag),
 					Kind: "ImageStreamTag",
 				}}}}}
 }
 
 func OkConfigChangeDetails() *deployapi.DeploymentDetails {
 	return &deployapi.DeploymentDetails{
-		Causes: []*deployapi.DeploymentCause{{
+		Causes: []deployapi.DeploymentCause{{
 			Type: deployapi.DeploymentTriggerOnConfigChange,
 		}}}
 }
@@ -157,23 +175,27 @@ func OkImageChangeTrigger() deployapi.DeploymentTriggerPolicy {
 			},
 			From: kapi.ObjectReference{
 				Kind: "ImageStreamTag",
-				Name: imageapi.JoinImageStreamTag("test-image-stream", imageapi.DefaultImageTag),
+				Name: imageapi.JoinImageStreamTag(ImageStreamName, imageapi.DefaultImageTag),
 			},
 		},
-	}
-}
-
-func OkDeploymentConfig(version int) *deployapi.DeploymentConfig {
-	return &deployapi.DeploymentConfig{
-		ObjectMeta: kapi.ObjectMeta{
-			Name: "config",
-		},
-		Spec:   OkDeploymentConfigSpec(),
-		Status: OkDeploymentConfigStatus(version),
 	}
 }
 
 func TestDeploymentConfig(config *deployapi.DeploymentConfig) *deployapi.DeploymentConfig {
 	config.Spec.Test = true
 	return config
+}
+
+func OkHPAForDeploymentConfig(config *deployapi.DeploymentConfig, min, max int) *extensions.HorizontalPodAutoscaler {
+	return &extensions.HorizontalPodAutoscaler{
+		ObjectMeta: kapi.ObjectMeta{Name: config.Name, Namespace: config.Namespace},
+		Spec: extensions.HorizontalPodAutoscalerSpec{
+			ScaleRef: extensions.SubresourceReference{
+				Name: config.Name,
+				Kind: "DeploymentConfig",
+			},
+			MinReplicas: &min,
+			MaxReplicas: max,
+		},
+	}
 }

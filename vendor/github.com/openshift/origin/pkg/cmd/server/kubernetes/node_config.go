@@ -16,13 +16,13 @@ import (
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
+	clientadapter "k8s.io/kubernetes/pkg/client/unversioned/adapters/internalclientset"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/kubelet/dockertools"
 	kubeletserver "k8s.io/kubernetes/pkg/kubelet/server"
 	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
-	"k8s.io/kubernetes/pkg/util"
+	kcrypto "k8s.io/kubernetes/pkg/util/crypto"
 	kerrors "k8s.io/kubernetes/pkg/util/errors"
-	"k8s.io/kubernetes/pkg/util/oom"
 
 	osdnapi "github.com/openshift/openshift-sdn/plugins/osdn/api"
 	"github.com/openshift/openshift-sdn/plugins/osdn/factory"
@@ -33,7 +33,6 @@ import (
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	cmdflags "github.com/openshift/origin/pkg/cmd/util/flags"
 	"github.com/openshift/origin/pkg/cmd/util/variable"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
 
 // NodeConfig represents the required parameters to start the OpenShift node
@@ -70,7 +69,7 @@ type NodeConfig struct {
 }
 
 func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error) {
-	originClient, _, err := configapi.GetOpenShiftClient(options.MasterKubeConfig)
+	originClient, osClientConfig, err := configapi.GetOpenShiftClient(options.MasterKubeConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +87,7 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 		glog.Warningf(`Using "localhost" as node name will not resolve from all locations`)
 	}
 
-	clientCAs, err := util.CertPoolFromFile(options.ServingInfo.ClientCA)
+	clientCAs, err := kcrypto.CertPoolFromFile(options.ServingInfo.ClientCA)
 	if err != nil {
 		return nil, err
 	}
@@ -148,9 +147,10 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 	server.PodInfraContainerImage = imageTemplate.ExpandOrDie("pod")
 	server.CPUCFSQuota = true // enable cpu cfs quota enforcement by default
 	server.MaxPods = 110
+	server.SerializeImagePulls = false // disable serial image pulls by default
 
 	switch server.NetworkPluginName {
-	case ovs.SingleTenantPluginName(), ovs.MultiTenantPluginName():
+	case ovs.SingleTenantPluginName, ovs.MultiTenantPluginName:
 		// set defaults for openshift-sdn
 		server.HairpinMode = componentconfig.HairpinNone
 		server.ConfigureCBR0 = false
@@ -182,29 +182,11 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 
 	// provide any config overrides
 	cfg.NodeName = options.NodeName
-	cfg.KubeClient = internalclientset.FromUnversionedClient(kubeClient)
-	cfg.EventClient = internalclientset.FromUnversionedClient(eventClient)
+	cfg.KubeClient = clientadapter.FromUnversionedClient(kubeClient)
+	cfg.EventClient = clientadapter.FromUnversionedClient(eventClient)
 	cfg.DockerExecHandler = dockerExecHandler
 
-	// docker-in-docker (dind) deployments are used for testing
-	// networking plugins.  Running openshift under dind won't work
-	// with the real oom adjuster due to the state of the cgroups path
-	// in a dind container that uses systemd for init.  Similarly,
-	// cgroup manipulation of the nested docker daemon doesn't work
-	// properly under centos/rhel and should be disabled by setting
-	// the name of the container to an empty string.
-	//
-	// This workaround should become unnecessary once user namespaces
-	if value := cmdutil.Env("OPENSHIFT_DIND", ""); value == "true" {
-		glog.Warningf("Using FakeOOMAdjuster for docker-in-docker compatibility")
-		cfg.OOMAdjuster = oom.NewFakeOOMAdjuster()
-	}
-
 	// Setup auth
-	osClient, osClientConfig, err := configapi.GetOpenShiftClient(options.MasterKubeConfig)
-	if err != nil {
-		return nil, err
-	}
 	authnTTL, err := time.ParseDuration(options.AuthConfig.AuthenticationCacheTTL)
 	if err != nil {
 		return nil, err
@@ -223,7 +205,7 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 	if err != nil {
 		return nil, err
 	}
-	authz, err := newAuthorizer(osClient, authzTTL, options.AuthConfig.AuthorizationCacheSize)
+	authz, err := newAuthorizer(originClient, authzTTL, options.AuthConfig.AuthorizationCacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -268,12 +250,17 @@ func BuildKubernetesNodeConfig(options configapi.NodeConfig) (*NodeConfig, error
 	}
 	cfg.Cloud = cloud
 
-	sdnPlugin, endpointFilter, err := factory.NewPlugin(options.NetworkConfig.NetworkPluginName, originClient, kubeClient, options.NodeName, options.NodeIP)
+	sdnPlugin, err := factory.NewNodePlugin(options.NetworkConfig.NetworkPluginName, originClient, kubeClient, options.NodeName, options.NodeIP)
 	if err != nil {
 		return nil, fmt.Errorf("SDN initialization failed: %v", err)
 	}
 	if sdnPlugin != nil {
 		cfg.NetworkPlugins = append(cfg.NetworkPlugins, sdnPlugin)
+	}
+
+	endpointFilter, err := factory.NewProxyPlugin(options.NetworkConfig.NetworkPluginName, originClient, kubeClient)
+	if err != nil {
+		return nil, fmt.Errorf("SDN proxy initialization failed: %v", err)
 	}
 
 	config := &NodeConfig{

@@ -8,7 +8,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/record"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/runtime"
-	kutil "k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/flowcontrol"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 
@@ -46,17 +46,8 @@ func (factory *DeploymentConfigChangeControllerFactory) Create() controller.Runn
 	eventBroadcaster.StartRecordingToSink(factory.KubeClient.Events(""))
 
 	changeController := &DeploymentConfigChangeController{
-		changeStrategy: &changeStrategyImpl{
-			getDeploymentFunc: func(namespace, name string) (*kapi.ReplicationController, error) {
-				return factory.KubeClient.ReplicationControllers(namespace).Get(name)
-			},
-			generateDeploymentConfigFunc: func(namespace, name string) (*deployapi.DeploymentConfig, error) {
-				return factory.Client.DeploymentConfigs(namespace).Generate(name)
-			},
-			updateDeploymentConfigFunc: func(namespace string, config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error) {
-				return factory.Client.DeploymentConfigs(namespace).Update(config)
-			},
-		},
+		client:  factory.Client,
+		kClient: factory.KubeClient,
 		decodeConfig: func(deployment *kapi.ReplicationController) (*deployapi.DeploymentConfig, error) {
 			return deployutil.DecodeDeploymentConfig(deployment, factory.Codec)
 		},
@@ -77,7 +68,7 @@ func (factory *DeploymentConfigChangeControllerFactory) Create() controller.Runn
 				}
 				return true
 			},
-			kutil.NewTokenBucketRateLimiter(1, 10),
+			flowcontrol.NewTokenBucketRateLimiter(1, 10),
 		),
 		Handle: func(obj interface{}) error {
 			config := obj.(*deployapi.DeploymentConfig)

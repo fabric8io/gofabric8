@@ -44,9 +44,13 @@ type Interface interface {
 	ResourceAccessReviews
 	SubjectAccessReviews
 	LocalSubjectAccessReviewsNamespacer
+	SelfSubjectRulesReviewsNamespacer
 	TemplatesNamespacer
 	TemplateConfigsNamespacer
+	OAuthClientsInterface
+	OAuthClientAuthorizationsInterface
 	OAuthAccessTokensInterface
+	OAuthAuthorizeTokensInterface
 	PoliciesNamespacer
 	PolicyBindingsNamespacer
 	RolesNamespacer
@@ -222,9 +226,24 @@ func (c *Client) SubjectAccessReviews() SubjectAccessReviewInterface {
 	return newSubjectAccessReviews(c)
 }
 
-// OAuthAccessTokens provides a REST client for OAuthAccessTokens
+func (c *Client) SelfSubjectRulesReviews(namespace string) SelfSubjectRulesReviewInterface {
+	return newSelfSubjectRulesReviews(c, namespace)
+}
+
+func (c *Client) OAuthClients() OAuthClientInterface {
+	return newOAuthClients(c)
+}
+
+func (c *Client) OAuthClientAuthorizations() OAuthClientAuthorizationInterface {
+	return newOAuthClientAuthorizations(c)
+}
+
 func (c *Client) OAuthAccessTokens() OAuthAccessTokenInterface {
 	return newOAuthAccessTokens(c)
+}
+
+func (c *Client) OAuthAuthorizeTokens() OAuthAuthorizeTokenInterface {
+	return newOAuthAuthorizeTokens(c)
 }
 
 func (c *Client) ClusterPolicies() ClusterPolicyInterface {

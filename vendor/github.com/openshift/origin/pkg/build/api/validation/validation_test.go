@@ -40,6 +40,181 @@ func TestBuildValidationSuccess(t *testing.T) {
 	}
 }
 
+func checkDockerStrategyEmptySourceError(result field.ErrorList) bool {
+	for _, err := range result {
+		if err.Type == field.ErrorTypeInvalid && strings.Contains(err.Field, "spec.source") && strings.Contains(err.Detail, "must provide a value for at least one of source, binary, images, or dockerfile") {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBuildEmptySource(t *testing.T) {
+	builds := []buildapi.Build{
+		{
+			ObjectMeta: kapi.ObjectMeta{Name: "buildid", Namespace: "default"},
+			Spec: buildapi.BuildSpec{
+				Source: buildapi.BuildSource{},
+				Strategy: buildapi.BuildStrategy{
+					SourceStrategy: &buildapi.SourceBuildStrategy{
+						From: kapi.ObjectReference{
+							Kind: "DockerImage",
+							Name: "myimage:tag",
+						},
+					},
+				},
+				Output: buildapi.BuildOutput{
+					To: &kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: "repository/data",
+					},
+				},
+			},
+			Status: buildapi.BuildStatus{
+				Phase: buildapi.BuildPhaseNew,
+			},
+		},
+		{
+			ObjectMeta: kapi.ObjectMeta{Name: "buildid", Namespace: "default"},
+			Spec: buildapi.BuildSpec{
+				Source: buildapi.BuildSource{},
+				Strategy: buildapi.BuildStrategy{
+					CustomStrategy: &buildapi.CustomBuildStrategy{
+						From: kapi.ObjectReference{
+							Kind: "DockerImage",
+							Name: "myimage:tag",
+						},
+					},
+				},
+				Output: buildapi.BuildOutput{
+					To: &kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: "repository/data",
+					},
+				},
+			},
+			Status: buildapi.BuildStatus{
+				Phase: buildapi.BuildPhaseNew,
+			},
+		},
+	}
+	for _, build := range builds {
+		if result := ValidateBuild(&build); len(result) > 0 {
+			t.Errorf("Unexpected validation error returned %v", result)
+		}
+	}
+
+	badBuild := &buildapi.Build{
+		ObjectMeta: kapi.ObjectMeta{Name: "buildid", Namespace: "default"},
+		Spec: buildapi.BuildSpec{
+			Source: buildapi.BuildSource{},
+			Strategy: buildapi.BuildStrategy{
+				DockerStrategy: &buildapi.DockerBuildStrategy{},
+			},
+			Output: buildapi.BuildOutput{
+				To: &kapi.ObjectReference{
+					Kind: "DockerImage",
+					Name: "repository/data",
+				},
+			},
+		},
+		Status: buildapi.BuildStatus{
+			Phase: buildapi.BuildPhaseNew,
+		},
+	}
+	if result := ValidateBuild(badBuild); len(result) == 0 {
+		t.Error("An error should have occurred with a DockerStrategy / no source combo")
+	} else {
+		if !checkDockerStrategyEmptySourceError(result) {
+			t.Errorf("The correct error was not found: %v", result)
+		}
+	}
+
+}
+
+func TestBuildConfigEmptySource(t *testing.T) {
+	buildConfigs := []buildapi.BuildConfig{
+		{
+			ObjectMeta: kapi.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+			Spec: buildapi.BuildConfigSpec{
+				RunPolicy: buildapi.BuildRunPolicySerial,
+				BuildSpec: buildapi.BuildSpec{
+					Source: buildapi.BuildSource{},
+					Strategy: buildapi.BuildStrategy{
+						SourceStrategy: &buildapi.SourceBuildStrategy{
+							From: kapi.ObjectReference{
+								Kind: "DockerImage",
+								Name: "myimage:tag",
+							},
+						},
+					},
+					Output: buildapi.BuildOutput{
+						To: &kapi.ObjectReference{
+							Kind: "DockerImage",
+							Name: "repository/data",
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: kapi.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+			Spec: buildapi.BuildConfigSpec{
+				RunPolicy: buildapi.BuildRunPolicySerial,
+				BuildSpec: buildapi.BuildSpec{
+					Source: buildapi.BuildSource{},
+					Strategy: buildapi.BuildStrategy{
+						CustomStrategy: &buildapi.CustomBuildStrategy{
+							From: kapi.ObjectReference{
+								Kind: "DockerImage",
+								Name: "myimage:tag",
+							},
+						},
+					},
+					Output: buildapi.BuildOutput{
+						To: &kapi.ObjectReference{
+							Kind: "DockerImage",
+							Name: "repository/data",
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, buildConfig := range buildConfigs {
+		if result := ValidateBuildConfig(&buildConfig); len(result) > 0 {
+			t.Errorf("Unexpected validation error returned %v", result)
+		}
+	}
+
+	badBuildConfig := buildapi.BuildConfig{
+		ObjectMeta: kapi.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+		Spec: buildapi.BuildConfigSpec{
+			RunPolicy: buildapi.BuildRunPolicySerial,
+			BuildSpec: buildapi.BuildSpec{
+				Source: buildapi.BuildSource{},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{},
+				},
+				Output: buildapi.BuildOutput{
+					To: &kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: "repository/data",
+					},
+				},
+			},
+		},
+	}
+	if result := ValidateBuildConfig(&badBuildConfig); len(result) == 0 {
+		t.Error("An error should have occurred with a DockerStrategy / no source combo")
+	} else {
+		if !checkDockerStrategyEmptySourceError(result) {
+			t.Errorf("The correct error was not found: %v", result)
+		}
+	}
+
+}
+
 func TestBuildValidationFailure(t *testing.T) {
 	build := &buildapi.Build{
 		ObjectMeta: kapi.ObjectMeta{Name: "", Namespace: ""},
@@ -212,6 +387,7 @@ func TestBuildConfigGitSourceWithProxyFailure(t *testing.T) {
 	buildConfig := &buildapi.BuildConfig{
 		ObjectMeta: kapi.ObjectMeta{Name: "config-id", Namespace: "namespace"},
 		Spec: buildapi.BuildConfigSpec{
+			RunPolicy: buildapi.BuildRunPolicySerial,
 			BuildSpec: buildapi.BuildSpec{
 				Source: buildapi.BuildSource{
 					Git: &buildapi.GitBuildSource{
@@ -252,6 +428,7 @@ func TestBuildConfigDockerStrategyImageChangeTrigger(t *testing.T) {
 	buildConfig := &buildapi.BuildConfig{
 		ObjectMeta: kapi.ObjectMeta{Name: "config-id", Namespace: "namespace"},
 		Spec: buildapi.BuildConfigSpec{
+			RunPolicy: buildapi.BuildRunPolicySerial,
 			BuildSpec: buildapi.BuildSpec{
 				Source: buildapi.BuildSource{
 					Git: &buildapi.GitBuildSource{
@@ -295,6 +472,7 @@ func TestBuildConfigValidationFailureRequiredName(t *testing.T) {
 	buildConfig := &buildapi.BuildConfig{
 		ObjectMeta: kapi.ObjectMeta{Name: "", Namespace: "foo"},
 		Spec: buildapi.BuildConfigSpec{
+			RunPolicy: buildapi.BuildRunPolicySerial,
 			BuildSpec: buildapi.BuildSpec{
 				Source: buildapi.BuildSource{
 					Git: &buildapi.GitBuildSource{
@@ -566,6 +744,7 @@ func TestBuildConfigImageChangeTriggers(t *testing.T) {
 		buildConfig := &buildapi.BuildConfig{
 			ObjectMeta: kapi.ObjectMeta{Name: "bar", Namespace: "foo"},
 			Spec: buildapi.BuildConfigSpec{
+				RunPolicy: buildapi.BuildRunPolicySerial,
 				BuildSpec: buildapi.BuildSpec{
 					Source: buildapi.BuildSource{
 						Git: &buildapi.GitBuildSource{
@@ -610,6 +789,7 @@ func TestBuildConfigValidationOutputFailure(t *testing.T) {
 	buildConfig := &buildapi.BuildConfig{
 		ObjectMeta: kapi.ObjectMeta{Name: ""},
 		Spec: buildapi.BuildConfigSpec{
+			RunPolicy: buildapi.BuildRunPolicySerial,
 			BuildSpec: buildapi.BuildSpec{
 				Source: buildapi.BuildSource{
 					Git: &buildapi.GitBuildSource{
@@ -969,7 +1149,7 @@ func TestValidateSource(t *testing.T) {
 		},
 	}
 	for i, tc := range errorCases {
-		errors := validateSource(tc.source, false, false, nil)
+		errors := validateSource(tc.source, false, false, false, nil)
 		switch len(errors) {
 		case 0:
 			if !tc.ok {
@@ -997,7 +1177,7 @@ func TestValidateSource(t *testing.T) {
 	}
 
 	errorCases[11].source.ContextDir = "."
-	validateSource(errorCases[11].source, false, false, nil)
+	validateSource(errorCases[11].source, false, false, false, nil)
 	if len(errorCases[11].source.ContextDir) != 0 {
 		t.Errorf("ContextDir was not cleaned: %s", errorCases[11].source.ContextDir)
 	}
@@ -1016,9 +1196,10 @@ func TestValidateStrategy(t *testing.T) {
 			t:    field.ErrorTypeInvalid,
 			path: "",
 			strategy: &buildapi.BuildStrategy{
-				SourceStrategy: &buildapi.SourceBuildStrategy{},
-				DockerStrategy: &buildapi.DockerBuildStrategy{},
-				CustomStrategy: &buildapi.CustomBuildStrategy{},
+				SourceStrategy:          &buildapi.SourceBuildStrategy{},
+				DockerStrategy:          &buildapi.DockerBuildStrategy{},
+				CustomStrategy:          &buildapi.CustomBuildStrategy{},
+				JenkinsPipelineStrategy: &buildapi.JenkinsPipelineBuildStrategy{},
 			},
 		},
 	}
@@ -1391,7 +1572,7 @@ func TestValidateBuildSpec(t *testing.T) {
 			},
 		},
 		// 16
-		// dockerfilePath can't start with ..
+		// dockerfilePath can't start with ../
 		{
 			string(field.ErrorTypeInvalid) + "strategy.dockerStrategy.dockerfilePath",
 			&buildapi.BuildSpec{
@@ -1415,6 +1596,54 @@ func TestValidateBuildSpec(t *testing.T) {
 			},
 		},
 		// 17
+		// dockerfilePath can't reference a path outside of the dir
+		{
+			string(field.ErrorTypeInvalid) + "strategy.dockerStrategy.dockerfilePath",
+			&buildapi.BuildSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+					ContextDir: "context",
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{
+						DockerfilePath: "someDockerfile/../../..",
+					},
+				},
+				Output: buildapi.BuildOutput{
+					To: &kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: "repository/data",
+					},
+				},
+			},
+		},
+		// 17
+		// dockerfilePath can't equal ..
+		{
+			string(field.ErrorTypeInvalid) + "strategy.dockerStrategy.dockerfilePath",
+			&buildapi.BuildSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+					ContextDir: "context",
+				},
+				Strategy: buildapi.BuildStrategy{
+					DockerStrategy: &buildapi.DockerBuildStrategy{
+						DockerfilePath: "..",
+					},
+				},
+				Output: buildapi.BuildOutput{
+					To: &kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: "repository/data",
+					},
+				},
+			},
+		},
+		// 18
 		{
 			string(field.ErrorTypeInvalid) + "postCommit",
 			&buildapi.BuildSpec{
@@ -1428,6 +1657,111 @@ func TestValidateBuildSpec(t *testing.T) {
 				Source: buildapi.BuildSource{
 					Git: &buildapi.GitBuildSource{
 						URI: "http://github.com/my/repository",
+					},
+				},
+			},
+		},
+		// 19
+		{
+			string(field.ErrorTypeInvalid) + "source.git",
+			&buildapi.BuildSpec{
+				Strategy: buildapi.BuildStrategy{
+					JenkinsPipelineStrategy: &buildapi.JenkinsPipelineBuildStrategy{},
+				},
+			},
+		},
+		// 20
+		{
+			string(field.ErrorTypeInvalid) + "source.git",
+			&buildapi.BuildSpec{
+				Strategy: buildapi.BuildStrategy{
+					JenkinsPipelineStrategy: &buildapi.JenkinsPipelineBuildStrategy{
+						JenkinsfilePath: "b",
+					},
+				},
+			},
+		},
+		// 21
+		// jenkinsfilePath can't be an absolute path
+		{
+			string(field.ErrorTypeInvalid) + "strategy.jenkinsPipelineStrategy.jenkinsfilePath",
+			&buildapi.BuildSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					JenkinsPipelineStrategy: &buildapi.JenkinsPipelineBuildStrategy{
+						JenkinsfilePath: "/myJenkinsfile",
+					},
+				},
+			},
+		},
+		// 22
+		// jenkinsfilePath can't start with ../
+		{
+			string(field.ErrorTypeInvalid) + "strategy.jenkinsPipelineStrategy.jenkinsfilePath",
+			&buildapi.BuildSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					JenkinsPipelineStrategy: &buildapi.JenkinsPipelineBuildStrategy{
+						JenkinsfilePath: "../someJenkinsfile",
+					},
+				},
+			},
+		},
+		// 23
+		// jenkinsfilePath can't be a reference a path outside of the dir
+		{
+			string(field.ErrorTypeInvalid) + "strategy.jenkinsPipelineStrategy.jenkinsfilePath",
+			&buildapi.BuildSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					JenkinsPipelineStrategy: &buildapi.JenkinsPipelineBuildStrategy{
+						JenkinsfilePath: "someJenkinsfile/../../../",
+					},
+				},
+			},
+		},
+		// 24
+		// jenkinsfilePath can't be equal to ..
+		{
+			string(field.ErrorTypeInvalid) + "strategy.jenkinsPipelineStrategy.jenkinsfilePath",
+			&buildapi.BuildSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					JenkinsPipelineStrategy: &buildapi.JenkinsPipelineBuildStrategy{
+						JenkinsfilePath: "..",
+					},
+				},
+			},
+		},
+		// 25
+		// path must be shorter than 100k
+		{
+			string(field.ErrorTypeInvalid) + "strategy.jenkinsPipelineStrategy.jenkinsfile",
+			&buildapi.BuildSpec{
+				Source: buildapi.BuildSource{
+					Git: &buildapi.GitBuildSource{
+						URI: "http://github.com/my/repository",
+					},
+				},
+				Strategy: buildapi.BuildStrategy{
+					JenkinsPipelineStrategy: &buildapi.JenkinsPipelineBuildStrategy{
+						Jenkinsfile: longString + longString,
 					},
 				},
 			},
@@ -1647,6 +1981,48 @@ func TestValidateDockerfilePath(t *testing.T) {
 	}
 }
 
+func TestValidateJenkinsfilePath(t *testing.T) {
+	tests := []struct {
+		strategy                *buildapi.JenkinsPipelineBuildStrategy
+		expectedJenkinsfilePath string
+	}{
+		{
+			strategy: &buildapi.JenkinsPipelineBuildStrategy{
+				JenkinsfilePath: ".",
+			},
+			expectedJenkinsfilePath: "",
+		},
+		{
+			strategy: &buildapi.JenkinsPipelineBuildStrategy{
+				JenkinsfilePath: "somedir/..",
+			},
+			expectedJenkinsfilePath: "",
+		},
+		{
+			strategy: &buildapi.JenkinsPipelineBuildStrategy{
+				JenkinsfilePath: "somedir/../somedockerfile",
+			},
+			expectedJenkinsfilePath: "somedockerfile",
+		},
+		{
+			strategy: &buildapi.JenkinsPipelineBuildStrategy{
+				JenkinsfilePath: "somedir/somedockerfile",
+			},
+			expectedJenkinsfilePath: "somedir/somedockerfile",
+		},
+	}
+
+	for count, test := range tests {
+		errors := validateJenkinsPipelineStrategy(test.strategy, nil)
+		if len(errors) != 0 {
+			t.Errorf("Test[%d] Unexpected validation error: %v", count, errors)
+		}
+		if test.strategy.JenkinsfilePath != test.expectedJenkinsfilePath {
+			t.Errorf("Test[%d] Unexpected JenkinsfilePath: %v (expected: %s)", count, test.strategy.JenkinsfilePath, test.expectedJenkinsfilePath)
+		}
+	}
+}
+
 func TestValidateTrigger(t *testing.T) {
 	tests := map[string]struct {
 		trigger  buildapi.BuildTriggerPolicy
@@ -1681,6 +2057,16 @@ func TestValidateTrigger(t *testing.T) {
 				},
 			},
 			expected: []*field.Error{field.Required(field.NewPath("github"), "")},
+		},
+		"GitHub trigger with allow env": {
+			trigger: buildapi.BuildTriggerPolicy{
+				Type: buildapi.GitHubWebHookBuildTriggerType,
+				GitHubWebHook: &buildapi.WebHookTrigger{
+					Secret:   "secret101",
+					AllowEnv: true,
+				},
+			},
+			expected: []*field.Error{field.Invalid(field.NewPath("github", "allowEnv"), "", "")},
 		},
 		"Generic trigger with no generic webhook": {
 			trigger:  buildapi.BuildTriggerPolicy{Type: buildapi.GenericWebHookBuildTriggerType},

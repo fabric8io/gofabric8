@@ -30,6 +30,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/watch"
 
@@ -239,8 +240,8 @@ func (c *Cacher) Set(ctx context.Context, key string, obj, out runtime.Object, t
 }
 
 // Implements storage.Interface.
-func (c *Cacher) Delete(ctx context.Context, key string, out runtime.Object) error {
-	return c.storage.Delete(ctx, key, out)
+func (c *Cacher) Delete(ctx context.Context, key string, out runtime.Object, preconditions *Preconditions) error {
+	return c.storage.Delete(ctx, key, out, preconditions)
 }
 
 // Implements storage.Interface.
@@ -268,7 +269,7 @@ func (c *Cacher) Watch(ctx context.Context, key string, resourceVersion string, 
 
 	c.Lock()
 	defer c.Unlock()
-	watcher := newCacheWatcher(initEvents, filterFunction(key, c.keyFunc, filter), forgetWatcher(c, c.watcherIdx))
+	watcher := newCacheWatcher(watchRV, initEvents, filterFunction(key, c.keyFunc, filter), forgetWatcher(c, c.watcherIdx))
 	c.watchers[c.watcherIdx] = watcher
 	c.watcherIdx++
 	return watcher, nil
@@ -347,8 +348,8 @@ func (c *Cacher) List(ctx context.Context, key string, resourceVersion string, f
 }
 
 // Implements storage.Interface.
-func (c *Cacher) GuaranteedUpdate(ctx context.Context, key string, ptrToType runtime.Object, ignoreNotFound bool, tryUpdate UpdateFunc) error {
-	return c.storage.GuaranteedUpdate(ctx, key, ptrToType, ignoreNotFound, tryUpdate)
+func (c *Cacher) GuaranteedUpdate(ctx context.Context, key string, ptrToType runtime.Object, ignoreNotFound bool, preconditions *Preconditions, tryUpdate UpdateFunc) error {
+	return c.storage.GuaranteedUpdate(ctx, key, ptrToType, ignoreNotFound, preconditions, tryUpdate)
 }
 
 // Implements storage.Interface.
@@ -469,7 +470,7 @@ type cacheWatcher struct {
 	forget  func(bool)
 }
 
-func newCacheWatcher(initEvents []watchCacheEvent, filter FilterFunc, forget func(bool)) *cacheWatcher {
+func newCacheWatcher(resourceVersion uint64, initEvents []watchCacheEvent, filter FilterFunc, forget func(bool)) *cacheWatcher {
 	watcher := &cacheWatcher{
 		input:   make(chan watchCacheEvent, 10),
 		result:  make(chan watch.Event, 10),
@@ -477,7 +478,7 @@ func newCacheWatcher(initEvents []watchCacheEvent, filter FilterFunc, forget fun
 		stopped: false,
 		forget:  forget,
 	}
-	go watcher.process(initEvents)
+	go watcher.process(initEvents, resourceVersion)
 	return watcher
 }
 
@@ -502,9 +503,11 @@ func (c *cacheWatcher) stop() {
 }
 
 func (c *cacheWatcher) add(event watchCacheEvent) {
+	t := time.NewTimer(5 * time.Second)
+	defer t.Stop()
 	select {
 	case c.input <- event:
-	case <-time.After(5 * time.Second):
+	case <-t.C:
 		// This means that we couldn't send event to that watcher.
 		// Since we don't want to blockin on it infinitely,
 		// we simply terminate it.
@@ -539,7 +542,9 @@ func (c *cacheWatcher) sendWatchCacheEvent(event watchCacheEvent) {
 	}
 }
 
-func (c *cacheWatcher) process(initEvents []watchCacheEvent) {
+func (c *cacheWatcher) process(initEvents []watchCacheEvent, resourceVersion uint64) {
+	defer utilruntime.HandleCrash()
+
 	for _, event := range initEvents {
 		c.sendWatchCacheEvent(event)
 	}
@@ -550,6 +555,9 @@ func (c *cacheWatcher) process(initEvents []watchCacheEvent) {
 		if !ok {
 			return
 		}
-		c.sendWatchCacheEvent(event)
+		// only send events newer than resourceVersion
+		if event.ResourceVersion > resourceVersion {
+			c.sendWatchCacheEvent(event)
+		}
 	}
 }

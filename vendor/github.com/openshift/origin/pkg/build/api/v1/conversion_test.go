@@ -83,7 +83,7 @@ func TestBuildConfigDefaulting(t *testing.T) {
 	}
 }
 
-func TestBuildConfigConversion(t *testing.T) {
+func TestV1APIBuildConfigConversion(t *testing.T) {
 	buildConfigs := []*older.BuildConfig{
 		{
 			ObjectMeta: kolder.ObjectMeta{Name: "config-id", Namespace: "namespace"},
@@ -254,6 +254,69 @@ func TestBuildConfigConversion(t *testing.T) {
 	}
 }
 
+func TestAPIV1NoSourceBuildConfigConversion(t *testing.T) {
+	buildConfigs := []*newer.BuildConfig{
+		{
+			ObjectMeta: knewer.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+			Spec: newer.BuildConfigSpec{
+				BuildSpec: newer.BuildSpec{
+					Source: newer.BuildSource{},
+					Strategy: newer.BuildStrategy{
+						DockerStrategy: &newer.DockerBuildStrategy{
+							From: &knewer.ObjectReference{
+								Kind: "ImageStream",
+								Name: "fromstream",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: knewer.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+			Spec: newer.BuildConfigSpec{
+				BuildSpec: newer.BuildSpec{
+					Source: newer.BuildSource{},
+					Strategy: newer.BuildStrategy{
+						SourceStrategy: &newer.SourceBuildStrategy{
+							From: knewer.ObjectReference{
+								Kind: "ImageStream",
+								Name: "fromstream",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: knewer.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+			Spec: newer.BuildConfigSpec{
+				BuildSpec: newer.BuildSpec{
+					Source: newer.BuildSource{},
+					Strategy: newer.BuildStrategy{
+						CustomStrategy: &newer.CustomBuildStrategy{
+							From: knewer.ObjectReference{
+								Kind: "ImageStream",
+								Name: "fromstream",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for c, bc := range buildConfigs {
+
+		var internalbuild older.BuildConfig
+
+		Convert(bc, &internalbuild)
+		if internalbuild.Spec.Source.Type != older.BuildSourceNone {
+			t.Errorf("Unexpected source type at index %d: %s", c, internalbuild.Spec.Source.Type)
+		}
+	}
+}
+
 func TestInvalidImageChangeTriggerRemoval(t *testing.T) {
 	buildConfig := older.BuildConfig{
 		ObjectMeta: kolder.ObjectMeta{Name: "config-id", Namespace: "namespace"},
@@ -295,6 +358,36 @@ func TestInvalidImageChangeTriggerRemoval(t *testing.T) {
 	}
 	if internalBC.Spec.Triggers[0].ImageChange.From == nil {
 		t.Errorf("Expected remaining trigger to have a From value")
+	}
+
+}
+
+func TestImageChangeTriggerNilImageChangePointer(t *testing.T) {
+	buildConfig := older.BuildConfig{
+		ObjectMeta: kolder.ObjectMeta{Name: "config-id", Namespace: "namespace"},
+		Spec: older.BuildConfigSpec{
+			BuildSpec: older.BuildSpec{
+				Strategy: older.BuildStrategy{
+					Type:           older.SourceBuildStrategyType,
+					SourceStrategy: &older.SourceBuildStrategy{},
+				},
+			},
+			Triggers: []older.BuildTriggerPolicy{
+				{
+					Type:        older.ImageChangeBuildTriggerType,
+					ImageChange: nil,
+				},
+			},
+		},
+	}
+
+	var internalBC newer.BuildConfig
+
+	Convert(&buildConfig, &internalBC)
+	for _, ic := range internalBC.Spec.Triggers {
+		if ic.ImageChange == nil {
+			t.Errorf("Expected trigger to have ImageChange value")
+		}
 	}
 
 }

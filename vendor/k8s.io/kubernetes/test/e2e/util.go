@@ -56,6 +56,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubelet/util/format"
 	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/master/ports"
 	"k8s.io/kubernetes/pkg/runtime"
 	sshutil "k8s.io/kubernetes/pkg/ssh"
 	"k8s.io/kubernetes/pkg/types"
@@ -102,7 +103,7 @@ const (
 	// String used to mark pod deletion
 	nonExist = "NonExist"
 
-	// How often to poll pods and nodes.
+	// How often to poll pods, nodes and claims.
 	poll = 2 * time.Second
 
 	// service accounts are provisioned after namespace creation
@@ -111,7 +112,8 @@ const (
 
 	// How long to try single API calls (like 'get' or 'list'). Used to prevent
 	// transient failures from failing tests.
-	singleCallTimeout = 30 * time.Second
+	// TODO: client should not apply this timeout to Watch calls. Increased from 30s until that is fixed.
+	singleCallTimeout = 5 * time.Minute
 
 	// How long nodes have to be "ready" when a test begins. They should already
 	// be "ready" before the test starts, so this is small.
@@ -126,6 +128,9 @@ const (
 	podRespondingTimeout     = 2 * time.Minute
 	serviceRespondingTimeout = 2 * time.Minute
 	endpointRegisterTimeout  = time.Minute
+
+	// How long claims have to become dynamically provisioned
+	claimProvisionTimeout = 5 * time.Minute
 )
 
 // SubResource proxy should have been functional in v1.0.0, but SubResource
@@ -182,10 +187,12 @@ type TestContextType struct {
 	KubectlPath           string
 	OutputDir             string
 	ReportDir             string
+	ReportPrefix          string
 	prefix                string
 	MinStartupPods        int
 	UpgradeTarget         string
 	PrometheusPushGateway string
+	OSDistro              string
 	VerifyServiceAccount  bool
 	DeleteNamespace       bool
 	CleanStart            bool
@@ -773,6 +780,46 @@ func waitForPersistentVolumePhase(phase api.PersistentVolumePhase, c *client.Cli
 	return fmt.Errorf("PersistentVolume %s not in phase %s within %v", pvName, phase, timeout)
 }
 
+// waitForPersistentVolumeDeleted waits for a PersistentVolume to get deleted or until timeout occurs, whichever comes first.
+func waitForPersistentVolumeDeleted(c *client.Client, pvName string, poll, timeout time.Duration) error {
+	Logf("Waiting up to %v for PersistentVolume %s to get deleted", timeout, pvName)
+	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
+		pv, err := c.PersistentVolumes().Get(pvName)
+		if err == nil {
+			Logf("PersistentVolume %s found and phase=%s (%v)", pvName, pv.Status.Phase, time.Since(start))
+			continue
+		} else {
+			if apierrs.IsNotFound(err) {
+				Logf("PersistentVolume %s was removed", pvName)
+				return nil
+			} else {
+				Logf("Get persistent volume %s in failed, ignoring for %v: %v", pvName, poll, err)
+			}
+		}
+	}
+	return fmt.Errorf("PersistentVolume %s still exists within %v", pvName, timeout)
+}
+
+// waitForPersistentVolumeClaimPhase waits for a PersistentVolumeClaim to be in a specific phase or until timeout occurs, whichever comes first.
+func waitForPersistentVolumeClaimPhase(phase api.PersistentVolumeClaimPhase, c *client.Client, ns string, pvcName string, poll, timeout time.Duration) error {
+	Logf("Waiting up to %v for PersistentVolumeClaim %s to have phase %s", timeout, pvcName, phase)
+	for start := time.Now(); time.Since(start) < timeout; time.Sleep(poll) {
+		pvc, err := c.PersistentVolumeClaims(ns).Get(pvcName)
+		if err != nil {
+			Logf("Get persistent volume claim %s in failed, ignoring for %v: %v", pvcName, poll, err)
+			continue
+		} else {
+			if pvc.Status.Phase == phase {
+				Logf("PersistentVolumeClaim %s found and phase=%s (%v)", pvcName, phase, time.Since(start))
+				return nil
+			} else {
+				Logf("PersistentVolumeClaim %s found but phase is %s instead of %s.", pvcName, pvc.Status.Phase, phase)
+			}
+		}
+	}
+	return fmt.Errorf("PersistentVolumeClaim %s not in phase %s within %v", pvcName, phase, timeout)
+}
+
 // CreateTestingNS should be used by every test, note that we append a common prefix to the provided test name.
 // Please see NewFramework instead of using this directly.
 func CreateTestingNS(baseName string, c *client.Client, labels map[string]string) (*api.Namespace, error) {
@@ -967,7 +1014,7 @@ func waitForPodTerminatedInNamespace(c *client.Client, podName, reason, namespac
 			if pod.Status.Reason == reason {
 				return true, nil
 			} else {
-				return true, fmt.Errorf("Expected pod %n/%n to be terminated with reason %v, got reason: ", namespace, podName, reason, pod.Status.Reason)
+				return true, fmt.Errorf("Expected pod %v in namespace %v to be terminated with reason %v, got reason: %v", podName, namespace, reason, pod.Status.Reason)
 			}
 		}
 
@@ -975,9 +1022,9 @@ func waitForPodTerminatedInNamespace(c *client.Client, podName, reason, namespac
 	})
 }
 
-// waitForPodSuccessInNamespace returns nil if the pod reached state success, or an error if it reached failure or ran too long.
-func waitForPodSuccessInNamespace(c *client.Client, podName string, contName string, namespace string) error {
-	return waitForPodCondition(c, namespace, podName, "success or failure", podStartTimeout, func(pod *api.Pod) (bool, error) {
+// waitForPodSuccessInNamespaceTimeout returns nil if the pod reached state success, or an error if it reached failure or ran too long.
+func waitForPodSuccessInNamespaceTimeout(c *client.Client, podName string, contName string, namespace string, timeout time.Duration) error {
+	return waitForPodCondition(c, namespace, podName, "success or failure", timeout, func(pod *api.Pod) (bool, error) {
 		// Cannot use pod.Status.Phase == api.PodSucceeded/api.PodFailed due to #2632
 		ci, ok := api.GetContainerStatus(pod.Status.ContainerStatuses, contName)
 		if !ok {
@@ -994,6 +1041,16 @@ func waitForPodSuccessInNamespace(c *client.Client, podName string, contName str
 		}
 		return false, nil
 	})
+}
+
+// waitForPodSuccessInNamespace returns nil if the pod reached state success, or an error if it reached failure or until podStartupTimeout.
+func waitForPodSuccessInNamespace(c *client.Client, podName string, contName string, namespace string) error {
+	return waitForPodSuccessInNamespaceTimeout(c, podName, contName, namespace, podStartTimeout)
+}
+
+// waitForPodSuccessInNamespaceSlow returns nil if the pod reached state success, or an error if it reached failure or until slowPodStartupTimeout.
+func waitForPodSuccessInNamespaceSlow(c *client.Client, podName string, contName string, namespace string) error {
+	return waitForPodSuccessInNamespaceTimeout(c, podName, contName, namespace, slowPodStartTimeout)
 }
 
 // waitForRCPodOnNode returns the pod from the given replication controller (described by rcName) which is scheduled on the given node.
@@ -2566,6 +2623,25 @@ func waitForDeploymentRevisionAndImage(c clientset.Interface, ns, deploymentName
 	return nil
 }
 
+// checkNewRSAnnotations check if the new RS's annotation is as expected
+func checkNewRSAnnotations(c clientset.Interface, ns, deploymentName string, expectedAnnotations map[string]string) error {
+	deployment, err := c.Extensions().Deployments(ns).Get(deploymentName)
+	if err != nil {
+		return err
+	}
+	newRS, err := deploymentutil.GetNewReplicaSet(deployment, c)
+	if err != nil {
+		return err
+	}
+	for k, v := range expectedAnnotations {
+		// Skip checking revision annotations
+		if k != deploymentutil.RevisionAnnotation && v != newRS.Annotations[k] {
+			return fmt.Errorf("Expected new RS annotations = %+v, got %+v", expectedAnnotations, newRS.Annotations)
+		}
+	}
+	return nil
+}
+
 func waitForPodsReady(c *clientset.Clientset, ns, name string, minReadySeconds int) error {
 	label := labels.SelectorFromSet(labels.Set(map[string]string{"name": name}))
 	options := api.ListOptions{LabelSelector: label}
@@ -3181,7 +3257,7 @@ type extractRT struct {
 
 func (rt *extractRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	rt.Header = req.Header
-	return nil, nil
+	return &http.Response{}, nil
 }
 
 // headersForConfig extracts any http client logic necessary for the provided
@@ -3552,6 +3628,70 @@ func GetReadyNodes(f *Framework) (nodes *api.NodeList, err error) {
 		return nil, errors.New("No Ready nodes found.")
 	}
 	return nodes, nil
+}
+
+// timeout for proxy requests.
+const proxyTimeout = 2 * time.Minute
+
+// NodeProxyRequest performs a get on a node proxy endpoint given the nodename and rest client.
+func NodeProxyRequest(c *client.Client, node, endpoint string) (restclient.Result, error) {
+	// proxy tends to hang in some cases when Node is not ready. Add an artificial timeout for this call.
+	// This will leak a goroutine if proxy hangs. #22165
+	subResourceProxyAvailable, err := serverVersionGTE(subResourceServiceAndNodeProxyVersion, c)
+	if err != nil {
+		return restclient.Result{}, err
+	}
+	var result restclient.Result
+	finished := make(chan struct{})
+	go func() {
+		if subResourceProxyAvailable {
+			result = c.Get().
+				Resource("nodes").
+				SubResource("proxy").
+				Name(fmt.Sprintf("%v:%v", node, ports.KubeletPort)).
+				Suffix(endpoint).
+				Do()
+
+		} else {
+			result = c.Get().
+				Prefix("proxy").
+				Resource("nodes").
+				Name(fmt.Sprintf("%v:%v", node, ports.KubeletPort)).
+				Suffix(endpoint).
+				Do()
+		}
+		finished <- struct{}{}
+	}()
+	select {
+	case <-finished:
+		return result, nil
+	case <-time.After(proxyTimeout):
+		return restclient.Result{}, nil
+	}
+}
+
+// GetKubeletPods retrieves the list of pods on the kubelet
+func GetKubeletPods(c *client.Client, node string) (*api.PodList, error) {
+	return getKubeletPods(c, node, "pods")
+}
+
+// GetKubeletRunningPods retrieves the list of running pods on the kubelet. The pods
+// includes necessary information (e.g., UID, name, namespace for
+// pods/containers), but do not contain the full spec.
+func GetKubeletRunningPods(c *client.Client, node string) (*api.PodList, error) {
+	return getKubeletPods(c, node, "runningpods")
+}
+
+func getKubeletPods(c *client.Client, node, resource string) (*api.PodList, error) {
+	result := &api.PodList{}
+	client, err := NodeProxyRequest(c, node, resource)
+	if err != nil {
+		return &api.PodList{}, err
+	}
+	if err = client.Into(result); err != nil {
+		return &api.PodList{}, err
+	}
+	return result, nil
 }
 
 // LaunchWebserverPod launches a pod serving http on port 8080 to act

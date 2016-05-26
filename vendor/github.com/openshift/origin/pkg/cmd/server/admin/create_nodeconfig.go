@@ -18,7 +18,7 @@ import (
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/master/ports"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/crypto"
 
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
@@ -160,7 +160,7 @@ func (o CreateNodeConfigOptions) Validate(args []string) error {
 		return fmt.Errorf("--certificate-authority must be a valid certificate file")
 	} else {
 		for _, caFile := range o.APIServerCAFiles {
-			if _, err := util.CertPoolFromFile(caFile); err != nil {
+			if _, err := crypto.CertPoolFromFile(caFile); err != nil {
 				return fmt.Errorf("--certificate-authority must be a valid certificate file: %v", err)
 			}
 		}
@@ -250,7 +250,7 @@ func (o CreateNodeConfigOptions) CreateNodeFolder() error {
 		return err
 	}
 	if o.UseTLS() {
-		if err := o.MakeServerCert(serverCertFile, serverKeyFile); err != nil {
+		if err := o.MakeAndWriteServerCert(serverCertFile, serverKeyFile); err != nil {
 			return err
 		}
 		if o.UseNodeClientCA() {
@@ -309,7 +309,7 @@ func (o CreateNodeConfigOptions) MakeClientCert(clientCertFile, clientKeyFile st
 	return nil
 }
 
-func (o CreateNodeConfigOptions) MakeServerCert(serverCertFile, serverKeyFile string) error {
+func (o CreateNodeConfigOptions) MakeAndWriteServerCert(serverCertFile, serverKeyFile string) error {
 	if o.IsCreateServerCertificate() {
 		nodeServerCertOptions := CreateServerCertOptions{
 			SignerCertOptions: o.SignerCertOptions,

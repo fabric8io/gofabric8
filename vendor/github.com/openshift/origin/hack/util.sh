@@ -144,9 +144,10 @@ function start_os_server {
 	ps -ef | grep openshift
 	echo "[INFO] Starting OpenShift server"
 	${sudo} env "PATH=${PATH}" OPENSHIFT_PROFILE=web OPENSHIFT_ON_PANIC=crash openshift start \
+	 --dns="tcp://${API_HOST}:53" \
 	 --master-config=${MASTER_CONFIG_DIR}/master-config.yaml \
 	 --node-config=${NODE_CONFIG_DIR}/node-config.yaml \
-	 --loglevel=4 \
+	 --loglevel=4 --logspec='*importer=5' \
 	 --latest-images="${use_latest_images}" \
 	&>"${LOG_DIR}/openshift.log" &
 	export OS_PID=$!
@@ -197,8 +198,9 @@ function start_os_master {
 	ps -ef | grep openshift
 	echo "[INFO] Starting OpenShift server"
 	${sudo} env "PATH=${PATH}" OPENSHIFT_PROFILE=web OPENSHIFT_ON_PANIC=crash openshift start master \
+	 --dns="tcp://${API_HOST}:53" \
 	 --config=${MASTER_CONFIG_DIR}/master-config.yaml \
-	 --loglevel=4 \
+	 --loglevel=4 --logspec='*importer=5' \
 	&>"${LOG_DIR}/openshift.log" &
 	export OS_PID=$!
 
@@ -565,15 +567,18 @@ function cleanup_openshift {
 		fi
 
 		echo "[INFO] Pruning etcd data directory..."
-		sudo rm -rf "${ETCD_DATA_DIR}"
+		local sudo="${USE_SUDO:+sudo}"
+		${sudo} rm -rf "${ETCD_DATA_DIR}"
 
 		set -u
 	fi
 
-	if grep -q 'no Docker socket found' "${LOG_DIR}/openshift.log"; then 
+	# TODO soltysh: restore the if back once #8399 is resolved
+	# if grep -q 'no Docker socket found' "${LOG_DIR}/openshift.log"; then
 		# the Docker daemon crashed, we need the logs
-		journalctl --unit docker.service --since -4hours > "${LOG_DIR}/docker.log"
-	fi
+	# journalctl --unit docker.service --since -4hours > "${LOG_DIR}/docker.log"
+	# fi
+	journalctl --unit docker.service --since -15minutes > "${LOG_DIR}/docker.log"
 
 	delete_empty_logs
 	truncate_large_logs
@@ -704,7 +709,7 @@ os::log::errexit() {
 }
 
 os::log::install_errexit() {
-	# trap ERR to provide an error handler whenever a command exits nonzero	this
+	# trap ERR to provide an error handler whenever a command exits nonzero this
 	# is a more verbose version of set -o errexit
 	trap 'os::log::errexit' ERR
 
@@ -785,6 +790,7 @@ find_files() {
 		-o -wholename './.*' \
 		-o -wholename './pkg/assets/bindata.go' \
 		-o -wholename './pkg/assets/*/bindata.go' \
+		-o -wholename './pkg/bootstrap/bindata.go' \
 		-o -wholename './openshift.local.*' \
 		-o -wholename '*/Godeps/*' \
 		-o -wholename './assets/bower_components/*' \

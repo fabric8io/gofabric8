@@ -213,6 +213,10 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						if err != nil {
 							printError("failed to apply docker registry prefix", err)
 						}
+
+						// lets delete the OAuthClient first as the domain may have changed
+						oc.OAuthClients().Delete("fabric8")
+
 						createTemplate(jsonData, "fabric8 console", ns, domain, apiserver, c)
 					} else {
 						printError("Ignoring the deploy of the fabric8 console", nil)

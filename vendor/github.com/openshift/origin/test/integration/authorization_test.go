@@ -175,11 +175,11 @@ func TestAuthorizationResolution(t *testing.T) {
 }
 
 // TODO this list should start collapsing as we continue to tighten access on generated system ids
-var globalClusterAdminUsers = sets.NewString()
+var globalClusterAdminUsers = sets.NewString("system:admin")
 var globalClusterAdminGroups = sets.NewString("system:cluster-admins", "system:masters")
 
 // This list includes the admins from above, plus users or groups known to have global view access
-var globalClusterReaderUsers = sets.NewString("system:serviceaccount:openshift-infra:namespace-controller")
+var globalClusterReaderUsers = sets.NewString("system:serviceaccount:openshift-infra:namespace-controller", "system:admin")
 var globalClusterReaderGroups = sets.NewString("system:cluster-readers", "system:cluster-admins", "system:masters")
 
 type resourceAccessReviewTest struct {
@@ -328,19 +328,19 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	requestWhoCanViewDeployments := &authorizationapi.ResourceAccessReview{
-		Action: authorizationapi.AuthorizationAttributes{Verb: "get", Resource: "deployments"},
+	requestWhoCanViewDeploymentConfigs := &authorizationapi.ResourceAccessReview{
+		Action: authorizationapi.AuthorizationAttributes{Verb: "get", Resource: "deploymentconfigs"},
 	}
 
-	localRequestWhoCanViewDeployments := &authorizationapi.LocalResourceAccessReview{
-		Action: authorizationapi.AuthorizationAttributes{Verb: "get", Resource: "deployments"},
+	localRequestWhoCanViewDeploymentConfigs := &authorizationapi.LocalResourceAccessReview{
+		Action: authorizationapi.AuthorizationAttributes{Verb: "get", Resource: "deploymentconfigs"},
 	}
 
 	{
 		test := localResourceAccessReviewTest{
-			description:     "who can view deployments in hammer by harold",
+			description:     "who can view deploymentconfigs in hammer by harold",
 			clientInterface: haroldClient.LocalResourceAccessReviews("hammer-project"),
-			review:          localRequestWhoCanViewDeployments,
+			review:          localRequestWhoCanViewDeploymentConfigs,
 			response: authorizationapi.ResourceAccessReviewResponse{
 				Users:     sets.NewString("harold", "valerie"),
 				Groups:    sets.NewString(),
@@ -353,9 +353,9 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 	}
 	{
 		test := localResourceAccessReviewTest{
-			description:     "who can view deployments in mallet by mark",
+			description:     "who can view deploymentconfigs in mallet by mark",
 			clientInterface: markClient.LocalResourceAccessReviews("mallet-project"),
-			review:          localRequestWhoCanViewDeployments,
+			review:          localRequestWhoCanViewDeploymentConfigs,
 			response: authorizationapi.ResourceAccessReviewResponse{
 				Users:     sets.NewString("mark", "edgar"),
 				Groups:    sets.NewString(),
@@ -370,9 +370,9 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 	// mark should not be able to make global access review requests
 	{
 		test := resourceAccessReviewTest{
-			description:     "who can view deployments in all by mark",
+			description:     "who can view deploymentconfigs in all by mark",
 			clientInterface: markClient.ResourceAccessReviews(),
-			review:          requestWhoCanViewDeployments,
+			review:          requestWhoCanViewDeploymentConfigs,
 			err:             "cannot ",
 		}
 		test.run(t)
@@ -381,9 +381,9 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 	// a cluster-admin should be able to make global access review requests
 	{
 		test := resourceAccessReviewTest{
-			description:     "who can view deployments in all by cluster-admin",
+			description:     "who can view deploymentconfigs in all by cluster-admin",
 			clientInterface: clusterAdminClient.ResourceAccessReviews(),
-			review:          requestWhoCanViewDeployments,
+			review:          requestWhoCanViewDeploymentConfigs,
 			response: authorizationapi.ResourceAccessReviewResponse{
 				Users:  sets.NewString(),
 				Groups: sets.NewString(),
@@ -399,9 +399,9 @@ func TestAuthorizationResourceAccessReview(t *testing.T) {
 			t.Errorf("unexpected error: %v", err)
 		}
 		test := localResourceAccessReviewTest{
-			description:     "who can view deployments in mallet by cluster-admin",
+			description:     "who can view deploymentconfigs in mallet by cluster-admin",
 			clientInterface: clusterAdminClient.LocalResourceAccessReviews("mallet-project"),
-			review:          localRequestWhoCanViewDeployments,
+			review:          localRequestWhoCanViewDeploymentConfigs,
 			response: authorizationapi.ResourceAccessReviewResponse{
 				Users:     sets.NewString("edgar"),
 				Groups:    sets.NewString(),
@@ -1052,7 +1052,7 @@ func TestOldLocalResourceAccessReviewEndpoint(t *testing.T) {
 
 		expectedResponse := &authorizationapi.ResourceAccessReviewResponse{
 			Namespace: namespace,
-			Users:     sets.NewString("harold", "system:serviceaccount:hammer-project:builder", "system:serviceaccount:openshift-infra:namespace-controller"),
+			Users:     sets.NewString("harold", "system:serviceaccount:hammer-project:builder", "system:serviceaccount:openshift-infra:namespace-controller", "system:admin"),
 			Groups:    sets.NewString("system:cluster-admins", "system:masters", "system:serviceaccounts:hammer-project"),
 		}
 		if (actualResponse.Namespace != expectedResponse.Namespace) ||
@@ -1079,7 +1079,7 @@ func TestOldLocalResourceAccessReviewEndpoint(t *testing.T) {
 
 		expectedResponse := &authorizationapi.ResourceAccessReviewResponse{
 			Namespace: namespace,
-			Users:     sets.NewString("harold", "system:serviceaccount:hammer-project:builder", "system:serviceaccount:openshift-infra:namespace-controller"),
+			Users:     sets.NewString("harold", "system:serviceaccount:hammer-project:builder", "system:serviceaccount:openshift-infra:namespace-controller", "system:admin"),
 			Groups:    sets.NewString("system:cluster-admins", "system:masters", "system:serviceaccounts:hammer-project"),
 		}
 		if (actualResponse.Namespace != expectedResponse.Namespace) ||

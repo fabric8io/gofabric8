@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// TODO: support arm64
+// +build amd64
+
 package etcdmain
 
 import (
@@ -20,6 +23,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path"
 	"reflect"
@@ -31,7 +35,6 @@ import (
 	"github.com/coreos/etcd/etcdserver"
 	"github.com/coreos/etcd/etcdserver/api/v3rpc"
 	"github.com/coreos/etcd/etcdserver/etcdhttp"
-	"github.com/coreos/etcd/etcdserver/etcdserverpb"
 	"github.com/coreos/etcd/pkg/cors"
 	"github.com/coreos/etcd/pkg/fileutil"
 	pkgioutil "github.com/coreos/etcd/pkg/ioutil"
@@ -46,7 +49,6 @@ import (
 	systemdutil "github.com/coreos/go-systemd/util"
 	"github.com/coreos/pkg/capnslog"
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
 )
 
 type dirType string
@@ -201,11 +203,6 @@ func startEtcd(cfg *config) (<-chan struct{}, error) {
 		return nil, fmt.Errorf("error setting up initial cluster: %v", err)
 	}
 
-	pt, err := transport.NewTimeoutTransport(cfg.peerTLSInfo, peerDialTimeout(cfg.ElectionMs), rafthttp.ConnReadTimeout, rafthttp.ConnWriteTimeout)
-	if err != nil {
-		return nil, err
-	}
-
 	if !cfg.peerTLSInfo.Empty() {
 		plog.Infof("peerTLS: %s", cfg.peerTLSInfo)
 	}
@@ -215,7 +212,7 @@ func startEtcd(cfg *config) (<-chan struct{}, error) {
 			plog.Warningf("The scheme of peer url %s is http while peer key/cert files are presented. Ignored peer key/cert files.", u.String())
 		}
 		var l net.Listener
-		l, err = transport.NewTimeoutListener(u.Host, u.Scheme, cfg.peerTLSInfo, rafthttp.ConnReadTimeout, rafthttp.ConnWriteTimeout)
+		l, err = rafthttp.NewListener(u, cfg.peerTLSInfo)
 		if err != nil {
 			return nil, err
 		}
@@ -272,32 +269,35 @@ func startEtcd(cfg *config) (<-chan struct{}, error) {
 
 	var v3l net.Listener
 	if cfg.v3demo {
-		v3l, err = net.Listen("tcp", "127.0.0.1:12379")
+		v3l, err = net.Listen("tcp", cfg.gRPCAddr)
 		if err != nil {
 			plog.Fatal(err)
 		}
-		plog.Infof("listening for client rpc on 127.0.0.1:12379")
+		plog.Infof("listening for client rpc on %s", cfg.gRPCAddr)
 	}
 
 	srvcfg := &etcdserver.ServerConfig{
-		Name:                cfg.name,
-		ClientURLs:          cfg.acurls,
-		PeerURLs:            cfg.apurls,
-		DataDir:             cfg.dir,
-		DedicatedWALDir:     cfg.walDir,
-		SnapCount:           cfg.snapCount,
-		MaxSnapFiles:        cfg.maxSnapFiles,
-		MaxWALFiles:         cfg.maxWalFiles,
-		InitialPeerURLsMap:  urlsmap,
-		InitialClusterToken: token,
-		DiscoveryURL:        cfg.durl,
-		DiscoveryProxy:      cfg.dproxy,
-		NewCluster:          cfg.isNewCluster(),
-		ForceNewCluster:     cfg.forceNewCluster,
-		Transport:           pt,
-		TickMs:              cfg.TickMs,
-		ElectionTicks:       cfg.electionTicks(),
-		V3demo:              cfg.v3demo,
+		Name:                    cfg.name,
+		ClientURLs:              cfg.acurls,
+		PeerURLs:                cfg.apurls,
+		DataDir:                 cfg.dir,
+		DedicatedWALDir:         cfg.walDir,
+		SnapCount:               cfg.snapCount,
+		MaxSnapFiles:            cfg.maxSnapFiles,
+		MaxWALFiles:             cfg.maxWalFiles,
+		InitialPeerURLsMap:      urlsmap,
+		InitialClusterToken:     token,
+		DiscoveryURL:            cfg.durl,
+		DiscoveryProxy:          cfg.dproxy,
+		NewCluster:              cfg.isNewCluster(),
+		ForceNewCluster:         cfg.forceNewCluster,
+		PeerTLSInfo:             cfg.peerTLSInfo,
+		TickMs:                  cfg.TickMs,
+		ElectionTicks:           cfg.electionTicks(),
+		V3demo:                  cfg.v3demo,
+		AutoCompactionRetention: cfg.autoCompactionRetention,
+		StrictReconfigCheck:     cfg.strictReconfigCheck,
+		EnablePprof:             cfg.enablePprof,
 	}
 	var s *etcdserver.EtcdServer
 	s, err = etcdserver.NewServer(srvcfg)
@@ -314,7 +314,7 @@ func startEtcd(cfg *config) (<-chan struct{}, error) {
 		Handler: etcdhttp.NewClientHandler(s, srvcfg.ReqTimeout()),
 		Info:    cfg.corsInfo,
 	}
-	ph := etcdhttp.NewPeerHandler(s.Cluster(), s.RaftHandler())
+	ph := etcdhttp.NewPeerHandler(s)
 	// Start the peer server in a goroutine
 	for _, l := range plns {
 		go func(l net.Listener) {
@@ -332,9 +332,17 @@ func startEtcd(cfg *config) (<-chan struct{}, error) {
 
 	if cfg.v3demo {
 		// set up v3 demo rpc
-		grpcServer := grpc.NewServer()
-		etcdserverpb.RegisterEtcdServer(grpcServer, v3rpc.New(s))
-		go plog.Fatal(grpcServer.Serve(v3l))
+		tls := &cfg.clientTLSInfo
+		if cfg.clientTLSInfo.Empty() {
+			tls = nil
+		}
+		grpcServer, err := v3rpc.Server(s, tls)
+		if err != nil {
+			s.Stop()
+			<-s.StopNotify()
+			return nil, err
+		}
+		go func() { plog.Fatal(grpcServer.Serve(v3l)) }()
 	}
 
 	return s.StopNotify(), nil
@@ -372,7 +380,7 @@ func startProxy(cfg *config) error {
 			plog.Warningf("DNS SRV discovery ignored since the proxy has already been initialized. Valid cluster file found at %q", clusterfile)
 		}
 		urls := struct{ PeerURLs []string }{}
-		err := json.Unmarshal(b, &urls)
+		err = json.Unmarshal(b, &urls)
 		if err != nil {
 			return err
 		}
@@ -402,8 +410,8 @@ func startProxy(cfg *config) error {
 	clientURLs := []string{}
 	uf := func() []string {
 		gcls, err := etcdserver.GetClusterFromRemotePeers(peerURLs, tr)
-		// TODO: remove the 2nd check when we fix GetClusterFromPeers
-		// GetClusterFromPeers should not return nil error with an invaild empty cluster
+		// TODO: remove the 2nd check when we fix GetClusterFromRemotePeers
+		// GetClusterFromRemotePeers should not return nil error with an invalid empty cluster
 		if err != nil {
 			plog.Warningf("proxy: %v", err)
 			return []string{}
@@ -545,10 +553,4 @@ func setupLogging(cfg *config) {
 		}
 		repoLog.SetLogLevel(settings)
 	}
-}
-
-func peerDialTimeout(electionMs uint) time.Duration {
-	// 1s for queue wait and system delay
-	// + one RTT, which is smaller than 1/5 election timeout
-	return time.Second + time.Duration(electionMs)*time.Millisecond/5
 }

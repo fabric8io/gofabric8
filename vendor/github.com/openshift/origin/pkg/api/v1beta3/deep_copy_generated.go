@@ -664,6 +664,18 @@ func deepCopy_v1beta3_RoleList(in v1beta3.RoleList, out *v1beta3.RoleList, c *co
 	return nil
 }
 
+func deepCopy_v1beta3_SelfSubjectRulesReview(in v1beta3.SelfSubjectRulesReview, out *v1beta3.SelfSubjectRulesReview, c *conversion.Cloner) error {
+	if newVal, err := c.DeepCopy(in.TypeMeta); err != nil {
+		return err
+	} else {
+		out.TypeMeta = newVal.(unversioned.TypeMeta)
+	}
+	if err := deepCopy_v1beta3_SubjectRulesReviewStatus(in.Status, &out.Status, c); err != nil {
+		return err
+	}
+	return nil
+}
+
 func deepCopy_v1beta3_SubjectAccessReview(in v1beta3.SubjectAccessReview, out *v1beta3.SubjectAccessReview, c *conversion.Cloner) error {
 	if newVal, err := c.DeepCopy(in.TypeMeta); err != nil {
 		return err
@@ -694,6 +706,21 @@ func deepCopy_v1beta3_SubjectAccessReviewResponse(in v1beta3.SubjectAccessReview
 	out.Namespace = in.Namespace
 	out.Allowed = in.Allowed
 	out.Reason = in.Reason
+	return nil
+}
+
+func deepCopy_v1beta3_SubjectRulesReviewStatus(in v1beta3.SubjectRulesReviewStatus, out *v1beta3.SubjectRulesReviewStatus, c *conversion.Cloner) error {
+	if in.Rules != nil {
+		out.Rules = make([]v1beta3.PolicyRule, len(in.Rules))
+		for i := range in.Rules {
+			if err := deepCopy_v1beta3_PolicyRule(in.Rules[i], &out.Rules[i], c); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Rules = nil
+	}
+	out.EvaluationError = in.EvaluationError
 	return nil
 }
 
@@ -798,6 +825,7 @@ func deepCopy_v1beta3_BuildConfigSpec(in apiv1beta3.BuildConfigSpec, out *apiv1b
 	} else {
 		out.Triggers = nil
 	}
+	out.RunPolicy = in.RunPolicy
 	if err := deepCopy_v1beta3_BuildSpec(in.BuildSpec, &out.BuildSpec, c); err != nil {
 		return err
 	}
@@ -1583,20 +1611,17 @@ func deepCopy_v1beta3_DeploymentConfigStatus(in deployapiv1beta3.DeploymentConfi
 	} else {
 		out.Details = nil
 	}
+	out.ObservedGeneration = in.ObservedGeneration
 	return nil
 }
 
 func deepCopy_v1beta3_DeploymentDetails(in deployapiv1beta3.DeploymentDetails, out *deployapiv1beta3.DeploymentDetails, c *conversion.Cloner) error {
 	out.Message = in.Message
 	if in.Causes != nil {
-		out.Causes = make([]*deployapiv1beta3.DeploymentCause, len(in.Causes))
+		out.Causes = make([]deployapiv1beta3.DeploymentCause, len(in.Causes))
 		for i := range in.Causes {
-			if newVal, err := c.DeepCopy(in.Causes[i]); err != nil {
+			if err := deepCopy_v1beta3_DeploymentCause(in.Causes[i], &out.Causes[i], c); err != nil {
 				return err
-			} else if newVal == nil {
-				out.Causes[i] = nil
-			} else {
-				out.Causes[i] = newVal.(*deployapiv1beta3.DeploymentCause)
 			}
 		}
 	} else {
@@ -3012,8 +3037,10 @@ func init() {
 		deepCopy_v1beta3_RoleBinding,
 		deepCopy_v1beta3_RoleBindingList,
 		deepCopy_v1beta3_RoleList,
+		deepCopy_v1beta3_SelfSubjectRulesReview,
 		deepCopy_v1beta3_SubjectAccessReview,
 		deepCopy_v1beta3_SubjectAccessReviewResponse,
+		deepCopy_v1beta3_SubjectRulesReviewStatus,
 		deepCopy_v1beta3_BinaryBuildRequestOptions,
 		deepCopy_v1beta3_BinaryBuildSource,
 		deepCopy_v1beta3_Build,

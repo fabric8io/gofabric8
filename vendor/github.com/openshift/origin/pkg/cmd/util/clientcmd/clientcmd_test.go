@@ -9,7 +9,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 )
 
 func TestAnonymousConfig(t *testing.T) {
@@ -27,6 +27,7 @@ func TestAnonymousConfig(t *testing.T) {
 
 		// this is the list of known security related fields, add to this list if a new field
 		// is added to restclient.Config, update AnonymousClientConfig to preserve the field otherwise.
+		expected.Impersonate = ""
 		expected.BearerToken = ""
 		expected.Username = ""
 		expected.Password = ""
@@ -36,7 +37,7 @@ func TestAnonymousConfig(t *testing.T) {
 		expected.TLSClientConfig.KeyFile = ""
 
 		if !reflect.DeepEqual(actual, expected) {
-			t.Fatalf("AnonymousClientConfig dropped unexpected fields, identify whether they are security related or not: %s", util.ObjectGoPrintDiff(expected, actual))
+			t.Fatalf("AnonymousClientConfig dropped unexpected fields, identify whether they are security related or not: %s", diff.ObjectGoPrintDiff(expected, actual))
 		}
 	}
 }

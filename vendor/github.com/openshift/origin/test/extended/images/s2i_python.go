@@ -33,6 +33,17 @@ var _ = g.Describe("[images][python][Slow] hot deploy for openshift python image
 
 			g.By("waiting for build to finish")
 			err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), "django-ex-1", exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
+			if err != nil {
+				exutil.DumpBuildLogs("django-ex", oc)
+			}
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			// oc.KubeFramework().WaitForAnEndpoint currently will wait forever;  for now, prefacing with our WaitForADeploymentToComplete,
+			// which does have a timeout, since in most cases a failure in the service coming up stems from a failed deployment
+			err = exutil.WaitForADeploymentToComplete(oc.KubeREST().ReplicationControllers(oc.Namespace()), "django-ex")
+			if err != nil {
+				exutil.DumpDeploymentLogs("django-ex", oc)
+			}
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("waiting for endpoint")

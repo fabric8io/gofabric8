@@ -25,7 +25,6 @@ set -o pipefail
 
 function exit_trap() {
     local return_code=$?
-    echo "[DEBUG] Exit trap handler got return code ${return_code}"
 
     end_time=$(date +%s)
 
@@ -35,7 +34,7 @@ function exit_trap() {
         verb="failed"
     fi
 
-    echo "$0 ${verb} after $((${end_time} - ${start_time})) seconds"
+    echo "$0 ${verb} after $(( end_time - start_time )) seconds"
     exit "${return_code}"
 }
 
@@ -125,7 +124,7 @@ fi
 # list_test_packages_under lists all packages containing Golang test files that we want to run as unit tests
 # under the given base dir in the OpenShift Origin tree
 function list_test_packages_under() {
-    local basedir=$@
+    local basedir=$*
 
     # we do not quote ${basedir} to allow for multiple arguments to be passed in as well as to allow for
     # arguments that use expansion, e.g. paths containing brace expansion or wildcards
@@ -181,12 +180,14 @@ else
     if [[ -n "${test_kube}" ]]; then
         # we need to find all of the kubernetes test suites, excluding those we directly whitelisted before, the end-to-end suite, and
         # the go2idl tests which we currently do not support
+        # etcd3 isn't supported yet and that test flakes upstream
         optional_kubernetes_packages="$(find "${kubernetes_path}" -not \(                             \
           \(                                                                                          \
             -path "${kubernetes_path}/pkg/api"                                                        \
             -o -path "${kubernetes_path}/pkg/api/v1"                                                  \
             -o -path "${kubernetes_path}/test/e2e"                                                    \
             -o -path "${kubernetes_path}/cmd/libs/go2idl/client-gen/testoutput/testgroup/unversioned" \
+            -o -path "${kubernetes_path}/pkg/storage/etcd3"                                           \
           \) -prune                                                                                   \
         \) -name '*_test.go' | xargs -n1 dirname | sort -u | xargs -n1 printf "${OS_GO_PACKAGE}/%s\n")"
 
@@ -219,31 +220,44 @@ if [[ -n "${junit_report}" ]]; then
     fi
 
     test_output_file="${LOG_DIR}/test-go.log"
+    test_error_file="${LOG_DIR}/test-go-err.log"
     junit_report_file="${ARTIFACT_DIR}/report.xml"
 
     echo "[INFO] Running \`go test\`..."
     # we don't care if the `go test` fails in this pipe, as we want to generate the report and summarize the output anyway
     set +o pipefail
 
-    go test ${gotest_flags} ${test_packages} 2>&1              \
-        | tee ${test_output_file}                              \
-        | "${junitreport}" --type gotest                       \
-                           --suites nested                     \
-                           --roots github.com/openshift/origin \
-                           --stream                            \
+    go test ${gotest_flags} ${test_packages} 2>"${test_error_file}" \
+        | tee "${test_output_file}"                                 \
+        | "${junitreport}" --type gotest                            \
+                           --suites nested                          \
+                           --roots github.com/openshift/origin      \
+                           --stream                                 \
                            --output "${junit_report_file}"
 
-    return_code="${PIPESTATUS[0]}"
-    echo "[DEBUG] Found return code of \`go test\` to be ${return_code}"
+    test_return_code="${PIPESTATUS[0]}"
+
     set -o pipefail
 
     echo
-    cat "${junit_report_file}" | "${junitreport}" summarize
+    summary="$( "${junitreport}" summarize < "${junit_report_file}" )"
+    echo "${summary}"
+    
+    if echo "${summary}" | grep -q ', 0 failed,'; then
+        if [[ "${test_return_code}" -ne "0" ]]; then
+            echo "[WARNING] While the jUnit report found no failed tests, the \`go test\` process failed."
+            echo "[WARNING] This usually means that the unit test suite failed to compile."
+        fi
+    fi
+
+    if [[ -s "${test_error_file}" ]]; then
+        echo "[WARNING] \`go test\` had the following output to stderr:"
+        cat "${test_error_file}"
+    fi
+
     echo "[INFO] Full output from \`go test\` logged at ${test_output_file}"
     echo "[INFO] jUnit XML report placed at ${junit_report_file}"
-
-    echo "[DEBUG] Exiting with return code ${return_code}"
-    exit "${return_code}"
+    exit "${test_return_code}"
 
 elif [[ -n "${coverage_output_dir}" ]]; then
     # we need to generate coverage reports

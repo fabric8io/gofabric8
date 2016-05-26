@@ -15,6 +15,9 @@ os::log::install_errexit
 source "${OS_ROOT}/hack/lib/util/environment.sh"
 os::util::environment::setup_time_vars
 
+source "${OS_ROOT}/hack/lib/test/junit.sh"
+trap os::test::junit::reconcile_output EXIT
+
 TEST_ASSETS="${TEST_ASSETS:-false}"
 
 export VERBOSE=true
@@ -48,6 +51,7 @@ function wait_for_app() {
   wait_for_command '[[ "$(curl -s http://${FRONTEND_IP}:5432/keys/foo)" = "1337" ]]'
 }
 
+os::test::junit::declare_suite_start "end-to-end/core"
 # service dns entry is visible via master service
 # find the IP of the master service by asking the API_HOST to verify DNS is running there
 MASTER_SERVICE_IP="$(dig @${API_HOST} "kubernetes.default.svc.cluster.local." +short A | head -n 1)"
@@ -59,12 +63,8 @@ os::cmd::expect_success_and_text "dig +notcp @${MASTER_SERVICE_IP} kubernetes.de
 os::cmd::expect_success 'openshift admin policy add-role-to-user view e2e-user --namespace=default'
 
 # pre-load some image streams and templates
-os::cmd::expect_success 'oc create -f examples/image-streams/image-streams-centos7.json --namespace=openshift'
 os::cmd::expect_success 'oc create -f examples/sample-app/application-template-stibuild.json --namespace=openshift'
 os::cmd::expect_success 'oc create -f examples/jenkins/application-template.json --namespace=openshift'
-os::cmd::expect_success 'oc create -f examples/db-templates/mongodb-ephemeral-template.json --namespace=openshift'
-os::cmd::expect_success 'oc create -f examples/db-templates/mysql-ephemeral-template.json --namespace=openshift'
-os::cmd::expect_success 'oc create -f examples/db-templates/postgresql-ephemeral-template.json --namespace=openshift'
 
 # create test project so that this shows up in the console
 os::cmd::expect_success "openshift admin new-project test --description='This is an example project to demonstrate OpenShift v3' --admin='e2e-user'"
@@ -75,9 +75,6 @@ os::cmd::expect_success "openshift admin new-project cache --description='This i
 echo "The console should be available at ${API_SCHEME}://${PUBLIC_MASTER_HOST}:${API_PORT}/console."
 echo "Log in as 'e2e-user' to see the 'test' project."
 
-DROP_SYN_DURING_RESTART=1 install_router
-install_registry
-
 echo "[INFO] Pre-pulling and pushing ruby-22-centos7"
 os::cmd::expect_success 'docker pull centos/ruby-22-centos7:latest'
 echo "[INFO] Pulled ruby-22-centos7"
@@ -86,7 +83,10 @@ echo "[INFO] Waiting for Docker registry pod to start"
 wait_for_registry
 
 # check to make sure that logs for rc works
-oc logs rc/docker-registry-1 > /dev/null
+os::cmd::expect_success "oc logs rc/docker-registry-1 > /dev/null"
+# check that we can get a remote shell to a dc or rc
+os::cmd::expect_success_and_text "oc rsh dc/docker-registry cat config.yml" "5000"
+os::cmd::expect_success_and_text "oc rsh rc/docker-registry-1 cat config.yml" "5000"
 
 # services can end up on any IP.  Make sure we get the IP we need for the docker registry
 DOCKER_REGISTRY=$(oc get --output-version=v1beta3 --template="{{ .spec.portalIP }}:{{ with index .spec.ports 0 }}{{ .port }}{{ end }}" service docker-registry)
@@ -125,8 +125,9 @@ os::cmd::expect_success "docker push ${DOCKER_REGISTRY}/cache/ruby-22-centos7:la
 echo "[INFO] Pushed ruby-22-centos7"
 
 # verify remote images can be pulled directly from the local registry
-oc import-image --confirm --from=mysql:latest mysql:pullthrough
-docker pull ${DOCKER_REGISTRY}/cache/mysql:pullthrough
+echo "[INFO] Docker pullthrough"
+os::cmd::expect_success "oc import-image --confirm --from=mysql:latest mysql:pullthrough"
+os::cmd::expect_success "docker pull ${DOCKER_REGISTRY}/cache/mysql:pullthrough"
 
 # check to make sure an image-pusher can push an image
 os::cmd::expect_success 'oc policy add-role-to-user system:image-pusher pusher'
@@ -179,6 +180,11 @@ os::cmd::expect_success_and_text "cat '${LOG_DIR}/kubectl-with-token.log'" 'Usin
 os::cmd::expect_success_and_text "cat '${LOG_DIR}/kubectl-with-token.log'" 'kubectl-with-token'
 
 echo "[INFO] Testing deployment logs and failing pre and mid hooks ..."
+# test hook selectors
+os::cmd::expect_success "oc create -f ${OS_ROOT}/test/fixtures/complete-dc-hooks.yaml"
+os::cmd::try_until_text 'oc get pods -l openshift.io/deployer-pod.type=hook-pre  -o jsonpath={.items[*].status.phase}' '^Succeeded$'
+os::cmd::try_until_text 'oc get pods -l openshift.io/deployer-pod.type=hook-mid  -o jsonpath={.items[*].status.phase}' '^Succeeded$'
+os::cmd::try_until_text 'oc get pods -l openshift.io/deployer-pod.type=hook-post -o jsonpath={.items[*].status.phase}' '^Succeeded$'
 # test the pre hook on a rolling deployment
 oc create -f test/fixtures/failing-dc.yaml
 tryuntil oc get rc/failing-dc-1
@@ -198,7 +204,9 @@ tryuntil oc get rc/failing-dc-mid-1
 oc logs -f dc/failing-dc-mid
 wait_for_command "oc get rc/failing-dc-mid-1 --template={{.metadata.annotations}} | grep openshift.io/deployment.phase:Failed" $((60*TIME_SEC))
 os::cmd::expect_success_and_text 'oc logs dc/failing-dc-mid' 'test mid hook executed'
-oc deploy failing-dc-mid --latest
+# The following command is the equivalent of 'oc deploy --latest' on old clients
+# Ensures we won't break those while removing the dc status update from oc
+os::cmd::expect_success "oc patch dc/failing-dc-mid -p '{\"status\":{\"latestVersion\":2}}'"
 os::cmd::expect_success_and_text 'oc logs --version=1 dc/failing-dc-mid' 'test mid hook executed'
 os::cmd::expect_success_and_text 'oc logs --previous dc/failing-dc-mid'  'test mid hook executed'
 
@@ -253,7 +261,7 @@ frontend_pod=$(oc get pod -l deploymentconfig=frontend --template='{{(index .ite
 # when running as a restricted pod the registry will run with a pre-allocated
 # user in the neighborhood of 1000000+.  Look for a substring of the pre-allocated uid range
 os::cmd::expect_success_and_text "oc exec -p ${frontend_pod} id" '1000'
-os::cmd::expect_success_and_text "oc rsh ${frontend_pod} id -u" '1000'
+os::cmd::expect_success_and_text "oc rsh pod/${frontend_pod} id -u" '1000'
 os::cmd::expect_success_and_text "oc rsh -T ${frontend_pod} id -u" '1000'
 # Test retrieving application logs from dc
 oc logs dc/frontend | grep "Connecting to production database"
@@ -352,11 +360,11 @@ os::cmd::expect_success "oc exec -p ${registry_pod} du /registry > '${LOG_DIR}/p
 
 # set up pruner user
 os::cmd::expect_success 'oadm policy add-cluster-role-to-user system:image-pruner e2e-pruner'
+os::cmd::try_until_text 'oadm policy who-can list images' 'e2e-pruner'
 os::cmd::expect_success 'oc login -u e2e-pruner -p pass'
 
 # run image pruning
-os::cmd::expect_success "oadm prune images --keep-younger-than=0 --keep-tag-revisions=1 --confirm &> '${LOG_DIR}/prune-images.log'"
-os::cmd::expect_success_and_not_text "cat ${LOG_DIR}/prune-images.log" 'error'
+os::cmd::expect_success_and_not_text "oadm prune images --keep-younger-than=0 --keep-tag-revisions=1 --confirm" 'error'
 
 os::cmd::expect_success "oc project ${CLUSTER_ADMIN_CONTEXT}"
 # record the storage after pruning
@@ -365,6 +373,7 @@ os::cmd::expect_success "oc exec -p ${registry_pod} du /registry > '${LOG_DIR}/p
 # make sure there were changes to the registry's storage
 os::cmd::expect_code "diff ${LOG_DIR}/prune-images.before.txt ${LOG_DIR}/prune-images.after.txt" 1
 
+os::test::junit::declare_suite_end
 unset VERBOSE
 
 # UI e2e tests can be found in assets/test/e2e

@@ -31,6 +31,17 @@ var _ = g.Describe("[images][php][Slow] hot deploy for openshift php image", fun
 
 			g.By("waiting for build to finish")
 			err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), dcName, exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
+			if err != nil {
+				exutil.DumpBuildLogs("cakephp-mysql-example", oc)
+			}
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			// oc.KubeFramework().WaitForAnEndpoint currently will wait forever;  for now, prefacing with our WaitForADeploymentToComplete,
+			// which does have a timeout, since in most cases a failure in the service coming up stems from a failed deployment
+			err = exutil.WaitForADeploymentToComplete(oc.KubeREST().ReplicationControllers(oc.Namespace()), "cakephp-mysql-example")
+			if err != nil {
+				exutil.DumpDeploymentLogs("cakephp-mysql-example", oc)
+			}
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("waiting for endpoint")

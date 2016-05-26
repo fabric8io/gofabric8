@@ -11,7 +11,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/auth/user"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/diff"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 )
@@ -31,6 +31,10 @@ func (u *fakeUser) GetUID() string {
 
 func (u *fakeUser) GetGroups() []string {
 	return []string{"group1"}
+}
+
+func (u *fakeUser) GetExtra() map[string][]string {
+	return map[string][]string{}
 }
 
 type fakeDefaultRegistry struct {
@@ -305,12 +309,12 @@ func TestTagVerifier(t *testing.T) {
 				Groups: sets.NewString("group1"),
 			}
 			if e, a := expectedSar, sar.request; !reflect.DeepEqual(e, a) {
-				t.Errorf("%s: unexpected SAR request: %s", name, util.ObjectDiff(e, a))
+				t.Errorf("%s: unexpected SAR request: %s", name, diff.ObjectDiff(e, a))
 			}
 		}
 
 		if e, a := test.expected, errs; !reflect.DeepEqual(e, a) {
-			t.Errorf("%s: unexpected validation errors: %s", name, util.ObjectDiff(e, a))
+			t.Errorf("%s: unexpected validation errors: %s", name, diff.ObjectDiff(e, a))
 		}
 	}
 }

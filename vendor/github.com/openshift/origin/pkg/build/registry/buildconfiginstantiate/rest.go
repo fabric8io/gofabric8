@@ -15,6 +15,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/client/unversioned/remotecommand"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
+	kubeletremotecommand "k8s.io/kubernetes/pkg/kubelet/server/remotecommand"
 	"k8s.io/kubernetes/pkg/registry/pod"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/httpstream/spdy"
@@ -189,7 +190,7 @@ func (h *binaryInstantiateHandler) handle(r io.Reader) (runtime.Object, error) {
 	}
 
 	// The container should be the default build container, so setting it to blank
-	buildPodName := buildutil.GetBuildPodName(build)
+	buildPodName := buildapi.GetBuildPodName(build)
 	opts := &kapi.PodAttachOptions{
 		Stdin: true,
 	}
@@ -209,7 +210,7 @@ func (h *binaryInstantiateHandler) handle(r io.Reader) (runtime.Object, error) {
 	if err != nil {
 		return nil, errors.NewInternalError(fmt.Errorf("unable to connect to server: %v", err))
 	}
-	if err := exec.Stream(r, nil, nil, false); err != nil {
+	if err := exec.Stream(kubeletremotecommand.SupportedStreamingProtocols, r, nil, nil, false); err != nil {
 		return nil, errors.NewInternalError(err)
 	}
 	return latest, nil

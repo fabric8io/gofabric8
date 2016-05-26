@@ -37,7 +37,7 @@ timeout.
 
 A proxy is a redirection server to the etcd cluster. The proxy handles the
 redirection of a client to the current configuration of the etcd cluster. A
-typical usecase is to start a proxy on a machine, and on first boot up of the
+typical use case is to start a proxy on a machine, and on first boot up of the
 proxy specify both the `--proxy` flag and the `--initial-cluster` flag. 
 
 From there, any etcdctl client that starts up automatically speaks to the local
@@ -57,24 +57,27 @@ and their integration with the reconfiguration API.
 Thus, a member that is down, even infinitely, will never be automatically
 removed from the etcd cluster member list. 
 
-This makes sense because its usually an application level / administrative
+This makes sense because it's usually an application level / administrative
 action to determine whether a reconfiguration should happen based on health. 
 
-For more information, refer to [Documentation/runtime-reconfiguration.md].
+For more information, refer to the [runtime reconfiguration design document][runtime-reconf-design].
 
-## 6) how does --peers work with etcdctl? 
+## 6) how does --endpoint work with etcdctl? 
 
-The `--peers` flag can specify any number of etcd cluster members in a comma
+The `--endpoint` flag can specify any number of etcd cluster members in a comma
 separated list. This list might be a subset, equal to, or more than the actual
 etcd cluster member list itself. 
 
-If only one peer is specified via the `--peers` flag, the etcdctl discovers the
+If only one peer is specified via the `--endpoint` flag, the etcdctl discovers the
 rest of the cluster via the member list of that one peer, and then it randomly
 chooses a member to use.  Again, the client can use the `quorum=true` flag on
 reads, which will always fail when using a member in the minority. 
 
-If peers from multiple clusters are specified via the `--peers` flag, etcdctl
+If peers from multiple clusters are specified via the `--endpoint` flag, etcdctl
 will randomly choose a peer, and the request will simply get routed to one of
 the clusters. This is probably not what you want. 
 
+Note: --peers flag is now deprecated and --endpoint should be used instead, 
+as it might confuse users to give etcdctl a peerURL.
 
+[runtime-reconf-design]: runtime-reconf-design.md

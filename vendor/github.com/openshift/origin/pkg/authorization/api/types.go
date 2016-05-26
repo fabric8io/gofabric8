@@ -22,11 +22,20 @@ const (
 	VerbAll        = "*"
 	NonResourceAll = "*"
 
+	ScopesKey           = "authorization.openshift.io/scopes"
+	ScopesAllNamespaces = "*"
+
 	UserKind           = "User"
 	GroupKind          = "Group"
 	ServiceAccountKind = "ServiceAccount"
 	SystemUserKind     = "SystemUser"
 	SystemGroupKind    = "SystemGroup"
+
+	UserResource           = "users"
+	GroupResource          = "groups"
+	ServiceAccountResource = "serviceaccounts"
+	SystemUserResource     = "systemusers"
+	SystemGroupResource    = "systemgroups"
 )
 
 const (
@@ -74,7 +83,7 @@ var (
 	GroupsToResources = map[string][]string{
 		BuildGroupName:       {"builds", "buildconfigs", "buildlogs", "buildconfigs/instantiate", "buildconfigs/instantiatebinary", "builds/log", "builds/clone", "buildconfigs/webhooks"},
 		ImageGroupName:       {"imagestreams", "imagestreammappings", "imagestreamtags", "imagestreamimages", "imagestreamimports"},
-		DeploymentGroupName:  {"deployments", "deploymentconfigs", "generatedeploymentconfigs", "deploymentconfigrollbacks", "deploymentconfigs/log", "deploymentconfigs/scale"},
+		DeploymentGroupName:  {"deploymentconfigs", "generatedeploymentconfigs", "deploymentconfigrollbacks", "deploymentconfigs/log", "deploymentconfigs/scale"},
 		SDNGroupName:         {"clusternetworks", "hostsubnets", "netnamespaces"},
 		TemplateGroupName:    {"templates", "templateconfigs", "processedtemplates"},
 		UserGroupName:        {"identities", "users", "useridentitymappings", "groups"},
@@ -86,8 +95,9 @@ var (
 		PermissionGrantingGroupName: {"roles", "rolebindings", "resourceaccessreviews" /* cluster scoped*/, "subjectaccessreviews" /* cluster scoped*/, "localresourceaccessreviews", "localsubjectaccessreviews"},
 		OpenshiftExposedGroupName:   {BuildGroupName, ImageGroupName, DeploymentGroupName, TemplateGroupName, "routes"},
 		OpenshiftAllGroupName: {OpenshiftExposedGroupName, UserGroupName, OAuthGroupName, PolicyOwnerGroupName, SDNGroupName, PermissionGrantingGroupName, OpenshiftStatusGroupName, "projects",
-			"clusterroles", "clusterrolebindings", "clusterpolicies", "clusterpolicybindings", "images" /* cluster scoped*/, "projectrequests", "builds/details", "imagestreams/secrets"},
-		OpenshiftStatusGroupName: {"imagestreams/status", "routes/status"},
+			"clusterroles", "clusterrolebindings", "clusterpolicies", "clusterpolicybindings", "images" /* cluster scoped*/, "projectrequests", "builds/details", "imagestreams/secrets",
+			"selfsubjectrulesreviews"},
+		OpenshiftStatusGroupName: {"imagestreams/status", "routes/status", "deploymentconfigs/status"},
 
 		QuotaGroupName:         {"limitranges", "resourcequotas", "resourcequotausages"},
 		KubeExposedGroupName:   {"pods", "replicationcontrollers", "serviceaccounts", "services", "endpoints", "persistentvolumeclaims", "pods/log", "configmaps"},
@@ -102,6 +112,21 @@ var (
 		NonEscalatingResourcesGroupName: {OpenshiftNonEscalatingViewableGroupName, KubeNonEscalatingViewableGroupName},
 	}
 )
+
+// DiscoveryRule is a rule that allows a client to discover the API resources available on this server
+var DiscoveryRule = PolicyRule{
+	Verbs: sets.NewString("get"),
+	NonResourceURLs: sets.NewString(
+		// Server version checking
+		"/version",
+
+		// API discovery/negotiation
+		"/api", "/api/*",
+		"/apis", "/apis/*",
+		"/oapi", "/oapi/*",
+		"/osapi", "/osapi/", // these cannot be removed until we can drop support for pre 3.1 clients
+	),
+}
 
 func init() {
 	// set the non-escalating groups
@@ -193,6 +218,23 @@ type PolicyBinding struct {
 	RoleBindings map[string]*RoleBinding
 }
 
+// SelfSubjectRulesReview is a resource you can create to determine which actions you can perform in a namespace
+type SelfSubjectRulesReview struct {
+	unversioned.TypeMeta
+
+	// Status is completed by the server to tell which permissions you have
+	Status SubjectRulesReviewStatus
+}
+
+// SubjectRulesReviewStatus is contains the result of a rules check
+type SubjectRulesReviewStatus struct {
+	// Rules is the list of rules (no particular sort) that are allowed for the subject
+	Rules []PolicyRule
+	// EvaluationError can appear in combination with Rules.  It means some error happened during evaluation
+	// that may have prevented additional rules from being populated.
+	EvaluationError string
+}
+
 // ResourceAccessReviewResponse describes who can perform the action
 type ResourceAccessReviewResponse struct {
 	unversioned.TypeMeta
@@ -236,6 +278,10 @@ type SubjectAccessReview struct {
 	User string
 	// Groups is optional.  Groups is the list of groups to which the User belongs.
 	Groups sets.String
+	// Scopes to use for the evaluation.  Empty means "use the unscoped (full) permissions of the user/groups".
+	// Nil for a self-SAR, means "use the scopes on this request".
+	// Nil for a regular SAR, means the same as empty.
+	Scopes []string
 }
 
 // LocalResourceAccessReview is a means to request a list of which users and groups are authorized to perform the action specified by spec in a particular namespace
@@ -256,6 +302,10 @@ type LocalSubjectAccessReview struct {
 	User string
 	// Groups is optional.  Groups is the list of groups to which the User belongs.
 	Groups sets.String
+	// Scopes to use for the evaluation.  Empty means "use the unscoped (full) permissions of the user/groups".
+	// Nil for a self-SAR, means "use the scopes on this request".
+	// Nil for a regular SAR, means the same as empty.
+	Scopes []string
 }
 
 // AuthorizationAttributes describes a request to be authorized

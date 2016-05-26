@@ -19,10 +19,13 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/bgentry/speakeasy"
 	"github.com/codegangsta/cli"
@@ -33,6 +36,10 @@ import (
 
 var (
 	ErrNoAvailSrc = errors.New("no available argument and stdin")
+
+	// the maximum amount of time a dial will wait for a connection to setup.
+	// 30s is long enough for most of the network conditions.
+	defaultDialTimeout = 30 * time.Second
 )
 
 // trimsplit slices s into all substrings separated by sep and returns a
@@ -59,7 +66,15 @@ func argOrStdin(args []string, stdin io.Reader, i int) (string, error) {
 }
 
 func getPeersFlagValue(c *cli.Context) []string {
-	peerstr := c.GlobalString("endpoint")
+	peerstr := c.GlobalString("endpoints")
+
+	if peerstr == "" {
+		peerstr = os.Getenv("ETCDCTL_ENDPOINTS")
+	}
+
+	if peerstr == "" {
+		peerstr = c.GlobalString("endpoint")
+	}
 
 	if peerstr == "" {
 		peerstr = os.Getenv("ETCDCTL_ENDPOINT")
@@ -75,7 +90,7 @@ func getPeersFlagValue(c *cli.Context) []string {
 
 	// If we still don't have peers, use a default
 	if peerstr == "" {
-		peerstr = "http://127.0.0.1:4001,http://127.0.0.1:2379"
+		peerstr = "http://127.0.0.1:2379,http://127.0.0.1:4001"
 	}
 
 	return strings.Split(peerstr, ",")
@@ -153,15 +168,19 @@ func getTransport(c *cli.Context) (*http.Transport, error) {
 		CertFile: certfile,
 		KeyFile:  keyfile,
 	}
-	return transport.NewTransport(tls)
+	return transport.NewTransport(tls, defaultDialTimeout)
 }
 
 func getUsernamePasswordFromFlag(usernameFlag string) (username string, password string, err error) {
+	return getUsernamePassword("Password: ", usernameFlag)
+}
+
+func getUsernamePassword(prompt, usernameFlag string) (username string, password string, err error) {
 	colon := strings.Index(usernameFlag, ":")
 	if colon == -1 {
 		username = usernameFlag
 		// Prompt for the password.
-		password, err = speakeasy.Ask("Password: ")
+		password, err = speakeasy.Ask(prompt)
 		if err != nil {
 			return "", "", err
 		}
@@ -206,11 +225,19 @@ func mustNewClient(c *cli.Context) client.Client {
 				handleError(ExitServerError, err)
 			}
 
+			if isConnectionError(err) {
+				handleError(ExitBadConnection, err)
+			}
+
 			// fail-back to try sync cluster with peer API. this is for making etcdctl work with etcd 0.4.x.
 			// TODO: remove this when we deprecate the support for etcd 0.4.
 			eps, serr := syncWithPeerAPI(c, ctx, hc.Endpoints())
 			if serr != nil {
-				handleError(ExitServerError, serr)
+				if isConnectionError(serr) {
+					handleError(ExitBadConnection, serr)
+				} else {
+					handleError(ExitServerError, serr)
+				}
 			}
 			err = hc.SetEndpoints(eps)
 			if err != nil {
@@ -227,6 +254,32 @@ func mustNewClient(c *cli.Context) client.Client {
 	}
 
 	return hc
+}
+
+func isConnectionError(err error) bool {
+	switch t := err.(type) {
+	case *client.ClusterError:
+		for _, cerr := range t.Errors {
+			if !isConnectionError(cerr) {
+				return false
+			}
+		}
+		return true
+	case *net.OpError:
+		if t.Op == "dial" || t.Op == "read" {
+			return true
+		}
+		return isConnectionError(t.Err)
+	case net.Error:
+		if t.Timeout() {
+			return true
+		}
+	case syscall.Errno:
+		if t == syscall.ECONNREFUSED {
+			return true
+		}
+	}
+	return false
 }
 
 func mustNewClientNoSync(c *cli.Context) client.Client {

@@ -197,6 +197,8 @@ const (
 	// annotation value is the name of the deployer Pod which will act upon the ReplicationController
 	// to implement the deployment behavior.
 	DeploymentPodAnnotation = "openshift.io/deployer-pod.name"
+	// DeploymentPodTypeLabel is a label with which contains a type of deployment pod.
+	DeploymentPodTypeLabel = "openshift.io/deployer-pod.type"
 	// DeployerPodForDeploymentLabel is a label which groups pods related to a
 	// deployment. The value is a deployment name. The deployer pod and hook pods
 	// created by the internal strategies will have this label. Custom
@@ -227,6 +229,9 @@ const (
 	// DeploymentCancelledAnnotation indicates that the deployment has been cancelled
 	// The annotation value does not matter and its mere presence indicates cancellation
 	DeploymentCancelledAnnotation = "openshift.io/deployment.cancelled"
+	// DeploymentInstantiatedAnnotation indicates that the deployment has been instantiated.
+	// The annotation value does not matter and its mere presence indicates instantiation.
+	DeploymentInstantiatedAnnotation = "openshift.io/deployment.instantiated"
 )
 
 // DeploymentConfig represents a configuration for a single deployment (represented as a
@@ -279,6 +284,8 @@ type DeploymentConfigStatus struct {
 	// Details are the reasons for the update to this deployment config.
 	// This could be based on a change made by the user or caused by an automatic trigger
 	Details *DeploymentDetails `json:"details,omitempty"`
+	// ObservedGeneration is the most recent generation observed by the controller.
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // DeploymentTriggerPolicy describes a policy for a single trigger that results in a new deployment.
@@ -303,7 +310,10 @@ const (
 
 // DeploymentTriggerImageChangeParams represents the parameters to the ImageChange trigger.
 type DeploymentTriggerImageChangeParams struct {
-	// Automatic means that the detection of a new tag value should result in a new deployment.
+	// Automatic means that the detection of a new tag value should result in an image update
+	// inside the pod template. Deployment configs that haven't been deployed yet will always
+	// have their images updated. Deployment configs that have been deployed at least once, will
+	// have their images updated only if this is set to true.
 	Automatic bool `json:"automatic,omitempty"`
 	// ContainerNames is used to restrict tag updates to the specified set of container names in a pod.
 	ContainerNames []string `json:"containerNames,omitempty"`
@@ -320,7 +330,7 @@ type DeploymentDetails struct {
 	// Message is the user specified change message, if this deployment was triggered manually by the user
 	Message string `json:"message,omitempty"`
 	// Causes are extended data associated with all the causes for creating a new deployment
-	Causes []*DeploymentCause `json:"causes,omitempty"`
+	Causes []DeploymentCause `json:"causes"`
 }
 
 // DeploymentCause captures information about a particular cause of a deployment.

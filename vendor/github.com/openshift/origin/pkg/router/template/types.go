@@ -37,6 +37,8 @@ type ServiceAliasConfig struct {
 	// insecure connections to an edge-terminated route:
 	//   none (or disable), allow or redirect
 	InsecureEdgeTerminationPolicy routeapi.InsecureEdgeTerminationPolicyType
+	// Hash of the route name - used to obscure cookieId
+	RoutingKeyName string
 }
 
 type ServiceAliasConfigStatus string
@@ -62,6 +64,7 @@ type Endpoint struct {
 	Port       string
 	TargetName string
 	PortName   string
+	IdHash     string
 }
 
 // certificateManager provides the ability to write certificates for a ServiceAliasConfig
