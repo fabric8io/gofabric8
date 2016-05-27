@@ -45,6 +45,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/v1"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -75,6 +76,7 @@ const (
 	RestrictedSCC = "restricted"
 
 	runFlag             = "app"
+	useIngressFlag      = "ingress"
 	versioniPaaSFlag    = "version-ipaas"
 	versionDevOpsFlag   = "version-devops"
 	versionKubeflixFlag = "version-kubeflix"
@@ -115,6 +117,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			util.Success(domain)
 			util.Info(" in namespace ")
 			util.Successf("%s\n\n", ns)
+
+			useIngress := cmd.Flags().Lookup(useIngressFlag).Value.String() == "true"
+			deployConsole := cmd.Flags().Lookup(consoleFlag).Value.String() == "true"
 
 			mavenRepo := cmd.Flags().Lookup(mavenRepoFlag).Value.String()
 			if !strings.HasSuffix(mavenRepo, "/") {
@@ -181,16 +186,18 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					}
 					filenames := []string{uri}
 
-					createCmd := &cobra.Command{}
-					cmdutil.AddValidateFlags(createCmd)
-					cmdutil.AddOutputFlagsForMutation(createCmd)
-					cmdutil.AddApplyAnnotationFlags(createCmd)
-					cmdutil.AddRecordFlag(createCmd)
-					err := kcmd.RunCreate(f, createCmd, ioutil.Discard, &kcmd.CreateOptions{Filenames: filenames})
-					if err != nil {
-						printResult("fabric8 console", Failure, err)
-					} else {
-						printResult("fabric8 console", Success, nil)
+					if deployConsole {
+						createCmd := &cobra.Command{}
+						cmdutil.AddValidateFlags(createCmd)
+						cmdutil.AddOutputFlagsForMutation(createCmd)
+						cmdutil.AddApplyAnnotationFlags(createCmd)
+						cmdutil.AddRecordFlag(createCmd)
+						err := kcmd.RunCreate(f, createCmd, ioutil.Discard, &kcmd.CreateOptions{Filenames: filenames})
+						if err != nil {
+							printResult("fabric8 console", Failure, err)
+						} else {
+							printResult("fabric8 console", Success, nil)
+						}
 					}
 					printAddServiceAccount(c, f, "fluentd")
 					printAddServiceAccount(c, f, "registry")
@@ -212,21 +219,24 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printAddServiceAccount(c, f, "router")
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
-						uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleUrl), consoleVersion)
-						jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry, arch)
-						if err != nil {
-							printError("failed to apply docker registry prefix", err)
+						if deployConsole {
+							uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleUrl), consoleVersion)
+							jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry, arch)
+							if err != nil {
+								printError("failed to apply docker registry prefix", err)
+							}
+
+							// lets delete the OAuthClient first as the domain may have changed
+							oc.OAuthClients().Delete("fabric8")
+							createTemplate(jsonData, "fabric8 console", ns, domain, apiserver, c)
 						}
-
-						// lets delete the OAuthClient first as the domain may have changed
-						oc.OAuthClients().Delete("fabric8")
-
-						createTemplate(jsonData, "fabric8 console", ns, domain, apiserver, c)
 					} else {
 						printError("Ignoring the deploy of the fabric8 console", nil)
 					}
 				}
-				println("Created fabric8 console")
+				if deployConsole {
+					println("Created fabric8 console")
+				}
 
 				if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 					println("Installing templates!")
@@ -240,20 +250,17 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				appToRun := cmd.Flags().Lookup(runFlag).Value.String()
 				if len(appToRun) > 0 {
-					util.Info("\n\nInstalling: ")
-					util.Successf("%s\n\n", appToRun)
-					jsonData, err := loadTemplateData(ns, appToRun, c, oc)
-					if err != nil {
-						printError("Failed to load app "+appToRun, err)
-					}
-					createTemplate(jsonData, appToRun, ns, domain, apiserver, c)
+					runTemplate(c, oc, appToRun, ns, domain, apiserver)
 				}
 
 				if typeOfMaster == util.Kubernetes {
-					// TODO currently ingress breaks jenkins accessing gogs so lets disable for now
-					//printError("Create ingress", createIngressForDomain(ns, domain, c, f))
+					if useIngress {
+						runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver)
+
+						printError("Create ingress resources", createIngressForDomain(ns, domain, c, f))
+					}
 				} else {
-					printError("Create routes", createRoutesForDomain(ns, domain, c, oc, f))
+					printError("Create route resources", createRoutesForDomain(ns, domain, c, oc, f))
 				}
 
 				// lets label the namespace/project as a developer team
@@ -284,7 +291,18 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(runFlag, "", "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
+	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress be enabled by default?")
 	return cmd
+}
+
+func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string) {
+	util.Info("\n\nInstalling: ")
+	util.Successf("%s\n\n", appToRun)
+	jsonData, err := loadTemplateData(ns, appToRun, c, oc)
+	if err != nil {
+		printError("Failed to load app "+appToRun, err)
+	}
+	createTemplate(jsonData, appToRun, ns, domain, apiserver, c)
 }
 
 func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *oclient.Client) ([]byte, error) {
@@ -340,33 +358,48 @@ func createTemplate(jsonData []byte, templateName string, ns string, domain stri
 
 	p.Process(&tmpl)
 
-	println("Creating " + templateName + " resources")
+	objectCount := len(tmpl.Objects)
 
-	for _, o := range tmpl.Objects {
-		switch o := o.(type) {
-		case *runtime.Unstructured:
-			var b []byte
-			b, err = json.Marshal(o.Object)
+	if objectCount == 0 {
+		// can't be a template so lets try just process it directly
+		var v1List v1.List
+		err = json.Unmarshal(jsonData, &v1List)
+		if err != nil {
+			util.Fatalf("Cannot unmarshal List %s to deploy. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+		}
+		if len(v1List.Items) == 0 {
+			// lets check if its an RC / ReplicaSet or something
+			_, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
 			if err != nil {
-				break
-			}
-			req := c.Post().Body(b)
-			if o.Kind != "OAuthClient" {
-				req.Namespace(ns).Resource(strings.ToLower(o.TypeMeta.Kind + "s"))
+				printResult(templateName, Failure, err)
 			} else {
-				req.AbsPath("oapi", "v1", strings.ToLower(o.TypeMeta.Kind+"s"))
+				kind := groupVersionKind.Kind
+				util.Infof("Processing resource of kind: %s version: %s\n", kind, groupVersionKind.Version)
+				if len(kind) <= 0 {
+					printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
+				} else {
+					processResource(c, jsonData, ns, kind)
+				}
 			}
-			res := req.Do()
-			if res.Error() != nil {
-				err = res.Error()
-				break
+		} else {
+			var kubeList api.List
+			err = api.Scheme.Convert(&v1List, &kubeList)
+			if err != nil {
+				util.Fatalf("Cannot convert %s List to deploy: %v", templateName, err)
 			}
-			var statusCode int
-			res.StatusCode(&statusCode)
-			if statusCode != http.StatusCreated {
-				err = fmt.Errorf("Failed to create %s: %d", o.TypeMeta.Kind, statusCode)
-				break
+
+			util.Infof("Converted json to list with %d items with json %s\n", len(kubeList.Items), string(jsonData))
+
+			util.Infof("Creating "+templateName+" list resources from %d objects\n", len(kubeList.Items))
+			for _, o := range kubeList.Items {
+				err = processItem(c, &o, ns)
 			}
+		}
+
+	} else {
+		util.Infof("Creating "+templateName+" template resources from %d objects\n", objectCount)
+		for _, o := range tmpl.Objects {
+			err = processItem(c, &o, ns)
 		}
 	}
 
@@ -375,6 +408,41 @@ func createTemplate(jsonData []byte, templateName string, ns string, domain stri
 	} else {
 		printResult(templateName, Success, nil)
 	}
+}
+
+func processItem(c *k8sclient.Client, item *runtime.Object, ns string) error {
+	o := *item
+	switch o := o.(type) {
+	case *runtime.Unstructured:
+		b, err := json.Marshal(o.Object)
+		if err != nil {
+			return err
+		}
+		return processResource(c, b, ns, o.TypeMeta.Kind)
+	}
+	return nil
+}
+
+func processResource(c *k8sclient.Client, b []byte, ns string, kind string) error {
+	req := c.Post().Body(b)
+	if kind != "OAuthClient" {
+		req.Namespace(ns).Resource(strings.ToLower(kind + "s"))
+	} else {
+		req.AbsPath("oapi", "v1", strings.ToLower(kind+"s"))
+	}
+	res := req.Do()
+	if res.Error() != nil {
+		err := res.Error()
+		if err != nil {
+			return err
+		}
+	}
+	var statusCode int
+	res.StatusCode(&statusCode)
+	if statusCode != http.StatusCreated {
+		return fmt.Errorf("Failed to create %s: %d", kind, statusCode)
+	}
+	return nil
 }
 
 func addLabelIfNotxisEt(metadata *api.ObjectMeta, name string, value string) bool {
