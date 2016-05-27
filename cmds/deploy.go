@@ -81,6 +81,7 @@ const (
 	versionZipkinFlag   = "version-zipkin"
 	mavenRepoFlag       = "maven-repo"
 	dockerRegistryFlag  = "docker-registry"
+	archFlag            = "arch"
 
 	typeLabel          = "type"
 	teamTypeLabelValue = "team"
@@ -102,6 +103,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 			domain := cmd.Flags().Lookup(domainFlag).Value.String()
 			apiserver := cmd.Flags().Lookup(apiServerFlag).Value.String()
+			arch := cmd.Flags().Lookup(archFlag).Value.String()
+
 			typeOfMaster := util.TypeOfMaster(c)
 
 			util.Info("Deploying fabric8 to your ")
@@ -159,8 +162,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				if typeOfMaster == util.Kubernetes {
 					uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleKubernetesUrl), consoleVersion)
-					if fabric8ImageAdaptionNeeded(dockerRegistry, goruntime.GOARCH) {
-						jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry)
+					if fabric8ImageAdaptionNeeded(dockerRegistry, arch) {
+						jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry, arch)
 						if err == nil {
 							tmpFileName := "/tmp/fabric8-console.json"
 							t, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
@@ -210,7 +213,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 						uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleUrl), consoleVersion)
-						jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry)
+						jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry, arch)
 						if err != nil {
 							printError("failed to apply docker registry prefix", err)
 						}
@@ -227,10 +230,10 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 					println("Installing templates!")
-					printError("Install DevOps templates", installTemplates(c, oc, f, versionDevOps, urlJoin(mavenRepo, devopsTemplatesDistroUrl), dockerRegistry, domain))
-					printError("Install iPaaS templates", installTemplates(c, oc, f, versioniPaaS, urlJoin(mavenRepo, iPaaSTemplatesDistroUrl), dockerRegistry, domain))
-					printError("Install Kubeflix templates", installTemplates(c, oc, f, versionKubeflix, urlJoin(mavenRepo, kubeflixTemplatesDistroUrl), dockerRegistry, domain))
-					printError("Install Zipkin templates", installTemplates(c, oc, f, versionZipkin, urlJoin(mavenRepo, zipkinTemplatesDistroUrl), dockerRegistry, domain))
+					printError("Install DevOps templates", installTemplates(c, oc, f, versionDevOps, urlJoin(mavenRepo, devopsTemplatesDistroUrl), dockerRegistry, arch, domain))
+					printError("Install iPaaS templates", installTemplates(c, oc, f, versioniPaaS, urlJoin(mavenRepo, iPaaSTemplatesDistroUrl), dockerRegistry, arch, domain))
+					printError("Install Kubeflix templates", installTemplates(c, oc, f, versionKubeflix, urlJoin(mavenRepo, kubeflixTemplatesDistroUrl), dockerRegistry, arch, domain))
+					printError("Install Zipkin templates", installTemplates(c, oc, f, versionZipkin, urlJoin(mavenRepo, zipkinTemplatesDistroUrl), dockerRegistry, arch, domain))
 				} else {
 					printError("Ignoring the deploy of templates", nil)
 				}
@@ -271,6 +274,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd.PersistentFlags().StringP("domain", "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().String("api-server", "", "overrides the api server url")
+	cmd.PersistentFlags().String(archFlag, goruntime.GOARCH, "CPU architecture for referencing Docker images with this as a name suffix")
 	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
 	cmd.PersistentFlags().String(versionDevOpsFlag, "latest", "The version to use for the Fabric8 DevOps templates")
 	cmd.PersistentFlags().String(versionKubeflixFlag, "latest", "The version to use for the Kubeflix templates")
@@ -386,7 +390,7 @@ func addLabelIfNotxisEt(metadata *api.ObjectMeta, name string, value string) boo
 	return false
 }
 
-func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Factory, v string, templateUrl string, dockerRegistry string, domain string) error {
+func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Factory, v string, templateUrl string, dockerRegistry string, arch string, domain string) error {
 	ns, _, err := fac.DefaultNamespace()
 	if err != nil {
 		util.Fatal("No default namespace")
@@ -439,7 +443,7 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 		if err != nil {
 			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
 		}
-		jsonData, err = adaptFabric8ImagesInResourceDescriptor(jsonData, dockerRegistry, goruntime.GOARCH)
+		jsonData, err = adaptFabric8ImagesInResourceDescriptor(jsonData, dockerRegistry, arch)
 		if err != nil {
 			util.Fatalf("Cannot append docker registry: %v", err)
 		}
@@ -524,7 +528,7 @@ func replaceDomain(jsonData []byte, domain string, ns string, typeOfMaster util.
 	return []byte(text)
 }
 
-func loadJsonDataAndAdaptFabric8Images(uri string, dockerRegistry string) ([]byte, error) {
+func loadJsonDataAndAdaptFabric8Images(uri string, dockerRegistry string, arch string) ([]byte, error) {
 	resp, err := http.Get(uri)
 	if err != nil {
 		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
@@ -534,7 +538,7 @@ func loadJsonDataAndAdaptFabric8Images(uri string, dockerRegistry string) ([]byt
 	if err != nil {
 		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
 	}
-	jsonData, err = adaptFabric8ImagesInResourceDescriptor(jsonData, dockerRegistry, goruntime.GOARCH)
+	jsonData, err = adaptFabric8ImagesInResourceDescriptor(jsonData, dockerRegistry, arch)
 	if err != nil {
 		util.Fatalf("Cannot append docker registry: %v", err)
 	}
