@@ -1,16 +1,16 @@
-hash: b371ef0efaefc428d133f825e99a02e97915936e13d34511329a86529af55aef
-updated: 2016-05-27T13:29:38.847931816+02:00
+hash: e76fc9f0d80c436cb417a75c5ed412c948e3a1695e7335f28f5b9f7451793192
+updated: 2016-05-27T14:26:03.611230833+02:00
 imports:
 - name: github.com/coreos/go-systemd
-  version: 385c74262f138076e06e34b925eed2f603a6dfdf
+  version: 3010edf91f526736b63669743ada735f7d5127aa
   subpackages:
   - journal
 - name: github.com/coreos/pkg
-  version: 385c74262f138076e06e34b925eed2f603a6dfdf
+  version: 3010edf91f526736b63669743ada735f7d5127aa
   subpackages:
   - capnslog
 - name: github.com/daviddengcn/go-colortext
-  version: 385c74262f138076e06e34b925eed2f603a6dfdf
+  version: 3010edf91f526736b63669743ada735f7d5127aa
 - name: github.com/golang/glog
   version: ""
 - name: github.com/openshift/origin
@@ -24,14 +24,18 @@ imports:
   - pkg/template/api
   - pkg/template/api/v1
   - pkg/template/generator
+- name: github.com/pmezard/go-difflib
+  version: 792786c7400a136282c1664665ae0a8db921c6c2
+  subpackages:
+  - difflib
 - name: github.com/Sirupsen/logrus
   version: ""
 - name: github.com/spf13/cobra
-  version: 385c74262f138076e06e34b925eed2f603a6dfdf
+  version: 3010edf91f526736b63669743ada735f7d5127aa
 - name: github.com/spf13/pflag
-  version: 385c74262f138076e06e34b925eed2f603a6dfdf
+  version: 3010edf91f526736b63669743ada735f7d5127aa
 - name: github.com/stretchr/testify
-  version: 8d64eb7173c7753d6419fd4a9caf057398611364
+  version: 3010edf91f526736b63669743ada735f7d5127aa
   subpackages:
   - assert
 - name: golang.org/x/crypto
@@ -54,7 +58,7 @@ imports:
   - pkg/runtime
   - pkg/util
 - name: speter.net/go/exp/math/dec/inf
-  version: 385c74262f138076e06e34b925eed2f603a6dfdf
+  version: 3010edf91f526736b63669743ada735f7d5127aa
   repo: git@github.com:go-inf/inf.git
   vcs: git
 devImports: []
