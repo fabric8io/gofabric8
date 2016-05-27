@@ -17,9 +17,9 @@ import:
 - package: github.com/golang/glog
   version: 44145f04b68cf362d9c4df2182967c2275eaefed
 - package: golang.org/x/crypto
-  vcs: git
-  repo: https://github.com/golang/crypto.git
   version: 5bcd134fee4dd1475da17714aac19c0aa0142e2f
+  repo: https://github.com/golang/crypto.git
+  vcs: git
 - package: k8s.io/kubernetes
   version: c2cc7fd2eafe14472098737b2c255ce4ca06d987
   repo: git@github.com:openshift/kubernetes.git
@@ -44,5 +44,8 @@ import:
   subpackages:
   - journal
 - package: speter.net/go/exp/math/dec/inf
-  vcs: git
   repo: git@github.com:go-inf/inf.git
+  vcs: git
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert
