@@ -85,6 +85,7 @@ const (
 	dockerRegistryFlag  = "docker-registry"
 	archFlag            = "arch"
 
+	domainAnnotation   = "fabric8.io/domain"
 	typeLabel          = "type"
 	teamTypeLabelValue = "team"
 )
@@ -269,10 +270,16 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				if err != nil {
 					printError("Failed to load namespace", err)
 				} else {
-					if addLabelIfNotxisEt(&namespace.ObjectMeta, typeLabel, teamTypeLabelValue) {
+					changed := addLabelIfNotExist(&namespace.ObjectMeta, typeLabel, teamTypeLabelValue)
+					if len(domain) > 0 {
+						if addAnnotationIfNotExist(&namespace.ObjectMeta, domainAnnotation, domain) {
+							changed = true
+						}
+					}
+					if changed {
 						_, err = nss.Update(namespace)
 						if err != nil {
-							printError("Failed to label namespace", err)
+							printError("Failed to label and annotate namespace", err)
 						}
 					}
 				}
@@ -445,7 +452,7 @@ func processResource(c *k8sclient.Client, b []byte, ns string, kind string) erro
 	return nil
 }
 
-func addLabelIfNotxisEt(metadata *api.ObjectMeta, name string, value string) bool {
+func addLabelIfNotExist(metadata *api.ObjectMeta, name string, value string) bool {
 	if metadata.Labels == nil {
 		metadata.Labels = make(map[string]string)
 	}
@@ -453,6 +460,19 @@ func addLabelIfNotxisEt(metadata *api.ObjectMeta, name string, value string) boo
 	current := labels[name]
 	if len(current) == 0 {
 		labels[name] = value
+		return true
+	}
+	return false
+}
+
+func addAnnotationIfNotExist(metadata *api.ObjectMeta, name string, value string) bool {
+	if metadata.Annotations == nil {
+		metadata.Annotations = make(map[string]string)
+	}
+	annotations := metadata.Annotations
+	current := annotations[name]
+	if len(current) == 0 {
+		annotations[name] = value
 		return true
 	}
 	return false
