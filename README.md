@@ -1,7 +1,8 @@
 # gofabric8 installer
 
-gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment
-								Find more information at http://fabric8.io.
+gofabric8 is used to validate &amp; deploy fabric8 components on to your Kubernetes or OpenShift environment
+
+Find more information at http://fabric8.io.
 
 When deploying, by default the latest release version is used.  In order to deploy a specific version you can use the `--version` flag as detailed below.
 
@@ -24,11 +25,15 @@ gofabric8 secrets -y
 ```
 
 
-To install the [fabric8 microservices platform]() then run the following:
+### Install the fabric8 microservices platform i
+
+To install the [fabric8 microservices platform](http://fabric8.io/) then run the following:
 
 ```sh
 gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy --app=cd-pipeline
 ```
+
+You can omit the `--app` command line option if you wish.
 
 ### Usage
 
@@ -87,7 +92,6 @@ Use "gofabric8 [command] --help" for more information about a command.
 ### Prerequisites
 
 Install [go version 1.4](https://golang.org/doc/install)
-Install [godep](https://github.com/tools/godep)
 
 
 ### Building
