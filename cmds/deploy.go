@@ -298,7 +298,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(runFlag, "", "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
-	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress be enabled by default?")
+	cmd.PersistentFlags().Bool(useIngressFlag, false, "Should Ingress be enabled by default?")
 	return cmd
 }
 
