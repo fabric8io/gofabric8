@@ -552,7 +552,17 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 		}
 
 		name := tmpl.ObjectMeta.Name
-		if typeOfMaster == util.Kubernetes {
+		template := true
+		if len(name) <= 0 {
+			template = false
+			name = f.Name
+			idx := strings.Index(name, "/")
+			if idx > 0 {
+				name = name[0:idx]
+			}
+
+		}
+		if typeOfMaster == util.Kubernetes || !template {
 			appName := name
 			name = "catalog-" + appName
 
