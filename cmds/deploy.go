@@ -38,6 +38,8 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	projectapi "github.com/openshift/origin/pkg/project/api"
+	projectapiv1 "github.com/openshift/origin/pkg/project/api/v1"
 	"github.com/openshift/origin/pkg/template"
 	tapi "github.com/openshift/origin/pkg/template/api"
 	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
@@ -165,6 +167,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				aapiv1.AddToScheme(api.Scheme)
 				tapi.AddToScheme(api.Scheme)
 				tapiv1.AddToScheme(api.Scheme)
+				projectapi.AddToScheme(api.Scheme)
+				projectapiv1.AddToScheme(api.Scheme)
 
 				if typeOfMaster == util.Kubernetes {
 					uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleKubernetesUrl), consoleVersion)
@@ -229,7 +233,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 							// lets delete the OAuthClient first as the domain may have changed
 							oc.OAuthClients().Delete("fabric8")
-							createTemplate(jsonData, "fabric8 console", ns, domain, apiserver, c)
+							createTemplate(jsonData, "fabric8 console", ns, domain, apiserver, c, oc)
 						}
 					} else {
 						printError("Ignoring the deploy of the fabric8 console", nil)
@@ -250,6 +254,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				appToRun := cmd.Flags().Lookup(runFlag).Value.String()
+				util.Infof("runFlag: %s\n", appToRun)
 				if len(appToRun) > 0 {
 					runTemplate(c, oc, appToRun, ns, domain, apiserver)
 				}
@@ -295,7 +300,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(versionZipkinFlag, "latest", "The version to use for the Zipkin templates")
 	cmd.PersistentFlags().String(mavenRepoFlag, "https://repo1.maven.org/maven2/", "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
-	cmd.PersistentFlags().String(runFlag, "", "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
+	cmd.PersistentFlags().String(runFlag, "cd-pipeline", "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	cmd.PersistentFlags().Bool(useIngressFlag, false, "Should Ingress be enabled by default?")
@@ -309,7 +314,7 @@ func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns st
 	if err != nil {
 		printError("Failed to load app "+appToRun, err)
 	}
-	createTemplate(jsonData, appToRun, ns, domain, apiserver, c)
+	createTemplate(jsonData, appToRun, ns, domain, apiserver, c, oc)
 }
 
 func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *oclient.Client) ([]byte, error) {
@@ -337,7 +342,7 @@ func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *o
 	return nil, nil
 }
 
-func createTemplate(jsonData []byte, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client) {
+func createTemplate(jsonData []byte, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client) {
 	var v1tmpl tapiv1.Template
 	err := json.Unmarshal(jsonData, &v1tmpl)
 	if err != nil {
@@ -399,14 +404,14 @@ func createTemplate(jsonData []byte, templateName string, ns string, domain stri
 
 			util.Infof("Creating "+templateName+" list resources from %d objects\n", len(kubeList.Items))
 			for _, o := range kubeList.Items {
-				err = processItem(c, &o, ns)
+				err = processItem(c, oc, &o, ns)
 			}
 		}
 
 	} else {
 		util.Infof("Creating "+templateName+" template resources from %d objects\n", objectCount)
 		for _, o := range tmpl.Objects {
-			err = processItem(c, &o, ns)
+			err = processItem(c, oc, &o, ns)
 		}
 	}
 
@@ -417,15 +422,67 @@ func createTemplate(jsonData []byte, templateName string, ns string, domain stri
 	}
 }
 
-func processItem(c *k8sclient.Client, item *runtime.Object, ns string) error {
+func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, ns string) error {
 	o := *item
 	switch o := o.(type) {
 	case *runtime.Unstructured:
+		data := o.Object
+		metadata := data["metadata"]
+		switch metadata := metadata.(type) {
+		case map[string]interface{}:
+			namespace := metadata["namespace"]
+			switch namespace := namespace.(type) {
+			case string:
+				util.Infof("Custom namespace '%s'\n", namespace)
+				if len(namespace) <= 0 {
+					// TODO why is the namespace empty?
+					// lets default the namespace to the default gogs namespace
+					namespace = "user-secrets-source-admin"
+				}
+				ns = namespace
+
+				// lets check that this new namespace exists
+				err := ensureNamespaceExists(c, oc, ns)
+				if err != nil {
+					printErr(err)
+				}
+			}
+		}
+		//util.Infof("processItem %s with value: %#v\n", ns, o.Object)
 		b, err := json.Marshal(o.Object)
 		if err != nil {
 			return err
 		}
 		return processResource(c, b, ns, o.TypeMeta.Kind)
+	}
+	return nil
+}
+
+func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) error {
+	typeOfMaster := util.TypeOfMaster(c)
+	if typeOfMaster == util.Kubernetes {
+		nss := c.Namespaces()
+		_, err := nss.Get(ns)
+		if err != nil {
+			// lets assume it doesn't exist!
+			util.Infof("Creating new Namespace: %s\n", ns)
+			entity := kapi.Namespace{
+				ObjectMeta: kapi.ObjectMeta{Name: ns},
+			}
+			_, err := nss.Create(&entity)
+			return err
+		}
+	} else {
+		_, err := oc.Projects().Get(ns)
+		if err != nil {
+			// lets assume it doesn't exist!
+			request := projectapi.ProjectRequest{
+				ObjectMeta: kapi.ObjectMeta{Name: ns},
+			}
+			util.Infof("Creating new Project: %s\n", ns)
+			_, err := oc.ProjectRequests().Create(&request)
+			return err
+		}
 	}
 	return nil
 }
