@@ -753,20 +753,6 @@ func adaptFabric8ImagesInResourceDescriptor(jsonData []byte, dockerRegistry stri
 	}
 	return r.ReplaceAll(jsonData, []byte("${1}"+registryReplacePart+"${2}"+suffix+"${3}\"")), nil
 }
-
-func createRoutes(c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory) error {
-	ns, _, err := fac.DefaultNamespace()
-	if err != nil {
-		util.Fatal("No default namespace")
-		return err
-	}
-	domain := os.Getenv("KUBERNETES_DOMAIN")
-	if domain == "" {
-		domain = DefaultDomain
-	}
-	return createRoutesForDomain(ns, domain, c, oc, fac)
-}
-
 func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory, ns string) (Result, error) {
 	name := Fabric8SCC
 	if ns != "default" {
