@@ -90,6 +90,8 @@ const (
 	domainAnnotation   = "fabric8.io/domain"
 	typeLabel          = "type"
 	teamTypeLabelValue = "team"
+
+	fabric8Environments = "fabric8-environments"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -286,6 +288,26 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						if err != nil {
 							printError("Failed to label and annotate namespace", err)
 						}
+					}
+				}
+
+				// lets ensure that there is a `fabric8-environments` ConfigMap so that the current namespace
+				// shows up as a Team page in the console
+				cfgms := c.ConfigMaps(ns)
+				_, err = nss.Get(fabric8Environments)
+				if err != nil {
+					configMap := kapi.ConfigMap{
+						ObjectMeta: kapi.ObjectMeta{
+							Name: fabric8Environments,
+							Labels: map[string]string{
+								"provider": "fabric8.io",
+								"kind":     "environments",
+							},
+						},
+					}
+					_, err = cfgms.Create(&configMap)
+					if err != nil {
+						printError("Failed to create ConfigMap: "+fabric8Environments, err)
 					}
 				}
 			}
