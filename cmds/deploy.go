@@ -256,7 +256,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				appToRun := cmd.Flags().Lookup(runFlag).Value.String()
-				util.Infof("runFlag: %s\n", appToRun)
 				if len(appToRun) > 0 {
 					runTemplate(c, oc, appToRun, ns, domain, apiserver)
 				}
@@ -455,7 +454,7 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 			namespace := metadata["namespace"]
 			switch namespace := namespace.(type) {
 			case string:
-				util.Infof("Custom namespace '%s'\n", namespace)
+				//util.Infof("Custom namespace '%s'\n", namespace)
 				if len(namespace) <= 0 {
 					// TODO why is the namespace empty?
 					// lets default the namespace to the default gogs namespace
@@ -565,8 +564,8 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 	}
 	templates := c.Templates(ns)
 
-	util.Infof("Downloading templates for version %v\n", v)
 	uri := fmt.Sprintf(templateUrl, v)
+	util.Infof("Downloading apps from: %v\n", uri)
 	resp, err := http.Get(uri)
 	if err != nil {
 		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
