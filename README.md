@@ -21,7 +21,6 @@ chmod +x /tmp/gofabric8/gofabric8
 sudo mv /tmp/gofabric8/* /usr/bin/
 
 gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy
-gofabric8 secrets -y
 ```
 
 
