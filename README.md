@@ -19,8 +19,6 @@ mkdir /tmp/gofabric8
 curl --retry 999 --retry-max-time 0  -sSL [[ADD DOWNLOAD URL HERE]] | tar xzv -C /tmp/gofabric8
 chmod +x /tmp/gofabric8/gofabric8
 sudo mv /tmp/gofabric8/* /usr/bin/
-
-gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy
 ```
 
 
@@ -29,10 +27,8 @@ gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy
 To install the [fabric8 microservices platform](http://fabric8.io/) then run the following:
 
 ```sh
-gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 deploy --app=cd-pipeline
+gofabric8 --domain=vagrant.f8 deploy 
 ```
-
-You can omit the `--app` command line option if you wish.
 
 ### Usage
 
