@@ -300,7 +300,12 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						printError("Create ingress resources", createIngressForDomain(ns, domain, c, f))
 					}
 				} else {
-					printError("Create route resources", createRoutesForDomain(ns, domain, c, oc, f))
+					dc, err := oc.DeploymentConfigs(ns).Get("router")
+					if err != nil || dc == nil {
+						println("No router DeploymentConfig so not creating routes")
+					} else {
+						printError("Create route resources", createRoutesForDomain(ns, domain, c, oc, f))
+					}
 				}
 
 				// lets label the namespace/project as a developer team
