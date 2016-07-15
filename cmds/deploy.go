@@ -38,6 +38,8 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	oauthapi "github.com/openshift/origin/pkg/oauth/api"
+	oauthapiv1 "github.com/openshift/origin/pkg/oauth/api/v1"
 	projectapi "github.com/openshift/origin/pkg/project/api"
 	projectapiv1 "github.com/openshift/origin/pkg/project/api/v1"
 	"github.com/openshift/origin/pkg/template"
@@ -171,6 +173,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				tapiv1.AddToScheme(api.Scheme)
 				projectapi.AddToScheme(api.Scheme)
 				projectapiv1.AddToScheme(api.Scheme)
+				oauthapi.AddToScheme(api.Scheme)
+				oauthapiv1.AddToScheme(api.Scheme)
 
 				if typeOfMaster == util.Kubernetes {
 					uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleKubernetesUrl), consoleVersion)
@@ -236,6 +240,35 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 							// lets delete the OAuthClient first as the domain may have changed
 							oc.OAuthClients().Delete("fabric8")
 							createTemplate(jsonData, "fabric8 console", ns, domain, apiserver, c, oc)
+
+							oac, err := oc.OAuthClients().Get("fabric8")
+							if err != nil {
+								printError("failed to get the OAuthClient called fabric8", err)
+							}
+
+							// lets add the nodePort URL to the OAuthClient
+							service, err := c.Services(ns).Get("fabric8")
+							if err != nil {
+								printError("failed to get the Service called fabric8", err)
+							}
+							port := 0
+							for _, p := range service.Spec.Ports {
+								port = p.NodePort
+							}
+							if port == 0 {
+								printError("failed to find nodePort on the Service called fabric8", err)
+							}
+							ip := apiserver
+							redirectURL := fmt.Sprintf("http://%s:%d", ip, port)
+							println("Adding OAuthClient redirectURL: " + redirectURL)
+							oac.RedirectURIs = append(oac.RedirectURIs, redirectURL)
+							oac.ResourceVersion = ""
+							oc.OAuthClients().Delete("fabric8")
+							_, err = oc.OAuthClients().Create(oac)
+							if err != nil {
+								printError("failed to create the OAuthClient called fabric8", err)
+							}
+
 						}
 					} else {
 						printError("Ignoring the deploy of the fabric8 console", nil)
