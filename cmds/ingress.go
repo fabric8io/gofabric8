@@ -109,7 +109,7 @@ func createIngressForDomain(ns string, domain string, c *k8sclient.Client, fac *
 			}
 			if !found {
 				ports := serviceSpec.Ports
-				hostName := name + "-" + ns + "." + domain
+				hostName := name + "." + ns + "." + domain
 				if len(ports) > 0 {
 					rules := []extensions.IngressRule{}
 					for _, port := range ports {
