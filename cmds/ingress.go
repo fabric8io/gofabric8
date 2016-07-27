@@ -25,7 +25,6 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/util/intstr"
 )
 
 func NewCmdIngress(f *cmdutil.Factory) *cobra.Command {
@@ -121,7 +120,9 @@ func createIngressForDomain(ns string, domain string, c *k8sclient.Client, fac *
 										{
 											Backend: extensions.IngressBackend{
 												ServiceName: name,
-												ServicePort: intstr.FromInt(port.Port),
+												// we need to use target port until https://github.com/nginxinc/kubernetes-ingress/issues/41 is fixed
+												//ServicePort: intstr.FromInt(port.Port),
+												ServicePort: port.TargetPort,
 											},
 										},
 									},
