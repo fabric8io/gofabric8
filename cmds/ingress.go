@@ -86,7 +86,7 @@ func createIngressForDomain(ns string, domain string, c *k8sclient.Client, fac *
 
 		// for now lets use the type of the service to know if we should create an ingress
 		// TODO we should probably add an annotation to disable ingress creation
-		if typeName == "LoadBalancer" && name != "fabric8" && name != "jenkinshift" {
+		if typeName == "LoadBalancer" && name != "jenkinshift" {
 			for _, ingress := range ingresses.Items {
 				if ingress.GetName() == name {
 					found = true
