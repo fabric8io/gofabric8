@@ -81,6 +81,7 @@ const (
 
 	runFlag             = "app"
 	useIngressFlag      = "ingress"
+	useLoadbalancerFlag = "loadbalancer"
 	versioniPaaSFlag    = "version-ipaas"
 	versionDevOpsFlag   = "version-devops"
 	versionKubeflixFlag = "version-kubeflix"
@@ -94,6 +95,15 @@ const (
 	teamTypeLabelValue = "team"
 
 	fabric8Environments = "fabric8-environments"
+	exposecontrollerCM  = "exposecontroller"
+
+	ingress      = "ingress"
+	loadBalancer = "load-balancer"
+	nodePort     = "node-port"
+	route        = "route"
+
+	minikubeNodeName  = "minikubevm"
+	minishiftNodeName = "boot2docker"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -127,6 +137,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 			useIngress := cmd.Flags().Lookup(useIngressFlag).Value.String() == "true"
 			deployConsole := cmd.Flags().Lookup(consoleFlag).Value.String() == "true"
+			mini := isMini(c, ns)
 
 			mavenRepo := cmd.Flags().Lookup(mavenRepoFlag).Value.String()
 			if !strings.HasSuffix(mavenRepo, "/") {
@@ -294,7 +305,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				if typeOfMaster == util.Kubernetes {
-					if useIngress {
+					if useIngress && !mini {
 						runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver)
 
 						printError("Create ingress resources", createIngressForDomain(ns, domain, c, f))
@@ -331,7 +342,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				// lets ensure that there is a `fabric8-environments` ConfigMap so that the current namespace
 				// shows up as a Team page in the console
 				cfgms := c.ConfigMaps(ns)
-				_, err = nss.Get(fabric8Environments)
+				_, err = cfgms.Get(fabric8Environments)
 				if err != nil {
 					configMap := kapi.ConfigMap{
 						ObjectMeta: kapi.ObjectMeta{
@@ -346,6 +357,34 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					if err != nil {
 						printError("Failed to create ConfigMap: "+fabric8Environments, err)
 					}
+				}
+
+				// create a populate the exposecontroller config map
+				useLoadBalancer := cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true"
+				_, err = cfgms.Get(exposecontrollerCM)
+				if err == nil {
+					util.Infof("\nRecreating configmap %s \n", exposecontrollerCM)
+					err = cfgms.Delete(exposecontrollerCM)
+					if err != nil {
+						printError("\nError deleting ConfigMap: "+exposecontrollerCM, err)
+					}
+				}
+
+				configMap := kapi.ConfigMap{
+					ObjectMeta: kapi.ObjectMeta{
+						Name: exposecontrollerCM,
+						Labels: map[string]string{
+							"provider": "fabric8.io",
+						},
+					},
+					Data: map[string]string{
+						"domain":       domain,
+						"exposer-rule": defaultExposeRule(c, mini, useLoadBalancer),
+					},
+				}
+				_, err = cfgms.Create(&configMap)
+				if err != nil {
+					printError("Failed to create ConfigMap: "+exposecontrollerCM, err)
 				}
 			}
 		},
@@ -362,7 +401,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(runFlag, "cd-pipeline", "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
-	cmd.PersistentFlags().Bool(useIngressFlag, false, "Should Ingress be enabled by default?")
+	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
+	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
+
 	return cmd
 }
 
@@ -1022,4 +1063,33 @@ func versionForUrl(v string, metadataUrl string) string {
 	util.Errorf("\nUnknown version: %s\n", v)
 	util.Fatalf("Valid versions: %v\n", append(m.Versions, "latest"))
 	return ""
+}
+
+func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) string {
+	if mini {
+		return nodePort
+	}
+
+	if util.TypeOfMaster(c) == util.Kubernetes {
+		if useLoadBalancer {
+			return loadBalancer
+		}
+		return ingress
+	} else if util.TypeOfMaster(c) == util.Kubernetes {
+		return route
+	}
+	return ""
+}
+
+func isMini(c *k8sclient.Client, ns string) bool {
+	// get any pod and look at the node name
+	pods, err := c.Pods(ns).List(api.ListOptions{})
+	if err != nil {
+		util.Errorf("\nUnable to find any pods: %s\n", err)
+	}
+	pod := pods.Items[0]
+	if pod.Spec.NodeName == minikubeNodeName || pod.Spec.NodeName == minishiftNodeName {
+		return true
+	}
+	return false
 }
