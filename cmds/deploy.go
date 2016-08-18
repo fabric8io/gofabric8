@@ -706,7 +706,9 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 			//util.Info("Ignoring as on kubernetes!")
 			continue
 		}
+		configMapKeySuffix := ".json"
 		if strings.HasSuffix(lowerName, ".yml") || strings.HasSuffix(lowerName, ".yaml") {
+			configMapKeySuffix = ".yml"
 			err = yaml.Unmarshal(jsonData, &v1tmpl)
 			if err != nil {
 				util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
@@ -762,7 +764,7 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 					},
 				},
 				Data: map[string]string{
-					name + ".json": string(jsonData),
+					name + configMapKeySuffix: string(jsonData),
 				},
 			}
 			configmaps := kc.ConfigMaps(ns)
