@@ -105,6 +105,7 @@ const (
 
 	minikubeNodeName  = "minikubevm"
 	minishiftNodeName = "boot2docker"
+	exposeRule        = "expose-rule"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -379,8 +380,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						},
 					},
 					Data: map[string]string{
-						"domain":       domain,
-						"exposer-rule": defaultExposeRule(c, mini, useLoadBalancer),
+						"domain":   domain,
+						exposeRule: defaultExposeRule(c, mini, useLoadBalancer),
 					},
 				}
 				_, err = cfgms.Create(&configMap)
@@ -1119,18 +1120,4 @@ func isMini(c *k8sclient.Client, ns string) bool {
 		return node.Name == minikubeNodeName || node.Name == minishiftNodeName
 	}
 	return false
-	/*
-		// get any pod and look at the node name
-		pods, err := c.Pods(ns).List(api.ListOptions{})
-		if err != nil {
-			util.Errorf("\nUnable to find any pods: %s\n", err)
-		}
-		if len(pods.Items) > 0 {
-			pod := pods.Items[0]
-			if pod.Spec.NodeName == minikubeNodeName || pod.Spec.NodeName == minishiftNodeName {
-				return true
-			}
-		}
-		return false
-	*/
 }
