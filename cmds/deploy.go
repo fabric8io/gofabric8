@@ -33,6 +33,7 @@ import (
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
+	"github.com/ghodss/yaml"
 	aapi "github.com/openshift/origin/pkg/authorization/api"
 	aapiv1 "github.com/openshift/origin/pkg/authorization/api/v1"
 	oclient "github.com/openshift/origin/pkg/client"
@@ -677,13 +678,14 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 			continue
 		}
 
+		// TODO check the name and if its got a prefix of kubernetes/ or openshift/
+
 		rc, err := f.Open()
 		if err != nil {
 			return err
 		}
 		defer rc.Close()
 
-		util.Infof("Loading template %s\n", f.Name)
 		jsonData, err := ioutil.ReadAll(rc)
 		if err != nil {
 			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
@@ -695,10 +697,30 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 		jsonData = replaceDomain(jsonData, domain, ns, typeOfMaster)
 
 		var v1tmpl tapiv1.Template
-		err = json.Unmarshal(jsonData, &v1tmpl)
-		if err != nil {
-			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+		lowerName := strings.ToLower(f.Name)
+		if strings.HasPrefix(lowerName, "kubernetes/") && typeOfMaster != util.Kubernetes {
+			//util.Info("Ignoring as on openshift!")
+			continue
 		}
+		if strings.HasPrefix(lowerName, "openshift/") && typeOfMaster == util.Kubernetes {
+			//util.Info("Ignoring as on kubernetes!")
+			continue
+		}
+		if strings.HasSuffix(lowerName, ".yml") || strings.HasSuffix(lowerName, ".yaml") {
+			err = yaml.Unmarshal(jsonData, &v1tmpl)
+			if err != nil {
+				util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+			}
+
+		} else if strings.HasSuffix(lowerName, ".json") {
+			err = json.Unmarshal(jsonData, &v1tmpl)
+			if err != nil {
+				util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
+			}
+		} else {
+			continue
+		}
+		util.Infof("Loading template %s\n", f.Name)
 
 		var tmpl tapi.Template
 
