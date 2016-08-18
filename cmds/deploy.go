@@ -735,7 +735,11 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 		if len(name) <= 0 {
 			template = false
 			name = f.Name
-			idx := strings.Index(name, "/")
+			idx := strings.LastIndex(name, "/")
+			if idx > 0 {
+				name = name[idx+1:]
+			}
+			idx = strings.Index(name, ".")
 			if idx > 0 {
 				name = name[0:idx]
 			}
@@ -1104,14 +1108,27 @@ func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) str
 }
 
 func isMini(c *k8sclient.Client, ns string) bool {
-	// get any pod and look at the node name
-	pods, err := c.Pods(ns).List(api.ListOptions{})
+	nodes, err := c.Nodes().List(api.ListOptions{})
 	if err != nil {
-		util.Errorf("\nUnable to find any pods: %s\n", err)
+		util.Errorf("\nUnable to find any nodes: %s\n", err)
 	}
-	pod := pods.Items[0]
-	if pod.Spec.NodeName == minikubeNodeName || pod.Spec.NodeName == minishiftNodeName {
-		return true
+	if len(nodes.Items) == 1 {
+		node := nodes.Items[0]
+		return node.Name == minikubeNodeName || node.Name == minishiftNodeName
 	}
 	return false
+	/*
+		// get any pod and look at the node name
+		pods, err := c.Pods(ns).List(api.ListOptions{})
+		if err != nil {
+			util.Errorf("\nUnable to find any pods: %s\n", err)
+		}
+		if len(pods.Items) > 0 {
+			pod := pods.Items[0]
+			if pod.Spec.NodeName == minikubeNodeName || pod.Spec.NodeName == minishiftNodeName {
+				return true
+			}
+		}
+		return false
+	*/
 }
