@@ -235,8 +235,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
 					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
+					printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":exposecontroller")
 					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
 					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
+
+					printAddClusterRoleToGroup(oc, f, "cluster-reader", "system:serviceaccounts")
 
 					printAddServiceAccount(c, f, "fluentd")
 					printAddServiceAccount(c, f, "registry")
@@ -1081,12 +1084,34 @@ func printAddClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName s
 	return r, err
 }
 
+func printAddClusterRoleToGroup(c *oclient.Client, f *cmdutil.Factory, roleName string, groupName string) (Result, error) {
+	err := addClusterRoleToGroup(c, f, roleName, groupName)
+	message := fmt.Sprintf("addClusterRoleToGroup %s %s", roleName, groupName)
+	r := Success
+	if err != nil {
+		r = Failure
+	}
+	printResult(message, r, err)
+	return r, err
+}
+
 // simulates: oadm policy add-cluster-role-to-user roleName userName
 func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) error {
 	options := policy.RoleModificationOptions{
 		RoleName:            roleName,
 		RoleBindingAccessor: policy.NewClusterRoleBindingAccessor(c),
 		Users:               []string{userName},
+	}
+
+	return options.AddRole()
+}
+
+// simulates: oadm policy add-cluster-role-to-group roleName groupName
+func addClusterRoleToGroup(c *oclient.Client, f *cmdutil.Factory, roleName string, groupName string) error {
+	options := policy.RoleModificationOptions{
+		RoleName:            roleName,
+		RoleBindingAccessor: policy.NewClusterRoleBindingAccessor(c),
+		Groups:              []string{groupName},
 	}
 
 	return options.AddRole()
