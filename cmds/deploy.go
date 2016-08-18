@@ -679,8 +679,6 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 			continue
 		}
 
-		// TODO check the name and if its got a prefix of kubernetes/ or openshift/
-
 		rc, err := f.Open()
 		if err != nil {
 			return err
@@ -699,6 +697,8 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 
 		var v1tmpl tapiv1.Template
 		lowerName := strings.ToLower(f.Name)
+
+		// if the folder starts with kubernetes/ or openshift/ then lets filter based on the cluster:
 		if strings.HasPrefix(lowerName, "kubernetes/") && typeOfMaster != util.Kubernetes {
 			//util.Info("Ignoring as on openshift!")
 			continue
@@ -711,17 +711,14 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 		if strings.HasSuffix(lowerName, ".yml") || strings.HasSuffix(lowerName, ".yaml") {
 			configMapKeySuffix = ".yml"
 			err = yaml.Unmarshal(jsonData, &v1tmpl)
-			if err != nil {
-				util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-			}
 
 		} else if strings.HasSuffix(lowerName, ".json") {
 			err = json.Unmarshal(jsonData, &v1tmpl)
-			if err != nil {
-				util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-			}
 		} else {
 			continue
+		}
+		if err != nil {
+			util.Fatalf("Cannot unmarshall the fabric8 template %s to deploy: %v", f.Name, err)
 		}
 		util.Infof("Loading template %s\n", f.Name)
 
@@ -748,7 +745,7 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 			}
 
 		}
-		if typeOfMaster == util.Kubernetes || !template {
+		if typeOfMaster == util.Kubernetes {
 			appName := name
 			name = "catalog-" + appName
 
@@ -782,6 +779,57 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 				return err
 			}
 		} else {
+			if !template {
+				templateName := name
+				var v1List v1.List
+				if configMapKeySuffix == ".json" {
+					err = json.Unmarshal(jsonData, &v1List)
+				} else {
+					err = yaml.Unmarshal(jsonData, &v1List)
+				}
+				if err != nil {
+					util.Fatalf("Cannot unmarshal List %s to deploy. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+				}
+				if len(v1List.Items) == 0 {
+					// lets check if its an RC / ReplicaSet or something
+					_, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
+					if err != nil {
+						printResult(templateName, Failure, err)
+					} else {
+						kind := groupVersionKind.Kind
+						util.Infof("Processing resource of kind: %s version: %s\n", kind, groupVersionKind.Version)
+						if len(kind) <= 0 {
+							printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
+						} else {
+							util.Fatalf("Cannot yet process kind %s, kind for %s\n", kind, templateName)
+						}
+					}
+				} else {
+					var kubeList api.List
+					err = api.Scheme.Convert(&v1List, &kubeList)
+					if err != nil {
+						util.Fatalf("Cannot convert %s List to deploy: %v", templateName, err)
+					}
+					tmpl = tapi.Template{
+						ObjectMeta: api.ObjectMeta{
+							Name:      name,
+							Namespace: ns,
+							Labels: map[string]string{
+								"name":     name,
+								"provider": "fabric8.io",
+							},
+						},
+						Objects: kubeList.Items,
+					}
+				}
+			}
+
+			// remove newlines from description to avoid breaking `oc get template`
+			description := tmpl.ObjectMeta.Annotations["description"]
+			if len(description) > 0 {
+				tmpl.ObjectMeta.Annotations["description"] = strings.Replace(description, "\n", " ", -1)
+			}
+
 			// lets install the OpenShift templates
 			_, err = templates.Get(name)
 			if err == nil {
