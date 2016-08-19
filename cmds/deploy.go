@@ -31,6 +31,8 @@ import (
 	"strings"
 	"time"
 
+	"reflect"
+
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/ghodss/yaml"
@@ -55,7 +57,6 @@ import (
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/runtime"
-	"reflect"
 )
 
 const (
@@ -822,7 +823,8 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 						if len(kind) <= 0 {
 							printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
 						} else {
-							util.Fatalf("Cannot yet process kind %s, kind for %s\n", kind, templateName)
+							util.Warnf("Cannot yet process kind %s, kind for %s\n", kind, templateName)
+							continue
 						}
 					}
 				} else {
@@ -861,7 +863,7 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 			}
 			_, err = templates.Create(&tmpl)
 			if err != nil {
-				util.Fatalf("Failed to create template %v", err)
+				util.Warnf("Failed to create template %v", err)
 				return err
 			}
 		}
