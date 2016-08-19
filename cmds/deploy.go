@@ -109,6 +109,8 @@ const (
 	minikubeNodeName  = "minikubevm"
 	minishiftNodeName = "boot2docker"
 	exposeRule        = "expose-rule"
+
+	externalIPLabel = "externalIP"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -311,12 +313,12 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				appToRun := cmd.Flags().Lookup(runFlag).Value.String()
 				if len(appToRun) > 0 {
 					runTemplate(c, oc, appToRun, ns, domain, apiserver)
-				}
 
+				}
 				if typeOfMaster == util.Kubernetes {
 					if useIngress && !mini {
 						runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver)
-
+						addIngressInfraLabel(c, ns)
 						printError("Create ingress resources", createIngressForDomain(ns, domain, c, f))
 					}
 				} else {
@@ -414,6 +416,33 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
 
 	return cmd
+}
+
+func addIngressInfraLabel(c *k8sclient.Client, ns string) {
+	nodeClient := c.Nodes()
+	nodes, err := nodeClient.List(api.ListOptions{})
+	if err != nil {
+		util.Errorf("\nUnable to find any nodes: %s\n", err)
+	}
+	changed := false
+	if len(nodes.Items) > 0 {
+		for _, node := range nodes.Items {
+			if !node.Spec.Unschedulable {
+				changed = addLabelIfNotExist(&node.ObjectMeta, externalIPLabel, "true")
+				if changed {
+					_, err = nodeClient.Update(&node)
+					if err != nil {
+						printError("Failed to label node with ", err)
+					}
+					util.Successf("Deploying ingress controller on node %s, use its external ip when configuring your DNS. To change move %s node label", node.Name, externalIPLabel)
+					break
+				}
+			}
+		}
+	}
+	if !changed {
+		util.Warnf("Unable to add label for ingress controller to run on a specific node, please add manually: kubectl label node [your node name] %s=true", externalIPLabel)
+	}
 }
 
 func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string) {
