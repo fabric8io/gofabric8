@@ -55,6 +55,7 @@ import (
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/runtime"
+	"reflect"
 )
 
 const (
@@ -248,6 +249,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					if cmd.Flags().Lookup(templatesFlag).Value.String() == "true" {
 						if deployConsole {
 							uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleUrl), consoleVersion)
+							format := "json"
 							jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry, arch)
 							if err != nil {
 								printError("failed to apply docker registry prefix", err)
@@ -255,7 +257,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 							// lets delete the OAuthClient first as the domain may have changed
 							oc.OAuthClients().Delete("fabric8")
-							createTemplate(jsonData, "fabric8 console", ns, domain, apiserver, c, oc)
+							createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc)
 
 							oac, err := oc.OAuthClients().Get("fabric8")
 							if err != nil {
@@ -415,41 +417,50 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string) {
 	util.Info("\n\nInstalling: ")
 	util.Successf("%s\n\n", appToRun)
-	jsonData, err := loadTemplateData(ns, appToRun, c, oc)
+	jsonData, format, err := loadTemplateData(ns, appToRun, c, oc)
 	if err != nil {
 		printError("Failed to load app "+appToRun, err)
 	}
-	createTemplate(jsonData, appToRun, ns, domain, apiserver, c, oc)
+	createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc)
 }
 
-func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *oclient.Client) ([]byte, error) {
+func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *oclient.Client) ([]byte, string, error) {
 	typeOfMaster := util.TypeOfMaster(c)
 	if typeOfMaster == util.Kubernetes {
 		catalogName := "catalog-" + templateName
 		configMap, err := c.ConfigMaps(ns).Get(catalogName)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		for k, v := range configMap.Data {
 			if strings.LastIndex(k, ".json") >= 0 {
-				return []byte(v), nil
+				return []byte(v), "json", nil
+			}
+			if strings.LastIndex(k, ".yml") >= 0 || strings.LastIndex(k, ".yaml") >= 0 {
+				return []byte(v), "yaml", nil
 			}
 		}
-		return nil, fmt.Errorf("Could not find a key for the catalog %s which ends with `.json`", catalogName)
+		return nil, "", fmt.Errorf("Could not find a key for the catalog %s which ends with `.json` or `.yml`", catalogName)
 
 	} else {
 		template, err := oc.Templates(ns).Get(templateName)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		return json.Marshal(template)
+		data, err := json.Marshal(template)
+		return data, "json", err
 	}
-	return nil, nil
+	return nil, "", nil
 }
 
-func createTemplate(jsonData []byte, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client) {
+func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client) {
 	var v1tmpl tapiv1.Template
-	err := json.Unmarshal(jsonData, &v1tmpl)
+	var err error
+	if format == "yaml" {
+		err = yaml.Unmarshal(jsonData, &v1tmpl)
+	} else {
+		err = json.Unmarshal(jsonData, &v1tmpl)
+	}
 	if err != nil {
 		util.Fatalf("Cannot get %s template to deploy. error: %v\ntemplate: %s", templateName, err, string(jsonData))
 	}
@@ -480,7 +491,11 @@ func createTemplate(jsonData []byte, templateName string, ns string, domain stri
 	if objectCount == 0 {
 		// can't be a template so lets try just process it directly
 		var v1List v1.List
-		err = json.Unmarshal(jsonData, &v1List)
+		if format == "yaml" {
+			err = yaml.Unmarshal(jsonData, &v1List)
+		} else {
+			err = json.Unmarshal(jsonData, &v1List)
+		}
 		if err != nil {
 			util.Fatalf("Cannot unmarshal List %s to deploy. error: %v\ntemplate: %s", templateName, err, string(jsonData))
 		}
@@ -504,9 +519,6 @@ func createTemplate(jsonData []byte, templateName string, ns string, domain stri
 			if err != nil {
 				util.Fatalf("Cannot convert %s List to deploy: %v", templateName, err)
 			}
-
-			util.Infof("Converted json to list with %d items with json %s\n", len(kubeList.Items), string(jsonData))
-
 			util.Infof("Creating "+templateName+" list resources from %d objects\n", len(kubeList.Items))
 			for _, o := range kubeList.Items {
 				err = processItem(c, oc, &o, ns)
@@ -559,6 +571,8 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 			return err
 		}
 		return processResource(c, b, ns, o.TypeMeta.Kind)
+	default:
+		util.Infof("Unknon type %v\n", reflect.TypeOf(0))
 	}
 	return nil
 }
@@ -593,8 +607,11 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 }
 
 func processResource(c *k8sclient.Client, b []byte, ns string, kind string) error {
+	util.Infof("Processing resouce %s\n", kind)
 	req := c.Post().Body(b)
-	if kind != "OAuthClient" {
+	if kind == "Deployment" {
+		req.AbsPath("api", "extensions/v1beta1", "namespaces", ns, strings.ToLower(kind+"s"))
+	} else if kind != "OAuthClient" {
 		req.Namespace(ns).Resource(strings.ToLower(kind + "s"))
 	} else {
 		req.AbsPath("oapi", "v1", strings.ToLower(kind+"s"))
@@ -603,6 +620,7 @@ func processResource(c *k8sclient.Client, b []byte, ns string, kind string) erro
 	if res.Error() != nil {
 		err := res.Error()
 		if err != nil {
+			util.Warnf("Failed to create %s: %v", kind, err)
 			return err
 		}
 	}
