@@ -52,6 +52,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/v1"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
@@ -564,7 +565,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 
 func processData(jsonData []byte, format string, templateName string, ns string, c *k8sclient.Client, oc *oclient.Client) {
 	// lets check if its an RC / ReplicaSet or something
-	_, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
+	o, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
 	if err != nil {
 		printResult(templateName, Failure, err)
 	} else {
@@ -573,6 +574,16 @@ func processData(jsonData []byte, format string, templateName string, ns string,
 		if len(kind) <= 0 {
 			printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
 		} else {
+			ons, err := meta.NewAccessor().Namespace(o)
+			if err == nil && len(ons) > 0 {
+				util.Infof("Found namespace on kind %s of %s", kind, ons)
+				ns = ons
+
+				err := ensureNamespaceExists(c, oc, ns)
+				if err != nil {
+					printErr(err)
+				}
+			}
 			err = processResource(c, jsonData, ns, kind)
 			if err != nil {
 				printResult(templateName, Failure, err)
@@ -663,11 +674,13 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 }
 
 func processResource(c *k8sclient.Client, b []byte, ns string, kind string) error {
-	util.Infof("Processing resoucre %s\n", kind)
+	util.Infof("Processing resource kind: %s\n", kind)
 	req := c.Post().Body(b)
 	if kind == "Deployment" {
 		req.AbsPath("apis", "extensions/v1beta1", "namespaces", ns, strings.ToLower(kind+"s"))
-	} else if kind == "OAuthClient" || kind == "DeploymentConfig" || kind == "Project" || kind == "ProjectRequest" || kind == "RoleBinding" || kind == "Template" {
+	} else if kind == "BuildConfig" || kind == "DeploymentConfig" || kind == "Template" {
+		req.AbsPath("oapi", "v1", "namespaces", ns, strings.ToLower(kind+"s"))
+	} else if kind == "OAuthClient" || kind == "Project" || kind == "ProjectRequest" || kind == "RoleBinding" {
 		req.AbsPath("oapi", "v1", strings.ToLower(kind+"s"))
 	} else if kind == "Namespace" {
 		req.AbsPath("api", "v1", "namespaces")
