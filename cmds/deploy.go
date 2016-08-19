@@ -498,32 +498,54 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 			err = json.Unmarshal(jsonData, &v1List)
 		}
 		if err != nil {
-			util.Fatalf("Cannot unmarshal List %s to deploy. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+			util.Fatalf("Cannot unmarshal List %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
 		}
 		if len(v1List.Items) == 0 {
-			// lets check if its an RC / ReplicaSet or something
-			_, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
-			if err != nil {
-				printResult(templateName, Failure, err)
-			} else {
-				kind := groupVersionKind.Kind
-				util.Infof("Processing resource of kind: %s version: %s\n", kind, groupVersionKind.Version)
-				if len(kind) <= 0 {
-					printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
+			processData(jsonData, format, templateName, ns, c, oc)
+		} else {
+			for _, i := range v1List.Items {
+				data := i.Raw
+				if data == nil {
+					util.Infof("no data!\n")
+					continue
+				}
+				kind := ""
+				o := i.Object
+				if o != nil {
+					objectKind := o.GetObjectKind()
+					if objectKind != nil {
+						groupVersionKind := objectKind.GroupVersionKind()
+						if groupVersionKind != nil {
+							kind = groupVersionKind.Kind
+						}
+					}
+				}
+				if len(kind) == 0 {
+					processData(data, format, templateName, ns, c, oc)
 				} else {
-					processResource(c, jsonData, ns, kind)
+					// TODO how to find the Namespace?
+					err = processResource(c, data, ns, kind)
+					if err != nil {
+						util.Fatalf("Failed to process kind %s template: %s error: %v\n", kind, err, templateName)
+					}
+				}
+				if err != nil {
+					util.Info("No kind found so processing data directly\n")
+					printResult(templateName, Failure, err)
 				}
 			}
-		} else {
-			var kubeList api.List
-			err = api.Scheme.Convert(&v1List, &kubeList)
-			if err != nil {
-				util.Fatalf("Cannot convert %s List to deploy: %v", templateName, err)
-			}
-			util.Infof("Creating "+templateName+" list resources from %d objects\n", len(kubeList.Items))
-			for _, o := range kubeList.Items {
-				err = processItem(c, oc, &o, ns)
-			}
+			/*
+				var kubeList api.List
+				err = api.Scheme.Convert(&v1List, &kubeList)
+				if err != nil {
+					util.Fatalf("Cannot convert %s List to deploy: %v", templateName, err)
+				}
+				util.Infof("Creating " + templateName + " list resources from %d objects\n", len(kubeList.Items))
+				for _, o := range kubeList.Items {
+					util.Infof("processing %#v\n", o)
+					err = processItem(c, oc, &o, ns)
+				}
+			*/
 		}
 
 	} else {
@@ -540,7 +562,40 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	}
 }
 
+func processData(jsonData []byte, format string, templateName string, ns string, c *k8sclient.Client, oc *oclient.Client) {
+	// lets check if its an RC / ReplicaSet or something
+	_, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
+	if err != nil {
+		printResult(templateName, Failure, err)
+	} else {
+		kind := groupVersionKind.Kind
+		//util.Infof("Processing resource of kind: %s version: %s\n", kind, groupVersionKind.Version)
+		if len(kind) <= 0 {
+			printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
+		} else {
+			err = processResource(c, jsonData, ns, kind)
+			if err != nil {
+				printResult(templateName, Failure, err)
+			}
+		}
+	}
+}
+
 func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, ns string) error {
+	/*
+		groupVersionKind, err := api.Scheme.ObjectKind(*item)
+		if err != nil {
+			return err
+		}
+		kind := groupVersionKind.Kind
+		//kind := *item.GetObjectKind()
+		util.Infof("Procesing kind %s\n", kind)
+		b, err := json.Marshal(item)
+		if err != nil {
+			return err
+		}
+		return processResource(c, b, ns, kind)
+	*/
 	o := *item
 	switch o := o.(type) {
 	case *runtime.Unstructured:
@@ -573,7 +628,7 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 		}
 		return processResource(c, b, ns, o.TypeMeta.Kind)
 	default:
-		util.Infof("Unknon type %v\n", reflect.TypeOf(0))
+		util.Infof("Unknown type %v\n", reflect.TypeOf(item))
 	}
 	return nil
 }
@@ -608,14 +663,16 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 }
 
 func processResource(c *k8sclient.Client, b []byte, ns string, kind string) error {
-	util.Infof("Processing resouce %s\n", kind)
+	util.Infof("Processing resoucre %s\n", kind)
 	req := c.Post().Body(b)
 	if kind == "Deployment" {
-		req.AbsPath("api", "extensions/v1beta1", "namespaces", ns, strings.ToLower(kind+"s"))
-	} else if kind != "OAuthClient" {
-		req.Namespace(ns).Resource(strings.ToLower(kind + "s"))
-	} else {
+		req.AbsPath("apis", "extensions/v1beta1", "namespaces", ns, strings.ToLower(kind+"s"))
+	} else if kind == "OAuthClient" || kind == "DeploymentConfig" || kind == "Project" || kind == "ProjectRequest" || kind == "RoleBinding" || kind == "Template" {
 		req.AbsPath("oapi", "v1", strings.ToLower(kind+"s"))
+	} else if kind == "Namespace" {
+		req.AbsPath("api", "v1", "namespaces")
+	} else {
+		req.Namespace(ns).Resource(strings.ToLower(kind + "s"))
 	}
 	res := req.Do()
 	if res.Error() != nil {
