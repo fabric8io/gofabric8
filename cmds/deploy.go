@@ -41,6 +41,8 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deployapiv1 "github.com/openshift/origin/pkg/deploy/api/v1"
 	oauthapi "github.com/openshift/origin/pkg/oauth/api"
 	oauthapiv1 "github.com/openshift/origin/pkg/oauth/api/v1"
 	projectapi "github.com/openshift/origin/pkg/project/api"
@@ -191,6 +193,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				tapiv1.AddToScheme(api.Scheme)
 				projectapi.AddToScheme(api.Scheme)
 				projectapiv1.AddToScheme(api.Scheme)
+				deployapi.AddToScheme(api.Scheme)
+				deployapiv1.AddToScheme(api.Scheme)
 				oauthapi.AddToScheme(api.Scheme)
 				oauthapiv1.AddToScheme(api.Scheme)
 
