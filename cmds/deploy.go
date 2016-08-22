@@ -1293,7 +1293,7 @@ func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) str
 			return loadBalancer
 		}
 		return ingress
-	} else if util.TypeOfMaster(c) == util.Kubernetes {
+	} else if util.TypeOfMaster(c) == util.OpenShift {
 		return route
 	}
 	return ""
