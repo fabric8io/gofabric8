@@ -16,10 +16,10 @@
 package cmds
 
 import (
-	"net/http"
 	"strings"
 
 	"fmt"
+
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
@@ -146,7 +146,7 @@ func validateProxyServiceRestAPI(c *k8sclient.Client, f *cmdutil.Factory, host s
 	}
 	uri := host + "/api/v1/proxy/namespaces/" + ns + "/services/fabric8/"
 
-	resp, err := http.Get(uri)
+	resp, err := c.Client.Get(uri)
 	if err != nil {
 		err = fmt.Errorf("Cannot query the API Server REST Proxy Service API at %s. Can the master node see the service IPs? Got error: %v", uri, err)
 		return Failure, err
