@@ -314,17 +314,47 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printError("Ignoring the deploy of templates", nil)
 				}
 
-				appToRun := cmd.Flags().Lookup(runFlag).Value.String()
-				if len(appToRun) > 0 {
-					runTemplate(c, oc, appToRun, ns, domain, apiserver)
-
-				}
 				runTemplate(c, oc, "exposecontroller", ns, domain, apiserver)
 				if typeOfMaster == util.Kubernetes {
 					if useIngress && !mini {
 						runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver)
 						addIngressInfraLabel(c, ns)
 					}
+				}
+
+				// create a populate the exposecontroller config map
+				cfgms := c.ConfigMaps(ns)
+				useLoadBalancer := cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true"
+				_, err := cfgms.Get(exposecontrollerCM)
+				if err == nil {
+					util.Infof("\nRecreating configmap %s \n", exposecontrollerCM)
+					err = cfgms.Delete(exposecontrollerCM)
+					if err != nil {
+						printError("\nError deleting ConfigMap: "+exposecontrollerCM, err)
+					}
+				}
+
+				configMap := kapi.ConfigMap{
+					ObjectMeta: kapi.ObjectMeta{
+						Name: exposecontrollerCM,
+						Labels: map[string]string{
+							"provider": "fabric8.io",
+						},
+					},
+					Data: map[string]string{
+						"domain":   domain,
+						exposeRule: defaultExposeRule(c, mini, useLoadBalancer),
+					},
+				}
+				_, err = cfgms.Create(&configMap)
+				if err != nil {
+					printError("Failed to create ConfigMap: "+exposecontrollerCM, err)
+				}
+
+				appToRun := cmd.Flags().Lookup(runFlag).Value.String()
+				if len(appToRun) > 0 {
+					runTemplate(c, oc, appToRun, ns, domain, apiserver)
+
 				}
 
 				// lets label the namespace/project as a developer team
@@ -349,7 +379,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				// lets ensure that there is a `fabric8-environments` ConfigMap so that the current namespace
 				// shows up as a Team page in the console
-				cfgms := c.ConfigMaps(ns)
 				_, err = cfgms.Get(fabric8Environments)
 				if err != nil {
 					configMap := kapi.ConfigMap{
@@ -365,34 +394,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					if err != nil {
 						printError("Failed to create ConfigMap: "+fabric8Environments, err)
 					}
-				}
-
-				// create a populate the exposecontroller config map
-				useLoadBalancer := cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true"
-				_, err = cfgms.Get(exposecontrollerCM)
-				if err == nil {
-					util.Infof("\nRecreating configmap %s \n", exposecontrollerCM)
-					err = cfgms.Delete(exposecontrollerCM)
-					if err != nil {
-						printError("\nError deleting ConfigMap: "+exposecontrollerCM, err)
-					}
-				}
-
-				configMap := kapi.ConfigMap{
-					ObjectMeta: kapi.ObjectMeta{
-						Name: exposecontrollerCM,
-						Labels: map[string]string{
-							"provider": "fabric8.io",
-						},
-					},
-					Data: map[string]string{
-						"domain":   domain,
-						exposeRule: defaultExposeRule(c, mini, useLoadBalancer),
-					},
-				}
-				_, err = cfgms.Create(&configMap)
-				if err != nil {
-					printError("Failed to create ConfigMap: "+exposecontrollerCM, err)
 				}
 			}
 		},
@@ -422,7 +423,8 @@ func addIngressInfraLabel(c *k8sclient.Client, ns string) {
 		util.Errorf("\nUnable to find any nodes: %s\n", err)
 	}
 	changed := false
-	if len(nodes.Items) > 0 {
+	hasExistingExposeIPLabel := hasExistingLabel(nodes, externalIPLabel)
+	if !hasExistingExposeIPLabel && len(nodes.Items) > 0 {
 		for _, node := range nodes.Items {
 			if !node.Spec.Unschedulable {
 				changed = addLabelIfNotExist(&node.ObjectMeta, externalIPLabel, "true")
@@ -437,9 +439,20 @@ func addIngressInfraLabel(c *k8sclient.Client, ns string) {
 			}
 		}
 	}
-	if !changed {
+	if !changed && !hasExistingExposeIPLabel {
 		util.Warnf("Unable to add label for ingress controller to run on a specific node, please add manually: kubectl label node [your node name] %s=true", externalIPLabel)
 	}
+}
+
+func hasExistingLabel(nodes *api.NodeList, label string) bool {
+	if len(nodes.Items) > 0 {
+		for _, node := range nodes.Items {
+			if _, found := node.Labels[label]; found {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string) {
