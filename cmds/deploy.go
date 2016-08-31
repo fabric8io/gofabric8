@@ -113,6 +113,12 @@ const (
 	exposeRule        = "expose-rule"
 
 	externalIPLabel = "externalIP"
+
+	gogsDefaultUsername = "gogsadmin"
+	gogsDefaultPassword = "RedHat$1"
+
+	minishiftDefaultUsername = "admin"
+	minishiftDefaultPassword = "admin"
 )
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -315,10 +321,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				runTemplate(c, oc, "exposecontroller", ns, domain, apiserver)
+				externalNodeName := ""
 				if typeOfMaster == util.Kubernetes {
 					if useIngress && !mini {
 						runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver)
-						addIngressInfraLabel(c, ns)
+						externalNodeName = addIngressInfraLabel(c, ns)
 					}
 				}
 
@@ -395,6 +402,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						printError("Failed to create ConfigMap: "+fabric8Environments, err)
 					}
 				}
+
+				printSummary(typeOfMaster, externalNodeName, mini, ns, domain)
+
 			}
 		},
 	}
@@ -416,14 +426,65 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func addIngressInfraLabel(c *k8sclient.Client, ns string) {
+func printSummary(typeOfMaster util.MasterType, externalNodeName string, mini bool, ns string, domain string) {
+	util.Info("\n")
+	util.Info("-------------------------\n")
+	util.Info("\n")
+	clientType := getClientTypeName(typeOfMaster)
+
+	if externalNodeName != "" {
+		util.Info("Deploying ingress controller on node ")
+		util.Successf("%s", externalNodeName)
+		util.Info(" use its external ip when configuring your wildcard DNS.\n")
+		util.Infof("To change node move the label: `%s label node %s %s- && %s label node $YOUR_NEW_NODE %s=true`\n", clientType, externalNodeName, externalIPLabel, clientType, externalIPLabel)
+		util.Info("\n")
+	}
+
+	util.Info("Default GOGS admin username/password = ")
+	util.Successf("%s/%s\n", gogsDefaultUsername, gogsDefaultPassword)
+	util.Info("\n")
+
+	util.Infof("Wait for fabric8-xxxx pod to be ready: `%s get pods -w`\n", clientType)
+	util.Info("Open the fabric8 console: ")
+	if mini {
+		if typeOfMaster == util.OpenShift {
+			util.Info("minishift service fabric8\n")
+			util.Info("Default console username/password ")
+			util.Successf("%s/%s\n", minishiftDefaultUsername, minishiftDefaultPassword)
+		} else {
+			util.Infof("minikube service fabric8\n")
+		}
+	} else {
+		// this will change so that ingress and routes use the same URL
+		if typeOfMaster == util.OpenShift {
+			util.Infof("open http://fabric8.%s \n", domain)
+			util.Info("Log in with your openshift credentials\n")
+		} else {
+			util.Infof("open http://fabric8.%s.%s\n", ns, domain)
+		}
+	}
+	util.Info("\n")
+	util.Info("-------------------------\n")
+}
+
+func getClientTypeName(typeOfMaster util.MasterType) string {
+	if typeOfMaster == util.OpenShift {
+		return "oc"
+	}
+	return "kubectl"
+}
+
+func addIngressInfraLabel(c *k8sclient.Client, ns string) string {
 	nodeClient := c.Nodes()
 	nodes, err := nodeClient.List(api.ListOptions{})
 	if err != nil {
 		util.Errorf("\nUnable to find any nodes: %s\n", err)
 	}
 	changed := false
-	hasExistingExposeIPLabel := hasExistingLabel(nodes, externalIPLabel)
+	hasExistingExposeIPLabel, externalNodeName := hasExistingLabel(nodes, externalIPLabel)
+	if externalNodeName != "" {
+		return externalNodeName
+	}
 	if !hasExistingExposeIPLabel && len(nodes.Items) > 0 {
 		for _, node := range nodes.Items {
 			if !node.Spec.Unschedulable {
@@ -433,8 +494,7 @@ func addIngressInfraLabel(c *k8sclient.Client, ns string) {
 					if err != nil {
 						printError("Failed to label node with ", err)
 					}
-					util.Successf("Deploying ingress controller on node %s, use its external ip when configuring your DNS. To change move %s node label", node.Name, externalIPLabel)
-					break
+					return node.Name
 				}
 			}
 		}
@@ -442,17 +502,18 @@ func addIngressInfraLabel(c *k8sclient.Client, ns string) {
 	if !changed && !hasExistingExposeIPLabel {
 		util.Warnf("Unable to add label for ingress controller to run on a specific node, please add manually: kubectl label node [your node name] %s=true", externalIPLabel)
 	}
+	return ""
 }
 
-func hasExistingLabel(nodes *api.NodeList, label string) bool {
+func hasExistingLabel(nodes *api.NodeList, label string) (bool, string) {
 	if len(nodes.Items) > 0 {
 		for _, node := range nodes.Items {
 			if _, found := node.Labels[label]; found {
-				return true
+				return true, node.Name
 			}
 		}
 	}
-	return false
+	return false, ""
 }
 
 func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string) {
