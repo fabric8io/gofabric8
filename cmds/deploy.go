@@ -423,7 +423,8 @@ func addIngressInfraLabel(c *k8sclient.Client, ns string) {
 		util.Errorf("\nUnable to find any nodes: %s\n", err)
 	}
 	changed := false
-	if len(nodes.Items) > 0 {
+	hasExistingExposeIPLabel := hasExistingLabel(nodes, externalIPLabel)
+	if !hasExistingExposeIPLabel && len(nodes.Items) > 0 {
 		for _, node := range nodes.Items {
 			if !node.Spec.Unschedulable {
 				changed = addLabelIfNotExist(&node.ObjectMeta, externalIPLabel, "true")
@@ -438,9 +439,20 @@ func addIngressInfraLabel(c *k8sclient.Client, ns string) {
 			}
 		}
 	}
-	if !changed {
+	if !changed && !hasExistingExposeIPLabel {
 		util.Warnf("Unable to add label for ingress controller to run on a specific node, please add manually: kubectl label node [your node name] %s=true", externalIPLabel)
 	}
+}
+
+func hasExistingLabel(nodes *api.NodeList, label string) bool {
+	if len(nodes.Items) > 0 {
+		for _, node := range nodes.Items {
+			if _, found := node.Labels[label]; found {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string) {
