@@ -47,6 +47,7 @@ func main() {
 	cmds.AddCommand(commands.NewCmdRoutes(f))
 	cmds.AddCommand(commands.NewCmdSecrets(f))
 	cmds.AddCommand(commands.NewCmdVolume(f))
+	cmds.AddCommand(commands.NewCmdVolumes(f))
 	cmds.AddCommand(commands.NewCmdVersion())
 
 	cmds.Execute()
