@@ -362,6 +362,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				if len(appToRun) > 0 {
 					runTemplate(c, oc, appToRun, ns, domain, apiserver)
 
+					// lets create any missing PVs if on minikube or minishift
+					found, pendingClaimNames := findPendingPVS(c, ns)
+					if found {
+						createPV(c, ns, pendingClaimNames, cmd)
+					}
 				}
 
 				// lets label the namespace/project as a developer team
