@@ -99,7 +99,7 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string) (Result, error)
 			},
 			Spec: api.PersistentVolumeSpec{
 				Capacity: api.ResourceList{
-					api.ResourceName(api.ResourceStorage): resource.MustParse("100G"),
+					api.ResourceName(api.ResourceStorage): resource.MustParse("1G"),
 				},
 				AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteMany},
 				PersistentVolumeSource: api.PersistentVolumeSource{
