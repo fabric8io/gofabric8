@@ -108,9 +108,11 @@ const (
 	nodePort     = "node-port"
 	route        = "route"
 
-	minikubeNodeName  = "minikubevm"
-	minishiftNodeName = "boot2docker"
-	exposeRule        = "expose-rule"
+	minikubeNodeName              = "minikubevm"
+	minishiftNodeName             = "boot2docker"
+	exposeRule                    = "expose-rule"
+	externalIPNodeLabel           = "kubernetes.io/externalIP"
+	externalAPIServerAddressLabel = "fabric8.io/externalApiServerAddress"
 
 	externalIPLabel = "externalIP"
 
@@ -418,9 +420,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						// extract the ip address from the URL
 						ip := strings.Split(cfg.Host, ":")[1]
 						ip = strings.Replace(ip, "/", "", 2)
-						changed = addAnnotationIfNotExist(&node.ObjectMeta, "kubernetes.io/externalIP", ip)
+						changed = addAnnotationIfNotExist(&node.ObjectMeta, externalIPNodeLabel, ip)
 					}
-					changed = addAnnotationIfNotExist(&node.ObjectMeta, "fabric8.io/externalApiServerAddress", cfg.Host)
+					changed = addAnnotationIfNotExist(&node.ObjectMeta, externalAPIServerAddressLabel, cfg.Host)
 					if changed {
 						_, err = nodeClient.Update(&node)
 						if err != nil {
