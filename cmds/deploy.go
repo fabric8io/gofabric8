@@ -403,8 +403,27 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					}
 				}
 
-				printSummary(typeOfMaster, externalNodeName, mini, ns, domain)
+				nodeClient := c.Nodes()
+				nodes, err := nodeClient.List(api.ListOptions{})
+				changed := false
 
+				for _, node := range nodes.Items {
+					// if running on a single node then we can use node ports to access kubernetes services
+					if len(nodes.Items) == 1 {
+						// extract the ip address from the URL
+						ip := strings.Split(cfg.Host, ":")[1]
+						ip = strings.Replace(ip, "/", "", 2)
+						changed = addAnnotationIfNotExist(&node.ObjectMeta, "kubernetes.io/externalIP", ip)
+					}
+					changed = addAnnotationIfNotExist(&node.ObjectMeta, "fabric8.io/externalApiServerAddress", cfg.Host)
+					if changed {
+						_, err = nodeClient.Update(&node)
+						if err != nil {
+							printError("Failed to annotate node with ", err)
+						}
+					}
+				}
+				printSummary(typeOfMaster, externalNodeName, mini, ns, domain)
 			}
 		},
 	}
