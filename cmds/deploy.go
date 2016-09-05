@@ -56,6 +56,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -95,6 +96,7 @@ const (
 	mavenRepoFlag       = "maven-repo"
 	dockerRegistryFlag  = "docker-registry"
 	archFlag            = "arch"
+	noPVFlag            = "no-pvc"
 
 	domainAnnotation   = "fabric8.io/domain"
 	typeLabel          = "type"
@@ -154,6 +156,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 			useIngress := cmd.Flags().Lookup(useIngressFlag).Value.String() == "true"
 			deployConsole := cmd.Flags().Lookup(consoleFlag).Value.String() == "true"
+			noPV := cmd.Flags().Lookup(noPVFlag).Value.String() == "true"
 			mini := isMini(c, ns)
 
 			mavenRepo := cmd.Flags().Lookup(mavenRepoFlag).Value.String()
@@ -273,7 +276,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 							// lets delete the OAuthClient first as the domain may have changed
 							oc.OAuthClients().Delete("fabric8")
-							createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc)
+							createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc, noPV)
 
 							oac, err := oc.OAuthClients().Get("fabric8")
 							if err != nil {
@@ -322,11 +325,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printError("Ignoring the deploy of templates", nil)
 				}
 
-				runTemplate(c, oc, "exposecontroller", ns, domain, apiserver)
+				runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, noPV)
 				externalNodeName := ""
 				if typeOfMaster == util.Kubernetes {
 					if useIngress && !mini {
-						runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver)
+						runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, noPV)
 						externalNodeName = addIngressInfraLabel(c, ns)
 					}
 				}
@@ -362,7 +365,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				appToRun := cmd.Flags().Lookup(runFlag).Value.String()
 				if len(appToRun) > 0 {
-					runTemplate(c, oc, appToRun, ns, domain, apiserver)
+					runTemplate(c, oc, appToRun, ns, domain, apiserver, noPV)
 
 					// lets create any missing PVs if on minikube or minishift
 					found, pendingClaimNames := findPendingPVS(c, ns)
@@ -434,8 +437,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			}
 		},
 	}
-	cmd.PersistentFlags().StringP("domain", "d", defaultDomain(), "The domain name to append to the service name to access web applications")
-	cmd.PersistentFlags().String("api-server", "", "overrides the api server url")
+	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
+	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")
 	cmd.PersistentFlags().String(archFlag, goruntime.GOARCH, "CPU architecture for referencing Docker images with this as a name suffix")
 	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
 	cmd.PersistentFlags().String(versionDevOpsFlag, "latest", "The version to use for the Fabric8 DevOps templates")
@@ -444,6 +447,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(mavenRepoFlag, "https://repo1.maven.org/maven2/", "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().String(runFlag, "cd-pipeline", "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
+	cmd.PersistentFlags().Bool(noPVFlag, false, "Disable the use of persistence (disabling the PersistentVolumeClaims)?")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
@@ -542,14 +546,14 @@ func hasExistingLabel(nodes *api.NodeList, label string) (bool, string) {
 	return false, ""
 }
 
-func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string) {
+func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, noPV bool) {
 	util.Info("\n\nInstalling: ")
 	util.Successf("%s\n\n", appToRun)
 	jsonData, format, err := loadTemplateData(ns, appToRun, c, oc)
 	if err != nil {
 		printError("Failed to load app "+appToRun, err)
 	}
-	createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc)
+	createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc, noPV)
 }
 
 func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *oclient.Client) ([]byte, string, error) {
@@ -581,7 +585,7 @@ func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *o
 	return nil, "", nil
 }
 
-func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client) {
+func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client, noPV bool) {
 	var v1tmpl tapiv1.Template
 	var err error
 	if format == "yaml" {
@@ -628,7 +632,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 			util.Fatalf("Cannot unmarshal List %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
 		}
 		if len(v1List.Items) == 0 {
-			processData(jsonData, format, templateName, ns, c, oc)
+			processData(jsonData, format, templateName, ns, c, oc, noPV)
 		} else {
 			for _, i := range v1List.Items {
 				data := i.Raw
@@ -648,7 +652,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 					}
 				}
 				if len(kind) == 0 {
-					processData(data, format, templateName, ns, c, oc)
+					processData(data, format, templateName, ns, c, oc, noPV)
 				} else {
 					// TODO how to find the Namespace?
 					err = processResource(c, data, ns, kind)
@@ -661,27 +665,13 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 					printResult(templateName, Failure, err)
 				}
 			}
-			/*
-				var kubeList api.List
-				err = api.Scheme.Convert(&v1List, &kubeList)
-				if err != nil {
-					util.Fatalf("Cannot convert %s List to deploy: %v", templateName, err)
-				}
-				util.Infof("Creating " + templateName + " list resources from %d objects\n", len(kubeList.Items))
-				for _, o := range kubeList.Items {
-					util.Infof("processing %#v\n", o)
-					err = processItem(c, oc, &o, ns)
-				}
-			*/
 		}
-
 	} else {
 		util.Infof("Creating "+templateName+" template resources from %d objects\n", objectCount)
 		for _, o := range tmpl.Objects {
 			err = processItem(c, oc, &o, ns)
 		}
 	}
-
 	if err != nil {
 		printResult(templateName, Failure, err)
 	} else {
@@ -689,7 +679,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	}
 }
 
-func processData(jsonData []byte, format string, templateName string, ns string, c *k8sclient.Client, oc *oclient.Client) {
+func processData(jsonData []byte, format string, templateName string, ns string, c *k8sclient.Client, oc *oclient.Client, noPV bool) {
 	// lets check if its an RC / ReplicaSet or something
 	o, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
 	if err != nil {
@@ -700,7 +690,8 @@ func processData(jsonData []byte, format string, templateName string, ns string,
 		if len(kind) <= 0 {
 			printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
 		} else {
-			ons, err := meta.NewAccessor().Namespace(o)
+			accessor := meta.NewAccessor()
+			ons, err := accessor.Namespace(o)
 			if err == nil && len(ons) > 0 {
 				util.Infof("Found namespace on kind %s of %s", kind, ons)
 				ns = ons
@@ -708,6 +699,78 @@ func processData(jsonData []byte, format string, templateName string, ns string,
 				err := ensureNamespaceExists(c, oc, ns)
 				if err != nil {
 					printErr(err)
+				}
+			}
+			if noPV {
+				if kind == "Deployment" {
+					var deployment v1beta1.Deployment
+					if format == "yaml" {
+						err = yaml.Unmarshal(jsonData, &deployment)
+					} else {
+						err = json.Unmarshal(jsonData, &deployment)
+					}
+					if err != nil {
+						util.Fatalf("Cannot unmarshal Deployment %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+					} else {
+						updated := false
+						podSpec := &deployment.Spec.Template.Spec
+						for i, _ := range podSpec.Volumes {
+							v := &podSpec.Volumes[i]
+							pvc := v.PersistentVolumeClaim
+							if pvc != nil {
+								updated = true
+								// lets convert the PVC to an EmptyDir
+								v.PersistentVolumeClaim = nil
+								v.EmptyDir = &v1.EmptyDirVolumeSource{
+									Medium: v1.StorageMediumDefault,
+								}
+							}
+						}
+						if updated {
+							util.Info("Converted Deployment to avoid the use of PersistentVolumeClaim\n")
+							format = "json"
+							jsonData, err = json.Marshal(&deployment)
+							if err != nil {
+								util.Fatalf("Failed to marshal modified Deployment %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+							}
+							//util.Infof("Updated: %s\n", string(jsonData))
+						}
+					}
+				}
+				if kind == "DeploymentConfig" {
+					var deployment deployapiv1.DeploymentConfig
+					if format == "yaml" {
+						err = yaml.Unmarshal(jsonData, &deployment)
+					} else {
+						err = json.Unmarshal(jsonData, &deployment)
+					}
+					if err != nil {
+						util.Fatalf("Cannot unmarshal DeploymentConfig %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+					} else {
+						updated := false
+						podSpec := &deployment.Spec.Template.Spec
+						for i, _ := range podSpec.Volumes {
+							v := &podSpec.Volumes[i]
+							pvc := v.PersistentVolumeClaim
+							if pvc != nil {
+								updated = true
+								// lets convert the PVC to an EmptyDir
+								v.PersistentVolumeClaim = nil
+								v.EmptyDir = &v1.EmptyDirVolumeSource{
+									Medium: v1.StorageMediumDefault,
+								}
+							}
+						}
+						if updated {
+							util.Info("Converted DeploymentConfig to avoid the use of PersistentVolumeClaim\n")
+							format = "json"
+							jsonData, err = json.Marshal(&deployment)
+							if err != nil {
+								util.Fatalf("Failed to marshal modified DeploymentConfig %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+							}
+							//util.Infof("Updated: %s\n", string(jsonData))
+						}
+					}
 				}
 			}
 			err = processResource(c, jsonData, ns, kind)
