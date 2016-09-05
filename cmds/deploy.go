@@ -26,12 +26,12 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"path"
+	"reflect"
 	"regexp"
 	goruntime "runtime"
 	"strings"
 	"time"
-
-	"reflect"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -60,7 +60,6 @@ import (
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/runtime"
-	"path"
 )
 
 const (
