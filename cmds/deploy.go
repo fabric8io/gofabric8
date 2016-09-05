@@ -26,12 +26,12 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"path"
+	"reflect"
 	"regexp"
 	goruntime "runtime"
 	"strings"
 	"time"
-
-	"reflect"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -211,7 +211,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					if fabric8ImageAdaptionNeeded(dockerRegistry, arch) {
 						jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry, arch)
 						if err == nil {
-							tmpFileName := "/tmp/fabric8-console.json"
+							tmpFileName := path.Join(os.TempDir(), "fabric8-console.json")
 							t, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 							if err != nil {
 								util.Fatalf("Cannot open the converted fabric8 console template file: %v", err)
@@ -871,7 +871,7 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 	}
 	defer resp.Body.Close()
 
-	tmpFileName := "/tmp/fabric8-template-distros.tar.gz"
+	tmpFileName := path.Join(os.TempDir(), "fabric8-template-distros.tar.gz")
 	t, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		return err
