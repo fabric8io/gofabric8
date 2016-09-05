@@ -52,3 +52,4 @@ import:
 - package: github.com/pmezard/go-difflib
   subpackages:
   - difflib
+- package: github.com/pkg/browser

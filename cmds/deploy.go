@@ -478,25 +478,7 @@ func printSummary(typeOfMaster util.MasterType, externalNodeName string, mini bo
 	util.Successf("%s/%s\n", gogsDefaultUsername, gogsDefaultPassword)
 	util.Info("\n")
 
-	util.Infof("Wait for fabric8-xxxx pod to be ready: `%s get pods -w`\n", clientType)
-	util.Info("Open the fabric8 console: ")
-	if mini {
-		if typeOfMaster == util.OpenShift {
-			util.Info("minishift service fabric8\n")
-			util.Info("Default console username/password ")
-			util.Successf("%s/%s\n", minishiftDefaultUsername, minishiftDefaultPassword)
-		} else {
-			util.Infof("minikube service fabric8\n")
-		}
-	} else {
-		// this will change so that ingress and routes use the same URL
-		if typeOfMaster == util.OpenShift {
-			util.Infof("open http://fabric8.%s \n", domain)
-			util.Info("Log in with your openshift credentials\n")
-		} else {
-			util.Infof("open http://fabric8.%s.%s\n", ns, domain)
-		}
-	}
+	util.Infof("Open the fabric8 console using: `gofabric8 service fabric8`\n")
 	util.Info("\n")
 	util.Info("-------------------------\n")
 }

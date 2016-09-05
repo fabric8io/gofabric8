@@ -1,18 +1,229 @@
-hash: e76fc9f0d80c436cb417a75c5ed412c948e3a1695e7335f28f5b9f7451793192
-updated: 2016-05-27T14:26:03.611230833+02:00
+hash: 9b78a549a8ba7dc9eab3b2ec943851aefc81133cab12460f35e8ba412b594abd
+updated: 2016-09-05T23:11:56.907041158+01:00
 imports:
+- name: bitbucket.org/ww/goautoneg
+  version: ""
+- name: github.com/beorn7/perks
+  version: ""
+  subpackages:
+  - quantile
+- name: github.com/blang/semver
+  version: ""
+- name: github.com/coreos/etcd
+  version: ""
+  subpackages:
+  - auth
+  - client
+  - clientv3
+  - compactor
+  - discovery
+  - error
+  - etcdserver
+  - integration
+  - lease
+  - pkg/adt
+  - pkg/contention
+  - pkg/crc
+  - pkg/fileutil
+  - pkg/httputil
+  - pkg/idutil
+  - pkg/ioutil
+  - pkg/logutil
+  - pkg/netutil
+  - pkg/pathutil
+  - pkg/pbutil
+  - pkg/runtime
+  - pkg/schedule
+  - pkg/testutil
+  - pkg/transport
+  - pkg/types
+  - pkg/wait
+  - raft
+  - rafthttp
+  - snap
+  - storage
+  - store
+  - version
+  - wal
 - name: github.com/coreos/go-systemd
-  version: 3010edf91f526736b63669743ada735f7d5127aa
+  version: ""
   subpackages:
   - journal
 - name: github.com/coreos/pkg
-  version: 3010edf91f526736b63669743ada735f7d5127aa
+  version: ""
   subpackages:
   - capnslog
+- name: github.com/davecgh/go-spew
+  version: ""
+  subpackages:
+  - spew
 - name: github.com/daviddengcn/go-colortext
-  version: 3010edf91f526736b63669743ada735f7d5127aa
+  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+- name: github.com/dgrijalva/jwt-go
+  version: ""
+- name: github.com/docker/distribution
+  version: ""
+  subpackages:
+  - digest
+  - manifest/schema1
+  - manifest
+- name: github.com/docker/docker
+  version: ""
+  subpackages:
+  - pkg/jsonmessage
+  - pkg/mount
+  - pkg/parsers
+  - pkg/stdcopy
+  - pkg/symlink
+  - pkg/term
+  - pkg/timeutils
+  - pkg/units
+  - pkg/term/winconsole
+  - pkg/tarsum
+- name: github.com/docker/go-units
+  version: ""
+- name: github.com/docker/libtrust
+  version: ""
+- name: github.com/docker/spdystream
+  version: ""
+  subpackages:
+  - spdy
+- name: github.com/emicklei/go-restful
+  version: ""
+  subpackages:
+  - swagger
+  - log
+- name: github.com/evanphx/json-patch
+  version: ""
+- name: github.com/fsouza/go-dockerclient
+  version: ""
+  subpackages:
+  - external/github.com/docker/docker/opts
+  - external/github.com/docker/docker/pkg/archive
+  - external/github.com/docker/docker/pkg/fileutils
+  - external/github.com/docker/docker/pkg/homedir
+  - external/github.com/docker/docker/pkg/stdcopy
+  - external/github.com/hashicorp/go-cleanhttp
+  - external/github.com/Sirupsen/logrus
+  - external/github.com/docker/docker/pkg/idtools
+  - external/github.com/docker/docker/pkg/ioutils
+  - external/github.com/docker/docker/pkg/pools
+  - external/github.com/docker/docker/pkg/promise
+  - external/github.com/docker/docker/pkg/system
+  - external/github.com/docker/docker/pkg/longpath
+  - external/github.com/opencontainers/runc/libcontainer/user
+  - external/golang.org/x/sys/unix
+  - external/golang.org/x/net/context
+  - external/github.com/docker/go-units
+- name: github.com/ghodss/yaml
+  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+- name: github.com/gogo/protobuf
+  version: ""
+  subpackages:
+  - gogoproto
+  - plugin/defaultcheck
+  - plugin/description
+  - plugin/embedcheck
+  - plugin/enumstringer
+  - plugin/equal
+  - plugin/face
+  - plugin/gostring
+  - plugin/grpc
+  - plugin/marshalto
+  - plugin/oneofcheck
+  - plugin/populate
+  - plugin/size
+  - plugin/stringer
+  - plugin/testgen
+  - plugin/union
+  - plugin/unmarshal
+  - proto
+  - protoc-gen-gogo/descriptor
+  - protoc-gen-gogo/generator
+  - protoc-gen-gogo/plugin
+  - sortkeys
+  - vanity
 - name: github.com/golang/glog
   version: ""
+- name: github.com/golang/groupcache
+  version: ""
+  subpackages:
+  - lru
+- name: github.com/golang/protobuf
+  version: ""
+  subpackages:
+  - proto
+- name: github.com/gonum/blas
+  version: ""
+  subpackages:
+  - blas64
+  - native
+  - native/internal/math32
+- name: github.com/gonum/graph
+  version: ""
+  subpackages:
+  - encoding/dot
+  - path
+  - concrete
+  - internal
+  - topo
+  - traverse
+- name: github.com/gonum/internal
+  version: ""
+  subpackages:
+  - asm
+- name: github.com/gonum/lapack
+  version: ""
+  subpackages:
+  - lapack64
+  - native
+- name: github.com/gonum/matrix
+  version: ""
+  subpackages:
+  - mat64
+- name: github.com/google/cadvisor
+  version: ""
+  subpackages:
+  - api
+  - cache/memory
+  - collector
+  - container
+  - events
+  - fs
+  - healthz
+  - http
+  - info/v1
+  - info/v2
+  - manager
+  - metrics
+  - pages
+  - storage
+  - summary
+  - utils
+  - validate
+  - version
+- name: github.com/google/gofuzz
+  version: ""
+- name: github.com/imdario/mergo
+  version: ""
+- name: github.com/inconshreveable/mousetrap
+  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+- name: github.com/juju/ratelimit
+  version: ""
+- name: github.com/MakeNowJust/heredoc
+  version: ""
+- name: github.com/matttproud/golang_protobuf_extensions
+  version: ""
+  subpackages:
+  - pbutil
+- name: github.com/opencontainers/runc
+  version: ""
+  subpackages:
+  - libcontainer
+  - libcontainer/cgroups/fs
+  - libcontainer/configs
+  - libcontainer/cgroups
+  - libcontainer/system
 - name: github.com/openshift/origin
   version: ""
   subpackages:
@@ -24,24 +235,128 @@ imports:
   - pkg/template/api
   - pkg/template/api/v1
   - pkg/template/generator
+  - pkg/authorization/api
+  - pkg/authorization/api/v1
+  - pkg/deploy/api
+  - pkg/deploy/api/v1
+  - pkg/oauth/api
+  - pkg/oauth/api/v1
+  - pkg/project/api
+  - pkg/project/api/v1
+  - pkg/route/api/v1
+  - pkg/api/latest
+  - pkg/build/api
+  - pkg/image/api
+  - pkg/sdn/api
+  - pkg/user/api
+  - pkg/version
+  - pkg/api
+  - pkg/user/api/validation
+  - pkg/authorization/rulevalidation
+  - pkg/cmd/cli/describe
+  - pkg/cmd/templates
+  - pkg/cmd/util
+  - pkg/cmd/util/clientcmd
+  - pkg/util
+  - pkg/util/stringreplace
+  - pkg/util/namer
+  - pkg/authorization/interfaces
+  - pkg/api/graph
+  - pkg/api/graph/graphview
+  - pkg/api/kubegraph
+  - pkg/api/kubegraph/analysis
+  - pkg/api/kubegraph/nodes
+  - pkg/build/graph
+  - pkg/build/graph/analysis
+  - pkg/build/graph/nodes
+  - pkg/deploy/graph
+  - pkg/deploy/graph/analysis
+  - pkg/deploy/graph/nodes
+  - pkg/deploy/util
+  - pkg/image/graph
+  - pkg/image/graph/nodes
+  - pkg/route/graph
+  - pkg/route/graph/analysis
+  - pkg/route/graph/nodes
+  - pkg/util/errors
+  - pkg/util/parallel
+  - pkg/api/restmapper
+  - pkg/authorization/reaper
+  - pkg/build/reaper
+  - pkg/build/util
+  - pkg/cmd/cli/config
+  - pkg/cmd/flagtypes
+  - pkg/deploy/generator
+  - pkg/deploy/reaper
+  - pkg/deploy/scaler
+  - pkg/route/generator
+  - pkg/user/reaper
+  - pkg/build/client
+  - pkg/auth/authenticator/request/x509request
+  - pkg/auth/authenticator
+  - pkg/auth/api
+- name: github.com/pborman/uuid
+  version: ""
+- name: github.com/pkg/browser
+  version: 9302be274faad99162b9d48ec97b24306872ebb0
 - name: github.com/pmezard/go-difflib
-  version: 792786c7400a136282c1664665ae0a8db921c6c2
+  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
   subpackages:
   - difflib
+- name: github.com/prometheus/client_golang
+  version: ""
+  subpackages:
+  - prometheus
+- name: github.com/prometheus/client_model
+  version: ""
+  subpackages:
+  - go
+- name: github.com/prometheus/common
+  version: ""
+  subpackages:
+  - expfmt
+  - model
+- name: github.com/prometheus/procfs
+  version: ""
 - name: github.com/Sirupsen/logrus
   version: ""
 - name: github.com/spf13/cobra
-  version: 3010edf91f526736b63669743ada735f7d5127aa
+  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
 - name: github.com/spf13/pflag
-  version: 3010edf91f526736b63669743ada735f7d5127aa
+  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
 - name: github.com/stretchr/testify
-  version: 3010edf91f526736b63669743ada735f7d5127aa
+  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
   subpackages:
   - assert
+- name: github.com/ugorji/go
+  version: ""
+  subpackages:
+  - codec
 - name: golang.org/x/crypto
   version: ""
   repo: https://github.com/golang/crypto.git
   vcs: git
+  subpackages:
+  - ssh
+  - curve25519
+  - ed25519
+  - ed25519/internal/edwards25519
+- name: golang.org/x/net
+  version: ""
+  subpackages:
+  - context
+  - html
+  - http2
+  - internal/timeseries
+  - proxy
+  - trace
+  - websocket
+- name: gopkg.in/yaml.v2
+  version: ""
+- name: k8s.io/heapster
+  version: ""
+  subpackages:
+  - api/v1/types
 - name: k8s.io/kubernetes
   version: ""
   repo: git@github.com:openshift/kubernetes.git
@@ -57,8 +372,134 @@ imports:
   - pkg/labels
   - pkg/runtime
   - pkg/util
+  - pkg/client/restclient
+  - pkg/api/meta
+  - pkg/api/v1
+  - pkg/apis/extensions
+  - pkg/apis/extensions/v1beta1
+  - pkg/util/sets
+  - pkg/api/errors
+  - pkg/api/validation
+  - pkg/apimachinery
+  - pkg/apimachinery/registered
+  - pkg/apis/autoscaling
+  - pkg/apis/batch
+  - pkg/apis/metrics
+  - pkg/client/typed/discovery
+  - pkg/client/unversioned/adapters/internalclientset
+  - pkg/client/unversioned/clientcmd
+  - pkg/controller
+  - pkg/kubectl
+  - pkg/kubectl/resource
+  - pkg/registry/thirdpartyresourcedata
+  - pkg/runtime/serializer/json
+  - pkg/util/errors
+  - pkg/util/flag
+  - pkg/util/strategicpatch
+  - pkg/watch
+  - pkg/client/clientset_generated/internalclientset/typed/extensions/unversioned
+  - pkg/client/metrics
+  - pkg/client/transport
+  - pkg/util/crypto
+  - pkg/util/flowcontrol
+  - pkg/util/net
+  - pkg/version
+  - pkg/watch/json
+  - pkg/api/install
+  - pkg/apis/authorization/install
+  - pkg/apis/autoscaling/install
+  - pkg/apis/batch/install
+  - pkg/apis/componentconfig/install
+  - pkg/apis/extensions/install
+  - pkg/apis/metrics/install
+  - pkg/util/wait
+  - pkg/auth/user
+  - pkg/conversion
+  - pkg/serviceaccount
+  - pkg/securitycontextconstraints/util
+  - pkg/util/intstr
+  - pkg/registry/namespace
+  - pkg/util/validation/field
+  - pkg/runtime/serializer
+  - pkg/types
+  - pkg/util/rand
+  - pkg/util/parsers
+  - pkg/api/v1beta3
+  - pkg/apis/batch/v1
+  - pkg/client/unversioned/portforward
+  - pkg/client/unversioned/remotecommand
+  - pkg/kubectl/cmd/config
+  - pkg/kubectl/cmd/rollout
+  - pkg/kubectl/cmd/util/editor
+  - pkg/kubectl/cmd/util/jsonmerge
+  - pkg/kubelet/server/remotecommand
+  - pkg/kubelet/types
+  - pkg/util/crlf
+  - pkg/util/interrupt
+  - pkg/util/term
+  - pkg/util/validation
+  - pkg/util/yaml
+  - pkg/conversion/queryparams
+  - pkg/util/json
+  - pkg/api/endpoints
+  - pkg/api/pod
+  - pkg/api/service
+  - pkg/api/util
+  - pkg/capabilities
+  - pkg/client/clientset_generated/internalclientset
+  - pkg/client/clientset_generated/internalclientset/typed/core/unversioned
+  - pkg/client/unversioned/auth
+  - pkg/client/unversioned/clientcmd/api
+  - pkg/client/unversioned/clientcmd/api/latest
+  - pkg/util/homedir
+  - pkg/client/cache
+  - pkg/client/record
+  - pkg/controller/framework
+  - pkg/util/hash
+  - pkg/util/integer
+  - pkg/credentialprovider
+  - pkg/fieldpath
+  - pkg/kubelet/qos/util
+  - pkg/util/deployment
+  - pkg/util/jsonpath
+  - pkg/api/rest
+  - pkg/apis/extensions/validation
+  - pkg/registry/generic
+  - third_party/forked/json
+  - pkg/util/runtime
+  - pkg/apis/authorization
+  - pkg/apis/authorization/v1beta1
+  - pkg/apis/autoscaling/v1
+  - pkg/apis/componentconfig
+  - pkg/apis/componentconfig/v1alpha1
+  - pkg/apis/metrics/v1alpha1
+  - third_party/forked/reflect
+  - pkg/auth/authenticator
+  - pkg/controller/replication
+  - pkg/runtime/serializer/protobuf
+  - pkg/runtime/serializer/recognizer
+  - pkg/runtime/serializer/streaming
+  - pkg/runtime/serializer/versioning
+  - pkg/kubelet/server/portforward
+  - pkg/util/httpstream
+  - pkg/util/httpstream/spdy
+  - pkg/httplog
+  - pkg/util/wsstream
+  - pkg/util/net/sets
+  - pkg/client/unversioned/clientcmd/api/v1
+  - pkg/util/labels
+  - pkg/util/pod
+  - third_party/golang/template
+  - pkg/api/unversioned/validation
+  - pkg/controller/podautoscaler
+  - pkg/storage
+  - pkg/kubelet/qos
+  - pkg/master/ports
+  - pkg/util/workqueue
+  - third_party/golang/netutil
+  - pkg/controller/podautoscaler/metrics
 - name: speter.net/go/exp/math/dec/inf
-  version: 3010edf91f526736b63669743ada735f7d5127aa
+  version: ""
   repo: git@github.com:go-inf/inf.git
   vcs: git
 devImports: []
