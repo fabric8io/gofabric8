@@ -198,16 +198,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				oc, _ := client.NewOpenShiftClient(cfg)
 
-				aapi.AddToScheme(api.Scheme)
-				aapiv1.AddToScheme(api.Scheme)
-				tapi.AddToScheme(api.Scheme)
-				tapiv1.AddToScheme(api.Scheme)
-				projectapi.AddToScheme(api.Scheme)
-				projectapiv1.AddToScheme(api.Scheme)
-				deployapi.AddToScheme(api.Scheme)
-				deployapiv1.AddToScheme(api.Scheme)
-				oauthapi.AddToScheme(api.Scheme)
-				oauthapiv1.AddToScheme(api.Scheme)
+				initSchema()
 
 				if typeOfMaster == util.Kubernetes {
 					uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleKubernetesUrl), consoleVersion)
@@ -456,6 +447,19 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
+func initSchema() {
+	aapi.AddToScheme(api.Scheme)
+	aapiv1.AddToScheme(api.Scheme)
+	tapi.AddToScheme(api.Scheme)
+	tapiv1.AddToScheme(api.Scheme)
+	projectapi.AddToScheme(api.Scheme)
+	projectapiv1.AddToScheme(api.Scheme)
+	deployapi.AddToScheme(api.Scheme)
+	deployapiv1.AddToScheme(api.Scheme)
+	oauthapi.AddToScheme(api.Scheme)
+	oauthapiv1.AddToScheme(api.Scheme)
+}
+
 func printSummary(typeOfMaster util.MasterType, externalNodeName string, mini bool, ns string, domain string) {
 	util.Info("\n")
 	util.Info("-------------------------\n")
@@ -549,11 +553,28 @@ func hasExistingLabel(nodes *api.NodeList, label string) (bool, string) {
 func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, noPV bool) {
 	util.Info("\n\nInstalling: ")
 	util.Successf("%s\n\n", appToRun)
-	jsonData, format, err := loadTemplateData(ns, appToRun, c, oc)
-	if err != nil {
-		printError("Failed to load app "+appToRun, err)
+	typeOfMaster := util.TypeOfMaster(c)
+	if typeOfMaster == util.Kubernetes {
+		jsonData, format, err := loadTemplateData(ns, appToRun, c, oc)
+		if err != nil {
+			printError("Failed to load app "+appToRun, err)
+		}
+		createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc, noPV)
+	} else {
+		tmpl, err := oc.Templates(ns).Get(appToRun)
+		if err != nil {
+			printError("Failed to load template "+appToRun, err)
+		}
+		util.Infof("Loaded template with %d objects", len(tmpl.Objects))
+		processTemplate(tmpl, domain, apiserver)
+
+		objectCount := len(tmpl.Objects)
+
+		util.Infof("Creating "+appToRun+" template resources from %d objects\n", objectCount)
+		for _, o := range tmpl.Objects {
+			err = processItem(c, oc, &o, ns, noPV)
+		}
 	}
-	createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc, noPV)
 }
 
 func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *oclient.Client) ([]byte, string, error) {
@@ -596,27 +617,16 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	if err != nil {
 		util.Fatalf("Cannot get %s template to deploy. error: %v\ntemplate: %s", templateName, err, string(jsonData))
 	}
+	util.Infof("Loaded v1.Template with %d objects\n", len(v1tmpl.Objects))
 	var tmpl tapi.Template
 
 	err = api.Scheme.Convert(&v1tmpl, &tmpl)
 	if err != nil {
 		util.Fatalf("Cannot convert %s template to deploy: %v", templateName, err)
 	}
+	util.Infof("Converted to Template with %d objects\n", len(tmpl.Objects))
 
-	generators := map[string]generator.Generator{
-		"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
-	}
-	p := template.NewProcessor(generators)
-
-	tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
-		Name:  "DOMAIN",
-		Value: domain,
-	}, tapi.Parameter{
-		Name:  "APISERVER",
-		Value: apiserver,
-	})
-
-	p.Process(&tmpl)
+	processTemplate(&tmpl, domain, apiserver)
 
 	objectCount := len(tmpl.Objects)
 
@@ -669,13 +679,33 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	} else {
 		util.Infof("Creating "+templateName+" template resources from %d objects\n", objectCount)
 		for _, o := range tmpl.Objects {
-			err = processItem(c, oc, &o, ns)
+			err = processItem(c, oc, &o, ns, noPV)
 		}
 	}
 	if err != nil {
 		printResult(templateName, Failure, err)
 	} else {
 		printResult(templateName, Success, nil)
+	}
+}
+
+func processTemplate(tmpl *tapi.Template, domain string, apiserver string) {
+	generators := map[string]generator.Generator{
+		"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
+	}
+	p := template.NewProcessor(generators)
+
+	tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
+		Name:  "DOMAIN",
+		Value: domain,
+	}, tapi.Parameter{
+		Name:  "APISERVER",
+		Value: apiserver,
+	})
+
+	errorList := p.Process(tmpl)
+	for _, errInfo := range errorList {
+		util.Errorf("Processing template field %s got error %s\n", errInfo.Field, errInfo.Detail)
 	}
 }
 
@@ -702,76 +732,7 @@ func processData(jsonData []byte, format string, templateName string, ns string,
 				}
 			}
 			if noPV {
-				if kind == "Deployment" {
-					var deployment v1beta1.Deployment
-					if format == "yaml" {
-						err = yaml.Unmarshal(jsonData, &deployment)
-					} else {
-						err = json.Unmarshal(jsonData, &deployment)
-					}
-					if err != nil {
-						util.Fatalf("Cannot unmarshal Deployment %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
-					} else {
-						updated := false
-						podSpec := &deployment.Spec.Template.Spec
-						for i, _ := range podSpec.Volumes {
-							v := &podSpec.Volumes[i]
-							pvc := v.PersistentVolumeClaim
-							if pvc != nil {
-								updated = true
-								// lets convert the PVC to an EmptyDir
-								v.PersistentVolumeClaim = nil
-								v.EmptyDir = &v1.EmptyDirVolumeSource{
-									Medium: v1.StorageMediumDefault,
-								}
-							}
-						}
-						if updated {
-							util.Info("Converted Deployment to avoid the use of PersistentVolumeClaim\n")
-							format = "json"
-							jsonData, err = json.Marshal(&deployment)
-							if err != nil {
-								util.Fatalf("Failed to marshal modified Deployment %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
-							}
-							//util.Infof("Updated: %s\n", string(jsonData))
-						}
-					}
-				}
-				if kind == "DeploymentConfig" {
-					var deployment deployapiv1.DeploymentConfig
-					if format == "yaml" {
-						err = yaml.Unmarshal(jsonData, &deployment)
-					} else {
-						err = json.Unmarshal(jsonData, &deployment)
-					}
-					if err != nil {
-						util.Fatalf("Cannot unmarshal DeploymentConfig %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
-					} else {
-						updated := false
-						podSpec := &deployment.Spec.Template.Spec
-						for i, _ := range podSpec.Volumes {
-							v := &podSpec.Volumes[i]
-							pvc := v.PersistentVolumeClaim
-							if pvc != nil {
-								updated = true
-								// lets convert the PVC to an EmptyDir
-								v.PersistentVolumeClaim = nil
-								v.EmptyDir = &v1.EmptyDirVolumeSource{
-									Medium: v1.StorageMediumDefault,
-								}
-							}
-						}
-						if updated {
-							util.Info("Converted DeploymentConfig to avoid the use of PersistentVolumeClaim\n")
-							format = "json"
-							jsonData, err = json.Marshal(&deployment)
-							if err != nil {
-								util.Fatalf("Failed to marshal modified DeploymentConfig %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
-							}
-							//util.Infof("Updated: %s\n", string(jsonData))
-						}
-					}
-				}
+				jsonData = removePVCVolumes(jsonData, format, templateName, kind)
 			}
 			err = processResource(c, jsonData, ns, kind)
 			if err != nil {
@@ -781,7 +742,82 @@ func processData(jsonData []byte, format string, templateName string, ns string,
 	}
 }
 
-func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, ns string) error {
+func removePVCVolumes(jsonData []byte, format string, templateName string, kind string) []byte {
+	var err error
+	if kind == "Deployment" {
+		var deployment v1beta1.Deployment
+		if format == "yaml" {
+			err = yaml.Unmarshal(jsonData, &deployment)
+		} else {
+			err = json.Unmarshal(jsonData, &deployment)
+		}
+		if err != nil {
+			util.Fatalf("Cannot unmarshal Deployment %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+		} else {
+			updated := false
+			podSpec := &deployment.Spec.Template.Spec
+			for i, _ := range podSpec.Volumes {
+				v := &podSpec.Volumes[i]
+				pvc := v.PersistentVolumeClaim
+				if pvc != nil {
+					updated = true
+					// lets convert the PVC to an EmptyDir
+					v.PersistentVolumeClaim = nil
+					v.EmptyDir = &v1.EmptyDirVolumeSource{
+						Medium: v1.StorageMediumDefault,
+					}
+				}
+			}
+			if updated {
+				util.Info("Converted Deployment to avoid the use of PersistentVolumeClaim\n")
+				format = "json"
+				jsonData, err = json.Marshal(&deployment)
+				if err != nil {
+					util.Fatalf("Failed to marshal modified Deployment %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+				}
+				//util.Infof("Updated: %s\n", string(jsonData))
+			}
+		}
+	}
+	if kind == "DeploymentConfig" {
+		var deployment deployapiv1.DeploymentConfig
+		if format == "yaml" {
+			err = yaml.Unmarshal(jsonData, &deployment)
+		} else {
+			err = json.Unmarshal(jsonData, &deployment)
+		}
+		if err != nil {
+			util.Fatalf("Cannot unmarshal DeploymentConfig %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+		} else {
+			updated := false
+			podSpec := &deployment.Spec.Template.Spec
+			for i, _ := range podSpec.Volumes {
+				v := &podSpec.Volumes[i]
+				pvc := v.PersistentVolumeClaim
+				if pvc != nil {
+					updated = true
+					// lets convert the PVC to an EmptyDir
+					v.PersistentVolumeClaim = nil
+					v.EmptyDir = &v1.EmptyDirVolumeSource{
+						Medium: v1.StorageMediumDefault,
+					}
+				}
+			}
+			if updated {
+				util.Info("Converted DeploymentConfig to avoid the use of PersistentVolumeClaim\n")
+				format = "json"
+				jsonData, err = json.Marshal(&deployment)
+				if err != nil {
+					util.Fatalf("Failed to marshal modified DeploymentConfig %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
+				}
+				//util.Infof("Updated: %s\n", string(jsonData))
+			}
+		}
+	}
+	return jsonData
+}
+
+func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, ns string, noPV bool) error {
 	/*
 		groupVersionKind, err := api.Scheme.ObjectKind(*item)
 		if err != nil {
@@ -825,6 +861,9 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 		b, err := json.Marshal(o.Object)
 		if err != nil {
 			return err
+		}
+		if noPV {
+			b = removePVCVolumes(b, "json", o.Name, o.Kind)
 		}
 		return processResource(c, b, ns, o.TypeMeta.Kind)
 	default:

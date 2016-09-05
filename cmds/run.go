@@ -62,6 +62,7 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 				util.Warnf("\nInvalid domain: %s\n\n", domain)
 			} else if confirmAction(cmd.Flags()) {
 				oc, _ := client.NewOpenShiftClient(cfg)
+				initSchema()
 
 				for _, app := range args {
 					runTemplate(c, oc, app, ns, domain, apiserver, noPV)
