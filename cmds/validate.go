@@ -54,9 +54,6 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 			printValidationResult("Service account", validateServiceAccount, c, f)
 			printValidationResult("Console", validateConsoleDeployment, c, f)
 
-			r, err := validateProxyServiceRestAPI(c, f, cfg.Host)
-			printResult("REST Proxy Service API", r, err)
-
 			if util.TypeOfMaster(c) == util.Kubernetes {
 				printValidationResult("Jenkinshift Service", validateJenkinshiftService, c, f)
 			}
