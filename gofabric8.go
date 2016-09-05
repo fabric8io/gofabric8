@@ -42,6 +42,7 @@ func main() {
 
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))
+	cmds.AddCommand(commands.NewCmdRun(f))
 	cmds.AddCommand(commands.NewCmdPull(f))
 	cmds.AddCommand(commands.NewCmdIngress(f))
 	cmds.AddCommand(commands.NewCmdRoutes(f))
