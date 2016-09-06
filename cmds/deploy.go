@@ -599,14 +599,12 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	if err != nil {
 		util.Fatalf("Cannot get %s template to deploy. error: %v\ntemplate: %s", templateName, err, string(jsonData))
 	}
-	util.Infof("Loaded v1.Template with %d objects\n", len(v1tmpl.Objects))
 	var tmpl tapi.Template
 
 	err = api.Scheme.Convert(&v1tmpl, &tmpl)
 	if err != nil {
 		util.Fatalf("Cannot convert %s template to deploy: %v", templateName, err)
 	}
-	util.Infof("Converted to Template with %d objects\n", len(tmpl.Objects))
 
 	processTemplate(&tmpl, domain, apiserver)
 
@@ -714,6 +712,9 @@ func processData(jsonData []byte, format string, templateName string, ns string,
 				}
 			}
 			if noPV {
+				if kind == "PersistentVolumeClaim" {
+					return
+				}
 				jsonData = removePVCVolumes(jsonData, format, templateName, kind)
 			}
 			err = processResource(c, jsonData, ns, kind)
@@ -845,6 +846,9 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 			return err
 		}
 		if noPV {
+			if o.Kind == "PersistentVolumeClaim" {
+				return nil
+			}
 			b = removePVCVolumes(b, "json", o.Name, o.Kind)
 		}
 		return processResource(c, b, ns, o.TypeMeta.Kind)
