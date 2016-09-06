@@ -85,7 +85,7 @@ func NewCmdService(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.PersistentFlags().StringP(namespaceCommandFlag, "n", "default", "The service namespace")
-	cmd.PersistentFlags().Bool(urlCommandFlag, false, "Display the kubernetes service exposed URL in the CLI instead of opening it in the default browser")
+	cmd.PersistentFlags().BoolP(urlCommandFlag, "u", false, "Display the kubernetes service exposed URL in the CLI instead of opening it in the default browser")
 	return cmd
 }
 
