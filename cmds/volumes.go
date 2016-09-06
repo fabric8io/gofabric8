@@ -16,7 +16,6 @@
 package cmds
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -142,7 +141,6 @@ func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, co
 		cli = flag.Value.String()
 	}
 
-	args := []string{"ssh", "/bin/sh"}
 	if len(cli) == 0 {
 		nodes, err := c.Nodes().List(api.ListOptions{})
 		if err != nil {
@@ -179,26 +177,30 @@ func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, co
 		return nil
 	}
 
-	util.Infof("About to modify host paths on the VM via the command: %s %s\n", cli, strings.Join(args, " "))
+	shellCommands := []string{
+		fmt.Sprintf("sudo mkdir -p %s", hostPath),
+		fmt.Sprintf("sudo chmod 777 %s", hostPath),
+		fmt.Sprintf("echo hostPath is setup correctly at: %s", hostPath),
+	}
+	util.Infof("About to modify host paths on the VM via the command: %s\n", cli)
 
-	cmd := exec.Command(cli, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	shellInput := fmt.Sprintf("echo ensuring the hostPath is created %s\nsudo mkdir -p %s\nsudo chmod 777 %s\n", hostPath, hostPath, hostPath)
-
-	cmd.Stdin = bytes.NewBufferString(shellInput)
-	var waitStatus syscall.WaitStatus
-	if err := cmd.Run(); err != nil {
-		printErr(err)
-		if exitError, ok := err.(*exec.ExitError); ok {
-			waitStatus = exitError.Sys().(syscall.WaitStatus)
+	for _, shellCmd := range shellCommands {
+		args := []string{"ssh", fmt.Sprintf("/bin/sh -c '%s'", shellCmd)}
+		cmd := exec.Command(cli, args...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		var waitStatus syscall.WaitStatus
+		if err := cmd.Run(); err != nil {
+			printErr(err)
+			if exitError, ok := err.(*exec.ExitError); ok {
+				waitStatus = exitError.Sys().(syscall.WaitStatus)
+				printStatus(waitStatus.ExitStatus())
+			}
+			return err
+		} else {
+			waitStatus = cmd.ProcessState.Sys().(syscall.WaitStatus)
 			printStatus(waitStatus.ExitStatus())
 		}
-		return err
-	} else {
-		waitStatus = cmd.ProcessState.Sys().(syscall.WaitStatus)
-		printStatus(waitStatus.ExitStatus())
-		return nil
 	}
-
+	return nil
 }
