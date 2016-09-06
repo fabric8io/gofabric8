@@ -142,7 +142,7 @@ func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, co
 		cli = flag.Value.String()
 	}
 
-	args := []string{"ssh"}
+	args := []string{"ssh", "/bin/sh"}
 	if len(cli) == 0 {
 		nodes, err := c.Nodes().List(api.ListOptions{})
 		if err != nil {
