@@ -136,7 +136,11 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, cmd *cobra.Comm
 // if we are on minikube or minishift lets try to create the
 // hostPath folders with relaxed persmissions
 func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, corbaCmd *cobra.Command) error {
-	cli := corbaCmd.Flags().Lookup(sshCommandFlag).Value.String()
+	cli := ""
+	flag := corbaCmd.Flags().Lookup(sshCommandFlag)
+	if flag != nil {
+		cli = flag.Value.String()
+	}
 
 	args := []string{"ssh"}
 	if len(cli) == 0 {
