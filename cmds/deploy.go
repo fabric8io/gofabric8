@@ -111,7 +111,8 @@ const (
 	route        = "route"
 
 	minikubeNodeName              = "minikubevm"
-	minishiftNodeName             = "boot2docker"
+	minishiftNodeName             = "minishift"
+	boot2docker                   = "boot2docker"
 	exposeRule                    = "expose-rule"
 	externalIPNodeLabel           = "kubernetes.io/externalIP"
 	externalAPIServerAddressLabel = "fabric8.io/externalApiServerAddress"
@@ -425,6 +426,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					}
 				}
 				printSummary(typeOfMaster, externalNodeName, mini, ns, domain)
+
+				openService(ns, "fabric8", c, false)
 			}
 		},
 	}
@@ -478,7 +481,7 @@ func printSummary(typeOfMaster util.MasterType, externalNodeName string, mini bo
 	util.Successf("%s/%s\n", gogsDefaultUsername, gogsDefaultPassword)
 	util.Info("\n")
 
-	util.Infof("Open the fabric8 console using: `gofabric8 service fabric8`\n")
+	util.Infof("Downloading images and waiting to open the fabric8 console...\n")
 	util.Info("\n")
 	util.Info("-------------------------\n")
 }
@@ -1494,7 +1497,7 @@ func isMini(c *k8sclient.Client, ns string) bool {
 	}
 	if len(nodes.Items) == 1 {
 		node := nodes.Items[0]
-		return node.Name == minikubeNodeName || node.Name == minishiftNodeName
+		return node.Name == minikubeNodeName || node.Name == minishiftNodeName || node.Name == boot2docker
 	}
 	return false
 }

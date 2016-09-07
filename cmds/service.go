@@ -16,6 +16,7 @@
 package cmds
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -25,7 +26,6 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
-	"k8s.io/kubernetes/pkg/api"
 	kubeApi "k8s.io/kubernetes/pkg/api"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -52,36 +52,8 @@ func NewCmdService(f *cmdutil.Factory) *cobra.Command {
 			if ns == "" {
 				ns, _, _ = f.DefaultNamespace()
 			}
-
-			serviceName := args[0]
-			if err := RetryAfter(20, func() error { return CheckService(ns, serviceName, c) }, 6*time.Second); err != nil {
-				util.Errorf("Could not find finalized endpoint being pointed to by %s: %v", serviceName, err)
-				os.Exit(1)
-			}
-
-			svcs, err := c.Services(ns).List(api.ListOptions{})
-			if err != nil {
-				util.Errorf("No services found %v\n", err)
-			}
-			found := false
-			for _, service := range svcs.Items {
-				if serviceName == service.Name {
-
-					url := service.ObjectMeta.Annotations[exposeURLAnnotation]
-					printURL := cmd.Flags().Lookup(urlCommandFlag).Value.String() == "true"
-					if printURL {
-						util.Successf("%s\n", url)
-					} else {
-						util.Successf("Opening URL %s\n", url)
-						browser.OpenURL(url)
-					}
-					found = true
-					break
-				}
-			}
-			if !found {
-				util.Errorf("No service %s in namespace %s\n", serviceName, ns)
-			}
+			printURL := cmd.Flags().Lookup(urlCommandFlag).Value.String() == "true"
+			openService(ns, args[0], c, printURL)
 		},
 	}
 	cmd.PersistentFlags().StringP(namespaceCommandFlag, "n", "default", "The service namespace")
@@ -89,16 +61,57 @@ func NewCmdService(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
+func openService(ns string, serviceName string, c *k8sclient.Client, printURL bool) {
+	if err := RetryAfter(40, func() error { return CheckService(ns, serviceName, c) }, 10*time.Second); err != nil {
+		util.Errorf("Could not find finalized endpoint being pointed to by %s: %v", serviceName, err)
+		os.Exit(1)
+	}
+
+	svcs, err := c.Services(ns).List(kubeApi.ListOptions{})
+	if err != nil {
+		util.Errorf("No services found %v\n", err)
+	}
+	found := false
+	for _, service := range svcs.Items {
+		if serviceName == service.Name {
+
+			url := service.ObjectMeta.Annotations[exposeURLAnnotation]
+
+			if printURL {
+				util.Successf("%s\n", url)
+			} else {
+				util.Successf("Opening URL %s\n", url)
+				browser.OpenURL(url)
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		util.Errorf("No service %s in namespace %s\n", serviceName, ns)
+	}
+}
+
 // CheckService waits for the specified service to be ready by returning an error until the service is up
 // The check is done by polling the endpoint associated with the service and when the endpoint exists, returning no error->service-online
 // Credits: https://github.com/kubernetes/minikube/blob/v0.9.0/cmd/minikube/cmd/service.go#L89
 func CheckService(ns string, service string, c *k8sclient.Client) error {
+	svc, err := c.Services(ns).Get(service)
+	if err != nil {
+		return err
+	}
+	url := svc.ObjectMeta.Annotations[exposeURLAnnotation]
+	if url == "" {
+		util.Infof("Waiting, external URL for %s service is not ready yet... \n", service)
+		return errors.New("")
+	}
 	endpoints := c.Endpoints(ns)
 	if endpoints == nil {
 		util.Errorf("No endpoints found in namespace %s\n", ns)
 	}
 	endpoint, err := endpoints.Get(service)
 	if err != nil {
+		util.Errorf("No endpoints found for service %s\n", service)
 		return err
 	}
 	return CheckEndpointReady(endpoint)
