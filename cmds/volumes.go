@@ -169,7 +169,7 @@ func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, co
 	}
 	if len(cli) == 0 {
 		// lets default to using vagrant if we have a Vagrantfile
-		if _, err := os.Stat("Vagrantfile"); os.IsNotExist(err) {
+		if _, err := os.Stat("Vagrantfile"); err == nil {
 			cli = "vagrant"
 		}
 	}
