@@ -64,8 +64,8 @@ release: test
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-arm $(NAME).go
 	tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-linux-arm.tar.gz build/$(NAME)-linux-arm README.md LICENSE ;
 	go get -u github.com/progrium/gh-release
-	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)
 	gh-release checksums sha256
+	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)
 
 clean:
 	rm -rf build release
