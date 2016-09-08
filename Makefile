@@ -58,7 +58,7 @@ release: test
 	for os in linux darwin ; do \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
 	done
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe $(NAME).go
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-windows-amd64.exe $(NAME).go
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-arm $(NAME).go
 	cp build/$(NAME)-*-amd64* release
 	cp build/$(NAME)-*-arm* release
