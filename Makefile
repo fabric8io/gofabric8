@@ -65,6 +65,7 @@ release: test
 	tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$(VERSION)-linux-arm.tar.gz build/$(NAME)-linux-arm README.md LICENSE ;
 	go get -u github.com/progrium/gh-release
 	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)
+	gh-release checksums sha256
 
 clean:
 	rm -rf build release
