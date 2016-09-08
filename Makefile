@@ -57,12 +57,11 @@ release: test
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \
 		CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
-		tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-$$os-amd64.tar.gz build/$(NAME)-$$os-amd64 README.md LICENSE ; \
 	done
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$(VERSION)-windows-amd64.exe $(NAME).go
-	zip --junk-paths release/$(NAME)-windows-amd64.zip build/$(NAME)-$(VERSION)-windows-amd64.exe README.md LICENSE
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-arm $(NAME).go
-	tar --transform 's|^build/||' --transform 's|-.*||' -czvf release/$(NAME)-linux-arm.tar.gz build/$(NAME)-linux-arm README.md LICENSE ;
+	cp build/$(NAME)-*-amd64* release
+	cp build/$(NAME)-*-arm* release
 	go get -u github.com/progrium/gh-release
 	gh-release checksums sha256
 	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)
