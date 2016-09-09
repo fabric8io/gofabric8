@@ -77,6 +77,7 @@ func main() {
 	cmds.AddCommand(commands.NewCmdRun(f))
 	cmds.AddCommand(commands.NewCmdPull(f))
 	cmds.AddCommand(commands.NewCmdIngress(f))
+	cmds.AddCommand(commands.NewCmdInstall(f))
 	cmds.AddCommand(commands.NewCmdRoutes(f))
 	cmds.AddCommand(commands.NewCmdSecrets(f))
 	cmds.AddCommand(commands.NewCmdService(f))
