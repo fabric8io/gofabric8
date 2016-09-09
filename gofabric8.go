@@ -19,7 +19,6 @@ import (
 	"os"
 
 	commands "github.com/fabric8io/gofabric8/cmds"
-	"github.com/fabric8io/gofabric8/util"
 	"github.com/jimmidyson/minishift/pkg/minikube/update"
 	"github.com/kubernetes/minikube/pkg/minikube/config"
 	"github.com/spf13/cobra"
