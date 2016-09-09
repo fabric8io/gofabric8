@@ -1,5 +1,5 @@
-hash: 9b78a549a8ba7dc9eab3b2ec943851aefc81133cab12460f35e8ba412b594abd
-updated: 2016-09-05T23:11:56.907041158+01:00
+hash: c49feecae12f9eba66630b73931e52e684bd35ee01a1abacade0bf2668b678c9
+updated: 2016-09-09T11:47:07.621057112+01:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: ""
@@ -58,7 +58,7 @@ imports:
   subpackages:
   - spew
 - name: github.com/daviddengcn/go-colortext
-  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+  version: 9b6e9f8709ab2391b07282d7872e0f5d5239df84
 - name: github.com/dgrijalva/jwt-go
   version: ""
 - name: github.com/docker/distribution
@@ -116,7 +116,7 @@ imports:
   - external/golang.org/x/net/context
   - external/github.com/docker/go-units
 - name: github.com/ghodss/yaml
-  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+  version: 9b6e9f8709ab2391b07282d7872e0f5d5239df84
 - name: github.com/gogo/protobuf
   version: ""
   subpackages:
@@ -207,7 +207,9 @@ imports:
 - name: github.com/imdario/mergo
   version: ""
 - name: github.com/inconshreveable/mousetrap
-  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+  version: 9b6e9f8709ab2391b07282d7872e0f5d5239df84
+- name: github.com/jimmidyson/minishift
+  version: b58e0e1025faf887e74bc94fe2415a9fd15d2165
 - name: github.com/juju/ratelimit
   version: ""
 - name: github.com/MakeNowJust/heredoc
@@ -298,9 +300,9 @@ imports:
 - name: github.com/pborman/uuid
   version: ""
 - name: github.com/pkg/browser
-  version: 9302be274faad99162b9d48ec97b24306872ebb0
+  version: 9b6e9f8709ab2391b07282d7872e0f5d5239df84
 - name: github.com/pmezard/go-difflib
-  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+  version: 9b6e9f8709ab2391b07282d7872e0f5d5239df84
   subpackages:
   - difflib
 - name: github.com/prometheus/client_golang
@@ -321,11 +323,11 @@ imports:
 - name: github.com/Sirupsen/logrus
   version: ""
 - name: github.com/spf13/cobra
-  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+  version: 9b6e9f8709ab2391b07282d7872e0f5d5239df84
 - name: github.com/spf13/pflag
-  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+  version: 9b6e9f8709ab2391b07282d7872e0f5d5239df84
 - name: github.com/stretchr/testify
-  version: 2b1a6a09d22994652e0a61e3bdb34ee42ca349aa
+  version: 9b6e9f8709ab2391b07282d7872e0f5d5239df84
   subpackages:
   - assert
 - name: github.com/ugorji/go
