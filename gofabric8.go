@@ -19,6 +19,7 @@ import (
 	"os"
 
 	commands "github.com/fabric8io/gofabric8/cmds"
+	"github.com/fabric8io/gofabric8/util"
 	"github.com/jimmidyson/minishift/pkg/minikube/update"
 	"github.com/kubernetes/minikube/pkg/minikube/config"
 	"github.com/spf13/cobra"
@@ -27,6 +28,8 @@ import (
 )
 
 const (
+	batchFlag = "batch"
+
 	githubOrg  = "fabric8io"
 	githubRepo = "gofabric8"
 	binaryName = githubRepo
@@ -45,14 +48,24 @@ func main() {
 		Run: runHelp,
 	}
 
-	viper.SetDefault(config.WantUpdateNotification, true)
-	update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, "")
-
 	cmds.PersistentFlags().String("fabric8-version", "latest", "fabric8 version")
 	cmds.PersistentFlags().BoolP("yes", "y", false, "assume yes")
+	cmds.PersistentFlags().BoolP(batchFlag, "b", false, "Run in batch mode to avoid prompts")
 
 	f := cmdutil.NewFactory(nil)
 	f.BindFlags(cmds.PersistentFlags())
+
+	flag := cmds.Flags().Lookup(batchFlag)
+	util.Infof("batch comand %v", flag)
+	batch := false
+	if flag != nil {
+		batch = flag.Value.String() == "true"
+	}
+
+	if !batch {
+		viper.SetDefault(config.WantUpdateNotification, true)
+		update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, "")
+	}
 
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))
