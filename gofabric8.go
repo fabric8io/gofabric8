@@ -19,7 +19,6 @@ import (
 	"os"
 
 	commands "github.com/fabric8io/gofabric8/cmds"
-	"github.com/fabric8io/gofabric8/util"
 	"github.com/jimmidyson/minishift/pkg/minikube/update"
 	"github.com/kubernetes/minikube/pkg/minikube/config"
 	"github.com/spf13/cobra"
@@ -55,16 +54,22 @@ func main() {
 	f := cmdutil.NewFactory(nil)
 	f.BindFlags(cmds.PersistentFlags())
 
-	flag := cmds.Flags().Lookup(batchFlag)
-	util.Infof("batch comand %v", flag)
-	batch := false
-	if flag != nil {
-		batch = flag.Value.String() == "true"
-	}
+	oldHandler := cmds.PersistentPreRun
+	cmds.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		flag := cmds.Flags().Lookup(batchFlag)
+		batch := false
+		if flag != nil {
+			batch = flag.Value.String() == "true"
+		}
 
-	if !batch {
-		viper.SetDefault(config.WantUpdateNotification, true)
-		update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, "")
+		if !batch {
+			viper.SetDefault(config.WantUpdateNotification, true)
+			update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, "")
+
+		}
+		if oldHandler != nil {
+			oldHandler(cmd, args)
+		}
 	}
 
 	cmds.AddCommand(commands.NewCmdValidate(f))
