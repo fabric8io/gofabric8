@@ -13,6 +13,12 @@
 
 package version
 
+import (
+	"strings"
+
+	"github.com/blang/semver"
+)
+
 // Build information. Populated at build-time.
 var (
 	Version   string
@@ -31,4 +37,14 @@ var Map = map[string]string{
 	"buildUser": BuildUser,
 	"buildDate": BuildDate,
 	"goVersion": GoVersion,
+}
+
+const VersionPrefix = ""
+
+func GetVersion() string {
+	return Map["version"]
+}
+
+func GetSemverVersion() (semver.Version, error) {
+	return semver.Make(strings.TrimPrefix(GetVersion(), VersionPrefix))
 }
