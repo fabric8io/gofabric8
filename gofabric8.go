@@ -19,6 +19,7 @@ import (
 	"os"
 
 	commands "github.com/fabric8io/gofabric8/cmds"
+	"github.com/fabric8io/gofabric8/util"
 	"github.com/jimmidyson/minishift/pkg/minikube/update"
 	"github.com/kubernetes/minikube/pkg/minikube/config"
 	"github.com/spf13/cobra"
@@ -29,9 +30,11 @@ import (
 const (
 	batchFlag = "batch"
 
-	githubOrg  = "fabric8io"
-	githubRepo = "gofabric8"
-	binaryName = githubRepo
+	githubOrg       = "fabric8io"
+	githubRepo      = "gofabric8"
+	binaryName      = githubRepo
+	lastUpdateCheck = "last_update_check"
+	hiddenFolder    = "/.fabric8/"
 )
 
 func runHelp(cmd *cobra.Command, args []string) {
@@ -66,8 +69,18 @@ func main() {
 			}
 
 			if !batch {
+				home := os.Getenv("HOME")
+				if home == "" {
+					util.Error("No $HOME environment variable found")
+				}
+				writeFileLocation := home + hiddenFolder
+				err := os.MkdirAll(writeFileLocation, 0700)
+				if err != nil {
+					util.Errorf("Unable to create directory to store update file %s %v\n", writeFileLocation, err)
+				}
 				viper.SetDefault(config.WantUpdateNotification, true)
-				update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, "")
+				viper.SetDefault(config.ReminderWaitPeriodInHours, 24)
+				update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, writeFileLocation+lastUpdateCheck)
 
 			}
 		}
