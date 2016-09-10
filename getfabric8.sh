@@ -85,9 +85,13 @@ fi
 
 chmod +x ${file}
 
+echo "\n"
 echo "Installing binaries to ~/fabric8/bin"
-
-./gofabric8 install
-
-echo "Edit ~/.zshrc or ~/.zshrc and add the following line to the end of the file so you can execute the new binaries"
+echo "\n"
+echo "Edit your ~/.zshrc or ~/.bashrc and add the following line to the end of the file so you can execute the new binaries"
 echo "export PATH=\$PATH:/Users/jamesrawlings/fabric8/bin"
+echo "source ~/.zshrc or ~/.zshrc"
+echo "\n"
+echo "To work with the fabric8 microservices platform either:"
+echo " - 'gofabric8 install' for a local cloud development platform" 
+echo " - 'gofabric8 deploy' after connecting to an existing Kubernetes or OpenShift cluster"
