@@ -39,6 +39,7 @@ const (
 	minishift            = "minishift"
 	minishiftDownloadURL = "https://github.com/jimmidyson/"
 	kubectl              = "kubectl"
+	kubernetes           = "kubernetes"
 	oc                   = "oc"
 	binLocation          = "/fabric8/bin/"
 )
@@ -139,9 +140,9 @@ func downloadClient(isMinishift bool) (err error) {
 
 	_, err = exec.LookPath(kubectl)
 	if err != nil {
-		latestVersion, err := getLatestVersionFromGitHub(kubeDistroOrg, kubeDistroRepo)
+		latestVersion, err := getLatestVersionFromGitHub(kubeDistroOrg, kubernetes)
 		if err != nil {
-			return fmt.Errorf("Unable to get latest version for %s/%s %v", kubeDistroOrg, kubeDistroRepo, err)
+			return fmt.Errorf("Unable to get latest version for %s/%s %v", kubeDistroOrg, kubernetes, err)
 		}
 
 		if isMinishift {
