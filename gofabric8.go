@@ -54,18 +54,22 @@ func main() {
 	f := cmdutil.NewFactory(nil)
 	f.BindFlags(cmds.PersistentFlags())
 
+	updated := false
 	oldHandler := cmds.PersistentPreRun
 	cmds.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-		flag := cmds.Flags().Lookup(batchFlag)
-		batch := false
-		if flag != nil {
-			batch = flag.Value.String() == "true"
-		}
+		if !updated {
+			updated = true
+			flag := cmds.Flags().Lookup(batchFlag)
+			batch := false
+			if flag != nil {
+				batch = flag.Value.String() == "true"
+			}
 
-		if !batch {
-			viper.SetDefault(config.WantUpdateNotification, true)
-			update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, "")
+			if !batch {
+				viper.SetDefault(config.WantUpdateNotification, true)
+				update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, "")
 
+			}
 		}
 		if oldHandler != nil {
 			oldHandler(cmd, args)
