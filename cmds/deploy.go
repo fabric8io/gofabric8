@@ -52,6 +52,7 @@ import (
 	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
 	"github.com/openshift/origin/pkg/template/generator"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
@@ -97,6 +98,7 @@ const (
 	dockerRegistryFlag  = "docker-registry"
 	archFlag            = "arch"
 	noPVFlag            = "no-pvc"
+	pvFlag              = "pv"
 
 	domainAnnotation   = "fabric8.io/domain"
 	typeLabel          = "type"
@@ -166,7 +168,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 			useIngress := cmd.Flags().Lookup(useIngressFlag).Value.String() == "true"
 			deployConsole := cmd.Flags().Lookup(consoleFlag).Value.String() == "true"
-			noPV := cmd.Flags().Lookup(noPVFlag).Value.String() == "true"
+
+			pv, err := shouldEnablePV(c, cmd.Flags())
+			if err != nil {
+				util.Fatalf("No nodes available, something bad has happened: %v", err)
+			}
 
 			mavenRepo := cmd.Flags().Lookup(mavenRepoFlag).Value.String()
 			if !strings.HasSuffix(mavenRepo, "/") {
@@ -276,7 +282,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 							// lets delete the OAuthClient first as the domain may have changed
 							oc.OAuthClients().Delete("fabric8")
-							createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc, noPV)
+							createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc, pv)
 
 							oac, err := oc.OAuthClients().Get("fabric8")
 							if err != nil {
@@ -325,11 +331,11 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 					printError("Ignoring the deploy of templates", nil)
 				}
 
-				runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, noPV)
+				runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, pv)
 				externalNodeName := ""
 				if typeOfMaster == util.Kubernetes {
 					if useIngress && !mini {
-						runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, noPV)
+						runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
 						externalNodeName = addIngressInfraLabel(c, ns)
 					}
 				}
@@ -365,7 +371,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 
 				appToRun := cmd.Flags().Lookup(runFlag).Value.String()
 				if len(appToRun) > 0 {
-					runTemplate(c, oc, appToRun, ns, domain, apiserver, noPV)
+					runTemplate(c, oc, appToRun, ns, domain, apiserver, pv)
 
 					// lets create any missing PVs if on minikube or minishift
 					found, pendingClaimNames := findPendingPVS(c, ns)
@@ -446,7 +452,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(mavenRepoFlag, "https://repo1.maven.org/maven2/", "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().String(runFlag, "cd-pipeline", "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
-	cmd.PersistentFlags().Bool(noPVFlag, false, "Disable the use of persistence (disabling the PersistentVolumeClaims)?")
+	cmd.PersistentFlags().Bool(pvFlag, true, "Enable the use of persistence (Not currently supported on the CDK)")
+	cmd.PersistentFlags().Bool(noPVFlag, false, "(Deprecated use --pv=false to disable instead) Disable the use of persistence (disabling the PersistentVolumeClaims)?")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
@@ -489,6 +496,27 @@ func printSummary(typeOfMaster util.MasterType, externalNodeName string, mini bo
 	util.Infof("Downloading images and waiting to open the fabric8 console...\n")
 	util.Info("\n")
 	util.Info("-------------------------\n")
+}
+
+func shouldEnablePV(c *k8sclient.Client, flags *pflag.FlagSet) (bool, error) {
+
+	if flags.Lookup(noPVFlag).Value.String() == "true" {
+		return false, nil
+	}
+
+	nodes, err := c.Nodes().List(api.ListOptions{})
+	if err != nil {
+		return false, err
+	}
+	if len(nodes.Items) == 1 {
+		node := nodes.Items[0]
+		if node.Name == boot2docker {
+			return false, nil
+		} else if node.Name == minikubeNodeName || node.Name == minishiftNodeName {
+			return true, nil
+		}
+	}
+	return flags.Lookup(pvFlag).Value.String() == "true", nil
 }
 
 func getClientTypeName(typeOfMaster util.MasterType) string {
@@ -540,7 +568,7 @@ func hasExistingLabel(nodes *api.NodeList, label string) (bool, string) {
 	return false, ""
 }
 
-func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, noPV bool) {
+func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, pv bool) {
 	util.Info("\n\nInstalling: ")
 	util.Successf("%s\n\n", appToRun)
 	typeOfMaster := util.TypeOfMaster(c)
@@ -549,7 +577,7 @@ func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns st
 		if err != nil {
 			printError("Failed to load app "+appToRun, err)
 		}
-		createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc, noPV)
+		createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc, pv)
 	} else {
 		tmpl, err := oc.Templates(ns).Get(appToRun)
 		if err != nil {
@@ -562,7 +590,7 @@ func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns st
 
 		util.Infof("Creating "+appToRun+" template resources from %d objects\n", objectCount)
 		for _, o := range tmpl.Objects {
-			err = processItem(c, oc, &o, ns, noPV)
+			err = processItem(c, oc, &o, ns, pv)
 		}
 	}
 }
@@ -596,7 +624,7 @@ func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *o
 	return nil, "", nil
 }
 
-func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client, noPV bool) {
+func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client, pv bool) {
 	var v1tmpl tapiv1.Template
 	var err error
 	if format == "yaml" {
@@ -630,7 +658,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 			util.Fatalf("Cannot unmarshal List %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
 		}
 		if len(v1List.Items) == 0 {
-			processData(jsonData, format, templateName, ns, c, oc, noPV)
+			processData(jsonData, format, templateName, ns, c, oc, pv)
 		} else {
 			for _, i := range v1List.Items {
 				data := i.Raw
@@ -650,7 +678,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 					}
 				}
 				if len(kind) == 0 {
-					processData(data, format, templateName, ns, c, oc, noPV)
+					processData(data, format, templateName, ns, c, oc, pv)
 				} else {
 					// TODO how to find the Namespace?
 					err = processResource(c, data, ns, kind)
@@ -667,7 +695,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	} else {
 		util.Infof("Creating "+templateName+" template resources from %d objects\n", objectCount)
 		for _, o := range tmpl.Objects {
-			err = processItem(c, oc, &o, ns, noPV)
+			err = processItem(c, oc, &o, ns, pv)
 		}
 	}
 	if err != nil {
@@ -697,7 +725,7 @@ func processTemplate(tmpl *tapi.Template, domain string, apiserver string) {
 	}
 }
 
-func processData(jsonData []byte, format string, templateName string, ns string, c *k8sclient.Client, oc *oclient.Client, noPV bool) {
+func processData(jsonData []byte, format string, templateName string, ns string, c *k8sclient.Client, oc *oclient.Client, pv bool) {
 	// lets check if its an RC / ReplicaSet or something
 	o, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
 	if err != nil {
@@ -719,7 +747,7 @@ func processData(jsonData []byte, format string, templateName string, ns string,
 					printErr(err)
 				}
 			}
-			if noPV {
+			if !pv {
 				if kind == "PersistentVolumeClaim" {
 					return
 				}
@@ -808,7 +836,7 @@ func removePVCVolumes(jsonData []byte, format string, templateName string, kind 
 	return jsonData
 }
 
-func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, ns string, noPV bool) error {
+func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, ns string, pv bool) error {
 	/*
 		groupVersionKind, err := api.Scheme.ObjectKind(*item)
 		if err != nil {
@@ -853,7 +881,7 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 		if err != nil {
 			return err
 		}
-		if noPV {
+		if !pv {
 			if o.Kind == "PersistentVolumeClaim" {
 				return nil
 			}
