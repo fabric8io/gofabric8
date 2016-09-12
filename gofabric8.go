@@ -96,6 +96,7 @@ func main() {
 
 	cmds.AddCommand(commands.NewCmdConsole(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))
+	cmds.AddCommand(commands.NewCmdDockerEnv(f))
 	cmds.AddCommand(commands.NewCmdIngress(f))
 	cmds.AddCommand(commands.NewCmdInstall(f))
 	cmds.AddCommand(commands.NewCmdPull(f))
