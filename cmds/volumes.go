@@ -148,7 +148,7 @@ func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, co
 		}
 		if len(nodes.Items) == 1 {
 			node := nodes.Items[0]
-			if node.Name == minikubeNodeName || node.Name == minishiftNodeName || node.Name == boot2docker {
+			if node.Name == minikubeNodeName || node.Name == minishiftNodeName {
 				// lets figure out which one we are
 				// TODO there's no obvious annotation yet to know
 				// if it was created via minikube or minishift
