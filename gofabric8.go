@@ -20,6 +20,7 @@ import (
 
 	commands "github.com/fabric8io/gofabric8/cmds"
 	"github.com/fabric8io/gofabric8/util"
+	"github.com/fabric8io/gofabric8/version"
 	"github.com/jimmidyson/minishift/pkg/minikube/update"
 	"github.com/kubernetes/minikube/pkg/minikube/config"
 	"github.com/spf13/cobra"
@@ -78,9 +79,13 @@ func main() {
 				if err != nil {
 					util.Errorf("Unable to create directory to store update file %s %v\n", writeFileLocation, err)
 				}
+				localVersion, err := version.GetSemverVersion()
+				if err != nil {
+					util.Errorf("Unable to get local version %v", err)
+				}
 				viper.SetDefault(config.WantUpdateNotification, true)
 				viper.SetDefault(config.ReminderWaitPeriodInHours, 24)
-				update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, writeFileLocation+lastUpdateCheck)
+				update.MaybeUpdate(os.Stdout, githubOrg, githubRepo, binaryName, writeFileLocation+lastUpdateCheck, localVersion)
 
 			}
 		}

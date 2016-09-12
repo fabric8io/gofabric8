@@ -8,15 +8,14 @@ Find more information at http://fabric8.io.
 
 ### Install / Update & run
 
-Mac OSX
 ```
-FABRIC8_OS=darwin;FABRIC8_VERSION=0.4.58;curl -L -o gofabric8 https://github.com/fabric8io/gofabric8/releases/download/v$FABRIC8_VERSION/gofabric8-$FABRIC8_OS-amd64 && chmod +x gofabric8
+FABRIC8_OS=darwin;FABRIC8_VERSION=0.4.64;curl -L -o gofabric8 https://github.com/fabric8io/gofabric8/releases/download/v$FABRIC8_VERSION/gofabric8-$FABRIC8_OS-amd64 && chmod +x gofabric8
 gofabric8 version
 ```
 
 Linux
 ```
-FABRIC8_OS=linux;FABRIC8_VERSION=0.4.58;wget -O gofabric8 https://github.com/fabric8io/gofabric8/releases/download/v$FABRIC8_VERSION/gofabric8-$FABRIC8_OS-amd64; chmod +x gofabric8
+FABRIC8_OS=linux;FABRIC8_VERSION=0.4.64;wget -O gofabric8 https://github.com/fabric8io/gofabric8/releases/download/v$FABRIC8_VERSION/gofabric8-$FABRIC8_OS-amd64; chmod +x gofabric8
 gofabric8 version
 ```
 
