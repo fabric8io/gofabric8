@@ -143,8 +143,17 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			domain := cmd.Flags().Lookup(domainFlag).Value.String()
 			apiserver := cmd.Flags().Lookup(apiServerFlag).Value.String()
 			arch := cmd.Flags().Lookup(archFlag).Value.String()
-
+			mini := isMini(c, ns)
 			typeOfMaster := util.TypeOfMaster(c)
+
+			// extract the ip address from the URL
+			ip := strings.Split(cfg.Host, ":")[1]
+			ip = strings.Replace(ip, "/", "", 2)
+
+			if mini && typeOfMaster == util.OpenShift {
+				domain = ip + ".xip.io"
+				apiserver = ip
+			}
 
 			util.Info("Deploying fabric8 to your ")
 			util.Success(string(typeOfMaster))
@@ -158,7 +167,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			useIngress := cmd.Flags().Lookup(useIngressFlag).Value.String() == "true"
 			deployConsole := cmd.Flags().Lookup(consoleFlag).Value.String() == "true"
 			noPV := cmd.Flags().Lookup(noPVFlag).Value.String() == "true"
-			mini := isMini(c, ns)
 
 			mavenRepo := cmd.Flags().Lookup(mavenRepoFlag).Value.String()
 			if !strings.HasSuffix(mavenRepo, "/") {
@@ -412,9 +420,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				for _, node := range nodes.Items {
 					// if running on a single node then we can use node ports to access kubernetes services
 					if len(nodes.Items) == 1 {
-						// extract the ip address from the URL
-						ip := strings.Split(cfg.Host, ":")[1]
-						ip = strings.Replace(ip, "/", "", 2)
 						changed = addAnnotationIfNotExist(&node.ObjectMeta, externalIPNodeLabel, ip)
 					}
 					changed = addAnnotationIfNotExist(&node.ObjectMeta, externalAPIServerAddressLabel, cfg.Host)
