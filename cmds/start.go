@@ -32,7 +32,6 @@ import (
 const (
 	defaultMemory = "4096"
 	defaultCPU    = "1"
-	openshift     = "shift"
 )
 
 // NewCmdStart starts a local cloud environment
@@ -44,7 +43,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 
 		Run: func(cmd *cobra.Command, args []string) {
 
-			flag := cmd.Flags().Lookup(openshift)
+			flag := cmd.Flags().Lookup(minishift)
 			isOpenshift := false
 			if flag != nil {
 				isOpenshift = flag.Value.String() == "true"
@@ -82,18 +81,37 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				util.Fatalf("Unable to connect to %s", kubeBinary)
 			}
 
+			if isOpenshift {
+				// deploy fabric8
+				e := exec.Command("oc", "login", "--username=admin", "--password=admin")
+				e.Stdout = os.Stdout
+				e.Stderr = os.Stderr
+				err = e.Run()
+				if err != nil {
+					util.Errorf("Unable to login %v", err)
+				}
+
+			}
 			// deploy fabric8 if its not already running
 			ns, _, _ := f.DefaultNamespace()
 			_, err = c.Services(ns).Get("fabric8")
 			if err != nil {
-				util.Info("deploying the fabric8 microservices platform")
-				// how best to call the deploy code without setting PersistentFlags?
+				args := []string{"deploy", "y", "--app="}
+
+				// deploy fabric8
+				e := exec.Command("gofabric8", args...)
+				e.Stdout = os.Stdout
+				e.Stderr = os.Stderr
+				err = e.Run()
+				if err != nil {
+					util.Errorf("Unable to start %v", err)
+				}
 			} else {
 				openService(ns, "fabric8", c, false)
 			}
 		},
 	}
-	//cmd.PersistentFlags().BoolP(openshift, "s", false, "start the openshift flavour of Kubernetes")
+	cmd.PersistentFlags().BoolP(minishift, "", false, "start the openshift flavour of Kubernetes")
 	return cmd
 }
 
