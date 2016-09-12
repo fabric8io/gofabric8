@@ -98,6 +98,7 @@ func main() {
 	cmds.AddCommand(commands.NewCmdRoutes(f))
 	cmds.AddCommand(commands.NewCmdSecrets(f))
 	cmds.AddCommand(commands.NewCmdService(f))
+	cmds.AddCommand(commands.NewCmdStart(f))
 	cmds.AddCommand(commands.NewCmdVolumes(f))
 	cmds.AddCommand(commands.NewCmdVersion())
 

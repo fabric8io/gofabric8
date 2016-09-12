@@ -102,7 +102,7 @@ func CheckService(ns string, service string, c *k8sclient.Client) error {
 	}
 	url := svc.ObjectMeta.Annotations[exposeURLAnnotation]
 	if url == "" {
-		util.Infof("Waiting, external URL for %s service is not ready yet... \n", service)
+		util.Info(".")
 		return errors.New("")
 	}
 	endpoints := c.Endpoints(ns)
@@ -121,7 +121,7 @@ func CheckService(ns string, service string, c *k8sclient.Client) error {
 // Credits: https://github.com/kubernetes/minikube/blob/v0.9.0/cmd/minikube/cmd/service.go#L101
 func CheckEndpointReady(endpoint *kubeApi.Endpoints) error {
 	if len(endpoint.Subsets) == 0 {
-		fmt.Fprintf(os.Stderr, "Waiting, endpoint for service is not ready yet...\n")
+		fmt.Fprintf(os.Stderr, ".")
 		return fmt.Errorf("Endpoint for service is not ready yet\n")
 	}
 	for _, subset := range endpoint.Subsets {
