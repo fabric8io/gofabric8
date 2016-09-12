@@ -1,5 +1,5 @@
 hash: c49feecae12f9eba66630b73931e52e684bd35ee01a1abacade0bf2668b678c9
-updated: 2016-09-10T09:12:28.414175751+01:00
+updated: 2016-09-12T16:12:28.178023286+01:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: ""
@@ -76,7 +76,7 @@ imports:
   subpackages:
   - spew
 - name: github.com/daviddengcn/go-colortext
-  version: 77d1566b64cb36b0aea2b6de1525713d79a5dfdf
+  version: 40b06b63d445fb133aff4d243dc732b476cda8e7
 - name: github.com/dgrijalva/jwt-go
   version: ""
 - name: github.com/docker/distribution
@@ -133,7 +133,7 @@ imports:
   - external/golang.org/x/net/context
   - external/github.com/docker/go-units
 - name: github.com/ghodss/yaml
-  version: 77d1566b64cb36b0aea2b6de1525713d79a5dfdf
+  version: 40b06b63d445fb133aff4d243dc732b476cda8e7
 - name: github.com/gogo/protobuf
   version: ""
   subpackages:
@@ -211,7 +211,7 @@ imports:
 - name: github.com/inconshreveable/mousetrap
   version: ""
 - name: github.com/jimmidyson/minishift
-  version: 1ecce444f4c318c298eadfbdf13df0a86a154d60
+  version: c64c5578252e2603616dfd902e6dfa75398c2bf5
   subpackages:
   - pkg/minikube/update
   - pkg/minikube/config
@@ -222,7 +222,7 @@ imports:
 - name: github.com/kardianos/osext
   version: ""
 - name: github.com/kubernetes/minikube
-  version: 77d1566b64cb36b0aea2b6de1525713d79a5dfdf
+  version: 40b06b63d445fb133aff4d243dc732b476cda8e7
   subpackages:
   - pkg/minikube/config
 - name: github.com/magiconair/properties
@@ -316,9 +316,9 @@ imports:
 - name: github.com/pborman/uuid
   version: ""
 - name: github.com/pkg/browser
-  version: 77d1566b64cb36b0aea2b6de1525713d79a5dfdf
+  version: 40b06b63d445fb133aff4d243dc732b476cda8e7
 - name: github.com/pmezard/go-difflib
-  version: 77d1566b64cb36b0aea2b6de1525713d79a5dfdf
+  version: 40b06b63d445fb133aff4d243dc732b476cda8e7
   subpackages:
   - difflib
 - name: github.com/prometheus/client_golang
@@ -342,7 +342,7 @@ imports:
 - name: github.com/spf13/cast
   version: ""
 - name: github.com/spf13/cobra
-  version: 77d1566b64cb36b0aea2b6de1525713d79a5dfdf
+  version: 40b06b63d445fb133aff4d243dc732b476cda8e7
 - name: github.com/spf13/jwalterweatherman
   version: ""
 - name: github.com/spf13/pflag
@@ -350,7 +350,7 @@ imports:
 - name: github.com/spf13/viper
   version: ""
 - name: github.com/stretchr/testify
-  version: 77d1566b64cb36b0aea2b6de1525713d79a5dfdf
+  version: 40b06b63d445fb133aff4d243dc732b476cda8e7
   subpackages:
   - assert
 - name: github.com/ugorji/go
@@ -387,7 +387,7 @@ imports:
   - unix
   - windows/registry
 - name: google.golang.org/appengine
-  version: 77d1566b64cb36b0aea2b6de1525713d79a5dfdf
+  version: 40b06b63d445fb133aff4d243dc732b476cda8e7
   subpackages:
   - urlfetch
   - internal
