@@ -30,8 +30,9 @@ import (
 )
 
 const (
-	defaultMemory = "4096"
-	defaultCPU    = "1"
+	memory  = "memory"
+	cpus    = "cpus"
+	console = "console"
 )
 
 // NewCmdStart starts a local cloud environment
@@ -61,10 +62,21 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				util.Successf("%s already running\n", kubeBinary)
 
 			} else {
-				args := []string{"start", "--memory=" + defaultMemory, "--cpus=" + defaultCPU}
+				args := []string{"start"}
+
+				// if we're running on OSX default to using xhyve
 				if runtime.GOOS == "darwin" {
 					args = append(args, "--vm-driver=xhyve")
 				}
+
+				// set memory flag
+				memoryValue := cmd.Flags().Lookup(memory).Value.String()
+				args = append(args, "--memory="+memoryValue)
+
+				// set cpu flag
+				cpusValue := cmd.Flags().Lookup(cpus).Value.String()
+				args = append(args, "--cpus="+cpusValue)
+
 				// start the local VM
 				e := exec.Command(kubeBinary, args...)
 				e.Stdout = os.Stdout
@@ -96,7 +108,12 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			ns, _, _ := f.DefaultNamespace()
 			_, err = c.Services(ns).Get("fabric8")
 			if err != nil {
-				args := []string{"deploy", "y", "--app="}
+				args := []string{"deploy", "y"}
+
+				flag := cmd.Flags().Lookup(console)
+				if flag != nil && flag.Value.String() == "true" {
+					args = append(args, "--app=")
+				}
 
 				// deploy fabric8
 				e := exec.Command("gofabric8", args...)
@@ -112,6 +129,9 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.PersistentFlags().BoolP(minishift, "", false, "start the openshift flavour of Kubernetes")
+	cmd.PersistentFlags().BoolP(console, "", false, "start only the fabric8 console")
+	cmd.PersistentFlags().StringP(memory, "", "4096", "amount of RAM allocated to the VM")
+	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
 	return cmd
 }
 
