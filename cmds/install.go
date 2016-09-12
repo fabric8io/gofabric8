@@ -16,6 +16,7 @@
 package cmds
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,14 +35,17 @@ import (
 )
 
 const (
-	minishiftFlag        = "minishift"
-	minishiftOwner       = "jimmidyson"
-	minishift            = "minishift"
-	minishiftDownloadURL = "https://github.com/jimmidyson/"
-	kubectl              = "kubectl"
-	kubernetes           = "kubernetes"
-	oc                   = "oc"
-	binLocation          = "/fabric8/bin/"
+	docker                   = "docker"
+	dockerMachine            = "docker-machine"
+	dockerMachineDownloadURL = "https://github.com/docker/machine/releases/download/"
+	minishiftFlag            = "minishift"
+	minishiftOwner           = "jimmidyson"
+	minishift                = "minishift"
+	minishiftDownloadURL     = "https://github.com/jimmidyson/"
+	kubectl                  = "kubectl"
+	kubernetes               = "kubernetes"
+	oc                       = "oc"
+	binLocation              = "/fabric8/bin/"
 )
 
 var (
@@ -82,20 +86,75 @@ func NewCmdInstall(f *cmdutil.Factory) *cobra.Command {
 				util.Errorf("Unable to create directory to download files %s %v\n", writeFileLocation, err)
 			}
 
+			err = downloadDriver()
+			if err != nil {
+				util.Warnf("Unable to download driver %v\n", err)
+			}
+
 			err = downloadKubernetes(isMinishift)
 			if err != nil {
-				util.Warnf("Unable to download kubernetes distro %v", err)
+				util.Warnf("Unable to download kubernetes distro %v\n", err)
 			}
 
 			err = downloadClient(isMinishift)
 			if err != nil {
-				util.Warnf("Unable to download client %v", err)
+				util.Warnf("Unable to download client %v\n", err)
 			}
 
 		},
 	}
 	cmd.PersistentFlags().Bool(minishiftFlag, false, "Install minishift rather than minikube")
 	return cmd
+}
+
+func downloadDriver() (err error) {
+
+	if runtime.GOOS == "darwin" {
+		util.Infof("fabric8 recommends OSX users use the xhyve driver\n")
+		info, err := exec.Command("brew", "info", "docker-machine-driver-xhyve").Output()
+
+		if err != nil || strings.Contains(string(info), "Not installed") {
+			e := exec.Command("brew", "install", "docker-machine-driver-xhyve")
+			e.Stdout = os.Stdout
+			e.Stderr = os.Stderr
+			err = e.Run()
+			if err != nil {
+				return err
+			}
+
+			out, err := exec.Command("brew", "--prefix").Output()
+			if err != nil {
+				return err
+			}
+
+			brewPrefix := strings.TrimSpace(string(out))
+
+			file := string(brewPrefix) + "/opt/docker-machine-driver-xhyve/bin/docker-machine-driver-xhyve"
+			e = exec.Command("sudo", "chown", "root:wheel", file)
+			e.Stdout = os.Stdout
+			e.Stderr = os.Stderr
+			err = e.Run()
+			if err != nil {
+				return err
+			}
+
+			e = exec.Command("sudo", "chmod", "u+s", file)
+			e.Stdout = os.Stdout
+			e.Stderr = os.Stderr
+			err = e.Run()
+			if err != nil {
+				return err
+			}
+
+			util.Success("xhyve driver installed\n")
+		} else {
+			util.Success("xhyve driver already installed\n")
+		}
+
+	} else if runtime.GOOS == "linux" {
+		return errors.New("Driver install for " + runtime.GOOS + " not yet supported")
+	}
+	return nil
 }
 
 func downloadKubernetes(isMinishift bool) (err error) {
