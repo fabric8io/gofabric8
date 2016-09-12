@@ -34,15 +34,15 @@ const (
 func NewCmdDockerEnv(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "docker-env",
-		Short: "Sets up docker env variables; similar to '$(docker-machine env)'",
-		Long:  `Sets up docker env variables; similar to '$(docker-machine env)'`,
+		Short: "Sets up docker env variables; Usage 'eval $(gofabric8 docker-env)'",
+		Long:  `Sets up docker env variables; Usage 'eval $(gofabric8 docker-env)'`,
 
 		Run: func(cmd *cobra.Command, args []string) {
 			c, _ := client.NewClient(f)
 
 			nodes, err := c.Nodes().List(api.ListOptions{})
 			if err != nil {
-				util.Errorf("\nUnable to find any nodes: %s\n", err)
+				util.Errorf("Unable to find any nodes: %s\n", err)
 			}
 			if len(nodes.Items) == 1 {
 				node := nodes.Items[0]

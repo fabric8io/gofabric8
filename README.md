@@ -29,6 +29,22 @@ To install the [fabric8 microservices platform](http://fabric8.io/) then run the
 gofabric8 deploy --domain=your.domain.io
 ```
 
+### Reusing the Docker daemon
+
+When developing locally and using a single VM its really handy to reuse the Docker daemon inside the VM; as this means you don't have to build on your host machine and push the image into a docker registry - you can just build inside the same docker daemon as minikube which speeds up local experiments.
+
+To be able to work with the docker daemon on your mac/linux host use the docker-env command in your shell:
+
+```
+eval $(gofabric8 docker-env)
+```
+you should now be able to use docker on the command line on your host mac/linux machine talking to the docker daemon inside the minikube VM:
+
+```
+docker ps
+```
+Remember to turn off the imagePullPolicy:Always, as otherwise kubernetes won't use images you built locally.
+
 ### Run different versions
 
 When deploying, by default the latest release version is used.  In order to deploy a specific version you can use the various`--version-xxxx` flags as detailed under 
