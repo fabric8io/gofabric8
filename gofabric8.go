@@ -94,18 +94,19 @@ func main() {
 		}
 	}
 
-	cmds.AddCommand(commands.NewCmdValidate(f))
+	cmds.AddCommand(commands.NewCmdConsole(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))
-	cmds.AddCommand(commands.NewCmdRun(f))
-	cmds.AddCommand(commands.NewCmdPull(f))
 	cmds.AddCommand(commands.NewCmdIngress(f))
 	cmds.AddCommand(commands.NewCmdInstall(f))
+	cmds.AddCommand(commands.NewCmdPull(f))
 	cmds.AddCommand(commands.NewCmdRoutes(f))
+	cmds.AddCommand(commands.NewCmdRun(f))
 	cmds.AddCommand(commands.NewCmdSecrets(f))
 	cmds.AddCommand(commands.NewCmdService(f))
 	cmds.AddCommand(commands.NewCmdStart(f))
-	cmds.AddCommand(commands.NewCmdVolumes(f))
+	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdVersion())
+	cmds.AddCommand(commands.NewCmdVolumes(f))
 
 	cmds.Execute()
 }
