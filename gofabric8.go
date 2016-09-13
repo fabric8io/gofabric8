@@ -17,6 +17,7 @@ package main
 
 import (
 	"os"
+	"runtime"
 
 	commands "github.com/fabric8io/gofabric8/cmds"
 	"github.com/fabric8io/gofabric8/util"
@@ -26,6 +27,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/util/homedir"
 )
 
 const (
@@ -70,9 +72,9 @@ func main() {
 			}
 
 			if !batch {
-				home := os.Getenv("HOME")
+				home := homedir.HomeDir()
 				if home == "" {
-					util.Error("No $HOME environment variable found")
+					util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
 				}
 				writeFileLocation := home + hiddenFolder
 				err := os.MkdirAll(writeFileLocation, 0700)
