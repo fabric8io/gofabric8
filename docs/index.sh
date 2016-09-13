@@ -36,6 +36,13 @@ function get_latest_version_number {
   fi
 }
 
+if [[ $(which gofabric8) ]]; then
+  echo "gofabric8 already found on your PATH"
+  exit 0
+fi
+
+mkdir -p ~/fabric8/bin
+
 uname=$(uname)
 if [[ "${uname}" == "Darwin" ]]; then
   platform="darwin"
@@ -65,7 +72,7 @@ fi
 release=`get_latest_version_number`
 release_url=https://github.com/fabric8io/gofabric8/releases/download/v${release}/gofabric8-${platform}-${arch}
 
-file=gofabric8
+file=~/fabric8/bin/gofabric8
 
 echo "Downloading ${file} release ${release} to ${PWD}/${file}"
 
@@ -74,14 +81,21 @@ if [[ "${FABRIC8_SKIP_DOWNLOAD-}" ]]; then
   exit 0
 fi
 
-if [[ $(which wget) ]]; then
-  wget -O ${file} ${release_url}
-elif [[ $(which curl) ]]; then
-  curl -L -o ${file} ${release_url}
-else
-  echo "Couldn't find curl or wget.  Bailing out."
-  exit 1
-fi
+tmpfile=$(mktemp /tmp/gofabric8-download.XXXXXX)
+exec 3>"$tmpfile"
+rm "$tmpfile"
+  if [[ $(which wget) ]]; then
+    wget -O ${tmpfile} ${release_url}
+  elif [[ $(which curl) ]]; then
+    curl -L -o ${tmpfile} ${release_url}
+  else
+    echo "Couldn't find curl or wget.  Bailing out."
+    exit 1
+  fi
+  mv $tmpfile ${file}
+echo foo >&3
+
+
 
 chmod +x ${file}
 
@@ -89,7 +103,7 @@ echo "\n"
 echo "Installing binaries to ~/fabric8/bin"
 echo "\n"
 echo "Edit your ~/.zshrc or ~/.bashrc and add the following line to the end of the file so you can execute the new binaries"
-echo "export PATH=\$PATH:/Users/jamesrawlings/fabric8/bin"
+echo "export PATH=\$PATH:~/fabric8/bin"
 echo "source ~/.zshrc or ~/.zshrc"
 echo "\n"
 echo "To work with the fabric8 microservices platform either:"
