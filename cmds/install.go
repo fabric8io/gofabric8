@@ -32,6 +32,7 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/util/homedir"
 )
 
 const (
@@ -75,9 +76,9 @@ func NewCmdInstall(f *cmdutil.Factory) *cobra.Command {
 
 			isMinishift := cmd.Flags().Lookup(minishiftFlag).Value.String() == "true"
 
-			home := os.Getenv("HOME")
+			home := homedir.HomeDir()
 			if home == "" {
-				util.Error("No $HOME environment variable found")
+				util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
 			}
 			writeFileLocation = home + binLocation
 
