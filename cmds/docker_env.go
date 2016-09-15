@@ -18,16 +18,13 @@ package cmds
 import (
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-const (
-	rhelcdk = "default/10-1-2-2:8443/admin" // seems like an odd context name, lets try it for now in the absence of anything else
-)
+const ()
 
 // NewCmdDockerEnv sets the current
 func NewCmdDockerEnv(f *cmdutil.Factory) *cobra.Command {
@@ -37,25 +34,22 @@ func NewCmdDockerEnv(f *cmdutil.Factory) *cobra.Command {
 		Long:  `Sets up docker env variables; Usage 'eval $(gofabric8 docker-env)'`,
 
 		Run: func(cmd *cobra.Command, args []string) {
-
-			out, err := exec.Command("kubectl config current-context").Output()
+			context, err := util.GetConfigContext()
 			if err != nil {
 				util.Fatalf("Error getting current context %v", err)
 			}
-			context := strings.TrimSpace(string(out))
-
 			var command string
 			var cargs []string
 
-			if context == minikubeNodeName {
+			if context == util.Minikube {
 				command = "minikube"
 				cargs = []string{"docker-env"}
 
-			} else if context == minishiftNodeName {
+			} else if context == util.Minishift {
 				command = "minishift"
 				cargs = []string{"docker-env"}
 
-			} else if context == rhelcdk {
+			} else if context == util.CDK {
 				command = "vagrant"
 				cargs = []string{"service-manager", "env", "docker"}
 			}

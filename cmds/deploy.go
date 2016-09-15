@@ -112,8 +112,6 @@ const (
 	nodePort     = "node-port"
 	route        = "route"
 
-	minikubeNodeName              = "minikubevm"
-	minishiftNodeName             = "minishift"
 	boot2docker                   = "boot2docker"
 	exposeRule                    = "expose-rule"
 	externalIPNodeLabel           = "kubernetes.io/externalIP"
@@ -145,7 +143,10 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			domain := cmd.Flags().Lookup(domainFlag).Value.String()
 			apiserver := cmd.Flags().Lookup(apiServerFlag).Value.String()
 			arch := cmd.Flags().Lookup(archFlag).Value.String()
-			mini := isMini(c, ns)
+			mini, err := util.IsMini()
+			if err != nil {
+				util.Failuref("Unable to detect platform deploying to %v", err)
+			}
 			typeOfMaster := util.TypeOfMaster(c)
 
 			// extract the ip address from the URL
@@ -436,7 +437,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 						}
 					}
 				}
-				printSummary(typeOfMaster, externalNodeName, mini, ns, domain)
+				printSummary(typeOfMaster, externalNodeName, ns, domain)
 
 				openService(ns, "fabric8", c, false)
 			}
@@ -452,7 +453,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(mavenRepoFlag, "https://repo1.maven.org/maven2/", "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().String(runFlag, "cd-pipeline", "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
-	cmd.PersistentFlags().Bool(pvFlag, true, "Enable the use of persistence (Not currently supported on the CDK)")
+	cmd.PersistentFlags().Bool(pvFlag, false, "Default: false, unless on minikube or minishift where persistence is enabled out of the box")
 	cmd.PersistentFlags().Bool(noPVFlag, false, "(Deprecated use --pv=false to disable instead) Disable the use of persistence (disabling the PersistentVolumeClaims)?")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
@@ -475,7 +476,7 @@ func initSchema() {
 	oauthapiv1.AddToScheme(api.Scheme)
 }
 
-func printSummary(typeOfMaster util.MasterType, externalNodeName string, mini bool, ns string, domain string) {
+func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns string, domain string) {
 	util.Info("\n")
 	util.Info("-------------------------\n")
 	util.Info("\n")
@@ -500,23 +501,24 @@ func printSummary(typeOfMaster util.MasterType, externalNodeName string, mini bo
 
 func shouldEnablePV(c *k8sclient.Client, flags *pflag.FlagSet) (bool, error) {
 
+	// did we choose to disable PV?
 	if flags.Lookup(noPVFlag).Value.String() == "true" {
 		return false, nil
 	}
 
-	nodes, err := c.Nodes().List(api.ListOptions{})
-	if err != nil {
-		return false, err
+	// did we choose to enable PV?
+	if flags.Lookup(pvFlag).Value.String() == "true" {
+		return true, nil
 	}
-	if len(nodes.Items) == 1 {
-		node := nodes.Items[0]
-		if node.Name == boot2docker {
-			return false, nil
-		} else if node.Name == minikubeNodeName || node.Name == minishiftNodeName {
-			return true, nil
-		}
+
+	// lets default use PV for mini*
+	mini, _ := util.IsMini()
+	if mini {
+		return true, nil
 	}
-	return flags.Lookup(pvFlag).Value.String() == "true", nil
+
+	// until PV works with stackpoint cloud and openshift lets not enable
+	return false, nil
 }
 
 func getClientTypeName(typeOfMaster util.MasterType) string {
@@ -1521,16 +1523,4 @@ func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) str
 		return route
 	}
 	return ""
-}
-
-func isMini(c *k8sclient.Client, ns string) bool {
-	nodes, err := c.Nodes().List(api.ListOptions{})
-	if err != nil {
-		util.Errorf("\nUnable to find any nodes: %s\n", err)
-	}
-	if len(nodes.Items) == 1 {
-		node := nodes.Items[0]
-		return node.Name == minikubeNodeName || node.Name == minishiftNodeName || node.Name == boot2docker
-	}
-	return false
 }

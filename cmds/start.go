@@ -54,7 +54,6 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			// check if already running
-			// TODO: should we vendor the minikube and minishift status packages rather than using exec?
 			out, err := exec.Command(kubeBinary, "status").Output()
 			status := strings.TrimSpace(string(out))
 			if err == nil && status == "Running" {
