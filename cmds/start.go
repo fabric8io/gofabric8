@@ -55,7 +55,19 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 
 			// check if already running
 			out, err := exec.Command(kubeBinary, "status").Output()
-			status := strings.TrimSpace(string(out))
+			if err != nil {
+				util.Fatalf("Unable to get status")
+			}
+			// get the first line
+			status := strings.Split(string(out), "\n")[0]
+
+			// as of minikube v0.10.0 output is in the form `minikube version: v0.10.0``
+			if len(strings.Split(status, ":")) > 0 {
+				status = strings.Split(status, ":")[1]
+			}
+			status = strings.TrimSpace(status)
+
+			util.Infof("b %s", status)
 			if err == nil && status == "Running" {
 				// already running so lets
 				util.Successf("%s already running\n", kubeBinary)
@@ -115,7 +127,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				// deploy fabric8
-				e := exec.Command("gofabric8", args...)
+				e := exec.Command("./build/gofabric8", args...)
 				e.Stdout = os.Stdout
 				e.Stderr = os.Stderr
 				err = e.Run()
@@ -150,7 +162,7 @@ func keepTryingToGetClient(f *cmdutil.Factory) (*client.Client, error) {
 			if c != nil {
 				return c, nil
 			}
-			util.Info("Cannot connect to api server, retrying...")
+			util.Info("Cannot connect to api server, retrying...\n")
 			// retry
 		}
 	}
