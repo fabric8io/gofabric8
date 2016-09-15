@@ -58,26 +58,31 @@ gofabric8 deploy help
 ```
 gofabric8 help
 gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment
-       								Find more information at http://fabric8.io.
+								Find more information at http://fabric8.io.
 
 Usage:
   gofabric8 [flags]
   gofabric8 [command]
 
 Available Commands:
-  validate    Validate your Kubernetes or OpenShift environment
+  console     Open the fabric8 console
   deploy      Deploy fabric8 to your Kubernetes or OpenShift environment
-  run         Runs a fabric8 microservice from one of the installed templates
-  pull        Pulls the docker images for the given templates
+  docker-env  Sets up docker env variables; Usage 'eval $(gofabric8 docker-env)'
   ingress     Creates any missing Ingress resources for services
+  install     Installs the dependencies to locally run the fabric8 microservices platform
+  pull        Pulls the docker images for the given templates
   routes      Creates any missing Routes for services
+  run         Runs a fabric8 microservice from one of the installed templates
   secrets     Set up Secrets on your Kubernetes or OpenShift environment
   service     Opens the specified Kubernetes service in your browser
-  volumes     Creates a persisent volume for any pending persistance volume claims
+  start       Starts a local cloud development environment
+  validate    Validate your Kubernetes or OpenShift environment
   version     Display version & exit
+  volumes     Creates a persisent volume for any pending persistance volume claims
 
 Flags:
       --as string                      Username to impersonate for the operation.
+  -b, --batch                          Run in batch mode to avoid prompts
       --certificate-authority string   Path to a cert. file for the certificate authority.
       --client-certificate string      Path to a client certificate file for TLS.
       --client-key string              Path to a client key file for TLS.
