@@ -80,7 +80,7 @@ func openService(ns string, serviceName string, c *k8sclient.Client, printURL bo
 			if printURL {
 				util.Successf("%s\n", url)
 			} else {
-				util.Successf("Opening URL %s\n", url)
+				util.Successf("\nOpening URL %s\n", url)
 				browser.OpenURL(url)
 			}
 			found = true

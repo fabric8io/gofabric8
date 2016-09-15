@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 
 	"github.com/fabric8io/gofabric8/client"
@@ -142,29 +141,9 @@ func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, co
 	}
 
 	if len(cli) == 0 {
-		nodes, err := c.Nodes().List(api.ListOptions{})
-		if err != nil {
-			return err
-		}
-		if len(nodes.Items) == 1 {
-			node := nodes.Items[0]
-			if node.Name == minikubeNodeName || node.Name == minishiftNodeName {
-				// lets figure out which one we are
-				// TODO there's no obvious annotation yet to know
-				// if it was created via minikube or minishift
-				// so lets look at the images
-				cli = "minikube"
-
-				for _, image := range node.Status.Images {
-					for _, imageName := range image.Names {
-						if strings.HasPrefix(imageName, "openshift/origin-pod:") {
-							cli = "minishift"
-							break
-						}
-					}
-
-				}
-			}
+		context, isMini, _ := util.GetMiniType()
+		if isMini {
+			cli = context
 		}
 	}
 	if len(cli) == 0 {

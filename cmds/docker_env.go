@@ -19,16 +19,12 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
-	"k8s.io/kubernetes/pkg/api"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-const (
-	rhelcdk = "rhel-cdk"
-)
+const ()
 
 // NewCmdDockerEnv sets the current
 func NewCmdDockerEnv(f *cmdutil.Factory) *cobra.Command {
@@ -38,45 +34,36 @@ func NewCmdDockerEnv(f *cmdutil.Factory) *cobra.Command {
 		Long:  `Sets up docker env variables; Usage 'eval $(gofabric8 docker-env)'`,
 
 		Run: func(cmd *cobra.Command, args []string) {
-			c, _ := client.NewClient(f)
-
-			nodes, err := c.Nodes().List(api.ListOptions{})
+			context, err := util.GetConfigContext()
 			if err != nil {
-				util.Errorf("Unable to find any nodes: %s\n", err)
+				util.Fatalf("Error getting current context %v", err)
 			}
-			if len(nodes.Items) == 1 {
-				node := nodes.Items[0]
-				var command string
-				var args []string
+			var command string
+			var cargs []string
 
-				if node.Name == minikubeNodeName {
-					command = "minikube"
-					args = []string{"docker-env"}
+			if context == util.Minikube {
+				command = "minikube"
+				cargs = []string{"docker-env"}
 
-				} else if node.Name == minishiftNodeName {
-					command = "minishift"
-					args = []string{"docker-env"}
+			} else if context == util.Minishift {
+				command = "minishift"
+				cargs = []string{"docker-env"}
 
-				} else if node.Name == rhelcdk {
-					command = "vagrant"
-					args = []string{"service-manager", "env", "docker"}
-				}
+			} else if context == util.CDK {
+				command = "vagrant"
+				cargs = []string{"service-manager", "env", "docker"}
+			}
 
-				if command == "" {
-					util.Fatalf("Unrecognised cluster environment for node %s\n", node.Name)
-					util.Fatalf("docker-env support is currently only for CDK, Minishift and Minikube\n")
+			if command == "" {
+				util.Fatalf("Context %s not supported.  Currently only CDK, Minishift and Minikube are supported\n", context)
+			}
 
-				}
-
-				e := exec.Command(command, args...)
-				e.Stdout = os.Stdout
-				e.Stderr = os.Stderr
-				err = e.Run()
-				if err != nil {
-					util.Fatalf("Unable to set the docker environment %v", err)
-				}
-			} else {
-				util.Fatalf("docker-env is only available to run on clusters of 1 node")
+			e := exec.Command(command, cargs...)
+			e.Stdout = os.Stdout
+			e.Stderr = os.Stderr
+			err = e.Run()
+			if err != nil {
+				util.Fatalf("Unable to set the docker environment %v", err)
 			}
 
 		},
