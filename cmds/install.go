@@ -46,7 +46,7 @@ const (
 	kubectl                  = "kubectl"
 	kubernetes               = "kubernetes"
 	oc                       = "oc"
-	binLocation              = "/fabric8/bin/"
+	binLocation              = "/.fabric8/bin/"
 )
 
 var (
@@ -69,45 +69,45 @@ func NewCmdInstall(f *cmdutil.Factory) *cobra.Command {
 		Long:  `Installs the dependencies to locally run the fabric8 microservices platform`,
 
 		Run: func(cmd *cobra.Command, args []string) {
-
-			if runtime.GOOS == "windows" {
-				util.Errorf("%s is not yet supported by gofabric8 install", runtime.GOOS)
-			}
-
 			isMinishift := cmd.Flags().Lookup(minishiftFlag).Value.String() == "true"
-
-			home := homedir.HomeDir()
-			if home == "" {
-				util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
-			}
-			writeFileLocation = home + binLocation
-
-			err := os.MkdirAll(writeFileLocation, 0700)
-			if err != nil {
-				util.Errorf("Unable to create directory to download files %s %v\n", writeFileLocation, err)
-			}
-
-			err = downloadDriver()
-			if err != nil {
-				util.Warnf("Unable to download driver %v\n", err)
-			}
-
-			err = downloadKubernetes(isMinishift)
-			if err != nil {
-				util.Warnf("Unable to download kubernetes distro %v\n", err)
-			}
-
-			err = downloadClient(isMinishift)
-			if err != nil {
-				util.Warnf("Unable to download client %v\n", err)
-			}
-
+			install(isMinishift)
 		},
 	}
 	cmd.PersistentFlags().Bool(minishiftFlag, false, "Install minishift rather than minikube")
 	return cmd
 }
 
+func install(isMinishift bool) {
+	if runtime.GOOS == "windows" {
+		util.Errorf("%s is not yet supported by gofabric8 install", runtime.GOOS)
+	}
+
+	home := homedir.HomeDir()
+	if home == "" {
+		util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
+	}
+	writeFileLocation = home + binLocation
+
+	err := os.MkdirAll(writeFileLocation, 0700)
+	if err != nil {
+		util.Errorf("Unable to create directory to download files %s %v\n", writeFileLocation, err)
+	}
+
+	err = downloadDriver()
+	if err != nil {
+		util.Warnf("Unable to download driver %v\n", err)
+	}
+
+	err = downloadKubernetes(isMinishift)
+	if err != nil {
+		util.Warnf("Unable to download kubernetes distro %v\n", err)
+	}
+
+	err = downloadClient(isMinishift)
+	if err != nil {
+		util.Warnf("Unable to download client %v\n", err)
+	}
+}
 func downloadDriver() (err error) {
 
 	if runtime.GOOS == "darwin" {
@@ -205,11 +205,6 @@ func downloadClient(isMinishift bool) (err error) {
 			return fmt.Errorf("Unable to get latest version for %s/%s %v", kubeDistroOrg, kubernetes, err)
 		}
 
-		if isMinishift {
-			clientBinary = oc
-			return fmt.Errorf("Openshift client download not yet supported")
-		}
-
 		clientURL := fmt.Sprintf("https://storage.googleapis.com/kubernetes-release/release/v%s/bin/%s/%s/%s", latestVersion, os, arch, kubectl)
 		util.Infof("Downloading %s...", clientURL)
 
@@ -221,6 +216,11 @@ func downloadClient(isMinishift bool) (err error) {
 		util.Successf("Downloaded %s\n", clientBinary)
 	} else {
 		util.Successf("%s is already available on your PATH\n", clientBinary)
+	}
+
+	if isMinishift {
+		clientBinary = oc
+		return fmt.Errorf("Openshift client download not yet supported")
 	}
 
 	return nil
@@ -287,4 +287,44 @@ func getLatestVersionFromGitHub(githubOwner, githubRepo string) (semver.Version,
 
 	}
 	return semver.Version{}, fmt.Errorf("Cannot get release name")
+}
+
+func isInstalled(isMinishift bool) bool {
+	home := homedir.HomeDir()
+	if home == "" {
+		util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
+	}
+
+	// check if we can find a local kube config file
+	if _, err := os.Stat(home + "/.kube/config"); os.IsNotExist(err) {
+		return false
+	}
+
+	// check for kubectl
+	_, err := exec.LookPath(kubectl)
+	if err != nil {
+		return false
+	}
+
+	if isMinishift {
+		// check for minishift
+		_, err = exec.LookPath(minishift)
+		if err != nil {
+			return false
+		}
+		// check for oc client
+		_, err = exec.LookPath("oc")
+		if err != nil {
+			return false
+		}
+
+	} else {
+		// check for minikube
+		_, err = exec.LookPath(kubeBinary)
+		if err != nil {
+			return false
+		}
+	}
+
+	return true
 }
