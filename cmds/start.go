@@ -63,16 +63,8 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			if err != nil {
 				util.Fatalf("Unable to get status %v", err)
 			}
-			// get the first line
-			status := strings.Split(string(out), "\n")[0]
 
-			// as of minikube v0.10.0 output is in the form `minikube version: v0.10.0``
-			if len(strings.Split(status, ":")) > 0 {
-				status = strings.Split(status, ":")[1]
-			}
-			status = strings.TrimSpace(status)
-
-			if err == nil && status == "Running" {
+			if err == nil && strings.Contains(string(out), "Running") {
 				// already running
 				util.Successf("%s already running\n", kubeBinary)
 
