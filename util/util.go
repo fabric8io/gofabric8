@@ -15,10 +15,7 @@
  */
 package util
 
-import (
-	"os/exec"
-	"strings"
-)
+import "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 
 const (
 	// Minikube context name
@@ -31,37 +28,37 @@ const (
 
 // IsMini returns true if we are using a minikube or minishift context
 func IsMini() (bool, error) {
-	out, err := exec.Command("kubectl", "config", "current-context").Output()
+	currentContext, err := GetCurrentContext()
+
 	if err != nil {
 		return false, err
 	}
-	context := strings.TrimSpace(string(out))
-	if context == Minikube || context == Minishift {
+
+	if currentContext == Minikube || currentContext == Minishift {
 		return true, nil
 	}
 	return false, nil
 }
 
-// GetConfigContext returns the context name
-func GetConfigContext() (string, error) {
-	out, err := exec.Command("kubectl", "config", "current-context").Output()
-	if err != nil {
-		return "", err
-	}
-	context := strings.TrimSpace(string(out))
-	return context, nil
-}
-
-// GetMiniCLI returns whether this is a minishift or minikube including which one
+// GetMiniType returns whether this is a minishift or minikube including which one
 func GetMiniType() (string, bool, error) {
-	out, err := exec.Command("kubectl", "config", "current-context").Output()
+	currentContext, err := GetCurrentContext()
+
 	if err != nil {
 		return "", false, err
 	}
 
-	context := strings.TrimSpace(string(out))
-	if context == Minikube || context == Minishift {
-		return context, true, nil
+	if currentContext == Minikube || currentContext == Minishift {
+		return currentContext, true, nil
 	}
-	return context, false, nil
+	return currentContext, false, nil
+}
+
+// GetCurrentContext gets the current context from local config
+func GetCurrentContext() (string, error) {
+	clientConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+		&clientcmd.ConfigOverrides{},
+	).RawConfig()
+	return clientConfig.CurrentContext, err
 }

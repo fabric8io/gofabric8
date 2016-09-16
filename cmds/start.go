@@ -127,7 +127,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				// deploy fabric8
-				e := exec.Command("./build/gofabric8", args...)
+				e := exec.Command("gofabric8", args...)
 				e.Stdout = os.Stdout
 				e.Stderr = os.Stderr
 				err = e.Run()
