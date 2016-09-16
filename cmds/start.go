@@ -61,7 +61,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			// check if already running
 			out, err := exec.Command(kubeBinary, "status").Output()
 			if err != nil {
-				util.Fatalf("Unable to get status")
+				util.Fatalf("Unable to get status %v", err)
 			}
 			// get the first line
 			status := strings.Split(string(out), "\n")[0]
@@ -114,7 +114,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			// now check that fabric8 is running, if not deploy it
 			c, err := keepTryingToGetClient(f)
 			if err != nil {
-				util.Fatalf("Unable to connect to %s", kubeBinary)
+				util.Fatalf("Unable to connect to %s %v", kubeBinary, err)
 			}
 
 			if isOpenshift {
@@ -140,6 +140,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				// deploy fabric8
+				// TODO: need to find a better way to call the deploy functoion and set default flags
 				e := exec.Command("gofabric8", args...)
 				e.Stdout = os.Stdout
 				e.Stderr = os.Stderr

@@ -46,7 +46,7 @@ const (
 	kubectl                  = "kubectl"
 	kubernetes               = "kubernetes"
 	oc                       = "oc"
-	binLocation              = "/fabric8/bin/"
+	binLocation              = "/.fabric8/bin/"
 )
 
 var (
