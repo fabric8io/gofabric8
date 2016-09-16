@@ -30,9 +30,10 @@ import (
 )
 
 const (
-	memory  = "memory"
-	cpus    = "cpus"
-	console = "console"
+	memory             = "memory"
+	cpus               = "cpus"
+	console            = "console"
+	isMinishiftDefault = false
 )
 
 // NewCmdStart starts a local cloud environment
@@ -43,6 +44,10 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 		Long:  `Starts a local cloud development environment`,
 
 		Run: func(cmd *cobra.Command, args []string) {
+
+			if !isInstalled(isMinishiftDefault) {
+				install(isMinishiftDefault)
+			}
 
 			flag := cmd.Flags().Lookup(minishift)
 			isOpenshift := false
@@ -67,10 +72,18 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			}
 			status = strings.TrimSpace(status)
 
-			util.Infof("b %s", status)
 			if err == nil && status == "Running" {
-				// already running so lets
+				// already running
 				util.Successf("%s already running\n", kubeBinary)
+
+				// setting context
+				e := exec.Command(kubectl, "config", "use-context", kubeBinary)
+				e.Stdout = os.Stdout
+				e.Stderr = os.Stderr
+				err = e.Run()
+				if err != nil {
+					util.Errorf("Unable to start %v", err)
+				}
 
 			} else {
 				args := []string{"start"}
