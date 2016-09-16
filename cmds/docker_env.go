@@ -34,7 +34,7 @@ func NewCmdDockerEnv(f *cmdutil.Factory) *cobra.Command {
 		Long:  `Sets up docker env variables; Usage 'eval $(gofabric8 docker-env)'`,
 
 		Run: func(cmd *cobra.Command, args []string) {
-			context, err := util.GetConfigContext()
+			context, err := util.GetCurrentContext()
 			if err != nil {
 				util.Fatalf("Error getting current context %v", err)
 			}
