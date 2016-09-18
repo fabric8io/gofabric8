@@ -107,6 +107,8 @@ func main() {
 	cmds.AddCommand(commands.NewCmdSecrets(f))
 	cmds.AddCommand(commands.NewCmdService(f))
 	cmds.AddCommand(commands.NewCmdStart(f))
+	cmds.AddCommand(commands.NewCmdStatus(f))
+	cmds.AddCommand(commands.NewCmdStop(f))
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdVersion())
 	cmds.AddCommand(commands.NewCmdVolumes(f))
