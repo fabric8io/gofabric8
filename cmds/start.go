@@ -132,14 +132,10 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				// deploy fabric8
-				// TODO: need to find a better way to call the deploy functoion and set default flags
-				e := exec.Command("gofabric8", args...)
-				e.Stdout = os.Stdout
-				e.Stderr = os.Stderr
-				err = e.Run()
-				if err != nil {
-					util.Errorf("Unable to start %v", err)
-				}
+				d := GetFabric8Deployment()
+				d.pv = true
+				deploy(f, d)
+
 			} else {
 				openService(ns, "fabric8", c, false)
 			}

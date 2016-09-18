@@ -22,7 +22,6 @@ import (
 	"github.com/daviddengcn/go-colortext"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 type Result string
@@ -61,8 +60,8 @@ func missingFlag(cmd *cobra.Command, name string) (Result, error) {
 	return Failure, nil
 }
 
-func confirmAction(flags *pflag.FlagSet) bool {
-	if flags.Lookup(yesFlag).Value.String() == "false" {
+func confirmAction(yes bool) bool {
+	if yes {
 		util.Info("Continue? [Y/n] ")
 		cont := util.AskForConfirmation(true)
 		if !cont {

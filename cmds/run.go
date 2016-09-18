@@ -16,11 +16,12 @@
 package cmds
 
 import (
+	"strings"
+
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"strings"
 )
 
 func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
@@ -41,7 +42,7 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 			}
 			domain := cmd.Flags().Lookup(domainFlag).Value.String()
 			apiserver := cmd.Flags().Lookup(apiServerFlag).Value.String()
-			noPV := cmd.Flags().Lookup(noPVFlag).Value.String() == "true"
+			pv := cmd.Flags().Lookup(pvFlag).Value.String() == "true"
 
 			typeOfMaster := util.TypeOfMaster(c)
 
@@ -58,20 +59,22 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 				apiserver = domain
 			}
 
+			yes := cmd.Flags().Lookup(yesFlag).Value.String() == "false"
 			if strings.Contains(domain, "=") {
 				util.Warnf("\nInvalid domain: %s\n\n", domain)
-			} else if confirmAction(cmd.Flags()) {
+
+			} else if confirmAction(yes) {
 				oc, _ := client.NewOpenShiftClient(cfg)
 				initSchema()
 
 				for _, app := range args {
-					runTemplate(c, oc, app, ns, domain, apiserver, noPV)
+					runTemplate(c, oc, app, ns, domain, apiserver, pv)
 				}
 			}
 		},
 	}
 	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")
-	cmd.PersistentFlags().Bool(noPVFlag, false, "Disable the use of persistence (disabling the PersistentVolumeClaims)?")
+	cmd.PersistentFlags().Bool(pvFlag, true, "Enable the use of persistence (enabling the PersistentVolumeClaims)?")
 	return cmd
 }
