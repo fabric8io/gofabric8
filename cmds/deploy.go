@@ -144,6 +144,12 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			apiserver := cmd.Flags().Lookup(apiServerFlag).Value.String()
 			arch := cmd.Flags().Lookup(archFlag).Value.String()
 			mini, err := util.IsMini()
+
+			// during initial deploy we cant rely on just the context - check the node names too
+			if !mini {
+				mini = isNodeNameMini(c, ns)
+			}
+
 			if err != nil {
 				util.Failuref("Unable to detect platform deploying to %v", err)
 			}
@@ -497,6 +503,19 @@ func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns stri
 	util.Infof("Downloading images and waiting to open the fabric8 console...\n")
 	util.Info("\n")
 	util.Info("-------------------------\n")
+}
+
+func isNodeNameMini(c *k8sclient.Client, ns string) bool {
+	nodes, err := c.Nodes().List(api.ListOptions{})
+	if err != nil {
+		util.Errorf("\nUnable to find any nodes: %s\n", err)
+	}
+	if len(nodes.Items) == 1 {
+		node := nodes.Items[0]
+		return node.Name == "minishift" || node.Name == "minikube"
+	}
+	return false
+
 }
 
 func shouldEnablePV(c *k8sclient.Client, flags *pflag.FlagSet) (bool, error) {
