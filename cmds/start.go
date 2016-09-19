@@ -103,15 +103,9 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				}
 			}
 
-			// now check that fabric8 is running, if not deploy it
-			c, err := keepTryingToGetClient(f)
-			if err != nil {
-				util.Fatalf("Unable to connect to %s %v", kubeBinary, err)
-			}
-
 			if isOpenshift {
 				// deploy fabric8
-				e := exec.Command("oc", "login", "--username=admin", "--password=admin")
+				e := exec.Command("oc", "login", "--username="+minishiftDefaultUsername, "--password="+minishiftDefaultPassword)
 				e.Stdout = os.Stdout
 				e.Stderr = os.Stderr
 				err = e.Run()
@@ -120,6 +114,13 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				}
 
 			}
+
+			// now check that fabric8 is running, if not deploy it
+			c, err := keepTryingToGetClient(f)
+			if err != nil {
+				util.Fatalf("Unable to connect to %s %v", kubeBinary, err)
+			}
+
 			// deploy fabric8 if its not already running
 			ns, _, _ := f.DefaultNamespace()
 			_, err = c.Services(ns).Get("fabric8")

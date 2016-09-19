@@ -42,7 +42,7 @@ func NewCmdCleanUp(f *cmdutil.Factory) *cobra.Command {
 
 		Run: func(cmd *cobra.Command, args []string) {
 
-			fmt.Fprintf(os.Stdout, `WARNING this will completely remove all fabric8 apps, environments and configuration.  Continue? [y/N] `)
+			fmt.Fprintf(os.Stdout, `WARNING this will remove all fabric8 apps, environments and configuration.  Continue? [y/N] `)
 
 			var confirm string
 			fmt.Scanln(&confirm)
