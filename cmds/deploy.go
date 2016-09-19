@@ -196,6 +196,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(pvFlag, false, "Default: false, unless on minikube or minishift where persistence is enabled out of the box")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
+	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
 
 	return cmd
@@ -427,7 +428,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 		runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, pv)
 		externalNodeName := ""
 		if typeOfMaster == util.Kubernetes {
-			if !mini {
+			if !mini && d.useIngress {
 				runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
 				externalNodeName = addIngressInfraLabel(c, ns)
 			}
