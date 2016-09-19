@@ -133,7 +133,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				}
 
 				// deploy fabric8
-				d := GetFabric8Deployment()
+				d := GetDefaultFabric8Deployment()
 				d.pv = true
 				deploy(f, d)
 

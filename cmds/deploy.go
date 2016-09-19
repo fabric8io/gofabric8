@@ -130,7 +130,7 @@ const (
 )
 
 // Fabric8Deployment structure to work with the fabric8 deploy command
-type Fabric8Deployment struct {
+type DefaultFabric8Deployment struct {
 	domain          string
 	apiserver       string
 	dockerRegistry  string
@@ -161,7 +161,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 			showBanner()
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			d := Fabric8Deployment{
+			d := DefaultFabric8Deployment{
 				domain:          cmd.Flags().Lookup(domainFlag).Value.String(),
 				apiserver:       cmd.Flags().Lookup(apiServerFlag).Value.String(),
 				arch:            cmd.Flags().Lookup(archFlag).Value.String(),
@@ -201,9 +201,9 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-// GetFabric8Deployment create new instance of Fabric8Deployment
-func GetFabric8Deployment() Fabric8Deployment {
-	d := Fabric8Deployment{}
+// GetDefaultFabric8Deployment create new instance of Fabric8Deployment
+func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
+	d := DefaultFabric8Deployment{}
 	d.domain = defaultDomain()
 	d.arch = goruntime.GOARCH
 	d.versionConsole = latest
@@ -233,7 +233,7 @@ func initSchema() {
 	oauthapiv1.AddToScheme(api.Scheme)
 }
 
-func deploy(f *cmdutil.Factory, d Fabric8Deployment) {
+func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 
