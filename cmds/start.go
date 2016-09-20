@@ -125,15 +125,13 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			ns, _, _ := f.DefaultNamespace()
 			_, err = c.Services(ns).Get("fabric8")
 			if err != nil {
-				args := []string{"deploy", "y"}
-
-				flag := cmd.Flags().Lookup(console)
-				if flag != nil && flag.Value.String() == "true" {
-					args = append(args, "--app=")
-				}
 
 				// deploy fabric8
 				d := GetDefaultFabric8Deployment()
+				flag := cmd.Flags().Lookup(console)
+				if flag != nil && flag.Value.String() == "true" {
+					d.appToRun = ""
+				}
 				d.pv = true
 				deploy(f, d)
 
