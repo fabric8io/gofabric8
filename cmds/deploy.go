@@ -655,7 +655,7 @@ func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns st
 			printError("Failed to load template "+appToRun, err)
 		}
 		util.Infof("Loaded template with %d objects", len(tmpl.Objects))
-		processTemplate(tmpl, domain, apiserver)
+		processTemplate(tmpl, ns, domain, apiserver)
 
 		objectCount := len(tmpl.Objects)
 
@@ -713,7 +713,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 		util.Fatalf("Cannot convert %s template to deploy: %v", templateName, err)
 	}
 
-	processTemplate(&tmpl, domain, apiserver)
+	processTemplate(&tmpl, ns, domain, apiserver)
 
 	objectCount := len(tmpl.Objects)
 
@@ -776,7 +776,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	}
 }
 
-func processTemplate(tmpl *tapi.Template, domain string, apiserver string) {
+func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver string) {
 	generators := map[string]generator.Generator{
 		"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
 	}
@@ -784,7 +784,7 @@ func processTemplate(tmpl *tapi.Template, domain string, apiserver string) {
 
 	tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
 		Name:  "DOMAIN",
-		Value: domain,
+		Value: ns + "." + domain,
 	}, tapi.Parameter{
 		Name:  "APISERVER",
 		Value: apiserver,
