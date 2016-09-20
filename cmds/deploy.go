@@ -429,6 +429,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 		externalNodeName := ""
 		if typeOfMaster == util.Kubernetes {
 			if !mini && d.useIngress {
+				ensureNamespaceExists(c, oc, "fabric8-system")
 				runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
 				externalNodeName = addIngressInfraLabel(c, ns)
 			}
@@ -974,7 +975,12 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 			// lets assume it doesn't exist!
 			util.Infof("Creating new Namespace: %s\n", ns)
 			entity := kapi.Namespace{
-				ObjectMeta: kapi.ObjectMeta{Name: ns},
+				ObjectMeta: kapi.ObjectMeta{
+					Name: ns,
+					Labels: map[string]string{
+						"provider": "fabric8",
+					},
+				},
 			}
 			_, err := nss.Create(&entity)
 			return err
@@ -984,7 +990,12 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 		if err != nil {
 			// lets assume it doesn't exist!
 			request := projectapi.ProjectRequest{
-				ObjectMeta: kapi.ObjectMeta{Name: ns},
+				ObjectMeta: kapi.ObjectMeta{
+					Name: ns,
+					Labels: map[string]string{
+						"provider": "fabric8",
+					},
+				},
 			}
 			util.Infof("Creating new Project: %s\n", ns)
 			_, err := oc.ProjectRequests().Create(&request)
