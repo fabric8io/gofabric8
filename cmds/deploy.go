@@ -247,7 +247,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 	// during initial deploy we cant rely on just the context - check the node names too
 	if !mini {
-		mini = isNodeNameMini(c, ns)
+		_, mini = isNodeNameMini(c, ns)
 	}
 
 	if err != nil {
@@ -560,16 +560,16 @@ func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns stri
 	util.Info("-------------------------\n")
 }
 
-func isNodeNameMini(c *k8sclient.Client, ns string) bool {
+func isNodeNameMini(c *k8sclient.Client, ns string) (string, bool) {
 	nodes, err := c.Nodes().List(api.ListOptions{})
 	if err != nil {
 		util.Errorf("\nUnable to find any nodes: %s\n", err)
 	}
 	if len(nodes.Items) == 1 {
 		node := nodes.Items[0]
-		return node.Name == "minishift" || node.Name == "minikube"
+		return node.Name, (node.Name == "minishift" || node.Name == "minikube")
 	}
-	return false
+	return "", false
 
 }
 
