@@ -103,15 +103,9 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				}
 			}
 
-			// now check that fabric8 is running, if not deploy it
-			c, err := keepTryingToGetClient(f)
-			if err != nil {
-				util.Fatalf("Unable to connect to %s %v", kubeBinary, err)
-			}
-
 			if isOpenshift {
 				// deploy fabric8
-				e := exec.Command("oc", "login", "--username=admin", "--password=admin")
+				e := exec.Command("oc", "login", "--username="+minishiftDefaultUsername, "--password="+minishiftDefaultPassword)
 				e.Stdout = os.Stdout
 				e.Stderr = os.Stderr
 				err = e.Run()
@@ -120,26 +114,27 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				}
 
 			}
+
+			// now check that fabric8 is running, if not deploy it
+			c, err := keepTryingToGetClient(f)
+			if err != nil {
+				util.Fatalf("Unable to connect to %s %v", kubeBinary, err)
+			}
+
 			// deploy fabric8 if its not already running
 			ns, _, _ := f.DefaultNamespace()
 			_, err = c.Services(ns).Get("fabric8")
 			if err != nil {
-				args := []string{"deploy", "y"}
-
-				flag := cmd.Flags().Lookup(console)
-				if flag != nil && flag.Value.String() == "true" {
-					args = append(args, "--app=")
-				}
 
 				// deploy fabric8
-				// TODO: need to find a better way to call the deploy functoion and set default flags
-				e := exec.Command("gofabric8", args...)
-				e.Stdout = os.Stdout
-				e.Stderr = os.Stderr
-				err = e.Run()
-				if err != nil {
-					util.Errorf("Unable to start %v", err)
+				d := GetDefaultFabric8Deployment()
+				flag := cmd.Flags().Lookup(console)
+				if flag != nil && flag.Value.String() == "true" {
+					d.appToRun = ""
 				}
+				d.pv = true
+				deploy(f, d)
+
 			} else {
 				openService(ns, "fabric8", c, false)
 			}

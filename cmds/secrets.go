@@ -66,7 +66,8 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 			util.Info(" in namespace ")
 			util.Successf("%s\n\n", ns)
 
-			if confirmAction(cmd.Flags()) {
+			yes := cmd.Flags().Lookup(yesFlag).Value.String() == "false"
+			if confirmAction(yes) {
 				tapi.AddToScheme(api.Scheme)
 				tapiv1.AddToScheme(api.Scheme)
 				count := 0

@@ -33,11 +33,12 @@ import (
 const (
 	batchFlag = "batch"
 
-	githubOrg       = "fabric8io"
-	githubRepo      = "gofabric8"
-	binaryName      = githubRepo
-	lastUpdateCheck = "last_update_check"
-	hiddenFolder    = "/.fabric8/"
+	githubOrg          = "fabric8io"
+	githubRepo         = "gofabric8"
+	binaryName         = githubRepo
+	lastUpdateCheck    = "last_update_check"
+	hiddenFolder       = "/.fabric8/"
+	versionConsoleFlag = "version-console"
 )
 
 func runHelp(cmd *cobra.Command, args []string) {
@@ -53,7 +54,7 @@ func main() {
 		Run: runHelp,
 	}
 
-	cmds.PersistentFlags().String("fabric8-version", "latest", "fabric8 version")
+	cmds.PersistentFlags().String(versionConsoleFlag, "latest", "fabric8 version")
 	cmds.PersistentFlags().BoolP("yes", "y", false, "assume yes")
 	cmds.PersistentFlags().BoolP(batchFlag, "b", false, "Run in batch mode to avoid prompts")
 
@@ -97,6 +98,7 @@ func main() {
 	}
 
 	cmds.AddCommand(commands.NewCmdConsole(f))
+	cmds.AddCommand(commands.NewCmdCleanUp(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))
 	cmds.AddCommand(commands.NewCmdDockerEnv(f))
 	cmds.AddCommand(commands.NewCmdIngress(f))
@@ -107,6 +109,8 @@ func main() {
 	cmds.AddCommand(commands.NewCmdSecrets(f))
 	cmds.AddCommand(commands.NewCmdService(f))
 	cmds.AddCommand(commands.NewCmdStart(f))
+	cmds.AddCommand(commands.NewCmdStatus(f))
+	cmds.AddCommand(commands.NewCmdStop(f))
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdVersion())
 	cmds.AddCommand(commands.NewCmdVolumes(f))

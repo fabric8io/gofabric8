@@ -51,7 +51,10 @@ func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
 
 				found, pendingClaimNames := findPendingPVS(c, ns)
 				if found {
-					createPV(c, ns, pendingClaimNames, cmd)
+
+					sshCommand := cmd.Flags().Lookup(sshCommandFlag).Value.String()
+
+					createPV(c, ns, pendingClaimNames, sshCommand)
 				}
 			}
 		},
@@ -83,7 +86,7 @@ func findPendingPVS(c *k8sclient.Client, ns string) (bool, []string) {
 	return false, nil
 }
 
-func createPV(c *k8sclient.Client, ns string, pvcNames []string, cmd *cobra.Command) (Result, error) {
+func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand string) (Result, error) {
 
 	for _, pvcName := range pvcNames {
 		hostPath := "/data/" + pvcName
@@ -100,7 +103,7 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, cmd *cobra.Comm
 			}
 		}
 
-		err = configureHostPathVolume(c, ns, hostPath, cmd)
+		err = configureHostPathVolume(c, ns, hostPath, sshCommand)
 		if err != nil {
 			util.Errorf("Failed to configure the host path %s with error %v\n", hostPath, err)
 		}
@@ -133,12 +136,8 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, cmd *cobra.Comm
 
 // if we are on minikube or minishift lets try to create the
 // hostPath folders with relaxed persmissions
-func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, corbaCmd *cobra.Command) error {
-	cli := ""
-	flag := corbaCmd.Flags().Lookup(sshCommandFlag)
-	if flag != nil {
-		cli = flag.Value.String()
-	}
+func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, sshCommand string) error {
+	cli := sshCommand
 
 	if len(cli) == 0 {
 		context, isMini, _ := util.GetMiniType()
