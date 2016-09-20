@@ -36,6 +36,14 @@ function get_latest_version_number {
   fi
 }
 
+if [[ $(which gofabric8) ]]; then
+  echo "gofabric8 already found on your PATH"
+  exit 0
+fi
+
+fabric8_root=~/.fabric8/bin 
+mkdir -p ${fabric8_root}
+
 uname=$(uname)
 if [[ "${uname}" == "Darwin" ]]; then
   platform="darwin"
@@ -65,23 +73,29 @@ fi
 release=`get_latest_version_number`
 release_url=https://github.com/fabric8io/gofabric8/releases/download/v${release}/gofabric8-${platform}-${arch}
 
-file=gofabric8
+file=${fabric8_root}/gofabric8
 
-echo "Downloading ${file} release ${release} to ${PWD}/${file}"
+echo "Downloading ${file} release ${release}"
 
 if [[ "${FABRIC8_SKIP_DOWNLOAD-}" ]]; then
   echo "Skipping download"
   exit 0
 fi 
 
-if [[ $(which wget) ]]; then
-  wget -O ${file} ${release_url}
-elif [[ $(which curl) ]]; then
-  curl -L -o ${file} ${release_url}
-else
-  echo "Couldn't find curl or wget.  Bailing out."
-  exit 1
-fi
+tmpfile=$(mktemp /tmp/gofabric8-download.XXXXXX)
+exec 3>"$tmpfile"
+rm "$tmpfile"
+  if [[ $(which wget) ]]; then
+    wget -O ${tmpfile} ${release_url}
+  elif [[ $(which curl) ]]; then
+    curl -L -o ${tmpfile} ${release_url}
+  else
+    echo "Couldn't find curl or wget.  Bailing out."
+    exit 1
+  fi
+  mv $tmpfile ${file}
+echo foo >&3
+
 
 chmod +x ${file}
 
