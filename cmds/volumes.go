@@ -141,6 +141,11 @@ func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, ss
 
 	if len(cli) == 0 {
 		context, isMini, _ := util.GetMiniType()
+		// during initial deploy we cant rely on just the current context - we need to check the node names too
+		// see https://github.com/jimmidyson/minishift/issues/94
+		if !isMini {
+			isMini = isNodeNameMini(c, ns)
+		}
 		if isMini {
 			cli = context
 		}
