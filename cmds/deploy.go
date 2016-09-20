@@ -104,15 +104,15 @@ const (
 	teamTypeLabelValue = "team"
 
 	fabric8Environments = "fabric8-environments"
-	exposecontrollerCM  = "exposecontroller"
+	exposecontrollerCM  = "exposecontroller-cm"
 
-	ingress      = "ingress"
-	loadBalancer = "load-balancer"
-	nodePort     = "node-port"
-	route        = "route"
+	ingress      = "Ingress"
+	loadBalancer = "LoadBalancer"
+	nodePort     = "NodePort"
+	route        = "Route"
 
 	boot2docker                   = "boot2docker"
-	exposeRule                    = "expose-rule"
+	exposeRule                    = "exposer"
 	externalIPNodeLabel           = "kubernetes.io/externalIP"
 	externalAPIServerAddressLabel = "fabric8.io/externalApiServerAddress"
 
@@ -446,6 +446,11 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			}
 		}
 
+		domainData := "domain: " + domain + "\n"
+		exposeData := exposeRule + ": " + defaultExposeRule(c, mini, d.useLoadbalancer) + "\n"
+		configFile := map[string]string{
+			"config.yml": domainData + exposeData,
+		}
 		configMap := kapi.ConfigMap{
 			ObjectMeta: kapi.ObjectMeta{
 				Name: exposecontrollerCM,
@@ -453,10 +458,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 					"provider": "fabric8.io",
 				},
 			},
-			Data: map[string]string{
-				"domain":   domain,
-				exposeRule: defaultExposeRule(c, mini, d.useLoadbalancer),
-			},
+			Data: configFile,
 		}
 		_, err = cfgms.Create(&configMap)
 		if err != nil {
