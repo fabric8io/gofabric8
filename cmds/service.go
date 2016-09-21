@@ -53,7 +53,11 @@ func NewCmdService(f *cmdutil.Factory) *cobra.Command {
 				ns, _, _ = f.DefaultNamespace()
 			}
 			printURL := cmd.Flags().Lookup(urlCommandFlag).Value.String() == "true"
-			openService(ns, args[0], c, printURL)
+			if len(args) == 1 {
+				openService(ns, args[0], c, printURL)
+			} else {
+				util.Fatalf("Please choose a service, found %v arguments\n", len(args))
+			}
 		},
 	}
 	cmd.PersistentFlags().StringP(namespaceCommandFlag, "n", "default", "The service namespace")
