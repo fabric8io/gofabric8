@@ -456,7 +456,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			ObjectMeta: kapi.ObjectMeta{
 				Name: exposecontrollerCM,
 				Labels: map[string]string{
-					"provider": "fabric8.io",
+					"provider": "fabric8",
 				},
 			},
 			Data: configFile,
@@ -505,7 +505,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				ObjectMeta: kapi.ObjectMeta{
 					Name: fabric8Environments,
 					Labels: map[string]string{
-						"provider": "fabric8.io",
+						"provider": "fabric8",
 						"kind":     "environments",
 					},
 				},

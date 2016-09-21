@@ -133,9 +133,19 @@ func cleanUpKubernetesResources(c *k8sclient.Client, ns string, selector labels.
 		util.Warnf("%s", err)
 	}
 
-	err = deleteConfigMaps(c, ns)
+	err = deleteConfigMaps(c, ns, selector)
 	if err != nil {
 		util.Warnf("%s", err)
+	}
+
+	catalogSelector, err := unversioned.LabelSelectorAsSelector(&unversioned.LabelSelector{MatchLabels: map[string]string{"kind": "catalog"}})
+	if err != nil {
+		util.Errorf("%s", err)
+	} else {
+		err = deleteConfigMaps(c, ns, catalogSelector)
+		if err != nil {
+			util.Warnf("%s", err)
+		}
 	}
 
 	err = deleteServiceAccounts(c, ns, selector)
@@ -279,11 +289,7 @@ func deleteIngress(c *k8sclient.Client, ns string, selector labels.Selector) err
 	return nil
 }
 
-func deleteConfigMaps(c *k8sclient.Client, ns string) error {
-	selector, err := unversioned.LabelSelectorAsSelector(&unversioned.LabelSelector{MatchLabels: map[string]string{"provider": "fabric8", "kind": "catalog"}})
-	if err != nil {
-		return err
-	}
+func deleteConfigMaps(c *k8sclient.Client, ns string, selector labels.Selector) error {
 	cmps, err := c.ConfigMaps(ns).List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return err
