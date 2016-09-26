@@ -24,7 +24,9 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"reflect"
@@ -241,7 +243,6 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	domain := d.domain
 	dockerRegistry := d.dockerRegistry
 	arch := d.arch
-	apiserver := d.apiserver
 
 	mini, err := util.IsMini()
 
@@ -256,12 +257,25 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	typeOfMaster := util.TypeOfMaster(c)
 
 	// extract the ip address from the URL
-	ip := strings.Split(cfg.Host, ":")[1]
-	ip = strings.Replace(ip, "/", "", 2)
+	u, err := url.Parse(cfg.Host)
+	if err != nil {
+		util.Fatalf("%s", err)
+	}
 
+	ip, _, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		util.Fatalf("%s", err)
+	}
+
+	// default xip domain if local deployment incase users deploy ingress controller or router
 	if mini && typeOfMaster == util.OpenShift {
 		domain = ip + ".xip.io"
-		apiserver = ip
+	}
+
+	// default to the server from the current context
+	apiserver := u.Host
+	if d.apiserver != "" {
+		apiserver = d.apiserver
 	}
 
 	util.Info("Deploying fabric8 to your ")
@@ -783,12 +797,20 @@ func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver st
 	}
 	p := template.NewProcessor(generators)
 
+	ip, port, err := net.SplitHostPort(apiserver)
+	if err != nil {
+		util.Errorf("%s", err)
+	}
+
 	tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
 		Name:  "DOMAIN",
 		Value: ns + "." + domain,
 	}, tapi.Parameter{
 		Name:  "APISERVER",
-		Value: apiserver,
+		Value: ip,
+	}, tapi.Parameter{
+		Name:  "OAUTH_AUTHORIZE_PORT",
+		Value: port,
 	})
 
 	errorList := p.Process(tmpl)
