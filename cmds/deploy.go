@@ -263,7 +263,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	}
 
 	ip, _, err := net.SplitHostPort(u.Host)
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "missing port in address") {
 		util.Fatalf("%s", err)
 	}
 
@@ -798,8 +798,8 @@ func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver st
 	p := template.NewProcessor(generators)
 
 	ip, port, err := net.SplitHostPort(apiserver)
-	if err != nil {
-		util.Errorf("%s", err)
+	if err != nil && !strings.Contains(err.Error(), "missing port in address") {
+		util.Fatalf("%s", err)
 	}
 
 	tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
