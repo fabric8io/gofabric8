@@ -30,10 +30,9 @@ import (
 )
 
 const (
-	memory             = "memory"
-	cpus               = "cpus"
-	console            = "console"
-	isMinishiftDefault = false
+	memory  = "memory"
+	cpus    = "cpus"
+	console = "console"
 )
 
 // NewCmdStart starts a local cloud environment
@@ -45,15 +44,16 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 
 		Run: func(cmd *cobra.Command, args []string) {
 
-			if !isInstalled(isMinishiftDefault) {
-				install(isMinishiftDefault)
-			}
-
 			flag := cmd.Flags().Lookup(minishift)
 			isOpenshift := false
 			if flag != nil {
 				isOpenshift = flag.Value.String() == "true"
 			}
+
+			if !isInstalled(isOpenshift) {
+				install(isOpenshift)
+			}
+
 			if isOpenshift {
 				kubeBinary = minishift
 			}
