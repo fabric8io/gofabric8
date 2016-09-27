@@ -407,9 +407,8 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 						port = p.NodePort
 					}
 					if port == 0 {
-						printError("failed to find nodePort on the Service called fabric8", err)
+						util.Errorf("Failed to find nodePort on the Service called fabric8\n")
 					}
-					ip := apiserver
 					redirectURL := fmt.Sprintf("http://%s:%d", ip, port)
 					println("Adding OAuthClient redirectURL: " + redirectURL)
 					oac.RedirectURIs = append(oac.RedirectURIs, redirectURL)
