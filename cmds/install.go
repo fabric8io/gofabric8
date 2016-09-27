@@ -79,7 +79,7 @@ func NewCmdInstall(f *cmdutil.Factory) *cobra.Command {
 
 func install(isMinishift bool) {
 	if runtime.GOOS == "windows" {
-		util.Errorf("%s is not yet supported by gofabric8 install", runtime.GOOS)
+		util.Fatalf("%s is not yet supported by gofabric8 install", runtime.GOOS)
 	}
 
 	home := homedir.HomeDir()
