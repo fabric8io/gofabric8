@@ -133,7 +133,7 @@ func addPods(podStore cache.Store, nodeName string, label map[string]string, num
 
 func newTestController() (*DaemonSetsController, *controller.FakePodControl) {
 	clientset := clientset.NewForConfigOrDie(&restclient.Config{Host: "", ContentConfig: restclient.ContentConfig{GroupVersion: testapi.Default.GroupVersion()}})
-	manager := NewDaemonSetsController(clientset, controller.NoResyncPeriodFunc, 0)
+	manager := NewDaemonSetsControllerFromClient(clientset, controller.NoResyncPeriodFunc, 0)
 	manager.podStoreSynced = alwaysReady
 	podControl := &controller.FakePodControl{}
 	manager.podControl = podControl
@@ -156,6 +156,18 @@ func syncAndValidateDaemonSets(t *testing.T, manager *DaemonSetsController, ds *
 	}
 	manager.syncHandler(key)
 	validateSyncDaemonSets(t, podControl, expectedCreates, expectedDeletes)
+}
+
+func TestDeleteFinalStateUnknown(t *testing.T) {
+	manager, _ := newTestController()
+	addNodes(manager.nodeStore.Store, 0, 1, nil)
+	ds := newDaemonSet("foo")
+	// DeletedFinalStateUnknown should queue the embedded DS if found.
+	manager.deleteDaemonset(cache.DeletedFinalStateUnknown{Key: "foo", Obj: ds})
+	enqueuedKey, _ := manager.queue.Get()
+	if enqueuedKey.(string) != "default/foo" {
+		t.Errorf("expected delete of DeletedFinalStateUnknown to enqueue the daemonset but found: %#v", enqueuedKey)
+	}
 }
 
 // DaemonSets without node selectors should launch pods on every node.
@@ -211,25 +223,30 @@ func TestOutOfDiskNodeDaemonDoesNotLaunchPod(t *testing.T) {
 	syncAndValidateDaemonSets(t, manager, ds, podControl, 0, 0)
 }
 
-// DaemonSets should not place onto nodes with insufficient free resource
-func TestInsufficentCapacityNodeDaemonDoesNotLaunchPod(t *testing.T) {
-	podSpec := api.PodSpec{
-		NodeName: "too-much-mem",
+func resourcePodSpec(nodeName, memory, cpu string) api.PodSpec {
+	return api.PodSpec{
+		NodeName: nodeName,
 		Containers: []api.Container{{
 			Resources: api.ResourceRequirements{
-				Requests: api.ResourceList{
-					api.ResourceMemory: resource.MustParse("75M"),
-					api.ResourceCPU:    resource.MustParse("75m"),
-				},
+				Requests: allocatableResources(memory, cpu),
 			},
 		}},
 	}
+}
+
+func allocatableResources(memory, cpu string) api.ResourceList {
+	return api.ResourceList{
+		api.ResourceMemory: resource.MustParse(memory),
+		api.ResourceCPU:    resource.MustParse(cpu),
+	}
+}
+
+// DaemonSets should not place onto nodes with insufficient free resource
+func TestInsufficentCapacityNodeDaemonDoesNotLaunchPod(t *testing.T) {
+	podSpec := resourcePodSpec("too-much-mem", "75M", "75m")
 	manager, podControl := newTestController()
 	node := newNode("too-much-mem", nil)
-	node.Status.Allocatable = api.ResourceList{
-		api.ResourceMemory: resource.MustParse("100M"),
-		api.ResourceCPU:    resource.MustParse("200m"),
-	}
+	node.Status.Allocatable = allocatableResources("100M", "200m")
 	manager.nodeStore.Add(node)
 	manager.podStore.Add(&api.Pod{
 		Spec: podSpec,
@@ -241,23 +258,10 @@ func TestInsufficentCapacityNodeDaemonDoesNotLaunchPod(t *testing.T) {
 }
 
 func TestSufficentCapacityWithTerminatedPodsDaemonLaunchesPod(t *testing.T) {
-	podSpec := api.PodSpec{
-		NodeName: "too-much-mem",
-		Containers: []api.Container{{
-			Resources: api.ResourceRequirements{
-				Requests: api.ResourceList{
-					api.ResourceMemory: resource.MustParse("75M"),
-					api.ResourceCPU:    resource.MustParse("75m"),
-				},
-			},
-		}},
-	}
+	podSpec := resourcePodSpec("too-much-mem", "75M", "75m")
 	manager, podControl := newTestController()
 	node := newNode("too-much-mem", nil)
-	node.Status.Allocatable = api.ResourceList{
-		api.ResourceMemory: resource.MustParse("100M"),
-		api.ResourceCPU:    resource.MustParse("200m"),
-	}
+	node.Status.Allocatable = allocatableResources("100M", "200m")
 	manager.nodeStore.Add(node)
 	manager.podStore.Add(&api.Pod{
 		Spec:   podSpec,
@@ -271,23 +275,10 @@ func TestSufficentCapacityWithTerminatedPodsDaemonLaunchesPod(t *testing.T) {
 
 // DaemonSets should place onto nodes with sufficient free resource
 func TestSufficentCapacityNodeDaemonLaunchesPod(t *testing.T) {
-	podSpec := api.PodSpec{
-		NodeName: "not-too-much-mem",
-		Containers: []api.Container{{
-			Resources: api.ResourceRequirements{
-				Requests: api.ResourceList{
-					api.ResourceMemory: resource.MustParse("75M"),
-					api.ResourceCPU:    resource.MustParse("75m"),
-				},
-			},
-		}},
-	}
+	podSpec := resourcePodSpec("not-too-much-mem", "75M", "75m")
 	manager, podControl := newTestController()
 	node := newNode("not-too-much-mem", nil)
-	node.Status.Allocatable = api.ResourceList{
-		api.ResourceMemory: resource.MustParse("200M"),
-		api.ResourceCPU:    resource.MustParse("200m"),
-	}
+	node.Status.Allocatable = allocatableResources("200M", "200m")
 	manager.nodeStore.Add(node)
 	manager.podStore.Add(&api.Pod{
 		Spec: podSpec,
@@ -419,10 +410,10 @@ func TestPodIsNotDeletedByDaemonsetWithEmptyLabelSelector(t *testing.T) {
 func TestDealsWithExistingPods(t *testing.T) {
 	manager, podControl := newTestController()
 	addNodes(manager.nodeStore.Store, 0, 5, nil)
-	addPods(manager.podStore.Store, "node-1", simpleDaemonSetLabel, 1)
-	addPods(manager.podStore.Store, "node-2", simpleDaemonSetLabel, 2)
-	addPods(manager.podStore.Store, "node-3", simpleDaemonSetLabel, 5)
-	addPods(manager.podStore.Store, "node-4", simpleDaemonSetLabel2, 2)
+	addPods(manager.podStore.Indexer, "node-1", simpleDaemonSetLabel, 1)
+	addPods(manager.podStore.Indexer, "node-2", simpleDaemonSetLabel, 2)
+	addPods(manager.podStore.Indexer, "node-3", simpleDaemonSetLabel, 5)
+	addPods(manager.podStore.Indexer, "node-4", simpleDaemonSetLabel2, 2)
 	ds := newDaemonSet("foo")
 	manager.dsStore.Add(ds)
 	syncAndValidateDaemonSets(t, manager, ds, podControl, 2, 5)
@@ -444,10 +435,10 @@ func TestSelectorDaemonDeletesUnselectedPods(t *testing.T) {
 	manager, podControl := newTestController()
 	addNodes(manager.nodeStore.Store, 0, 5, nil)
 	addNodes(manager.nodeStore.Store, 5, 5, simpleNodeLabel)
-	addPods(manager.podStore.Store, "node-0", simpleDaemonSetLabel2, 2)
-	addPods(manager.podStore.Store, "node-1", simpleDaemonSetLabel, 3)
-	addPods(manager.podStore.Store, "node-1", simpleDaemonSetLabel2, 1)
-	addPods(manager.podStore.Store, "node-4", simpleDaemonSetLabel, 1)
+	addPods(manager.podStore.Indexer, "node-0", simpleDaemonSetLabel2, 2)
+	addPods(manager.podStore.Indexer, "node-1", simpleDaemonSetLabel, 3)
+	addPods(manager.podStore.Indexer, "node-1", simpleDaemonSetLabel2, 1)
+	addPods(manager.podStore.Indexer, "node-4", simpleDaemonSetLabel, 1)
 	daemon := newDaemonSet("foo")
 	daemon.Spec.Template.Spec.NodeSelector = simpleNodeLabel
 	manager.dsStore.Add(daemon)
@@ -459,14 +450,14 @@ func TestSelectorDaemonDealsWithExistingPods(t *testing.T) {
 	manager, podControl := newTestController()
 	addNodes(manager.nodeStore.Store, 0, 5, nil)
 	addNodes(manager.nodeStore.Store, 5, 5, simpleNodeLabel)
-	addPods(manager.podStore.Store, "node-0", simpleDaemonSetLabel, 1)
-	addPods(manager.podStore.Store, "node-1", simpleDaemonSetLabel, 3)
-	addPods(manager.podStore.Store, "node-1", simpleDaemonSetLabel2, 2)
-	addPods(manager.podStore.Store, "node-2", simpleDaemonSetLabel, 4)
-	addPods(manager.podStore.Store, "node-6", simpleDaemonSetLabel, 13)
-	addPods(manager.podStore.Store, "node-7", simpleDaemonSetLabel2, 4)
-	addPods(manager.podStore.Store, "node-9", simpleDaemonSetLabel, 1)
-	addPods(manager.podStore.Store, "node-9", simpleDaemonSetLabel2, 1)
+	addPods(manager.podStore.Indexer, "node-0", simpleDaemonSetLabel, 1)
+	addPods(manager.podStore.Indexer, "node-1", simpleDaemonSetLabel, 3)
+	addPods(manager.podStore.Indexer, "node-1", simpleDaemonSetLabel2, 2)
+	addPods(manager.podStore.Indexer, "node-2", simpleDaemonSetLabel, 4)
+	addPods(manager.podStore.Indexer, "node-6", simpleDaemonSetLabel, 13)
+	addPods(manager.podStore.Indexer, "node-7", simpleDaemonSetLabel2, 4)
+	addPods(manager.podStore.Indexer, "node-9", simpleDaemonSetLabel, 1)
+	addPods(manager.podStore.Indexer, "node-9", simpleDaemonSetLabel2, 1)
 	ds := newDaemonSet("foo")
 	ds.Spec.Template.Spec.NodeSelector = simpleNodeLabel
 	manager.dsStore.Add(ds)

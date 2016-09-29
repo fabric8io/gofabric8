@@ -1,7 +1,6 @@
-// Copyright 2014 The Go Authors.
-// See https://code.google.com/p/go/source/browse/CONTRIBUTORS
-// Licensed under the same terms as Go itself:
-// https://code.google.com/p/go/source/browse/LICENSE
+// Copyright 2014 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 package hpack
 
@@ -10,11 +9,13 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"math/rand"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStaticTable(t *testing.T) {
@@ -523,6 +524,47 @@ func testDecodeSeries(t *testing.T, size uint32, steps []encAndWant) {
 	}
 }
 
+func TestHuffmanDecodeExcessPadding(t *testing.T) {
+	tests := [][]byte{
+		{0xff},                                   // Padding Exceeds 7 bits
+		{0x1f, 0xff},                             // {"a", 1 byte excess padding}
+		{0x1f, 0xff, 0xff},                       // {"a", 2 byte excess padding}
+		{0x1f, 0xff, 0xff, 0xff},                 // {"a", 3 byte excess padding}
+		{0xff, 0x9f, 0xff, 0xff, 0xff},           // {"a", 29 bit excess padding}
+		{'R', 0xbc, '0', 0xff, 0xff, 0xff, 0xff}, // Padding ends on partial symbol.
+	}
+	for i, in := range tests {
+		var buf bytes.Buffer
+		if _, err := HuffmanDecode(&buf, in); err != ErrInvalidHuffman {
+			t.Errorf("test-%d: decode(%q) = %v; want ErrInvalidHuffman", i, in, err)
+		}
+	}
+}
+
+func TestHuffmanDecodeEOS(t *testing.T) {
+	in := []byte{0xff, 0xff, 0xff, 0xff, 0xfc} // {EOS, "?"}
+	var buf bytes.Buffer
+	if _, err := HuffmanDecode(&buf, in); err != ErrInvalidHuffman {
+		t.Errorf("error = %v; want ErrInvalidHuffman", err)
+	}
+}
+
+func TestHuffmanDecodeMaxLengthOnTrailingByte(t *testing.T) {
+	in := []byte{0x00, 0x01} // {"0", "0", "0"}
+	var buf bytes.Buffer
+	if err := huffmanDecode(&buf, 2, in); err != ErrStringLength {
+		t.Errorf("error = %v; want ErrStringLength", err)
+	}
+}
+
+func TestHuffmanDecodeCorruptPadding(t *testing.T) {
+	in := []byte{0x00}
+	var buf bytes.Buffer
+	if _, err := HuffmanDecode(&buf, in); err != ErrInvalidHuffman {
+		t.Errorf("error = %v; want ErrInvalidHuffman", err)
+	}
+}
+
 func TestHuffmanDecode(t *testing.T) {
 	tests := []struct {
 		inHex, want string
@@ -582,6 +624,100 @@ func TestAppendHuffmanString(t *testing.T) {
 	}
 }
 
+func TestHuffmanMaxStrLen(t *testing.T) {
+	const msg = "Some string"
+	huff := AppendHuffmanString(nil, msg)
+
+	testGood := func(max int) {
+		var out bytes.Buffer
+		if err := huffmanDecode(&out, max, huff); err != nil {
+			t.Errorf("For maxLen=%d, unexpected error: %v", max, err)
+		}
+		if out.String() != msg {
+			t.Errorf("For maxLen=%d, out = %q; want %q", max, out.String(), msg)
+		}
+	}
+	testGood(0)
+	testGood(len(msg))
+	testGood(len(msg) + 1)
+
+	var out bytes.Buffer
+	if err := huffmanDecode(&out, len(msg)-1, huff); err != ErrStringLength {
+		t.Errorf("err = %v; want ErrStringLength", err)
+	}
+}
+
+func TestHuffmanRoundtripStress(t *testing.T) {
+	const Len = 50 // of uncompressed string
+	input := make([]byte, Len)
+	var output bytes.Buffer
+	var huff []byte
+
+	n := 5000
+	if testing.Short() {
+		n = 100
+	}
+	seed := time.Now().UnixNano()
+	t.Logf("Seed = %v", seed)
+	src := rand.New(rand.NewSource(seed))
+	var encSize int64
+	for i := 0; i < n; i++ {
+		for l := range input {
+			input[l] = byte(src.Intn(256))
+		}
+		huff = AppendHuffmanString(huff[:0], string(input))
+		encSize += int64(len(huff))
+		output.Reset()
+		if err := huffmanDecode(&output, 0, huff); err != nil {
+			t.Errorf("Failed to decode %q -> %q -> error %v", input, huff, err)
+			continue
+		}
+		if !bytes.Equal(output.Bytes(), input) {
+			t.Errorf("Roundtrip failure on %q -> %q -> %q", input, huff, output.Bytes())
+		}
+	}
+	t.Logf("Compressed size of original: %0.02f%% (%v -> %v)", 100*(float64(encSize)/(Len*float64(n))), Len*n, encSize)
+}
+
+func TestHuffmanDecodeFuzz(t *testing.T) {
+	const Len = 50 // of compressed
+	var buf, zbuf bytes.Buffer
+
+	n := 5000
+	if testing.Short() {
+		n = 100
+	}
+	seed := time.Now().UnixNano()
+	t.Logf("Seed = %v", seed)
+	src := rand.New(rand.NewSource(seed))
+	numFail := 0
+	for i := 0; i < n; i++ {
+		zbuf.Reset()
+		if i == 0 {
+			// Start with at least one invalid one.
+			zbuf.WriteString("00\x91\xff\xff\xff\xff\xc8")
+		} else {
+			for l := 0; l < Len; l++ {
+				zbuf.WriteByte(byte(src.Intn(256)))
+			}
+		}
+
+		buf.Reset()
+		if err := huffmanDecode(&buf, 0, zbuf.Bytes()); err != nil {
+			if err == ErrInvalidHuffman {
+				numFail++
+				continue
+			}
+			t.Errorf("Failed to decode %q: %v", zbuf.Bytes(), err)
+			continue
+		}
+	}
+	t.Logf("%0.02f%% are invalid (%d / %d)", 100*float64(numFail)/float64(n), numFail, n)
+	if numFail < 1 {
+		t.Error("expected at least one invalid huffman encoding (test starts with one)")
+	}
+}
+
 func TestReadVarInt(t *testing.T) {
 	type res struct {
 		i        uint64
@@ -637,6 +773,17 @@ func TestReadVarInt(t *testing.T) {
 	}
 }
 
+// Fuzz crash, originally reported at https://github.com/bradfitz/http2/issues/56
+func TestHuffmanFuzzCrash(t *testing.T) {
+	got, err := HuffmanDecodeToString([]byte("00\x91\xff\xff\xff\xff\xc8"))
+	if got != "" {
+		t.Errorf("Got %q; want empty string", got)
+	}
+	if err != ErrInvalidHuffman {
+		t.Errorf("Err = %v; want ErrInvalidHuffman", err)
+	}
+}
+
 func dehex(s string) []byte {
 	s = strings.Replace(s, " ", "", -1)
 	s = strings.Replace(s, "\n", "", -1)
@@ -645,4 +792,63 @@ func dehex(s string) []byte {
 		panic(err)
 	}
 	return b
+}
+
+func TestEmitEnabled(t *testing.T) {
+	var buf bytes.Buffer
+	enc := NewEncoder(&buf)
+	enc.WriteField(HeaderField{Name: "foo", Value: "bar"})
+	enc.WriteField(HeaderField{Name: "foo", Value: "bar"})
+
+	numCallback := 0
+	var dec *Decoder
+	dec = NewDecoder(8<<20, func(HeaderField) {
+		numCallback++
+		dec.SetEmitEnabled(false)
+	})
+	if !dec.EmitEnabled() {
+		t.Errorf("initial emit enabled = false; want true")
+	}
+	if _, err := dec.Write(buf.Bytes()); err != nil {
+		t.Error(err)
+	}
+	if numCallback != 1 {
+		t.Errorf("num callbacks = %d; want 1", numCallback)
+	}
+	if dec.EmitEnabled() {
+		t.Errorf("emit enabled = true; want false")
+	}
+}
+
+func TestSaveBufLimit(t *testing.T) {
+	const maxStr = 1 << 10
+	var got []HeaderField
+	dec := NewDecoder(initialHeaderTableSize, func(hf HeaderField) {
+		got = append(got, hf)
+	})
+	dec.SetMaxStringLength(maxStr)
+	var frag []byte
+	frag = append(frag[:0], encodeTypeByte(false, false))
+	frag = appendVarInt(frag, 7, 3)
+	frag = append(frag, "foo"...)
+	frag = appendVarInt(frag, 7, 3)
+	frag = append(frag, "bar"...)
+
+	if _, err := dec.Write(frag); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []HeaderField{{Name: "foo", Value: "bar"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("After small writes, got %v; want %v", got, want)
+	}
+
+	frag = append(frag[:0], encodeTypeByte(false, false))
+	frag = appendVarInt(frag, 7, maxStr*3)
+	frag = append(frag, make([]byte, maxStr*3)...)
+
+	_, err := dec.Write(frag)
+	if err != ErrStringLength {
+		t.Fatalf("Write error = %v; want ErrStringLength", err)
+	}
 }

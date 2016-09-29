@@ -24,7 +24,7 @@ import (
 	"sort"
 	"time"
 
-	docker "github.com/fsouza/go-dockerclient"
+	dockertypes "github.com/docker/engine-api/types"
 	"github.com/golang/glog"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/types"
@@ -111,7 +111,7 @@ func (cgc *containerGC) removeOldestN(containers []containerGCInfo, toRemove int
 	// Remove from oldest to newest (last to first).
 	numToKeep := len(containers) - toRemove
 	for i := numToKeep; i < len(containers); i++ {
-		err := cgc.client.RemoveContainer(docker.RemoveContainerOptions{ID: containers[i].id, RemoveVolumes: true})
+		err := cgc.client.RemoveContainer(containers[i].id, dockertypes.ContainerRemoveOptions{RemoveVolumes: true})
 		if err != nil {
 			glog.Warningf("Failed to remove dead container %q: %v", containers[i].name, err)
 		}
@@ -145,14 +145,20 @@ func (cgc *containerGC) evictableContainers(minAge time.Duration) (containersByE
 			continue
 		} else if data.State.Running {
 			continue
-		} else if newestGCTime.Before(data.Created) {
+		}
+
+		created, err := parseDockerTimestamp(data.Created)
+		if err != nil {
+			glog.Errorf("Failed to parse Created timestamp %q for container %q", data.Created, container.ID)
+		}
+		if newestGCTime.Before(created) {
 			continue
 		}
 
 		containerInfo := containerGCInfo{
 			id:         container.ID,
 			name:       container.Names[0],
-			createTime: data.Created,
+			createTime: created,
 		}
 
 		containerName, _, err := ParseDockerName(container.Names[0])
@@ -179,7 +185,7 @@ func (cgc *containerGC) evictableContainers(minAge time.Duration) (containersByE
 }
 
 // GarbageCollect removes dead containers using the specified container gc policy
-func (cgc *containerGC) GarbageCollect(gcPolicy kubecontainer.ContainerGCPolicy) error {
+func (cgc *containerGC) GarbageCollect(gcPolicy kubecontainer.ContainerGCPolicy, allSourcesReady bool) error {
 	// Separate containers by evict units.
 	evictUnits, unidentifiedContainers, err := cgc.evictableContainers(gcPolicy.MinAge)
 	if err != nil {
@@ -189,17 +195,19 @@ func (cgc *containerGC) GarbageCollect(gcPolicy kubecontainer.ContainerGCPolicy)
 	// Remove unidentified containers.
 	for _, container := range unidentifiedContainers {
 		glog.Infof("Removing unidentified dead container %q with ID %q", container.name, container.id)
-		err = cgc.client.RemoveContainer(docker.RemoveContainerOptions{ID: container.id, RemoveVolumes: true})
+		err = cgc.client.RemoveContainer(container.id, dockertypes.ContainerRemoveOptions{RemoveVolumes: true})
 		if err != nil {
 			glog.Warningf("Failed to remove unidentified dead container %q: %v", container.name, err)
 		}
 	}
 
-	// Remove deleted pod containers.
-	for key, unit := range evictUnits {
-		if cgc.isPodDeleted(key.uid) {
-			cgc.removeOldestN(unit, len(unit)) // Remove all.
-			delete(evictUnits, key)
+	// Remove deleted pod containers if all sources are ready.
+	if allSourcesReady {
+		for key, unit := range evictUnits {
+			if cgc.isPodDeleted(key.uid) {
+				cgc.removeOldestN(unit, len(unit)) // Remove all.
+				delete(evictUnits, key)
+			}
 		}
 	}
 

@@ -23,6 +23,7 @@ import (
 	clientadapter "k8s.io/kubernetes/pkg/client/unversioned/adapters/internalclientset"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
+	utilwait "k8s.io/kubernetes/pkg/util/wait"
 
 	"github.com/openshift/origin/pkg/cmd/server/admin"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
@@ -91,9 +92,9 @@ func NewCommandStartMaster(basename string, out io.Writer) (*cobra.Command, *Mas
 			if err := options.StartMaster(); err != nil {
 				if kerrors.IsInvalid(err) {
 					if details := err.(*kerrors.StatusError).ErrStatus.Details; details != nil {
-						fmt.Fprintf(c.Out(), "Invalid %s %s\n", details.Kind, details.Name)
+						fmt.Fprintf(c.OutOrStderr(), "Invalid %s %s\n", details.Kind, details.Name)
 						for _, cause := range details.Causes {
-							fmt.Fprintf(c.Out(), "  %s: %s\n", cause.Field, cause.Message)
+							fmt.Fprintf(c.OutOrStderr(), "  %s: %s\n", cause.Field, cause.Message)
 						}
 						os.Exit(255)
 					}
@@ -268,7 +269,7 @@ func (o MasterOptions) RunMaster() error {
 	validationResults := validation.ValidateMasterConfig(masterConfig, nil)
 	if len(validationResults.Warnings) != 0 {
 		for _, warning := range validationResults.Warnings {
-			glog.Warningf("%v", warning)
+			glog.Warningf("Warning: %v, master start will continue.", warning)
 		}
 	}
 	if len(validationResults.Errors) != 0 {
@@ -335,7 +336,7 @@ func BuildKubernetesMasterConfig(openshiftConfig *origin.MasterConfig) (*kuberne
 	if openshiftConfig.Options.KubernetesMasterConfig == nil {
 		return nil, nil
 	}
-	kubeConfig, err := kubernetes.BuildKubernetesMasterConfig(openshiftConfig.Options, openshiftConfig.RequestContextMapper, openshiftConfig.KubeClient(), openshiftConfig.PluginInitializer)
+	kubeConfig, err := kubernetes.BuildKubernetesMasterConfig(openshiftConfig.Options, openshiftConfig.RequestContextMapper, openshiftConfig.KubeClient(), openshiftConfig.Informers, openshiftConfig.KubeAdmissionControl, openshiftConfig.Authenticator)
 	return kubeConfig, err
 }
 
@@ -379,6 +380,10 @@ func (m *Master) Start() error {
 		return err
 	}
 
+	// any controller that uses a core informer must be initialized *before* the API server starts core informers
+	// the API server adds its controllers at the correct time, but if the controllers are running, they need to be
+	// kicked separately
+
 	switch {
 	case m.api:
 		glog.Infof("Starting master on %s (%s)", m.config.ServingInfo.BindAddress, version.Get().String())
@@ -410,7 +415,13 @@ func (m *Master) Start() error {
 			if err := startControllers(openshiftConfig, kubeMasterConfig); err != nil {
 				glog.Fatal(err)
 			}
+
+			openshiftConfig.Informers.Start(utilwait.NeverStop)
+			openshiftConfig.Informers.StartCore(utilwait.NeverStop)
 		}()
+	} else {
+		openshiftConfig.Informers.Start(utilwait.NeverStop)
+
 	}
 
 	return nil
@@ -439,14 +450,15 @@ func StartAPI(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) error {
 	}
 
 	// Must start policy caching immediately
+	oc.Informers.StartCore(utilwait.NeverStop)
+	oc.RunClusterQuotaMappingController()
 	oc.RunGroupCache()
-	oc.RunPolicyCache()
 	oc.RunProjectCache()
 
 	unprotectedInstallers := []origin.APIInstaller{}
 
 	if oc.Options.OAuthConfig != nil {
-		authConfig, err := origin.BuildAuthConfig(oc.Options, oc.KubeClient())
+		authConfig, err := origin.BuildAuthConfig(oc)
 		if err != nil {
 			return err
 		}
@@ -485,7 +497,7 @@ func StartAPI(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) error {
 	if kc != nil {
 		oc.Run([]origin.APIInstaller{kc}, unprotectedInstallers)
 	} else {
-		_, kubeClientConfig, err := configapi.GetKubeClient(oc.Options.MasterClients.ExternalKubernetesKubeConfig)
+		_, kubeClientConfig, err := configapi.GetKubeClient(oc.Options.MasterClients.ExternalKubernetesKubeConfig, oc.Options.MasterClients.ExternalKubernetesClientConnectionOverrides)
 		if err != nil {
 			return err
 		}
@@ -495,6 +507,8 @@ func StartAPI(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) error {
 		oc.Run([]origin.APIInstaller{proxy}, unprotectedInstallers)
 	}
 
+	// start up the informers that we're trying to use in the API server
+	oc.Informers.Start(utilwait.NeverStop)
 	oc.InitializeObjects()
 
 	if standaloneAssetConfig != nil {
@@ -520,8 +534,10 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 		// when a manual shutdown (DELETE /controllers) or lease lost occurs, the process should exit
 		// this ensures no code is still running as a controller, and allows a process manager to reset
 		// the controller to come back into a candidate state and compete for the lease
-		oc.ControllerPlug.WaitForStop()
-		glog.Fatalf("Controller shutdown requested")
+		if err := oc.ControllerPlug.WaitForStop(); err != nil {
+			glog.Fatalf("Controller shutdown due to lease being lost: %v", err)
+		}
+		glog.Fatalf("Controller graceful shutdown requested")
 	}()
 
 	oc.ControllerPlug.WaitForStart()
@@ -545,6 +561,14 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 		if err != nil {
 			glog.Fatalf("Could not get client for replication controller: %v", err)
 		}
+		_, _, rsClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraReplicaSetControllerServiceAccountName)
+		if err != nil {
+			glog.Fatalf("Could not get client for replication controller: %v", err)
+		}
+		_, _, deploymentClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraDeploymentControllerServiceAccountName)
+		if err != nil {
+			glog.Fatalf("Could not get client for deployment controller: %v", err)
+		}
 		_, _, jobClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraJobControllerServiceAccountName)
 		if err != nil {
 			glog.Fatalf("Could not get client for job controller: %v", err)
@@ -554,19 +578,14 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 			glog.Fatalf("Could not get client for HPA controller: %v", err)
 		}
 
-		_, _, recyclerClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraPersistentVolumeRecyclerControllerServiceAccountName)
-		if err != nil {
-			glog.Fatalf("Could not get client for persistent volume recycler controller: %v", err)
-		}
-
 		_, _, binderClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraPersistentVolumeBinderControllerServiceAccountName)
 		if err != nil {
 			glog.Fatalf("Could not get client for persistent volume binder controller: %v", err)
 		}
 
-		_, _, provisionerClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraPersistentVolumeProvisionerControllerServiceAccountName)
+		_, _, attachDetachControllerClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraPersistentVolumeAttachDetachControllerServiceAccountName)
 		if err != nil {
-			glog.Fatalf("Could not get client for persistent volume provisioner controller: %v", err)
+			glog.Fatalf("Could not get client for attach detach controller: %v", err)
 		}
 
 		_, _, daemonSetClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraDaemonSetControllerServiceAccountName)
@@ -584,6 +603,11 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 			glog.Fatalf("Could not get client for pod gc controller: %v", err)
 		}
 
+		_, _, petSetClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraPetSetControllerServiceAccountName)
+		if err != nil {
+			glog.Fatalf("Could not get client for pet set controller: %v", err)
+		}
+
 		namespaceControllerClientConfig, _, namespaceControllerKubeClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraNamespaceControllerServiceAccountName)
 		if err != nil {
 			glog.Fatalf("Could not get client for namespace controller: %v", err)
@@ -591,14 +615,17 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 		namespaceControllerClientSet := clientadapter.FromUnversionedClient(namespaceControllerKubeClient)
 		namespaceControllerClientPool := dynamic.NewClientPool(namespaceControllerClientConfig, dynamic.LegacyAPIPathResolverFunc)
 
-		// called by admission control
-		kc.RunResourceQuotaManager()
-		oc.RunResourceQuotaManager(controllerManagerOptions)
+		_, _, endpointControllerClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraEndpointControllerServiceAccountName)
+		if err != nil {
+			glog.Fatalf("Could not get client for endpoint controller: %v", err)
+		}
 
 		// no special order
 		kc.RunNodeController()
 		kc.RunScheduler()
 		kc.RunReplicationController(rcClient)
+		kc.RunReplicaSetController(rsClient)
+		kc.RunDeploymentController(deploymentClient)
 
 		extensionsEnabled := len(configapi.GetEnabledAPIVersionsForGroup(kc.Options, extensions.GroupName)) > 0
 
@@ -616,43 +643,50 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 			kc.RunDaemonSetsController(daemonSetClient)
 		}
 
-		kc.RunEndpointController()
+		kc.RunEndpointController(endpointControllerClient)
 		kc.RunNamespaceController(namespaceControllerClientSet, namespaceControllerClientPool)
-		kc.RunPersistentVolumeClaimBinder(binderClient)
-		if oc.Options.VolumeConfig.DynamicProvisioningEnabled {
-			kc.RunPersistentVolumeProvisioner(provisionerClient)
-		}
-		kc.RunPersistentVolumeClaimRecycler(oc.ImageFor("recycler"), recyclerClient, oc.Options.PolicyConfig.OpenShiftInfrastructureNamespace)
+		kc.RunPersistentVolumeController(binderClient, oc.Options.PolicyConfig.OpenShiftInfrastructureNamespace, oc.ImageFor("recycler"), bootstrappolicy.InfraPersistentVolumeRecyclerControllerServiceAccountName)
+		kc.RunPersistentVolumeAttachDetachController(attachDetachControllerClient)
 		kc.RunGCController(gcClient)
 
 		kc.RunServiceLoadBalancerController(serviceLoadBalancerClient)
+		kc.RunPetSetController(petSetClient)
 
 		glog.Infof("Started Kubernetes Controllers")
-	} else {
-		oc.RunResourceQuotaManager(nil)
 	}
 
 	// no special order
 	if configapi.IsBuildEnabled(&oc.Options) {
-		oc.RunBuildController()
+		oc.RunBuildController(oc.Informers)
 		oc.RunBuildPodController()
 		oc.RunBuildConfigChangeController()
 		oc.RunBuildImageChangeTriggerController()
 	}
 	oc.RunDeploymentController()
-	oc.RunDeployerPodController()
 	oc.RunDeploymentConfigController()
-	oc.RunDeploymentConfigChangeController()
+	oc.RunDeploymentTriggerController()
 	oc.RunDeploymentImageChangeTriggerController()
 	oc.RunImageImportController()
 	oc.RunOriginNamespaceController()
 	oc.RunSDNController()
+
+	// initializes quota docs used by admission
+	oc.RunResourceQuotaManager(nil)
+	oc.RunClusterQuotaReconciliationController()
+	oc.RunClusterQuotaMappingController()
 
 	_, _, serviceServingCertClient, err := oc.GetServiceAccountClients(bootstrappolicy.ServiceServingCertServiceAccountName)
 	if err != nil {
 		glog.Fatalf("Could not get client: %v", err)
 	}
 	oc.RunServiceServingCertController(serviceServingCertClient)
+	oc.RunUnidlingController()
+
+	_, _, ingressIPClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraServiceIngressIPControllerServiceAccountName)
+	if err != nil {
+		glog.Fatalf("Could not get client: %v", err)
+	}
+	oc.RunIngressIPController(ingressIPClient)
 
 	glog.Infof("Started Origin Controllers")
 

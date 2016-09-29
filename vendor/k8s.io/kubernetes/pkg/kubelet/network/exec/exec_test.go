@@ -29,6 +29,8 @@ import (
 	"testing"
 	"text/template"
 
+	"k8s.io/kubernetes/pkg/apis/componentconfig"
+	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/network"
 	nettest "k8s.io/kubernetes/pkg/kubelet/network/testing"
 	"k8s.io/kubernetes/pkg/util/sets"
@@ -133,7 +135,7 @@ func TestSelectPlugin(t *testing.T) {
 
 	installPluginUnderTest(t, "", testPluginPath, pluginName, nil)
 
-	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil))
+	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil), componentconfig.HairpinNone, "10.0.0.0/8")
 	if err != nil {
 		t.Errorf("Failed to select the desired plugin: %v", err)
 	}
@@ -155,7 +157,7 @@ func TestSelectVendoredPlugin(t *testing.T) {
 	installPluginUnderTest(t, vendor, testPluginPath, pluginName, nil)
 
 	vendoredPluginName := fmt.Sprintf("%s/%s", vendor, pluginName)
-	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), vendoredPluginName, nettest.NewFakeHost(nil))
+	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), vendoredPluginName, nettest.NewFakeHost(nil), componentconfig.HairpinNone, "10.0.0.0/8")
 	if err != nil {
 		t.Errorf("Failed to select the desired plugin: %v", err)
 	}
@@ -176,7 +178,7 @@ func TestSelectWrongPlugin(t *testing.T) {
 	installPluginUnderTest(t, "", testPluginPath, pluginName, nil)
 
 	wrongPlugin := "abcd"
-	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), wrongPlugin, nettest.NewFakeHost(nil))
+	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), wrongPlugin, nettest.NewFakeHost(nil), componentconfig.HairpinNone, "10.0.0.0/8")
 	if plug != nil || err == nil {
 		t.Errorf("Expected to see an error. Wrong plugin selected.")
 	}
@@ -204,7 +206,7 @@ func TestPluginValidation(t *testing.T) {
 	}
 	f.Close()
 
-	_, err = network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil))
+	_, err = network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil), componentconfig.HairpinNone, "10.0.0.0/8")
 	if err == nil {
 		// we expected an error here because validation would have failed
 		t.Errorf("Expected non-nil value.")
@@ -222,9 +224,9 @@ func TestPluginSetupHook(t *testing.T) {
 
 	installPluginUnderTest(t, "", testPluginPath, pluginName, nil)
 
-	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil))
+	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil), componentconfig.HairpinNone, "10.0.0.0/8")
 
-	err = plug.SetUpPod("podNamespace", "podName", "dockerid2345")
+	err = plug.SetUpPod("podNamespace", "podName", kubecontainer.ContainerID{Type: "docker", ID: "dockerid2345"})
 	if err != nil {
 		t.Errorf("Expected nil: %v", err)
 	}
@@ -250,9 +252,9 @@ func TestPluginTearDownHook(t *testing.T) {
 
 	installPluginUnderTest(t, "", testPluginPath, pluginName, nil)
 
-	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil))
+	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil), componentconfig.HairpinNone, "10.0.0.0/8")
 
-	err = plug.TearDownPod("podNamespace", "podName", "dockerid2345")
+	err = plug.TearDownPod("podNamespace", "podName", kubecontainer.ContainerID{Type: "docker", ID: "dockerid2345"})
 	if err != nil {
 		t.Errorf("Expected nil")
 	}
@@ -278,9 +280,9 @@ func TestPluginStatusHook(t *testing.T) {
 
 	installPluginUnderTest(t, "", testPluginPath, pluginName, nil)
 
-	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil))
+	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil), componentconfig.HairpinNone, "10.0.0.0/8")
 
-	ip, err := plug.Status("namespace", "name", "dockerid2345")
+	ip, err := plug.GetPodNetworkStatus("namespace", "name", kubecontainer.ContainerID{Type: "docker", ID: "dockerid2345"})
 	if err != nil {
 		t.Errorf("Expected nil got %v", err)
 	}
@@ -314,12 +316,12 @@ func TestPluginStatusHookIPv6(t *testing.T) {
 	}
 	installPluginUnderTest(t, "", testPluginPath, pluginName, execTemplate)
 
-	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil))
+	plug, err := network.InitNetworkPlugin(ProbeNetworkPlugins(testPluginPath), pluginName, nettest.NewFakeHost(nil), componentconfig.HairpinNone, "10.0.0.0/8")
 	if err != nil {
 		t.Errorf("InitNetworkPlugin() failed: %v", err)
 	}
 
-	ip, err := plug.Status("namespace", "name", "dockerid2345")
+	ip, err := plug.GetPodNetworkStatus("namespace", "name", kubecontainer.ContainerID{Type: "docker", ID: "dockerid2345"})
 	if err != nil {
 		t.Errorf("Status() failed: %v", err)
 	}

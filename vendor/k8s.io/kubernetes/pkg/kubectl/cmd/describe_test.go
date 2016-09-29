@@ -32,7 +32,7 @@ func TestDescribeUnknownSchemaObject(t *testing.T) {
 	tf.Describer = d
 	tf.Client = &fake.RESTClient{
 		Codec: codec,
-		Resp:  &http.Response{StatusCode: 200, Body: objBody(codec, &internalType{Name: "foo"})},
+		Resp:  &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &internalType{Name: "foo"})},
 	}
 	tf.Namespace = "non-default"
 	buf := bytes.NewBuffer([]byte{})
@@ -44,7 +44,7 @@ func TestDescribeUnknownSchemaObject(t *testing.T) {
 		t.Errorf("unexpected describer: %#v", d)
 	}
 
-	if buf.String() != fmt.Sprintf("%s\n\n", d.Output) {
+	if buf.String() != fmt.Sprintf("%s", d.Output) {
 		t.Errorf("unexpected output: %s", buf.String())
 	}
 }
@@ -59,7 +59,7 @@ func TestDescribeObject(t *testing.T) {
 		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			switch p, m := req.URL.Path, req.Method; {
 			case p == "/namespaces/test/replicationcontrollers/redis-master" && m == "GET":
-				return &http.Response{StatusCode: 200, Body: objBody(codec, &rc.Items[0])}, nil
+				return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &rc.Items[0])}, nil
 			default:
 				t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 				return nil, nil
@@ -77,7 +77,7 @@ func TestDescribeObject(t *testing.T) {
 		t.Errorf("unexpected describer: %#v", d)
 	}
 
-	if buf.String() != fmt.Sprintf("%s\n\n", d.Output) {
+	if buf.String() != fmt.Sprintf("%s", d.Output) {
 		t.Errorf("unexpected output: %s", buf.String())
 	}
 }
@@ -89,14 +89,54 @@ func TestDescribeListObjects(t *testing.T) {
 	tf.Describer = d
 	tf.Client = &fake.RESTClient{
 		Codec: codec,
-		Resp:  &http.Response{StatusCode: 200, Body: objBody(codec, pods)},
+		Resp:  &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, pods)},
 	}
 
 	tf.Namespace = "test"
 	buf := bytes.NewBuffer([]byte{})
 	cmd := NewCmdDescribe(f, buf)
 	cmd.Run(cmd, []string{"pods"})
-	if buf.String() != fmt.Sprintf("%s\n\n%s\n\n", d.Output, d.Output) {
+	if buf.String() != fmt.Sprintf("%s\n\n%s", d.Output, d.Output) {
 		t.Errorf("unexpected output: %s", buf.String())
+	}
+}
+
+func TestDescribeObjectShowEvents(t *testing.T) {
+	pods, _, _ := testData()
+	f, tf, codec := NewAPIFactory()
+	d := &testDescriber{Output: "test output"}
+	tf.Describer = d
+	tf.Client = &fake.RESTClient{
+		Codec: codec,
+		Resp:  &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, pods)},
+	}
+
+	tf.Namespace = "test"
+	buf := bytes.NewBuffer([]byte{})
+	cmd := NewCmdDescribe(f, buf)
+	cmd.Flags().Set("show-events", "true")
+	cmd.Run(cmd, []string{"pods"})
+	if d.Settings.ShowEvents != true {
+		t.Errorf("ShowEvents = true expected, got ShowEvents = %v", d.Settings.ShowEvents)
+	}
+}
+
+func TestDescribeObjectSkipEvents(t *testing.T) {
+	pods, _, _ := testData()
+	f, tf, codec := NewAPIFactory()
+	d := &testDescriber{Output: "test output"}
+	tf.Describer = d
+	tf.Client = &fake.RESTClient{
+		Codec: codec,
+		Resp:  &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, pods)},
+	}
+
+	tf.Namespace = "test"
+	buf := bytes.NewBuffer([]byte{})
+	cmd := NewCmdDescribe(f, buf)
+	cmd.Flags().Set("show-events", "false")
+	cmd.Run(cmd, []string{"pods"})
+	if d.Settings.ShowEvents != false {
+		t.Errorf("ShowEvents = false expected, got ShowEvents = %v", d.Settings.ShowEvents)
 	}
 }

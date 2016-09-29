@@ -10,7 +10,7 @@ import (
 	buildgraph "github.com/openshift/origin/pkg/build/graph/nodes"
 )
 
-// RelevantBuilds returns the lastSuccessful build, lastUnsuccesful build, and a list of active builds
+// RelevantBuilds returns the lastSuccessful build, lastUnsuccessful build, and a list of active builds
 func RelevantBuilds(g osgraph.Graph, bcNode *buildgraph.BuildConfigNode) (*buildgraph.BuildNode, *buildgraph.BuildNode, []*buildgraph.BuildNode) {
 	var (
 		lastSuccessfulBuild   *buildgraph.BuildNode
@@ -82,13 +82,13 @@ func defaultNamespace(value, defaultValue string) string {
 	return value
 }
 
-// BuildConfigForTag returns the buildConfig that points to the provided imageStreamTag.
-// TODO: Handle multiple buildconfigs pointing to the same tag.
-func BuildConfigForTag(g osgraph.Graph, istag graph.Node) *buildgraph.BuildConfigNode {
+// BuildConfigsForTag returns the buildConfig that points to the provided imageStreamTag.
+func BuildConfigsForTag(g osgraph.Graph, istag graph.Node) []*buildgraph.BuildConfigNode {
+	bcs := []*buildgraph.BuildConfigNode{}
 	for _, bcNode := range g.PredecessorNodesByEdgeKind(istag, BuildOutputEdgeKind) {
-		return bcNode.(*buildgraph.BuildConfigNode)
+		bcs = append(bcs, bcNode.(*buildgraph.BuildConfigNode))
 	}
-	return nil
+	return bcs
 }
 
 // GetLatestBuild returns the latest build for the provided buildConfig.

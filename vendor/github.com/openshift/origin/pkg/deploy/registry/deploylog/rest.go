@@ -10,11 +10,14 @@ import (
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/rest"
 	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/controller"
+	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 	"k8s.io/kubernetes/pkg/labels"
 	genericrest "k8s.io/kubernetes/pkg/registry/generic/rest"
 	"k8s.io/kubernetes/pkg/registry/pod"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util/wait"
 
 	"github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
@@ -23,16 +26,36 @@ import (
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
-// defaultTimeout is the default time to wait for the logs of a deployment
-const defaultTimeout time.Duration = 10 * time.Second
+const (
+	// defaultTimeout is the default time to wait for the logs of a deployment.
+	defaultTimeout time.Duration = 20 * time.Second
+	// defaultInterval is the default interval for polling a not found deployment.
+	defaultInterval time.Duration = 1 * time.Second
+)
+
+// podGetter implements the ResourceGetter interface. Used by LogLocation to
+// retrieve the deployer pod
+type podGetter struct {
+	pn unversioned.PodsNamespacer
+}
+
+// Get is responsible for retrieving the deployer pod
+func (g *podGetter) Get(ctx kapi.Context, name string) (runtime.Object, error) {
+	namespace, ok := kapi.NamespaceFrom(ctx)
+	if !ok {
+		return nil, errors.NewBadRequest("namespace parameter required.")
+	}
+	return g.pn.Pods(namespace).Get(name)
+}
 
 // REST is an implementation of RESTStorage for the api server.
 type REST struct {
-	ConfigGetter     client.DeploymentConfigsNamespacer
-	DeploymentGetter unversioned.ReplicationControllersNamespacer
-	PodGetter        unversioned.PodsNamespacer
-	ConnectionInfo   kubeletclient.ConnectionInfoGetter
-	Timeout          time.Duration
+	dn       client.DeploymentConfigsNamespacer
+	rn       unversioned.ReplicationControllersNamespacer
+	pn       unversioned.PodsNamespacer
+	connInfo kubeletclient.ConnectionInfoGetter
+	timeout  time.Duration
+	interval time.Duration
 }
 
 // REST implements GetterWithOptions
@@ -44,11 +67,12 @@ var _ = rest.GetterWithOptions(&REST{})
 // get the deployment logs.
 func NewREST(dn client.DeploymentConfigsNamespacer, rn unversioned.ReplicationControllersNamespacer, pn unversioned.PodsNamespacer, connectionInfo kubeletclient.ConnectionInfoGetter) *REST {
 	return &REST{
-		ConfigGetter:     dn,
-		DeploymentGetter: rn,
-		PodGetter:        pn,
-		ConnectionInfo:   connectionInfo,
-		Timeout:          defaultTimeout,
+		dn:       dn,
+		rn:       rn,
+		pn:       pn,
+		connInfo: connectionInfo,
+		timeout:  defaultTimeout,
+		interval: defaultInterval,
 	}
 }
 
@@ -81,7 +105,7 @@ func (r *REST) Get(ctx kapi.Context, name string, opts runtime.Object) (runtime.
 
 	// Fetch deploymentConfig and check latest version; if 0, there are no deployments
 	// for this config
-	config, err := r.ConfigGetter.DeploymentConfigs(namespace).Get(name)
+	config, err := r.dn.DeploymentConfigs(namespace).Get(name)
 	if err != nil {
 		return nil, errors.NewNotFound(deployapi.Resource("deploymentconfig"), name)
 	}
@@ -100,19 +124,18 @@ func (r *REST) Get(ctx kapi.Context, name string, opts runtime.Object) (runtime.
 				return nil, errors.NewBadRequest(fmt.Sprintf("no previous deployment exists for deploymentConfig %q", config.Name))
 			}
 		}
-	case *deployLogOpts.Version <= 0 || int(*deployLogOpts.Version) > config.Status.LatestVersion:
+	case *deployLogOpts.Version <= 0 || *deployLogOpts.Version > config.Status.LatestVersion:
 		// Invalid version
 		return nil, errors.NewBadRequest(fmt.Sprintf("invalid version for deploymentConfig %q: %d", config.Name, *deployLogOpts.Version))
 	default:
-		desiredVersion = int(*deployLogOpts.Version)
+		desiredVersion = *deployLogOpts.Version
 	}
 
 	// Get desired deployment
 	targetName := deployutil.DeploymentNameForConfigVersion(config.Name, desiredVersion)
-	target, err := r.DeploymentGetter.ReplicationControllers(namespace).Get(targetName)
+	target, err := r.waitForExistingDeployment(namespace, targetName)
 	if err != nil {
-		// TODO: Better error handling
-		return nil, errors.NewNotFound(kapi.Resource("replicationcontroller"), name)
+		return nil, err
 	}
 	podName := deployutil.DeployerPodNameForDeployment(target.Name)
 
@@ -128,12 +151,16 @@ func (r *REST) Get(ctx kapi.Context, name string, opts runtime.Object) (runtime.
 		}
 		glog.V(4).Infof("Deployment %s is in %s state, waiting for it to start...", deployutil.LabelForDeployment(target), status)
 
-		latest, ok, err := registry.WaitForRunningDeployment(r.DeploymentGetter, target, r.Timeout)
+		if err := deployutil.WaitForRunningDeployerPod(r.pn, target, r.timeout); err != nil {
+			return nil, errors.NewBadRequest(fmt.Sprintf("failed to run deployer pod %s: %v", podName, err))
+		}
+
+		latest, ok, err := registry.WaitForRunningDeployment(r.rn, target, r.timeout)
 		if err != nil {
 			return nil, errors.NewBadRequest(fmt.Sprintf("unable to wait for deployment %s to run: %v", deployutil.LabelForDeployment(target), err))
 		}
 		if !ok {
-			return nil, errors.NewTimeoutError(fmt.Sprintf("timed out waiting for deployment %s to start after %s", deployutil.LabelForDeployment(target), r.Timeout), 1)
+			return nil, errors.NewServerTimeout(kapi.Resource("ReplicationController"), "get", 2)
 		}
 		if deployutil.DeploymentStatusFor(latest) == deployapi.DeploymentStatusComplete {
 			podName, err = r.returnApplicationPodName(target)
@@ -149,7 +176,7 @@ func (r *REST) Get(ctx kapi.Context, name string, opts runtime.Object) (runtime.
 	}
 
 	logOpts := deployapi.DeploymentToPodLogOptions(deployLogOpts)
-	location, transport, err := pod.LogLocation(&podGetter{r.PodGetter}, r.ConnectionInfo, ctx, podName, logOpts)
+	location, transport, err := pod.LogLocation(&podGetter{r.pn}, r.connInfo, ctx, podName, logOpts)
 	if err != nil {
 		return nil, errors.NewBadRequest(err.Error())
 	}
@@ -163,40 +190,40 @@ func (r *REST) Get(ctx kapi.Context, name string, opts runtime.Object) (runtime.
 	}, nil
 }
 
-// podGetter implements the ResourceGetter interface. Used by LogLocation to
-// retrieve the deployer pod
-type podGetter struct {
-	podsNamespacer unversioned.PodsNamespacer
-}
+// waitForExistingDeployment will use the timeout to wait for a deployment to appear.
+func (r *REST) waitForExistingDeployment(namespace, name string) (*kapi.ReplicationController, error) {
+	var (
+		target *kapi.ReplicationController
+		err    error
+	)
 
-// Get is responsible for retrieving the deployer pod
-func (g *podGetter) Get(ctx kapi.Context, name string) (runtime.Object, error) {
-	namespace, ok := kapi.NamespaceFrom(ctx)
-	if !ok {
-		return nil, errors.NewBadRequest("namespace parameter required.")
+	condition := func() (bool, error) {
+		target, err = r.rn.ReplicationControllers(namespace).Get(name)
+		switch {
+		case errors.IsNotFound(err):
+			return false, nil
+		case err != nil:
+			return false, err
+		}
+		return true, nil
 	}
-	return g.podsNamespacer.Pods(namespace).Get(name)
+
+	err = wait.PollImmediate(r.interval, r.timeout, condition)
+	if err == wait.ErrWaitTimeout {
+		err = errors.NewNotFound(kapi.Resource("replicationcontrollers"), name)
+	}
+	return target, err
 }
 
-// returnApplicationPodName tries to resolve the name for the oldest pod for the target deployment.
+// returnApplicationPodName returns the best candidate pod for the target deployment in order to
+// view its logs.
 func (r *REST) returnApplicationPodName(target *kapi.ReplicationController) (string, error) {
-	listOpts := kapi.ListOptions{LabelSelector: labels.Set(target.Spec.Selector).AsSelector()}
-	podList, err := r.PodGetter.Pods(target.Namespace).List(listOpts)
+	selector := labels.Set(target.Spec.Selector).AsSelector()
+	sortBy := func(pods []*kapi.Pod) sort.Interface { return controller.ByLogging(pods) }
+
+	pod, _, err := kcmdutil.GetFirstPod(r.pn, target.Namespace, selector, r.timeout, sortBy)
 	if err != nil {
 		return "", errors.NewInternalError(err)
 	}
-	if len(podList.Items) == 0 {
-		return "", errors.NewBadRequest(fmt.Sprintf("no pods found for deployment %q", target.Name))
-	}
-	sort.Sort(byCreationTimestamp(podList.Items))
-	return podList.Items[0].Name, nil
-}
-
-type byCreationTimestamp []kapi.Pod
-
-func (o byCreationTimestamp) Len() int      { return len(o) }
-func (o byCreationTimestamp) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
-
-func (o byCreationTimestamp) Less(i, j int) bool {
-	return o[i].CreationTimestamp.Before(o[j].CreationTimestamp)
+	return pod.Name, nil
 }

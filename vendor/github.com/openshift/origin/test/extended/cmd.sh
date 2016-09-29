@@ -4,23 +4,8 @@
 # No registry or router is setup.
 # It is intended to test cli commands that may require docker and therefore
 # cannot be run under Travis.
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/cmd_util.sh"
-source "${OS_ROOT}/hack/common.sh"
-source "${OS_ROOT}/hack/lib/log.sh"
-source "${OS_ROOT}/hack/cmd_util.sh"
-os::log::install_errexit
-
-source "${OS_ROOT}/hack/lib/util/environment.sh"
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 os::util::environment::setup_time_vars
-
-cd "${OS_ROOT}"
 
 os::build::setup_env
 
@@ -95,7 +80,7 @@ os::test::junit::declare_suite_end
 os::test::junit::declare_suite_start "extended/cmd/variable-expansion"
 echo "[INFO] Running env variable expansion tests"
 VERBOSE=true os::cmd::expect_success "oc new-project envtest"
-os::cmd::expect_success "oc create -f test/extended/fixtures/test-env-pod.json"
+os::cmd::expect_success "oc create -f test/extended/testdata/test-env-pod.json"
 os::cmd::try_until_text "oc get pods" "Running"
 os::cmd::expect_success_and_text "oc exec test-pod env" "podname=test-pod"
 os::cmd::expect_success_and_text "oc exec test-pod env" "podname_composed=test-pod_composed"
@@ -128,29 +113,36 @@ os::cmd::expect_success "oc delete secrets --all"
 os::cmd::expect_success "oc secrets new image-ns-pull .dockerconfigjson=${DOCKER_CONFIG_JSON}"
 os::cmd::expect_success "oc secrets new-dockercfg image-ns-pull-old --docker-email=fake@example.org --docker-username=imagensbuilder --docker-server=${docker_registry} --docker-password=${token}"
 
-os::cmd::expect_success "oc process -f test/extended/fixtures/image-pull-secrets/pod-with-no-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
+os::cmd::expect_success "oc process -f test/extended/testdata/image-pull-secrets/pod-with-no-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
 os::cmd::try_until_text "oc describe pod/no-pull-pod" "Back-off pulling image"
 os::cmd::expect_success "oc delete pods --all"
 
-os::cmd::expect_success "oc process -f test/extended/fixtures/image-pull-secrets/pod-with-new-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
+os::cmd::expect_success "oc process -f test/extended/testdata/image-pull-secrets/pod-with-new-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
 os::cmd::try_until_text "oc get pods/new-pull-pod -o jsonpath='{.status.containerStatuses[0].imageID}'" "docker"
 os::cmd::expect_success "oc delete pods --all"
 os::cmd::expect_success "docker rmi -f ${docker_registry}/image-ns/busybox:latest"
 
-os::cmd::expect_success "oc process -f test/extended/fixtures/image-pull-secrets/pod-with-old-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
+os::cmd::expect_success "oc process -f test/extended/testdata/image-pull-secrets/pod-with-old-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
 os::cmd::try_until_text "oc get pods/old-pull-pod -o jsonpath='{.status.containerStatuses[0].imageID}'" "docker"
 os::cmd::expect_success "oc delete pods --all"
 os::cmd::expect_success "docker rmi -f ${docker_registry}/image-ns/busybox:latest"
 
-os::cmd::expect_success "oc process -f test/extended/fixtures/image-pull-secrets/dc-with-old-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
+os::cmd::expect_success "oc process -f test/extended/testdata/image-pull-secrets/dc-with-old-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
 os::cmd::try_until_text "oc get pods/my-dc-old-1-hook-pre -o jsonpath='{.status.containerStatuses[0].imageID}'" "docker"
 os::cmd::expect_success "oc delete all --all"
 os::cmd::expect_success "docker rmi -f ${docker_registry}/image-ns/busybox:latest"
 
-os::cmd::expect_success "oc process -f test/extended/fixtures/image-pull-secrets/dc-with-new-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
+os::cmd::expect_success "oc process -f test/extended/testdata/image-pull-secrets/dc-with-new-pull-secret.yaml --value=DOCKER_REGISTRY=${docker_registry} | oc create -f - "
 os::cmd::try_until_text "oc get pods/my-dc-1-hook-pre -o jsonpath='{.status.containerStatuses[0].imageID}'" "docker"
 os::cmd::expect_success "oc delete all --all"
 os::cmd::expect_success "docker rmi -f ${docker_registry}/image-ns/busybox:latest"
+os::test::junit::declare_suite_end
+
+# Test to see that we're reporting the correct commit being used by the build
+os::test::junit::declare_suite_start "extended/cmd/new-build"
+os::cmd::expect_success "oc new-build https://github.com/openshift/ruby-hello-world.git#bd94cbb228465d30d9d3430e80b503757a2a1d97"
+os::cmd::try_until_text "oc logs builds/ruby-hello-world-1" "Commit:[[:space:]]*bd94cbb228465d30d9d3430e80b503757a2a1d97"
+os::cmd::expect_success "oc delete all --all"
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_start "extended/cmd/service-signer"
@@ -166,19 +158,21 @@ os::cmd::expect_success 'oc create dc nginx --image=nginx -- sh -c "nginx -c /et
 os::cmd::expect_success "oc expose dc/nginx --port=443"
 os::cmd::expect_success "oc annotate svc/nginx service.alpha.openshift.io/serving-cert-secret-name=nginx-ssl-key"
 os::cmd::expect_success "oc volumes dc/nginx --add --secret-name=nginx-ssl-key  --mount-path=/etc/serving-cert"
-os::cmd::expect_success "oc create configmap default-conf --from-file=test/extended/fixtures/service-serving-cert/nginx-serving-cert.conf"
+os::cmd::expect_success "oc create configmap default-conf --from-file=test/extended/testdata/service-serving-cert/nginx-serving-cert.conf"
 os::cmd::expect_success "oc set volumes dc/nginx --add --configmap-name=default-conf --mount-path=/etc/nginx/conf.d"
 os::cmd::try_until_text "oc get pods -l deployment-config.name=nginx" 'Running'
 
 # only show single pods in status if they are really single
-os::cmd::expect_success 'oc create -f test/integration/fixtures/test-deployment-config.yaml'
+os::cmd::expect_success 'oc create -f test/integration/testdata/test-deployment-config.yaml'
 os::cmd::try_until_text 'oc status' 'dc\/test-deployment-config deploys docker\.io\/openshift\/origin-pod:latest' "$(( 2 * TIME_MIN ))"
 os::cmd::try_until_text 'oc status' 'deployment #1 deployed.*- 1 pod' "$(( 2 * TIME_MIN ))"
 os::cmd::expect_success_and_not_text 'oc status' 'pod\/test-deployment-config-1-[0-9a-z]{5} runs openshift\/origin-pod'
 
 # break mac os
 service_ip=$(oc get service/nginx -o=jsonpath={.spec.clusterIP})
-os::cmd::try_until_success "curl --cacert ${MASTER_CONFIG_DIR}/service-signer.crt --resolve nginx.service-serving-cert-generation.svc:443:${service_ip} https://nginx.service-serving-cert-generation.svc:443"
+os::cmd::try_until_success 'oc run --restart=Never --generator=run-pod/v1 --image=centos centos -- bash -c "curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt https://nginx.service-serving-cert-generation.svc:443"'
+os::cmd::try_until_text 'oc get pods/centos -o jsonpath={.status.phase}' "Succeeded"
+os::cmd::expect_success_and_text 'oc logs pods/centos' "Welcome to nginx"
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_end

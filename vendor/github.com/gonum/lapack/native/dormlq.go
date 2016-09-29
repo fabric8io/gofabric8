@@ -9,23 +9,23 @@ import (
 	"github.com/gonum/lapack"
 )
 
-// Dormlq multiplies the matrix c by the othogonal matrix q defined by the
+// Dormlq multiplies the matrix C by the orthogonal matrix Q defined by the
 // slices a and tau. A and tau are as returned from Dgelqf.
 //  C = Q * C    if side == blas.Left and trans == blas.NoTrans
 //  C = Q^T * C  if side == blas.Left and trans == blas.Trans
 //  C = C * Q    if side == blas.Right and trans == blas.NoTrans
 //  C = C * Q^T  if side == blas.Right and trans == blas.Trans
-// If side == blas.Left, a is a matrix of side k×m, and if side == blas.Right
-// a is of size k×n. This uses a blocked algorithm.
+// If side == blas.Left, A is a matrix of side k×m, and if side == blas.Right
+// A is of size k×n. This uses a blocked algorithm.
 //
-// Work is temporary storage, and lwork specifies the usable memory length.
+// work is temporary storage, and lwork specifies the usable memory length.
 // At minimum, lwork >= m if side == blas.Left and lwork >= n if side == blas.Right,
 // and this function will panic otherwise.
 // Dormlq uses a block algorithm, but the block size is limited
 // by the temporary space available. If lwork == -1, instead of performing Dormlq,
 // the optimal work length will be stored into work[0].
 //
-// Tau contains the householder scales and must have length at least k, and
+// tau contains the Householder scales and must have length at least k, and
 // this function will panic otherwise.
 func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k int, a []float64, lda int, tau, c []float64, ldc int, work []float64, lwork int) {
 	if side != blas.Left && side != blas.Right {
@@ -82,7 +82,7 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 		}
 	}
 	if nb < nbmin || nb >= k {
-		// Call unblocked code
+		// Call unblocked code.
 		impl.Dorml2(side, trans, m, n, k, a, lda, tau, c, ldc, work)
 		return
 	}
@@ -108,7 +108,7 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 				c[i*ldc:], ldc,
 				work, ldwork)
 		}
-		return
+
 	case left && !notran:
 		for i := ((k - 1) / nb) * nb; i >= 0; i -= nb {
 			ib := min(nb, k-i)
@@ -122,7 +122,7 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 				c[i*ldc:], ldc,
 				work, ldwork)
 		}
-		return
+
 	case !left && notran:
 		for i := ((k - 1) / nb) * nb; i >= 0; i -= nb {
 			ib := min(nb, k-i)
@@ -136,7 +136,7 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 				c[i:], ldc,
 				work, ldwork)
 		}
-		return
+
 	case !left && !notran:
 		for i := 0; i < k; i += nb {
 			ib := min(nb, k-i)
@@ -150,6 +150,5 @@ func (impl Implementation) Dormlq(side blas.Side, trans blas.Transpose, m, n, k 
 				c[i:], ldc,
 				work, ldwork)
 		}
-		return
 	}
 }

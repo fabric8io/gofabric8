@@ -88,7 +88,7 @@ var _ = Interface(&NsenterMounter{})
 
 const (
 	hostRootFsPath     = "/rootfs"
-	hostProcMountsPath = "/rootfs/proc/mounts"
+	hostProcMountsPath = "/rootfs/proc/1/mounts"
 	nsenterPath        = "nsenter"
 )
 
@@ -118,7 +118,7 @@ func (n *NsenterMounter) doNsenterMount(source, target, fstype string, options [
 	exec := exec.New()
 	outputBytes, err := exec.Command(nsenterPath, args...).CombinedOutput()
 	if len(outputBytes) != 0 {
-		glog.V(5).Infof("Output from mount command: %v", string(outputBytes))
+		glog.V(5).Infof("Output of mounting %s to %s: %v", source, target, string(outputBytes))
 	}
 
 	return err
@@ -151,7 +151,7 @@ func (n *NsenterMounter) Unmount(target string) error {
 	exec := exec.New()
 	outputBytes, err := exec.Command(nsenterPath, args...).CombinedOutput()
 	if len(outputBytes) != 0 {
-		glog.V(5).Infof("Output from mount command: %v", string(outputBytes))
+		glog.V(5).Infof("Output of unmounting %s: %v", target, string(outputBytes))
 	}
 
 	return err
@@ -170,25 +170,36 @@ func (n *NsenterMounter) IsLikelyNotMountPoint(file string) (bool, error) {
 		return true, err
 	}
 
-	args := []string{"--mount=/rootfs/proc/1/ns/mnt", "--", n.absHostPath("findmnt"), "-o", "target", "--noheadings", "--target", file}
+	// Check the directory exists
+	if _, err = os.Stat(file); os.IsNotExist(err) {
+		glog.V(5).Infof("findmnt: directory %s does not exist", file)
+		return true, err
+	}
+	// Add --first-only option: since we are testing for the absense of a mountpoint, it is sufficient to get only
+	// the first of multiple possible mountpoints using --first-only.
+	// Also add fstype output to make sure that the output of target file will give the full path
+	// TODO: Need more refactoring for this function. Track the solution with issue #26996
+	args := []string{"--mount=/rootfs/proc/1/ns/mnt", "--", n.absHostPath("findmnt"), "-o", "target,fstype", "--noheadings", "--first-only", "--target", file}
 	glog.V(5).Infof("findmnt command: %v %v", nsenterPath, args)
 
 	exec := exec.New()
 	out, err := exec.Command(nsenterPath, args...).CombinedOutput()
 	if err != nil {
-		glog.V(2).Infof("Failed findmnt command: %v", err)
+		glog.V(2).Infof("Failed findmnt command for path %s: %v", file, err)
 		// Different operating systems behave differently for paths which are not mount points.
 		// On older versions (e.g. 2.20.1) we'd get error, on newer ones (e.g. 2.26.2) we'd get "/".
 		// It's safer to assume that it's not a mount point.
 		return true, nil
 	}
-	strOut := strings.TrimSuffix(string(out), "\n")
+	mountTarget := strings.Split(string(out), " ")[0]
+	mountTarget = strings.TrimSuffix(mountTarget, "\n")
+	glog.V(5).Infof("IsLikelyNotMountPoint findmnt output for path %s: %v:", file, mountTarget)
 
-	glog.V(5).Infof("IsLikelyNotMountPoint findmnt output: %v", strOut)
-	if strOut == file {
+	if mountTarget == file {
+		glog.V(5).Infof("IsLikelyNotMountPoint: %s is a mount point", file)
 		return false, nil
 	}
-
+	glog.V(5).Infof("IsLikelyNotMountPoint: %s is not a mount point", file)
 	return true, nil
 }
 

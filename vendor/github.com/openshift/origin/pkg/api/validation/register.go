@@ -9,8 +9,10 @@ import (
 	imagevalidation "github.com/openshift/origin/pkg/image/api/validation"
 	oauthvalidation "github.com/openshift/origin/pkg/oauth/api/validation"
 	projectvalidation "github.com/openshift/origin/pkg/project/api/validation"
+	quotavalidation "github.com/openshift/origin/pkg/quota/api/validation"
 	routevalidation "github.com/openshift/origin/pkg/route/api/validation"
 	sdnvalidation "github.com/openshift/origin/pkg/sdn/api/validation"
+	securityvalidation "github.com/openshift/origin/pkg/security/api/validation"
 	templatevalidation "github.com/openshift/origin/pkg/template/api/validation"
 	uservalidation "github.com/openshift/origin/pkg/user/api/validation"
 	extvalidation "k8s.io/kubernetes/pkg/apis/extensions/validation"
@@ -21,8 +23,10 @@ import (
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	oauthapi "github.com/openshift/origin/pkg/oauth/api"
 	projectapi "github.com/openshift/origin/pkg/project/api"
+	quotaapi "github.com/openshift/origin/pkg/quota/api"
 	routeapi "github.com/openshift/origin/pkg/route/api"
 	sdnapi "github.com/openshift/origin/pkg/sdn/api"
+	securityapi "github.com/openshift/origin/pkg/security/api"
 	templateapi "github.com/openshift/origin/pkg/template/api"
 	userapi "github.com/openshift/origin/pkg/user/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
@@ -63,13 +67,14 @@ func registerAll() {
 	Validator.MustRegister(&extensions.Scale{}, extvalidation.ValidateScale, nil)
 
 	Validator.MustRegister(&imageapi.Image{}, imagevalidation.ValidateImage, imagevalidation.ValidateImageUpdate)
+	Validator.MustRegister(&imageapi.ImageSignature{}, imagevalidation.ValidateImageSignature, imagevalidation.ValidateImageSignatureUpdate)
 	Validator.MustRegister(&imageapi.ImageStream{}, imagevalidation.ValidateImageStream, imagevalidation.ValidateImageStreamUpdate)
 	Validator.MustRegister(&imageapi.ImageStreamImport{}, imagevalidation.ValidateImageStreamImport, nil)
 	Validator.MustRegister(&imageapi.ImageStreamMapping{}, imagevalidation.ValidateImageStreamMapping, nil)
 	Validator.MustRegister(&imageapi.ImageStreamTag{}, imagevalidation.ValidateImageStreamTag, imagevalidation.ValidateImageStreamTagUpdate)
 
-	Validator.MustRegister(&oauthapi.OAuthAccessToken{}, oauthvalidation.ValidateAccessToken, nil)
-	Validator.MustRegister(&oauthapi.OAuthAuthorizeToken{}, oauthvalidation.ValidateAuthorizeToken, nil)
+	Validator.MustRegister(&oauthapi.OAuthAccessToken{}, oauthvalidation.ValidateAccessToken, oauthvalidation.ValidateAccessTokenUpdate)
+	Validator.MustRegister(&oauthapi.OAuthAuthorizeToken{}, oauthvalidation.ValidateAuthorizeToken, oauthvalidation.ValidateAuthorizeTokenUpdate)
 	Validator.MustRegister(&oauthapi.OAuthClient{}, oauthvalidation.ValidateClient, oauthvalidation.ValidateClientUpdate)
 	Validator.MustRegister(&oauthapi.OAuthClientAuthorization{}, oauthvalidation.ValidateClientAuthorization, oauthvalidation.ValidateClientAuthorizationUpdate)
 
@@ -81,6 +86,7 @@ func registerAll() {
 	Validator.MustRegister(&sdnapi.ClusterNetwork{}, sdnvalidation.ValidateClusterNetwork, sdnvalidation.ValidateClusterNetworkUpdate)
 	Validator.MustRegister(&sdnapi.HostSubnet{}, sdnvalidation.ValidateHostSubnet, sdnvalidation.ValidateHostSubnetUpdate)
 	Validator.MustRegister(&sdnapi.NetNamespace{}, sdnvalidation.ValidateNetNamespace, sdnvalidation.ValidateNetNamespaceUpdate)
+	Validator.MustRegister(&sdnapi.EgressNetworkPolicy{}, sdnvalidation.ValidateEgressNetworkPolicy, sdnvalidation.ValidateEgressNetworkPolicyUpdate)
 
 	Validator.MustRegister(&templateapi.Template{}, templatevalidation.ValidateTemplate, templatevalidation.ValidateTemplateUpdate)
 
@@ -88,4 +94,10 @@ func registerAll() {
 	Validator.MustRegister(&userapi.Identity{}, uservalidation.ValidateIdentity, uservalidation.ValidateIdentityUpdate)
 	Validator.MustRegister(&userapi.UserIdentityMapping{}, uservalidation.ValidateUserIdentityMapping, uservalidation.ValidateUserIdentityMappingUpdate)
 	Validator.MustRegister(&userapi.Group{}, uservalidation.ValidateGroup, uservalidation.ValidateGroupUpdate)
+
+	Validator.MustRegister(&securityapi.PodSecurityPolicySubjectReview{}, securityvalidation.ValidatePodSecurityPolicySubjectReview, nil)
+	Validator.MustRegister(&securityapi.PodSecurityPolicySelfSubjectReview{}, securityvalidation.ValidatePodSecurityPolicySelfSubjectReview, nil)
+	Validator.MustRegister(&securityapi.PodSecurityPolicyReview{}, securityvalidation.ValidatePodSecurityPolicyReview, nil)
+
+	Validator.MustRegister(&quotaapi.ClusterResourceQuota{}, quotavalidation.ValidateClusterResourceQuota, quotavalidation.ValidateClusterResourceQuotaUpdate)
 }

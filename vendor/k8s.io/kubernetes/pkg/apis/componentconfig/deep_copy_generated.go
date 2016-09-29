@@ -70,6 +70,7 @@ func DeepCopy_componentconfig_KubeControllerManagerConfiguration(in KubeControll
 	out.ConcurrentDaemonSetSyncs = in.ConcurrentDaemonSetSyncs
 	out.ConcurrentJobSyncs = in.ConcurrentJobSyncs
 	out.ConcurrentNamespaceSyncs = in.ConcurrentNamespaceSyncs
+	out.ConcurrentSATokenSyncs = in.ConcurrentSATokenSyncs
 	out.LookupCacheSizeForRC = in.LookupCacheSizeForRC
 	out.LookupCacheSizeForRS = in.LookupCacheSizeForRS
 	out.LookupCacheSizeForDaemonSet = in.LookupCacheSizeForDaemonSet
@@ -117,8 +118,12 @@ func DeepCopy_componentconfig_KubeControllerManagerConfiguration(in KubeControll
 	out.EnableProfiling = in.EnableProfiling
 	out.ClusterName = in.ClusterName
 	out.ClusterCIDR = in.ClusterCIDR
+	out.ServiceCIDR = in.ServiceCIDR
+	out.NodeCIDRMaskSize = in.NodeCIDRMaskSize
 	out.AllocateNodeCIDRs = in.AllocateNodeCIDRs
+	out.ConfigureCloudRoutes = in.ConfigureCloudRoutes
 	out.RootCAFile = in.RootCAFile
+	out.ContentType = in.ContentType
 	out.KubeAPIQPS = in.KubeAPIQPS
 	out.KubeAPIBurst = in.KubeAPIBurst
 	if err := DeepCopy_componentconfig_LeaderElectionConfiguration(in.LeaderElection, &out.LeaderElection, c); err != nil {
@@ -127,6 +132,10 @@ func DeepCopy_componentconfig_KubeControllerManagerConfiguration(in KubeControll
 	if err := DeepCopy_componentconfig_VolumeConfiguration(in.VolumeConfiguration, &out.VolumeConfiguration, c); err != nil {
 		return err
 	}
+	if err := unversioned.DeepCopy_unversioned_Duration(in.ControllerStartInterval, &out.ControllerStartInterval, c); err != nil {
+		return err
+	}
+	out.EnableGarbageCollector = in.EnableGarbageCollector
 	return nil
 }
 
@@ -135,12 +144,13 @@ func DeepCopy_componentconfig_KubeProxyConfiguration(in KubeProxyConfiguration, 
 		return err
 	}
 	out.BindAddress = in.BindAddress
+	out.ClusterCIDR = in.ClusterCIDR
 	out.HealthzBindAddress = in.HealthzBindAddress
 	out.HealthzPort = in.HealthzPort
 	out.HostnameOverride = in.HostnameOverride
 	if in.IPTablesMasqueradeBit != nil {
 		in, out := in.IPTablesMasqueradeBit, &out.IPTablesMasqueradeBit
-		*out = new(int)
+		*out = new(int32)
 		**out = *in
 	} else {
 		out.IPTablesMasqueradeBit = nil
@@ -153,7 +163,7 @@ func DeepCopy_componentconfig_KubeProxyConfiguration(in KubeProxyConfiguration, 
 	out.Master = in.Master
 	if in.OOMScoreAdj != nil {
 		in, out := in.OOMScoreAdj, &out.OOMScoreAdj
-		*out = new(int)
+		*out = new(int32)
 		**out = *in
 	} else {
 		out.OOMScoreAdj = nil
@@ -180,9 +190,12 @@ func DeepCopy_componentconfig_KubeSchedulerConfiguration(in KubeSchedulerConfigu
 	out.AlgorithmProvider = in.AlgorithmProvider
 	out.PolicyConfigFile = in.PolicyConfigFile
 	out.EnableProfiling = in.EnableProfiling
+	out.ContentType = in.ContentType
 	out.KubeAPIQPS = in.KubeAPIQPS
 	out.KubeAPIBurst = in.KubeAPIBurst
 	out.SchedulerName = in.SchedulerName
+	out.HardPodAffinitySymmetricWeight = in.HardPodAffinitySymmetricWeight
+	out.FailureDomains = in.FailureDomains
 	if err := DeepCopy_componentconfig_LeaderElectionConfiguration(in.LeaderElection, &out.LeaderElection, c); err != nil {
 		return err
 	}
@@ -213,6 +226,7 @@ func DeepCopy_componentconfig_KubeletConfiguration(in KubeletConfiguration, out 
 	out.PodInfraContainerImage = in.PodInfraContainerImage
 	out.DockerEndpoint = in.DockerEndpoint
 	out.RootDirectory = in.RootDirectory
+	out.SeccompProfileRoot = in.SeccompProfileRoot
 	out.AllowPrivileged = in.AllowPrivileged
 	out.HostNetworkSources = in.HostNetworkSources
 	out.HostPIDSources = in.HostPIDSources
@@ -260,14 +274,19 @@ func DeepCopy_componentconfig_KubeletConfiguration(in KubeletConfiguration, out 
 	out.SystemCgroups = in.SystemCgroups
 	out.CgroupRoot = in.CgroupRoot
 	out.ContainerRuntime = in.ContainerRuntime
+	if err := unversioned.DeepCopy_unversioned_Duration(in.RuntimeRequestTimeout, &out.RuntimeRequestTimeout, c); err != nil {
+		return err
+	}
 	out.RktPath = in.RktPath
 	out.RktAPIEndpoint = in.RktAPIEndpoint
 	out.RktStage1Image = in.RktStage1Image
 	out.LockFilePath = in.LockFilePath
+	out.ExitOnLockContention = in.ExitOnLockContention
 	out.ConfigureCBR0 = in.ConfigureCBR0
 	out.HairpinMode = in.HairpinMode
 	out.BabysitDaemons = in.BabysitDaemons
 	out.MaxPods = in.MaxPods
+	out.NvidiaGPUs = in.NvidiaGPUs
 	out.DockerExecHandlerName = in.DockerExecHandlerName
 	out.PodCIDR = in.PodCIDR
 	out.ResolverConfig = in.ResolverConfig
@@ -276,6 +295,7 @@ func DeepCopy_componentconfig_KubeletConfiguration(in KubeletConfiguration, out 
 	out.MaxOpenFiles = in.MaxOpenFiles
 	out.ReconcileCIDR = in.ReconcileCIDR
 	out.RegisterSchedulable = in.RegisterSchedulable
+	out.ContentType = in.ContentType
 	out.KubeAPIQPS = in.KubeAPIQPS
 	out.KubeAPIBurst = in.KubeAPIBurst
 	out.SerializeImagePulls = in.SerializeImagePulls
@@ -295,6 +315,15 @@ func DeepCopy_componentconfig_KubeletConfiguration(in KubeletConfiguration, out 
 	}
 	out.NonMasqueradeCIDR = in.NonMasqueradeCIDR
 	out.EnableCustomMetrics = in.EnableCustomMetrics
+	out.EvictionHard = in.EvictionHard
+	out.EvictionSoft = in.EvictionSoft
+	out.EvictionSoftGracePeriod = in.EvictionSoftGracePeriod
+	if err := unversioned.DeepCopy_unversioned_Duration(in.EvictionPressureTransitionPeriod, &out.EvictionPressureTransitionPeriod, c); err != nil {
+		return err
+	}
+	out.EvictionMaxPodGracePeriod = in.EvictionMaxPodGracePeriod
+	out.PodsPerCore = in.PodsPerCore
+	out.EnableControllerAttachDetach = in.EnableControllerAttachDetach
 	return nil
 }
 
@@ -336,8 +365,10 @@ func DeepCopy_componentconfig_PortRangeVar(in PortRangeVar, out *PortRangeVar, c
 
 func DeepCopy_componentconfig_VolumeConfiguration(in VolumeConfiguration, out *VolumeConfiguration, c *conversion.Cloner) error {
 	out.EnableHostPathProvisioning = in.EnableHostPathProvisioning
+	out.EnableDynamicProvisioning = in.EnableDynamicProvisioning
 	if err := DeepCopy_componentconfig_PersistentVolumeRecyclerConfiguration(in.PersistentVolumeRecyclerConfiguration, &out.PersistentVolumeRecyclerConfiguration, c); err != nil {
 		return err
 	}
+	out.FlexVolumePluginDir = in.FlexVolumePluginDir
 	return nil
 }

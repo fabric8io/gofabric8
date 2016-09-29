@@ -56,14 +56,17 @@ var LogFlags = [...]string{
 }
 
 const (
-	DefaultIsoUrl       = "https://storage.googleapis.com/minikube/minikube-0.6.iso"
-	DefaultIsoShaUrl    = "https://storage.googleapis.com/minikube/minikube-0.6.iso.sha256"
+	DefaultIsoUrl       = "https://storage.googleapis.com/minikube/minikube-0.7.iso"
+	ShaSuffix           = ".sha256"
+	DefaultIsoShaUrl    = DefaultIsoUrl + ShaSuffix
 	DefaultMemory       = 1024
 	DefaultCPUS         = 1
 	DefaultDiskSize     = "20g"
 	DefaultVMDriver     = "virtualbox"
 	DefaultStatusFormat = "minikubeVM: {{.MinikubeStatus}}\n" +
 		"localkube: {{.LocalkubeStatus}}\n"
+	GithubMinikubeReleasesURL = "https://storage.googleapis.com/minikube/releases.json"
+	KubernetesVersionGCSURL   = "https://storage.googleapis.com/minikube/k8s_releases.json"
 )
 
 var DefaultKubernetesVersion = version.Get().GitVersion

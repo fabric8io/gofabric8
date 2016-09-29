@@ -34,6 +34,9 @@ func (p *fakePlugin) HandleEndpoints(watch.EventType, *kapi.Endpoints) error {
 func (p *fakePlugin) HandleNamespaces(namespaces sets.String) error {
 	return fmt.Errorf("not expected")
 }
+func (p *fakePlugin) SetLastSyncProcessed(processed bool) error {
+	return fmt.Errorf("not expected")
+}
 
 func TestStatusNoOp(t *testing.T) {
 	now := nowFn()
@@ -136,7 +139,7 @@ func TestStatusAdmitsRouteOnForbidden(t *testing.T) {
 	nowFn = func() unversioned.Time { return now }
 	touched := unversioned.Time{Time: now.Add(-time.Minute)}
 	p := &fakePlugin{}
-	c := testclient.NewSimpleFake(&(errors.NewForbidden(kapi.Resource("Route"), "route1", nil).(*errors.StatusError).ErrStatus))
+	c := testclient.NewSimpleFake(&(errors.NewForbidden(kapi.Resource("Route"), "route1", nil).ErrStatus))
 	admitter := NewStatusAdmitter(p, c, "test")
 	err := admitter.HandleRoute(watch.Added, &routeapi.Route{
 		ObjectMeta: kapi.ObjectMeta{Name: "route1", Namespace: "default", UID: types.UID("uid1")},
@@ -165,7 +168,7 @@ func TestStatusBackoffOnConflict(t *testing.T) {
 	nowFn = func() unversioned.Time { return now }
 	touched := unversioned.Time{Time: now.Add(-time.Minute)}
 	p := &fakePlugin{}
-	c := testclient.NewSimpleFake(&(errors.NewConflict(kapi.Resource("Route"), "route1", nil).(*errors.StatusError).ErrStatus))
+	c := testclient.NewSimpleFake(&(errors.NewConflict(kapi.Resource("Route"), "route1", nil).ErrStatus))
 	admitter := NewStatusAdmitter(p, c, "test")
 	err := admitter.HandleRoute(watch.Added, &routeapi.Route{
 		ObjectMeta: kapi.ObjectMeta{Name: "route1", Namespace: "default", UID: types.UID("uid1")},
@@ -358,7 +361,7 @@ func TestStatusRecordRejectionConflict(t *testing.T) {
 	nowFn = func() unversioned.Time { return now }
 	touched := unversioned.Time{Time: now.Add(-time.Minute)}
 	p := &fakePlugin{}
-	c := testclient.NewSimpleFake(&(errors.NewConflict(kapi.Resource("Route"), "route1", nil).(*errors.StatusError).ErrStatus))
+	c := testclient.NewSimpleFake(&(errors.NewConflict(kapi.Resource("Route"), "route1", nil).ErrStatus))
 	admitter := NewStatusAdmitter(p, c, "test")
 	admitter.RecordRouteRejection(&routeapi.Route{
 		ObjectMeta: kapi.ObjectMeta{Name: "route1", Namespace: "default", UID: types.UID("uid1")},
@@ -449,7 +452,7 @@ func TestStatusFightBetweenRouters(t *testing.T) {
 	now1 := unversioned.Now()
 	nowFn = func() unversioned.Time { return now1 }
 	touched1 := unversioned.Time{Time: now1.Add(-time.Minute)}
-	c1 := testclient.NewSimpleFake(&(errors.NewConflict(kapi.Resource("Route"), "route1", nil).(*errors.StatusError).ErrStatus), &routeapi.Route{})
+	c1 := testclient.NewSimpleFake(&(errors.NewConflict(kapi.Resource("Route"), "route1", nil).ErrStatus), &routeapi.Route{})
 	admitter1 := NewStatusAdmitter(p, c1, "test2")
 	err := admitter1.HandleRoute(watch.Added, &routeapi.Route{
 		ObjectMeta: kapi.ObjectMeta{Name: "route1", Namespace: "default", UID: types.UID("uid1")},
@@ -527,7 +530,7 @@ func makePass(t *testing.T, host string, admitter *StatusAdmitter, srcObj *route
 	// initialize a new client
 	var c *testclient.Fake
 	if conflict {
-		c = testclient.NewSimpleFake(&(errors.NewConflict(kapi.Resource("Route"), "route1", nil).(*errors.StatusError).ErrStatus))
+		c = testclient.NewSimpleFake(&(errors.NewConflict(kapi.Resource("Route"), "route1", nil).ErrStatus))
 	} else {
 		c = testclient.NewSimpleFake(&routeapi.Route{})
 	}

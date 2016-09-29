@@ -42,6 +42,7 @@ export KUBE_RACE=-race
 export KUBE_COVER="n"
 # Produce a JUnit-style XML test report for Jenkins.
 export KUBE_JUNIT_REPORT_DIR=${WORKSPACE}/artifacts
+export ARTIFACTS_DIR=${WORKSPACE}/artifacts
 # Save the verbose stdout as well.
 export KUBE_KEEP_VERBOSE_TEST_OUTPUT=y
 export KUBE_TIMEOUT='-timeout 300s'
@@ -49,12 +50,10 @@ export KUBE_INTEGRATION_TEST_MAX_CONCURRENCY=4
 export LOG_LEVEL=4
 
 cd /go/src/k8s.io/kubernetes
+rm -rf Godeps/_workspace # Temporary until _workspace is fully obliterated
 
-./hack/build-go.sh
-godep go install ./...
+go install ./cmd/...
 ./hack/install-etcd.sh
-
-./hack/verify-all.sh -v
 
 ./hack/test-go.sh
 ./hack/test-cmd.sh

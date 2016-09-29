@@ -37,6 +37,10 @@ type Binder interface {
 	Bind(binding *api.Binding) error
 }
 
+type PodConditionUpdater interface {
+	Update(pod *api.Pod, podCondition *api.PodCondition) error
+}
+
 // Scheduler watches for new unscheduled pods. It attempts to find
 // nodes that they fit on and writes bindings back to the api server.
 type Scheduler struct {
@@ -50,6 +54,10 @@ type Config struct {
 	NodeLister     algorithm.NodeLister
 	Algorithm      algorithm.ScheduleAlgorithm
 	Binder         Binder
+	// PodConditionUpdater is used only in case of scheduling errors. If we succeed
+	// with scheduling, PodScheduled condition will be updated in apiserver in /bind
+	// handler so that binding and setting PodCondition it is atomic.
+	PodConditionUpdater PodConditionUpdater
 
 	// NextPod should be a function that blocks until the next pod
 	// is available. We don't use a channel for this, because scheduling
@@ -90,39 +98,61 @@ func (s *Scheduler) scheduleOne() {
 	dest, err := s.config.Algorithm.Schedule(pod, s.config.NodeLister)
 	if err != nil {
 		glog.V(1).Infof("Failed to schedule: %+v", pod)
-		s.config.Recorder.Eventf(pod, api.EventTypeWarning, "FailedScheduling", "%v", err)
 		s.config.Error(pod, err)
+		s.config.Recorder.Eventf(pod, api.EventTypeWarning, "FailedScheduling", "%v", err)
+		s.config.PodConditionUpdater.Update(pod, &api.PodCondition{
+			Type:   api.PodScheduled,
+			Status: api.ConditionFalse,
+			Reason: "Unschedulable",
+		})
 		return
 	}
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInMicroseconds(start))
 
-	b := &api.Binding{
-		ObjectMeta: api.ObjectMeta{Namespace: pod.Namespace, Name: pod.Name},
-		Target: api.ObjectReference{
-			Kind: "Node",
-			Name: dest,
-		},
+	// Optimistically assume that the binding will succeed and send it to apiserver
+	// in the background.
+	// The only risk in this approach is that if the binding fails because of some
+	// reason, scheduler will be assuming that it succeeded while scheduling next
+	// pods, until the assumption in the internal cache expire (expiration is
+	// defined as "didn't read the binding via watch within a given timeout",
+	// timeout is currently set to 30s). However, after this timeout, the situation
+	// will self-repair.
+	assumed := *pod
+	assumed.Spec.NodeName = dest
+	if err := s.config.SchedulerCache.AssumePod(&assumed); err != nil {
+		glog.Errorf("scheduler cache AssumePod failed: %v", err)
 	}
 
-	bindAction := func() bool {
+	go func() {
+		defer metrics.E2eSchedulingLatency.Observe(metrics.SinceInMicroseconds(start))
+
+		b := &api.Binding{
+			ObjectMeta: api.ObjectMeta{Namespace: pod.Namespace, Name: pod.Name},
+			Target: api.ObjectReference{
+				Kind: "Node",
+				Name: dest,
+			},
+		}
+
 		bindingStart := time.Now()
+		// If binding succeeded then PodScheduled condition will be updated in apiserver so that
+		// it's atomic with setting host.
 		err := s.config.Binder.Bind(b)
 		if err != nil {
-			glog.V(1).Infof("Failed to bind pod: %+v", err)
-			s.config.Recorder.Eventf(pod, api.EventTypeNormal, "FailedScheduling", "Binding rejected: %v", err)
+			glog.V(1).Infof("Failed to bind pod: %v/%v", pod.Namespace, pod.Name)
+			if err := s.config.SchedulerCache.ForgetPod(&assumed); err != nil {
+				glog.Errorf("scheduler cache ForgetPod failed: %v", err)
+			}
 			s.config.Error(pod, err)
-			return false
+			s.config.Recorder.Eventf(pod, api.EventTypeNormal, "FailedScheduling", "Binding rejected: %v", err)
+			s.config.PodConditionUpdater.Update(pod, &api.PodCondition{
+				Type:   api.PodScheduled,
+				Status: api.ConditionFalse,
+				Reason: "BindingRejected",
+			})
+			return
 		}
 		metrics.BindingLatency.Observe(metrics.SinceInMicroseconds(bindingStart))
 		s.config.Recorder.Eventf(pod, api.EventTypeNormal, "Scheduled", "Successfully assigned %v to %v", pod.Name, dest)
-		return true
-	}
-
-	assumed := *pod
-	assumed.Spec.NodeName = dest
-	// We want to assume the pod if and only if the bind succeeds,
-	// but we don't want to race with any deletions, which happen asynchronously.
-	s.config.SchedulerCache.AssumePodIfBindSucceed(&assumed, bindAction)
-
-	metrics.E2eSchedulingLatency.Observe(metrics.SinceInMicroseconds(start))
+	}()
 }

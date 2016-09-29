@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -51,10 +49,7 @@ func signedManifest(name string) ([]byte, digest.Digest, error) {
 	if err != nil {
 		return []byte{}, "", fmt.Errorf("error marshaling manifest: %s", err)
 	}
-	dgst, err := digest.FromBytes(manifestBytes)
-	if err != nil {
-		return []byte{}, "", fmt.Errorf("error calculating manifest digest: %s", err)
-	}
+	dgst := digest.FromBytes(manifestBytes)
 
 	jsonSignature, err := libtrust.NewJSONSignature(manifestBytes)
 	if err != nil {
@@ -75,6 +70,7 @@ func signedManifest(name string) ([]byte, digest.Digest, error) {
 
 func TestV2RegistryGetTags(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
 	if err != nil {
 		t.Fatalf("error starting master: %v", err)
@@ -98,7 +94,8 @@ func TestV2RegistryGetTags(t *testing.T) {
 	}
 
 	config := `version: 0.1
-loglevel: debug
+log:
+  level: debug
 http:
   addr: 127.0.0.1:5000
 storage:
@@ -106,7 +103,11 @@ storage:
 auth:
   openshift:
 middleware:
+  registry:
+    - name: openshift
   repository:
+    - name: openshift
+  storage:
     - name: openshift
 `
 

@@ -267,7 +267,7 @@ func (r *BuildRef) BuildConfig() (*buildapi.BuildConfig, error) {
 		},
 		Spec: buildapi.BuildConfigSpec{
 			Triggers: triggers,
-			BuildSpec: buildapi.BuildSpec{
+			CommonSpec: buildapi.CommonSpec{
 				Source:   *source,
 				Strategy: *strategy,
 				Output:   *output,
@@ -276,13 +276,18 @@ func (r *BuildRef) BuildConfig() (*buildapi.BuildConfig, error) {
 	}, nil
 }
 
+type DeploymentHook struct {
+	Shell string
+}
+
 // DeploymentConfigRef is a reference to a deployment configuration
 type DeploymentConfigRef struct {
-	Name   string
-	Images []*ImageRef
-	Env    Environment
-	Labels map[string]string
-	AsTest bool
+	Name     string
+	Images   []*ImageRef
+	Env      Environment
+	Labels   map[string]string
+	AsTest   bool
+	PostHook *DeploymentHook
 }
 
 // DeploymentConfig creates a deploymentConfig resource from the deployment configuration reference
@@ -348,7 +353,7 @@ func (r *DeploymentConfigRef) DeploymentConfig() (*deployapi.DeploymentConfig, e
 		template.Containers[i].Env = append(template.Containers[i].Env, r.Env.List()...)
 	}
 
-	return &deployapi.DeploymentConfig{
+	dc := &deployapi.DeploymentConfig{
 		ObjectMeta: kapi.ObjectMeta{
 			Name: r.Name,
 		},
@@ -365,7 +370,21 @@ func (r *DeploymentConfigRef) DeploymentConfig() (*deployapi.DeploymentConfig, e
 			},
 			Triggers: triggers,
 		},
-	}, nil
+	}
+	if r.PostHook != nil {
+		//dc.Spec.Strategy.Type = "Rolling"
+		if len(r.PostHook.Shell) > 0 {
+			dc.Spec.Strategy.RecreateParams = &deployapi.RecreateDeploymentStrategyParams{
+				Post: &deployapi.LifecycleHook{
+					ExecNewPod: &deployapi.ExecNewPodHook{
+						Command: []string{"/bin/sh", "-c", r.PostHook.Shell},
+					},
+				},
+			}
+		}
+	}
+
+	return dc, nil
 }
 
 // GenerateSecret generates a random secret string
@@ -407,14 +426,14 @@ func checkPortSpecSegment(s string) (port kapi.ContainerPort, ok bool) {
 		if err != nil {
 			return
 		}
-		return kapi.ContainerPort{ContainerPort: container, HostPort: host}, true
+		return kapi.ContainerPort{ContainerPort: int32(container), HostPort: int32(host)}, true
 	}
 
 	container, err := strconv.Atoi(s)
 	if err != nil {
 		return
 	}
-	return kapi.ContainerPort{ContainerPort: container}, true
+	return kapi.ContainerPort{ContainerPort: int32(container)}, true
 }
 
 // LabelsFromSpec turns a set of specs NAME=VALUE or NAME- into a map of labels,
@@ -447,7 +466,7 @@ func LabelsFromSpec(spec []string) (map[string]string, []string, error) {
 func AsVersionedObjects(objects []runtime.Object, typer runtime.ObjectTyper, convertor runtime.ObjectConvertor, versions ...unversioned.GroupVersion) []error {
 	var errs []error
 	for i, object := range objects {
-		kinds, err := typer.ObjectKinds(object)
+		kinds, _, err := typer.ObjectKinds(object)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -492,7 +511,7 @@ func kindsInVersions(kinds []unversioned.GroupVersionKind, versions []unversione
 func tryConvert(convertor runtime.ObjectConvertor, object runtime.Object, versions []unversioned.GroupVersion) (runtime.Object, error) {
 	var last error
 	for _, version := range versions {
-		obj, err := convertor.ConvertToVersion(object, version.String())
+		obj, err := convertor.ConvertToVersion(object, version)
 		if err != nil {
 			last = err
 			continue

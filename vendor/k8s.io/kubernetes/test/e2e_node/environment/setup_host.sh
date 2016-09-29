@@ -25,8 +25,26 @@
 # - centos 7
 # - debian jessie
 
-set -e
-set -x
+# RHEL os detection
+cat /etc/*-release | grep "ID=\"rhel\""
+OS_RHEL=$?
+
+# On a systemd environment, enable cpu and memory accounting for all processes by default.
+if [ -d /etc/systemd ]; then
+  cat <<EOF >kubernetes-accounting.conf
+[Manager]
+DefaultCPUAccounting=yes
+DefaultMemoryAccounting=yes
+EOF
+  sudo mkdir -p /etc/systemd/system.conf.d/
+  sudo cp kubernetes-accounting.conf /etc/systemd/system.conf.d
+  sudo systemctl daemon-reload
+fi
+
+# For coreos, disable updates
+if $(sudo systemctl status update-engine &>/dev/null); then
+  sudo systemctl mask update-engine locksmithd
+fi
 
 # Fixup sudoers require tty
 sudo grep -q "# Defaults    requiretty" /etc/sudoers
@@ -47,16 +65,36 @@ fi
 # Install docker
 hash docker 2>/dev/null
 if [ $? -ne 0 ]; then
-  curl -fsSL https://get.docker.com/ | sh
-  sudo service docker start
-  sudo systemctl enable docker.service
+  # RHEL platforms should always install from RHEL repository
+  # This will install the latest supported stable docker platform on RHEL
+  if [ $OS_RHEL -eq 0 ]; then
+    sudo yum install -y docker-latest
+    sudo groupadd docker
+    sudo systemctl enable docker-latest.service
+    sudo systemctl start docker-latest.service
+  else
+    curl -fsSL https://get.docker.com/ | sh
+    sudo service docker start
+    sudo systemctl enable docker.service
+  fi
 fi
+
+# Allow jenkins access to docker
+sudo usermod -a -G docker jenkins
 
 # install lxc
 cat /etc/*-release | grep "ID=debian"
 if [ $? -ne 0 ]; then
-  sudo apt-get install lxc -y
-  lxc-checkconfig
-  sudo sed -i 's/GRUB_CMDLINE_LINUX="\(.*\)"/GRUB_CMDLINE_LINUX="\1 cgroup_enable=memory"/' /etc/default/grub
-  sudo update-grub
+  hash apt-get 2>/dev/null
+  if [ $? -ne 1 ]; then
+    sudo apt-get install lxc -y
+    lxc-checkconfig
+    sudo sed -i 's/GRUB_CMDLINE_LINUX="\(.*\)"/GRUB_CMDLINE_LINUX="\1 cgroup_enable=memory"/' /etc/default/grub
+    sudo update-grub  
+  fi
+fi
+
+# delete init kubelet from containervm so that is doesn't startup
+if [ -f /etc/init.d/kubelet ]; then
+  sudo rm /etc/init.d/kubelet
 fi

@@ -73,7 +73,7 @@ func TestSimpleAllocationPlugin(t *testing.T) {
 					Namespace: "namespace",
 				},
 				Spec: api.RouteSpec{
-					To: kapi.ObjectReference{
+					To: api.RouteTargetReference{
 						Name: "service",
 					},
 				},
@@ -87,7 +87,7 @@ func TestSimpleAllocationPlugin(t *testing.T) {
 					Name: "name",
 				},
 				Spec: api.RouteSpec{
-					To: kapi.ObjectReference{
+					To: api.RouteTargetReference{
 						Name: "nonamespace",
 					},
 				},
@@ -112,7 +112,7 @@ func TestSimpleAllocationPlugin(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "www.example.com",
-					To: kapi.ObjectReference{
+					To: api.RouteTargetReference{
 						Name: "myservice",
 					},
 				},
@@ -127,7 +127,7 @@ func TestSimpleAllocationPlugin(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "www.example.com",
-					To: kapi.ObjectReference{
+					To: api.RouteTargetReference{
 						Name: "myservice",
 					},
 				},
@@ -150,7 +150,7 @@ func TestSimpleAllocationPlugin(t *testing.T) {
 		case tc.empty:
 			continue
 		}
-		if !validation.IsDNS1123Subdomain(name) {
+		if len(validation.IsDNS1123Subdomain(name)) != 0 {
 			t.Errorf("Test case %s got %s - invalid DNS name.", tc.name, name)
 		}
 	}
@@ -169,7 +169,7 @@ func TestSimpleAllocationPluginViaController(t *testing.T) {
 					Namespace: "namespace",
 				},
 				Spec: api.RouteSpec{
-					To: kapi.ObjectReference{
+					To: api.RouteTargetReference{
 						Name: "service",
 					},
 				},
@@ -195,7 +195,7 @@ func TestSimpleAllocationPluginViaController(t *testing.T) {
 					Name: "name",
 				},
 				Spec: api.RouteSpec{
-					To: kapi.ObjectReference{
+					To: api.RouteTargetReference{
 						Name: "nonamespace",
 					},
 				},
@@ -220,7 +220,7 @@ func TestSimpleAllocationPluginViaController(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "www.example.com",
-					To: kapi.ObjectReference{
+					To: api.RouteTargetReference{
 						Name: "s3",
 					},
 				},
@@ -244,7 +244,7 @@ func TestSimpleAllocationPluginViaController(t *testing.T) {
 		case tc.empty:
 			continue
 		}
-		if !validation.IsDNS1123Subdomain(name) {
+		if len(validation.IsDNS1123Subdomain(name)) != 0 {
 			t.Errorf("Test case %s got %s - invalid DNS name.", tc.name, name)
 		}
 	}

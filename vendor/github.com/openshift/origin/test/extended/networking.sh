@@ -2,10 +2,7 @@
 
 # This script runs the networking e2e tests. See CONTRIBUTING.adoc for
 # documentation.
-
-set -o errexit
-set -o nounset
-set -o pipefail
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 
 if [[ -n "${OPENSHIFT_VERBOSE_OUTPUT:-}" ]]; then
   set -o xtrace
@@ -15,24 +12,20 @@ fi
 # Ensure that subshells inherit bash settings (specifically xtrace)
 export SHELLOPTS
 
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/common.sh"
-source "${OS_ROOT}/hack/lib/log.sh"
-source "${OS_ROOT}/hack/lib/util/environment.sh"
-os::log::install_errexit
-
-NETWORKING_DEBUG=${NETWORKING_DEBUG:-false}
-
 # These strings filter the available tests.
-NETWORKING_E2E_FOCUS="${NETWORKING_E2E_FOCUS:-etworking|Services}"
+#
+# The EmptyDir test is a canary; it will fail if mount propagation is
+# not properly configured on the host.
+NETWORKING_E2E_FOCUS="${NETWORKING_E2E_FOCUS:-etworking|Services|EmptyDir volumes should support \(root,0644,tmpfs\)}"
 NETWORKING_E2E_SKIP="${NETWORKING_E2E_SKIP:-}"
 
 DEFAULT_SKIP_LIST=(
-  # Skip tests that require secrets.  Secrets are not supported by
-  # dind without docker >= 1.10.
-  "Networking should function for intra-pod"
+  # TODO(marun) This should work with docker >= 1.10
   "openshift router"
+  "\[Feature:Federation\]"
+
+  # Panicing, needs investigation
+  "Networking IPerf"
 
   # DNS inside container fails in CI but works locally
   "should provide Internet connection for containers"
@@ -197,6 +190,7 @@ function join { local IFS="$1"; shift; echo "$*"; }
 function run-extended-tests() {
   local kubeconfig=$1
   local log_path=${2:-}
+  local dlv_debug="${DLV_DEBUG:-}"
 
   local focus_regex="${NETWORKING_E2E_FOCUS}"
   local skip_regex="${NETWORKING_E2E_SKIP}"
@@ -211,9 +205,11 @@ function run-extended-tests() {
   local test_args="--test.v '--ginkgo.skip=${skip_regex}' \
 '--ginkgo.focus=${focus_regex}' ${TEST_EXTRA_ARGS}"
 
-  if [[ "${NETWORKING_DEBUG}" = 'true' ]]; then
+  if [[ -n "${dlv_debug}" ]]; then
+    # run tests using delve debugger
     local test_cmd="dlv exec ${TEST_BINARY} -- ${test_args}"
   else
+    # run tests normally
     local test_cmd="${TEST_BINARY} ${test_args}"
   fi
 

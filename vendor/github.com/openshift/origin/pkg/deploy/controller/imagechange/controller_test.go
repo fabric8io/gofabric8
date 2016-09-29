@@ -3,19 +3,56 @@ package imagechange
 import (
 	"flag"
 	"testing"
+	"time"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/cache"
 	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
 
+	oscache "github.com/openshift/origin/pkg/client/cache"
 	"github.com/openshift/origin/pkg/client/testclient"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	testapi "github.com/openshift/origin/pkg/deploy/api/test"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
+var (
+	dcInformer = framework.NewSharedIndexInformer(
+		&cache.ListWatch{},
+		&deployapi.DeploymentConfig{},
+		2*time.Minute,
+		cache.Indexers{oscache.ImageStreamReferenceIndex: oscache.ImageStreamReferenceIndexFunc},
+	)
+	streamInformer = framework.NewSharedIndexInformer(
+		&cache.ListWatch{},
+		&imageapi.ImageStream{},
+		2*time.Minute,
+		cache.Indexers{},
+	)
+)
+
 func init() {
 	flag.Set("v", "5")
+}
+
+func makeStream(name, tag, dir, image string) *imageapi.ImageStream {
+	return &imageapi.ImageStream{
+		ObjectMeta: kapi.ObjectMeta{Name: name, Namespace: kapi.NamespaceDefault},
+		Status: imageapi.ImageStreamStatus{
+			Tags: map[string]imageapi.TagEventList{
+				tag: {
+					Items: []imageapi.TagEvent{
+						{
+							DockerImageReference: dir,
+							Image:                image,
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // TestHandle_changeForNonAutomaticTag ensures that an image update for which
@@ -28,16 +65,14 @@ func TestHandle_changeForNonAutomaticTag(t *testing.T) {
 		return true, nil, nil
 	})
 
-	controller := &ImageChangeController{
-		listDeploymentConfigs: func() ([]*deployapi.DeploymentConfig, error) {
-			config := testapi.OkDeploymentConfig(1)
-			config.Namespace = kapi.NamespaceDefault
-			config.Spec.Triggers[0].ImageChangeParams.Automatic = false
+	controller := NewImageChangeController(dcInformer, streamInformer, fake)
 
-			return []*deployapi.DeploymentConfig{config}, nil
-		},
-		client: fake,
-	}
+	config := testapi.OkDeploymentConfig(1)
+	config.Namespace = kapi.NamespaceDefault
+	config.Spec.Triggers[0].ImageChangeParams.Automatic = false
+	// The image has been resolved at least once before.
+	config.Spec.Triggers[0].ImageChangeParams.LastTriggeredImage = testapi.DockerImageReference
+	controller.dcLister.Add(config)
 
 	// verify no-op
 	tagUpdate := makeStream(testapi.ImageStreamName, imageapi.DefaultImageTag, testapi.DockerImageReference, testapi.ImageID)
@@ -57,18 +92,14 @@ func TestHandle_changeForNonAutomaticTag(t *testing.T) {
 func TestHandle_changeForInitialNonAutomaticDeployment(t *testing.T) {
 	fake := &testclient.Fake{}
 
-	controller := &ImageChangeController{
-		listDeploymentConfigs: func() ([]*deployapi.DeploymentConfig, error) {
-			config := testapi.OkDeploymentConfig(0)
-			config.Namespace = kapi.NamespaceDefault
-			config.Spec.Triggers[0].ImageChangeParams.Automatic = false
+	controller := NewImageChangeController(dcInformer, streamInformer, fake)
 
-			return []*deployapi.DeploymentConfig{config}, nil
-		},
-		client: fake,
-	}
+	config := testapi.OkDeploymentConfig(0)
+	config.Namespace = kapi.NamespaceDefault
+	config.Spec.Triggers[0].ImageChangeParams.Automatic = false
+	config.Spec.Triggers[0].ImageChangeParams.From.Namespace = kapi.NamespaceDefault
+	controller.dcLister.Indexer.Add(config)
 
-	// verify no-op
 	tagUpdate := makeStream(testapi.ImageStreamName, imageapi.DefaultImageTag, testapi.DockerImageReference, testapi.ImageID)
 
 	if err := controller.Handle(tagUpdate); err != nil {
@@ -94,12 +125,10 @@ func TestHandle_changeForUnregisteredTag(t *testing.T) {
 		return true, nil, nil
 	})
 
-	controller := &ImageChangeController{
-		listDeploymentConfigs: func() ([]*deployapi.DeploymentConfig, error) {
-			return []*deployapi.DeploymentConfig{testapi.OkDeploymentConfig(0)}, nil
-		},
-		client: fake,
-	}
+	controller := NewImageChangeController(dcInformer, streamInformer, fake)
+
+	config := testapi.OkDeploymentConfig(0)
+	controller.dcLister.Add(&config)
 
 	// verify no-op
 	tagUpdate := makeStream(testapi.ImageStreamName, "unrecognized", testapi.DockerImageReference, testapi.ImageID)
@@ -118,11 +147,14 @@ func TestHandle_changeForUnregisteredTag(t *testing.T) {
 // match) properly.
 func TestHandle_matchScenarios(t *testing.T) {
 	tests := []struct {
+		name string
+
 		param   *deployapi.DeploymentTriggerImageChangeParams
 		matches bool
 	}{
-		// Update from empty last image ID to a new one with explicit namespaces
 		{
+			name: "automatic=true, initial trigger",
+
 			param: &deployapi.DeploymentTriggerImageChangeParams{
 				Automatic:          true,
 				ContainerNames:     []string{"container1"},
@@ -131,28 +163,31 @@ func TestHandle_matchScenarios(t *testing.T) {
 			},
 			matches: true,
 		},
-		// Update from empty last image ID to a new one with implicit namespaces
 		{
-			param: &deployapi.DeploymentTriggerImageChangeParams{
-				Automatic:          true,
-				ContainerNames:     []string{"container1"},
-				From:               kapi.ObjectReference{Name: imageapi.JoinImageStreamTag(testapi.ImageStreamName, imageapi.DefaultImageTag)},
-				LastTriggeredImage: "",
-			},
-			matches: true,
-		},
-		// Update from empty last image ID to a new one, but not marked automatic
-		{
+			name: "automatic=false, initial trigger",
+
 			param: &deployapi.DeploymentTriggerImageChangeParams{
 				Automatic:          false,
 				ContainerNames:     []string{"container1"},
 				From:               kapi.ObjectReference{Namespace: kapi.NamespaceDefault, Name: imageapi.JoinImageStreamTag(testapi.ImageStreamName, imageapi.DefaultImageTag)},
 				LastTriggeredImage: "",
 			},
+			matches: true,
+		},
+		{
+			name: "(no-op) automatic=false, already triggered",
+
+			param: &deployapi.DeploymentTriggerImageChangeParams{
+				Automatic:          false,
+				ContainerNames:     []string{"container1"},
+				From:               kapi.ObjectReference{Namespace: kapi.NamespaceDefault, Name: imageapi.JoinImageStreamTag(testapi.ImageStreamName, imageapi.DefaultImageTag)},
+				LastTriggeredImage: testapi.DockerImageReference,
+			},
 			matches: false,
 		},
-		// Updated image ID is equal to the last triggered ID
 		{
+			name: "(no-op) automatic=true, image is already deployed",
+
 			param: &deployapi.DeploymentTriggerImageChangeParams{
 				Automatic:          true,
 				ContainerNames:     []string{"container1"},
@@ -161,8 +196,9 @@ func TestHandle_matchScenarios(t *testing.T) {
 			},
 			matches: false,
 		},
-		// Trigger stream reference doesn't match
 		{
+			name: "(no-op) trigger doesn't match the stream",
+
 			param: &deployapi.DeploymentTriggerImageChangeParams{
 				Automatic:          true,
 				ContainerNames:     []string{"container1"},
@@ -173,61 +209,34 @@ func TestHandle_matchScenarios(t *testing.T) {
 		},
 	}
 
-	for i, test := range tests {
+	for _, test := range tests {
 		updated := false
 
 		fake := &testclient.Fake{}
 		fake.AddReactor("update", "deploymentconfigs", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
 			if !test.matches {
-				t.Fatalf("unexpected deploymentconfig update for scenario %d", i)
+				t.Fatal("unexpected deploymentconfig update")
 			}
 			updated = true
 			return true, nil, nil
 		})
 
+		controller := NewImageChangeController(dcInformer, streamInformer, fake)
+
 		config := testapi.OkDeploymentConfig(1)
 		config.Namespace = kapi.NamespaceDefault
-		config.Spec.Triggers = []deployapi.DeploymentTriggerPolicy{
-			{
-				Type:              deployapi.DeploymentTriggerOnImageChange,
-				ImageChangeParams: test.param,
-			},
-		}
+		config.Spec.Triggers = []deployapi.DeploymentTriggerPolicy{{Type: deployapi.DeploymentTriggerOnImageChange, ImageChangeParams: test.param}}
+		controller.dcLister.Add(config)
 
-		controller := &ImageChangeController{
-			listDeploymentConfigs: func() ([]*deployapi.DeploymentConfig, error) {
-				return []*deployapi.DeploymentConfig{config}, nil
-			},
-			client: fake,
-		}
-
-		t.Logf("running scenario: %d", i)
+		t.Logf("running test %q", test.name)
 		stream := makeStream(testapi.ImageStreamName, imageapi.DefaultImageTag, testapi.DockerImageReference, testapi.ImageID)
 		if err := controller.Handle(stream); err != nil {
-			t.Fatalf("unexpected error for scenario %v: %v", i, err)
+			t.Fatalf("unexpected error: %v", err)
 		}
 
 		// assert updates occurred
 		if test.matches && !updated {
-			t.Fatalf("expected update for scenario: %v", test)
+			t.Fatal("expected an update")
 		}
-	}
-}
-
-func makeStream(name, tag, dir, image string) *imageapi.ImageStream {
-	return &imageapi.ImageStream{
-		ObjectMeta: kapi.ObjectMeta{Name: name, Namespace: kapi.NamespaceDefault},
-		Status: imageapi.ImageStreamStatus{
-			Tags: map[string]imageapi.TagEventList{
-				tag: {
-					Items: []imageapi.TagEvent{
-						{
-							DockerImageReference: dir,
-							Image:                image,
-						},
-					},
-				},
-			},
-		},
 	}
 }

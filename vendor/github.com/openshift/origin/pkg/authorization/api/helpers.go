@@ -44,12 +44,12 @@ func NormalizeResources(rawResources sets.String) sets.String {
 		}
 		visited.Insert(currResource)
 
-		if !strings.HasPrefix(currResource, ResourceGroupPrefix) {
+		if !strings.HasPrefix(currResource, resourceGroupPrefix) {
 			ret.Insert(strings.ToLower(currResource))
 			continue
 		}
 
-		if resourceTypes, exists := GroupsToResources[currResource]; exists {
+		if resourceTypes, exists := groupsToResources[currResource]; exists {
 			toVisit = append(toVisit, resourceTypes...)
 		}
 	}
@@ -58,7 +58,7 @@ func NormalizeResources(rawResources sets.String) sets.String {
 }
 
 func needsNormalizing(in string) bool {
-	if strings.HasPrefix(in, ResourceGroupPrefix) {
+	if strings.HasPrefix(in, resourceGroupPrefix) {
 		return true
 	}
 	for _, r := range in {
@@ -70,7 +70,39 @@ func needsNormalizing(in string) bool {
 }
 
 func (r PolicyRule) String() string {
-	return fmt.Sprintf("PolicyRule{Verbs:%v, APIGroups:%v, Resources:%v, ResourceNames:%v, Restrictions:%v}", r.Verbs.List(), r.APIGroups, r.Resources.List(), r.ResourceNames.List(), r.AttributeRestrictions)
+	return "PolicyRule" + r.CompactString()
+}
+
+// CompactString exposes a compact string representation for use in escalation error messages
+func (r PolicyRule) CompactString() string {
+	formatStringParts := []string{}
+	formatArgs := []interface{}{}
+	if len(r.Verbs) > 0 {
+		formatStringParts = append(formatStringParts, "Verbs:%q")
+		formatArgs = append(formatArgs, r.Verbs.List())
+	}
+	if len(r.APIGroups) > 0 {
+		formatStringParts = append(formatStringParts, "APIGroups:%q")
+		formatArgs = append(formatArgs, r.APIGroups)
+	}
+	if len(r.Resources) > 0 {
+		formatStringParts = append(formatStringParts, "Resources:%q")
+		formatArgs = append(formatArgs, r.Resources.List())
+	}
+	if len(r.ResourceNames) > 0 {
+		formatStringParts = append(formatStringParts, "ResourceNames:%q")
+		formatArgs = append(formatArgs, r.ResourceNames.List())
+	}
+	if r.AttributeRestrictions != nil {
+		formatStringParts = append(formatStringParts, "Restrictions:%q")
+		formatArgs = append(formatArgs, r.AttributeRestrictions)
+	}
+	if len(r.NonResourceURLs) > 0 {
+		formatStringParts = append(formatStringParts, "NonResourceURLs:%q")
+		formatArgs = append(formatArgs, r.NonResourceURLs.List())
+	}
+	formatString := "{" + strings.Join(formatStringParts, ", ") + "}"
+	return fmt.Sprintf(formatString, formatArgs...)
 }
 
 func getRoleBindingValues(roleBindingMap map[string]*RoleBinding) []*RoleBinding {
@@ -133,7 +165,7 @@ func BuildSubjects(users, groups []string, userNameValidator, groupNameValidator
 		}
 
 		kind := UserKind
-		if valid, _ := userNameValidator(user, false); !valid {
+		if len(userNameValidator(user, false)) != 0 {
 			kind = SystemUserKind
 		}
 
@@ -142,7 +174,7 @@ func BuildSubjects(users, groups []string, userNameValidator, groupNameValidator
 
 	for _, group := range groups {
 		kind := GroupKind
-		if valid, _ := groupNameValidator(group, false); !valid {
+		if len(groupNameValidator(group, false)) != 0 {
 			kind = SystemGroupKind
 		}
 
@@ -212,6 +244,59 @@ func SubjectsStrings(currentNamespace string, subjects []kapi.ObjectReference) (
 	return users, groups, sas, others
 }
 
+// SubjectsContainUser returns true if the provided subjects contain the named user. currentNamespace
+// is used to identify service accounts that are defined in a relative fashion.
+func SubjectsContainUser(subjects []kapi.ObjectReference, currentNamespace string, user string) bool {
+	if !strings.HasPrefix(user, serviceaccount.ServiceAccountUsernamePrefix) {
+		for _, subject := range subjects {
+			switch subject.Kind {
+			case UserKind, SystemUserKind:
+				if user == subject.Name {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	for _, subject := range subjects {
+		switch subject.Kind {
+		case ServiceAccountKind:
+			namespace := currentNamespace
+			if len(subject.Namespace) > 0 {
+				namespace = subject.Namespace
+			}
+			if len(namespace) == 0 {
+				continue
+			}
+			if user == serviceaccount.MakeUsername(namespace, subject.Name) {
+				return true
+			}
+
+		case UserKind, SystemUserKind:
+			if user == subject.Name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// SubjectsContainAnyGroup returns true if the provided subjects any of the named groups.
+func SubjectsContainAnyGroup(subjects []kapi.ObjectReference, groups []string) bool {
+	for _, subject := range subjects {
+		switch subject.Kind {
+		case GroupKind, SystemGroupKind:
+			for _, group := range groups {
+				if group == subject.Name {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func AddUserToSAR(user user.Info, sar *SubjectAccessReview) *SubjectAccessReview {
 	origScopes := user.GetExtra()[ScopesKey]
 	scopes := make([]string, len(origScopes), len(origScopes))
@@ -231,4 +316,75 @@ func AddUserToLSAR(user user.Info, lsar *LocalSubjectAccessReview) *LocalSubject
 	lsar.Groups = sets.NewString(user.GetGroups()...)
 	lsar.Scopes = scopes
 	return lsar
+}
+
+// +gencopy=false
+// PolicyRuleBuilder let's us attach methods.  A no-no for API types
+type PolicyRuleBuilder struct {
+	PolicyRule PolicyRule
+}
+
+func NewRule(verbs ...string) *PolicyRuleBuilder {
+	return &PolicyRuleBuilder{
+		PolicyRule: PolicyRule{
+			Verbs:         sets.NewString(verbs...),
+			Resources:     sets.String{},
+			ResourceNames: sets.String{},
+		},
+	}
+}
+
+func (r *PolicyRuleBuilder) Groups(groups ...string) *PolicyRuleBuilder {
+	r.PolicyRule.APIGroups = append(r.PolicyRule.APIGroups, groups...)
+	return r
+}
+
+func (r *PolicyRuleBuilder) Resources(resources ...string) *PolicyRuleBuilder {
+	r.PolicyRule.Resources.Insert(resources...)
+	return r
+}
+
+func (r *PolicyRuleBuilder) Names(names ...string) *PolicyRuleBuilder {
+	r.PolicyRule.ResourceNames.Insert(names...)
+	return r
+}
+
+func (r *PolicyRuleBuilder) RuleOrDie() PolicyRule {
+	ret, err := r.Rule()
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
+
+func (r *PolicyRuleBuilder) Rule() (PolicyRule, error) {
+	if len(r.PolicyRule.Verbs) == 0 {
+		return PolicyRule{}, fmt.Errorf("verbs are required: %#v", r.PolicyRule)
+	}
+
+	switch {
+	case len(r.PolicyRule.NonResourceURLs) > 0:
+		if len(r.PolicyRule.APIGroups) != 0 || len(r.PolicyRule.Resources) != 0 || len(r.PolicyRule.ResourceNames) != 0 {
+			return PolicyRule{}, fmt.Errorf("non-resource rule may not have apiGroups, resources, or resourceNames: %#v", r.PolicyRule)
+		}
+	case len(r.PolicyRule.Resources) > 0:
+		if len(r.PolicyRule.NonResourceURLs) != 0 {
+			return PolicyRule{}, fmt.Errorf("resource rule may not have nonResourceURLs: %#v", r.PolicyRule)
+		}
+		if len(r.PolicyRule.APIGroups) == 0 {
+			return PolicyRule{}, fmt.Errorf("resource rule must have apiGroups: %#v", r.PolicyRule)
+		}
+	default:
+		return PolicyRule{}, fmt.Errorf("a rule must have either nonResourceURLs or resources: %#v", r.PolicyRule)
+	}
+
+	return r.PolicyRule, nil
+}
+
+type SortableRuleSlice []PolicyRule
+
+func (s SortableRuleSlice) Len() int      { return len(s) }
+func (s SortableRuleSlice) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s SortableRuleSlice) Less(i, j int) bool {
+	return strings.Compare(s[i].String(), s[j].String()) < 0
 }

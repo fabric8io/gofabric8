@@ -1,4 +1,4 @@
-Gonum LAPACK  [![Build Status](https://travis-ci.org/gonum/lapack.svg?branch=master)](https://travis-ci.org/gonum/lapack)  [![Coverage Status](https://img.shields.io/coveralls/gonum/lapack.svg)](https://coveralls.io/r/gonum/lapack)
+Gonum LAPACK  [![Build Status](https://travis-ci.org/gonum/lapack.svg?branch=master)](https://travis-ci.org/gonum/lapack)  [![Coverage Status](https://coveralls.io/repos/gonum/lapack/badge.svg?branch=master&service=github)](https://coveralls.io/github/gonum/lapack?branch=master) [![GoDoc](https://godoc.org/github.com/gonum/lapack?status.svg)](https://godoc.org/github.com/gonum/lapack)
 ======
 
 A collection of packages to provide LAPACK functionality for the Go programming
@@ -8,7 +8,7 @@ and a wrapper using cgo to a c-based implementation.
 ## Installation
 
 ```
-  go get github.com/gonum/blas
+  go get github.com/gonum/lapack
 ```
 
 
@@ -39,7 +39,7 @@ adjust the `CGO_LDFLAGS` variable:
 
 Defines the LAPACK API based on http://www.netlib.org/lapack/lapacke.html
 
-### lapack/clapack
+### lapack/lapacke
 
 Binding to a C implementation of the lapacke interface (e.g. OpenBLAS or intel MKL)
 

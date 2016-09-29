@@ -31,7 +31,6 @@ kube::test::find_dirs() {
           -path './_artifacts/*' \
           -o -path './_output/*' \
           -o -path './_gopath/*' \
-          -o -path './Godeps/*' \
           -o -path './contrib/podex/*' \
           -o -path './output/*' \
           -o -path './release/*' \
@@ -40,12 +39,13 @@ kube::test::find_dirs() {
           -o -path './test/e2e_node/*' \
           -o -path './test/integration/*' \
           -o -path './test/component/scheduler/perf/*' \
+          -o -path './third_party/*'\
+          -o -path './vendor/*'\
         \) -prune \
       \) -name '*_test.go' -print0 | xargs -0n1 dirname | sed 's|^\./||' | sort -u
   )
 }
 
-# -covermode=atomic becomes default with -race in Go >=1.3
 KUBE_TIMEOUT=${KUBE_TIMEOUT:--timeout 120s}
 KUBE_COVER=${KUBE_COVER:-n} # set to 'y' to enable coverage collection
 KUBE_COVERMODE=${KUBE_COVERMODE:-atomic}
@@ -58,11 +58,10 @@ KUBE_GOVERALLS_BIN=${KUBE_GOVERALLS_BIN:-}
 # Lists of API Versions of each groups that should be tested, groups are
 # separated by comma, lists are separated by semicolon. e.g.,
 # "v1,compute/v1alpha1,experimental/v1alpha2;v1,compute/v2,experimental/v1alpha3"
-KUBE_TEST_API_VERSIONS=${KUBE_TEST_API_VERSIONS:-"v1,extensions/v1beta1,metrics/v1alpha1;v1,autoscaling/v1,batch/v1,extensions/v1beta1,metrics/v1alpha1"}
+# FIXME: due to current implementation of a test client (see: pkg/api/testapi/testapi.go)
+# ONLY the last version is tested in each group.
+KUBE_TEST_API_VERSIONS=${KUBE_TEST_API_VERSIONS:-"v1,autoscaling/v1,batch/v1,batch/v2alpha1,extensions/v1beta1,apps/v1alpha1,federation/v1beta1,policy/v1alpha1,rbac.authorization.k8s.io/v1alpha1"}
 # once we have multiple group supports
-# Run tests with the standard (registry) and a custom etcd prefix
-# (kubernetes.io/registry).
-KUBE_TEST_ETCD_PREFIXES=${KUBE_TEST_ETCD_PREFIXES:-"registry,kubernetes.io/registry"}
 # Create a junit-style XML test report in this directory if set.
 KUBE_JUNIT_REPORT_DIR=${KUBE_JUNIT_REPORT_DIR:-}
 # Set to 'y' to keep the verbose stdout from tests when KUBE_JUNIT_REPORT_DIR is
@@ -316,31 +315,12 @@ checkFDs
 
 # Convert the CSVs to arrays.
 IFS=';' read -a apiVersions <<< "${KUBE_TEST_API_VERSIONS}"
-IFS=',' read -a etcdPrefixes <<< "${KUBE_TEST_ETCD_PREFIXES}"
 apiVersionsCount=${#apiVersions[@]}
-etcdPrefixesCount=${#etcdPrefixes[@]}
-for (( i=0, j=0; ; )); do
+for (( i=0; i<${apiVersionsCount}; i++ )); do
   apiVersion=${apiVersions[i]}
-  etcdPrefix=${etcdPrefixes[j]}
-  echo "Running tests for APIVersion: $apiVersion with etcdPrefix: $etcdPrefix"
-  # KUBE_TEST_API sets the version of each group to be tested. KUBE_API_VERSIONS
-  # register the groups/versions as supported by k8s. So KUBE_API_VERSIONS
-  # needs to be the superset of KUBE_TEST_API.
-  KUBE_TEST_API="${apiVersion}" KUBE_API_VERSIONS="v1,autoscaling/v1,batch/v1,extensions/v1beta1,componentconfig/v1alpha1,metrics/v1alpha1,authorization.k8s.io/v1beta1" ETCD_PREFIX=${etcdPrefix} runTests "$@"
-  i=${i}+1
-  j=${j}+1
-  if [[ i -eq ${apiVersionsCount} ]] && [[ j -eq ${etcdPrefixesCount} ]]; then
-    # All api versions and etcd prefixes tested.
-    break
-  fi
-  if [[ i -eq ${apiVersionsCount} ]]; then
-    # Use the last api version for remaining etcd prefixes.
-    i=${i}-1
-  fi
-   if [[ j -eq ${etcdPrefixesCount} ]]; then
-     # Use the last etcd prefix for remaining api versions.
-    j=${j}-1
-  fi
+  echo "Running tests for APIVersion: $apiVersion"
+  # KUBE_TEST_API sets the version of each group to be tested.
+  KUBE_TEST_API="${apiVersion}" runTests "$@"
 done
 
 # We might run the tests for multiple versions, but we want to report only

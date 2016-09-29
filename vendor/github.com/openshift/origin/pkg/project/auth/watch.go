@@ -21,7 +21,7 @@ import (
 type CacheWatcher interface {
 	// GroupMembershipChanged is called serially for all changes for all watchers.  This method MUST NOT BLOCK.
 	// The serial nature makes reasoning about the code easy, but if you block in this method you will doom all watchers.
-	GroupMembershipChanged(namespaceName string, latestUsers, latestGroups, removedUsers, removedGroups, addedUsers, addedGroups sets.String)
+	GroupMembershipChanged(namespaceName string, users, groups sets.String)
 }
 
 type WatchableCache interface {
@@ -33,8 +33,9 @@ type WatchableCache interface {
 
 // userProjectWatcher converts a native etcd watch to a watch.Interface.
 type userProjectWatcher struct {
-	username string
-	groups   []string
+	user user.Info
+	// visibleNamespaces are the namespaces that the scopes allow
+	visibleNamespaces sets.String
 
 	// cacheIncoming is a buffered channel used for notification to watcher.  If the buffer fills up,
 	// then the watcher will be removed and the connection will be broken.
@@ -69,9 +70,8 @@ var (
 	watchChannelHWM etcd.HighWaterMark
 )
 
-func NewUserProjectWatcher(username string, groups []string, projectCache *projectcache.ProjectCache, authCache WatchableCache, includeAllExistingProjects bool) *userProjectWatcher {
-	userInfo := &user.DefaultInfo{Name: username, Groups: groups}
-	namespaces, _ := authCache.List(userInfo)
+func NewUserProjectWatcher(user user.Info, visibleNamespaces sets.String, projectCache *projectcache.ProjectCache, authCache WatchableCache, includeAllExistingProjects bool) *userProjectWatcher {
+	namespaces, _ := authCache.List(user)
 	knownProjects := map[string]string{}
 	for _, namespace := range namespaces.Items {
 		knownProjects[namespace.Name] = namespace.ResourceVersion
@@ -84,8 +84,8 @@ func NewUserProjectWatcher(username string, groups []string, projectCache *proje
 	}
 
 	w := &userProjectWatcher{
-		username: username,
-		groups:   groups,
+		user:              user,
+		visibleNamespaces: visibleNamespaces,
 
 		cacheIncoming: make(chan watch.Event, 1000),
 		cacheError:    make(chan error, 1),
@@ -106,15 +106,18 @@ func NewUserProjectWatcher(username string, groups []string, projectCache *proje
 	return w
 }
 
-func (w *userProjectWatcher) GroupMembershipChanged(namespaceName string, latestUsers, lastestGroups, removedUsers, removedGroups, addedUsers, addedGroups sets.String) {
-	hasAccess := latestUsers.Has(w.username) || lastestGroups.HasAny(w.groups...)
-	removed := !hasAccess && (removedUsers.Has(w.username) || removedGroups.HasAny(w.groups...))
+func (w *userProjectWatcher) GroupMembershipChanged(namespaceName string, users, groups sets.String) {
+	if !w.visibleNamespaces.Has("*") && !w.visibleNamespaces.Has(namespaceName) {
+		// this user is scoped to a level that shouldn't see this update
+		return
+	}
+
+	hasAccess := users.Has(w.user.GetName()) || groups.HasAny(w.user.GetGroups()...)
+	_, known := w.knownProjects[namespaceName]
 
 	switch {
-	case removed:
-		if _, known := w.knownProjects[namespaceName]; !known {
-			return
-		}
+	// this means that we were removed from the project
+	case !hasAccess && known:
 		delete(w.knownProjects, namespaceName)
 
 		select {

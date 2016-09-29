@@ -190,6 +190,8 @@ type MachineConfig struct {
 type KubernetesConfig struct {
 	KubernetesVersion string
 	NodeIP            string
+	ContainerRuntime  string
+	NetworkPlugin     string
 }
 
 // StartCluster starts a k8s cluster on the specified Host.
@@ -438,23 +440,11 @@ func createVirtualboxHost(config MachineConfig) drivers.Driver {
 }
 
 func isIsoChecksumValid(isoData *[]byte, shaURL string) bool {
-	r, err := http.Get(shaURL)
+	expectedSum, err := util.ParseSHAFromURL(shaURL)
 	if err != nil {
-		glog.Errorf("Error downloading ISO checksum: %s", err)
-		return false
-	} else if r.StatusCode != http.StatusOK {
-		glog.Errorf("Error downloading ISO checksum. Got HTTP Error: %s", r.Status)
+		glog.Errorf("Error retrieving SHA from URL: %s. Error: %s.", shaURL, err)
 		return false
 	}
-
-	defer r.Body.Close()
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		glog.Errorf("Error reading ISO checksum: %s", err)
-		return false
-	}
-
-	expectedSum := strings.Trim(string(body), "\n")
 
 	b := sha256.Sum256(*isoData)
 	actualSum := hex.EncodeToString(b[:])
@@ -717,7 +707,7 @@ func getServicePortFromServiceGetter(services serviceGetter, service string) (in
 
 func GetKubernetesClient() (*unversioned.Client, error) {
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	configOverrides := &clientcmd.ConfigOverrides{}
+	configOverrides := &clientcmd.ConfigOverrides{CurrentContext: constants.MinikubeContext}
 	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 	config, err := kubeConfig.ClientConfig()
 	if err != nil {

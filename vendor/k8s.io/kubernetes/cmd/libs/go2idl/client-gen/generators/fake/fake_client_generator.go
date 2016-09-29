@@ -21,12 +21,13 @@ import (
 	"strings"
 
 	clientgenargs "k8s.io/kubernetes/cmd/libs/go2idl/client-gen/args"
+	"k8s.io/kubernetes/cmd/libs/go2idl/client-gen/generators/normalization"
 	"k8s.io/kubernetes/cmd/libs/go2idl/generator"
 	"k8s.io/kubernetes/cmd/libs/go2idl/types"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 )
 
-func PackageForGroup(gv unversioned.GroupVersion, typeList []*types.Type, packageBasePath string, srcTreePath string, boilerplate []byte, generatedBy string) generator.Package {
+func PackageForGroup(gv unversioned.GroupVersion, typeList []*types.Type, packageBasePath string, srcTreePath string, inputPath string, boilerplate []byte, generatedBy string) generator.Package {
 	outputPackagePath := filepath.Join(packageBasePath, gv.Group, gv.Version, "fake")
 	// TODO: should make this a function, called by here and in client-generator.go
 	realClientPath := filepath.Join(packageBasePath, gv.Group, gv.Version)
@@ -53,7 +54,9 @@ func PackageForGroup(gv unversioned.GroupVersion, typeList []*types.Type, packag
 						OptionalName: "fake_" + strings.ToLower(c.Namers["private"].Name(t)),
 					},
 					outputPackage: outputPackagePath,
-					group:         gv.Group,
+					group:         normalization.BeforeFirstDot(gv.Group),
+					inputPackage:  inputPath,
+					version:       gv.Version,
 					typeToMatch:   t,
 					imports:       generator.NewImportTracker(),
 				})
@@ -61,11 +64,11 @@ func PackageForGroup(gv unversioned.GroupVersion, typeList []*types.Type, packag
 
 			generators = append(generators, &genFakeForGroup{
 				DefaultGen: generator.DefaultGen{
-					OptionalName: "fake_" + gv.Group + "_client",
+					OptionalName: "fake_" + normalization.BeforeFirstDot(gv.Group) + "_client",
 				},
 				outputPackage:  outputPackagePath,
 				realClientPath: realClientPath,
-				group:          gv.Group,
+				group:          normalization.BeforeFirstDot(gv.Group),
 				types:          typeList,
 				imports:        generator.NewImportTracker(),
 			})

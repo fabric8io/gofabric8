@@ -1,34 +1,5 @@
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-
-<h2>PLEASE NOTE: This document applies to the HEAD of the source tree</h2>
-
-If you are using a released version of Kubernetes, you should
-refer to the docs that go with that version.
-
-<!-- TAG RELEASE_LINK, added by the munger automatically -->
-<strong>
-The latest release of this document can be found
-[here](http://releases.k8s.io/release-1.2/docs/devel/releasing.md).
-
-Documentation for other releases can be found at
-[releases.k8s.io](http://releases.k8s.io).
-</strong>
---
-
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
@@ -82,11 +53,11 @@ from, and other prerequisites.
   * You should still look for green tests, (see below).
 
 No matter what you're cutting, you're going to want to look at
-[Jenkins](http://go/k8s-test/).  Figure out what branch you're cutting from,
-(see above,) and look at the critical jobs building from that branch.  First
-glance through builds and look for nice solid rows of green builds, and then
-check temporally with the other critical builds to make sure they're solid
-around then as well.
+[Jenkins](http://kubekins.dls.corp.google.com/) (Google internal only).  Figure
+out what branch you're cutting from, (see above,) and look at the critical jobs
+building from that branch.  First glance through builds and look for nice solid
+rows of green builds, and then check temporally with the other critical builds
+to make sure they're solid around then as well.
 
 If you're doing an alpha release or cutting a new release series, you can
 choose an arbitrary build.  If you are doing an official release, you have to
@@ -300,6 +271,13 @@ tell the Go linker to override the contents of those variables at build time. It
 can, for instance, tell it to override `gitVersion` and set it to
 `v0.4-13-g4567bcdef6789-dirty` and set `gitCommit` to `4567bcdef6789...` which
 is the complete SHA1 of the (dirty) tree used at build time.
+
+
+
+
+<!-- BEGIN MUNGE: IS_VERSIONED -->
+<!-- TAG IS_VERSIONED -->
+<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

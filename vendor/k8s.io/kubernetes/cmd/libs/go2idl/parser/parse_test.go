@@ -18,6 +18,7 @@ package parser_test
 
 import (
 	"bytes"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"text/template"
@@ -30,7 +31,7 @@ import (
 func construct(t *testing.T, files map[string]string, testNamer namer.Namer) (*parser.Builder, types.Universe, []*types.Type) {
 	b := parser.New()
 	for name, src := range files {
-		if err := b.AddFile(name, []byte(src)); err != nil {
+		if err := b.AddFile(filepath.Dir(name), name, []byte(src)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -38,7 +39,7 @@ func construct(t *testing.T, files map[string]string, testNamer namer.Namer) (*p
 	if err != nil {
 		t.Fatal(err)
 	}
-	orderer := namer.Orderer{testNamer}
+	orderer := namer.Orderer{Namer: testNamer}
 	o := orderer.OrderUniverse(u)
 	return b, u, o
 }
@@ -165,7 +166,7 @@ var FooAnotherVar proto.Frobber = proto.AnotherVar
 		t.Errorf("Wanted, got:\n%v\n-----\n%v\n", e, a)
 	}
 	if p := u.Package("base/foo/proto"); !p.HasImport("base/common/proto") {
-		t.Errorf("Unexpected lack of import line: %#s", p.Imports)
+		t.Errorf("Unexpected lack of import line: %s", p.Imports)
 	}
 }
 
@@ -390,8 +391,16 @@ type Interface interface{Method(a, b string) (c, d string)}
 				t.Errorf("type %s not found", n)
 				continue
 			}
-			if e, a := item.k, thisType.Kind; e != a {
-				t.Errorf("%v-%s: type kind wrong, wanted %v, got %v (%#v)", nameIndex, n, e, a, thisType)
+			underlyingType := thisType
+			if item.k != types.Alias && thisType.Kind == types.Alias {
+				underlyingType = thisType.Underlying
+				if underlyingType == nil {
+					t.Errorf("underlying type %s not found", n)
+					continue
+				}
+			}
+			if e, a := item.k, underlyingType.Kind; e != a {
+				t.Errorf("%v-%s: type kind wrong, wanted %v, got %v (%#v)", nameIndex, n, e, a, underlyingType)
 			}
 			if e, a := item.names[nameIndex], namer.Name(thisType); e != a {
 				t.Errorf("%v-%s: Expected %q, got %q", nameIndex, n, e, a)

@@ -23,7 +23,9 @@ import (
 
 	"github.com/google/cadvisor/info/v1"
 
+	containertest "github.com/google/cadvisor/container/testing"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPrometheus(t *testing.T) {
@@ -31,10 +33,11 @@ func TestPrometheus(t *testing.T) {
 
 	//Create a prometheus collector using the config file 'sample_config_prometheus.json'
 	configFile, err := ioutil.ReadFile("config/sample_config_prometheus.json")
-	collector, err := NewPrometheusCollector("Prometheus", configFile, 100)
+	containerHandler := containertest.NewMockContainerHandler("mockContainer")
+	collector, err := NewPrometheusCollector("Prometheus", configFile, 100, containerHandler, http.DefaultClient)
 	assert.NoError(err)
 	assert.Equal(collector.name, "Prometheus")
-	assert.Equal(collector.configFile.Endpoint, "http://localhost:8080/metrics")
+	assert.Equal(collector.configFile.Endpoint.URL, "http://localhost:8080/metrics")
 
 	tempServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -44,13 +47,23 @@ func TestPrometheus(t *testing.T) {
 		text += "go_gc_duration_seconds{quantile=\"1\"} 0.000499764\n"
 		text += "# HELP go_goroutines Number of goroutines that currently exist.\n"
 		text += "# TYPE go_goroutines gauge\n"
-		text += "go_goroutines 16"
+		text += "go_goroutines 16\n"
+		text += "# HELP empty_metric A metric without any values\n"
+		text += "# TYPE empty_metric counter\n"
+		text += "\n"
 		fmt.Fprintln(w, text)
 	}))
 
 	defer tempServer.Close()
 
-	collector.configFile.Endpoint = tempServer.URL
+	collector.configFile.Endpoint.URL = tempServer.URL
+
+	var spec []v1.MetricSpec
+	require.NotPanics(t, func() { spec = collector.GetSpec() })
+	assert.Len(spec, 2)
+	assert.Equal(spec[0].Name, "go_gc_duration_seconds")
+	assert.Equal(spec[1].Name, "go_goroutines")
+
 	metrics := map[string][]v1.MetricVal{}
 	_, metrics, errMetric := collector.Collect(metrics)
 
@@ -64,15 +77,55 @@ func TestPrometheus(t *testing.T) {
 	assert.Equal(goRoutines[0].FloatValue, 16)
 }
 
+func TestPrometheusEndpointConfig(t *testing.T) {
+	assert := assert.New(t)
+
+	//Create a prometheus collector using the config file 'sample_config_prometheus.json'
+	configFile, err := ioutil.ReadFile("config/sample_config_prometheus_endpoint_config.json")
+	containerHandler := containertest.NewMockContainerHandler("mockContainer")
+	containerHandler.On("GetContainerIPAddress").Return(
+		"222.222.222.222",
+	)
+
+	collector, err := NewPrometheusCollector("Prometheus", configFile, 100, containerHandler, http.DefaultClient)
+	assert.NoError(err)
+	assert.Equal(collector.name, "Prometheus")
+	assert.Equal(collector.configFile.Endpoint.URL, "http://222.222.222.222:8081/METRICS")
+}
+
+func TestPrometheusShortResponse(t *testing.T) {
+	assert := assert.New(t)
+
+	//Create a prometheus collector using the config file 'sample_config_prometheus.json'
+	configFile, err := ioutil.ReadFile("config/sample_config_prometheus.json")
+	containerHandler := containertest.NewMockContainerHandler("mockContainer")
+	collector, err := NewPrometheusCollector("Prometheus", configFile, 100, containerHandler, http.DefaultClient)
+	assert.NoError(err)
+	assert.Equal(collector.name, "Prometheus")
+	assert.Equal(collector.configFile.Endpoint.URL, "http://localhost:8080/metrics")
+
+	tempServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		text := "# HELP empty_metric A metric without any values"
+		fmt.Fprint(w, text)
+	}))
+
+	defer tempServer.Close()
+
+	collector.configFile.Endpoint.URL = tempServer.URL
+
+	assert.NotPanics(func() { collector.GetSpec() })
+}
+
 func TestPrometheusMetricCountLimit(t *testing.T) {
 	assert := assert.New(t)
 
 	//Create a prometheus collector using the config file 'sample_config_prometheus.json'
 	configFile, err := ioutil.ReadFile("config/sample_config_prometheus.json")
-	collector, err := NewPrometheusCollector("Prometheus", configFile, 10)
+	containerHandler := containertest.NewMockContainerHandler("mockContainer")
+	collector, err := NewPrometheusCollector("Prometheus", configFile, 10, containerHandler, http.DefaultClient)
 	assert.NoError(err)
 	assert.Equal(collector.name, "Prometheus")
-	assert.Equal(collector.configFile.Endpoint, "http://localhost:8080/metrics")
+	assert.Equal(collector.configFile.Endpoint.URL, "http://localhost:8080/metrics")
 
 	tempServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < 30; i++ {
@@ -83,7 +136,7 @@ func TestPrometheusMetricCountLimit(t *testing.T) {
 	}))
 	defer tempServer.Close()
 
-	collector.configFile.Endpoint = tempServer.URL
+	collector.configFile.Endpoint.URL = tempServer.URL
 	metrics := map[string][]v1.MetricVal{}
 	_, result, errMetric := collector.Collect(metrics)
 
@@ -97,10 +150,11 @@ func TestPrometheusFiltersMetrics(t *testing.T) {
 
 	//Create a prometheus collector using the config file 'sample_config_prometheus_filtered.json'
 	configFile, err := ioutil.ReadFile("config/sample_config_prometheus_filtered.json")
-	collector, err := NewPrometheusCollector("Prometheus", configFile, 100)
+	containerHandler := containertest.NewMockContainerHandler("mockContainer")
+	collector, err := NewPrometheusCollector("Prometheus", configFile, 100, containerHandler, http.DefaultClient)
 	assert.NoError(err)
 	assert.Equal(collector.name, "Prometheus")
-	assert.Equal(collector.configFile.Endpoint, "http://localhost:8080/metrics")
+	assert.Equal(collector.configFile.Endpoint.URL, "http://localhost:8080/metrics")
 
 	tempServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -116,7 +170,7 @@ func TestPrometheusFiltersMetrics(t *testing.T) {
 
 	defer tempServer.Close()
 
-	collector.configFile.Endpoint = tempServer.URL
+	collector.configFile.Endpoint.URL = tempServer.URL
 	metrics := map[string][]v1.MetricVal{}
 	_, metrics, errMetric := collector.Collect(metrics)
 
@@ -132,6 +186,7 @@ func TestPrometheusFiltersMetricsCountLimit(t *testing.T) {
 
 	//Create a prometheus collector using the config file 'sample_config_prometheus_filtered.json'
 	configFile, err := ioutil.ReadFile("config/sample_config_prometheus_filtered.json")
-	_, err = NewPrometheusCollector("Prometheus", configFile, 1)
+	containerHandler := containertest.NewMockContainerHandler("mockContainer")
+	_, err = NewPrometheusCollector("Prometheus", configFile, 1, containerHandler, http.DefaultClient)
 	assert.Error(err)
 }

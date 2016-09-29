@@ -1,16 +1,11 @@
 #!/bin/bash
 
 # This script runs all of the test written for our Bash libraries.
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
 function exit_trap() {
     local return_code=$?
 
     end_time=$(date +%s)
-    
+
     if [[ "${return_code}" -eq "0" ]]; then
         verb="succeeded"
     else
@@ -24,11 +19,7 @@ function exit_trap() {
 trap exit_trap EXIT
 
 start_time=$(date +%s)
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/lib/util/environment.sh"
-os::log::install_errexit
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 os::util::environment::setup_tmpdir_vars "test-lib"
 
 cd "${OS_ROOT}"

@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -11,10 +9,15 @@ import (
 
 func TestNamespaceLifecycleAdmission(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	clusterAdminClient, err := testutil.GetClusterAdminKubeClient(clusterAdminKubeConfig)
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for _, ns := range []string{"default", "openshift", "openshift-infra"} {
 		if err := clusterAdminClient.Namespaces().Delete(ns); err == nil {

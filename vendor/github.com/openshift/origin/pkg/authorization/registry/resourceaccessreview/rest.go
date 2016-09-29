@@ -51,12 +51,15 @@ func (r *REST) Create(ctx kapi.Context, obj runtime.Object) (runtime.Object, err
 
 	requestContext := kapi.WithNamespace(ctx, resourceAccessReview.Action.Namespace)
 	attributes := authorizer.ToDefaultAuthorizationAttributes(resourceAccessReview.Action)
-	users, groups, _ := r.authorizer.GetAllowedSubjects(requestContext, attributes)
+	users, groups, err := r.authorizer.GetAllowedSubjects(requestContext, attributes)
 
 	response := &authorizationapi.ResourceAccessReviewResponse{
 		Namespace: resourceAccessReview.Action.Namespace,
 		Users:     users,
 		Groups:    groups,
+	}
+	if err != nil {
+		response.EvaluationError = err.Error()
 	}
 
 	return response, nil
@@ -74,7 +77,7 @@ func (r *REST) isAllowed(ctx kapi.Context, rar *authorizationapi.ResourceAccessR
 		return kapierrors.NewForbidden(authorizationapi.Resource(localRARAttributes.GetResource()), localRARAttributes.GetResourceName(), err)
 	}
 	if !allowed {
-		forbiddenError, _ := kapierrors.NewForbidden(authorizationapi.Resource(localRARAttributes.GetResource()), localRARAttributes.GetResourceName(), errors.New("") /*discarded*/).(*kapierrors.StatusError)
+		forbiddenError := kapierrors.NewForbidden(authorizationapi.Resource(localRARAttributes.GetResource()), localRARAttributes.GetResourceName(), errors.New("") /*discarded*/)
 		forbiddenError.ErrStatus.Message = reason
 		return forbiddenError
 	}

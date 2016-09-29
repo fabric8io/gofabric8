@@ -36,6 +36,7 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	utilnet "k8s.io/kubernetes/pkg/util/net"
+	"k8s.io/kubernetes/test/e2e/framework"
 )
 
 const (
@@ -120,12 +121,20 @@ func buildTransport(serverName string, rootCA []byte) (*http.Transport, error) {
 	}), nil
 }
 
+// buildInsecureClient returns an insecure http client. Can be used for "curl -k".
+func buildInsecureClient(timeout time.Duration) *http.Client {
+	t := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	return &http.Client{Timeout: timeout, Transport: utilnet.SetTransportDefaults(t)}
+}
+
 // createSecret creates a secret containing TLS certificates for the given Ingress.
+// If a secret with the same name already exists in the namespace of the
+// Ingress, it's updated.
 func createSecret(kubeClient *client.Client, ing *extensions.Ingress) (host string, rootCA, privKey []byte, err error) {
 	var k, c bytes.Buffer
 	tls := ing.Spec.TLS[0]
 	host = strings.Join(tls.Hosts, ",")
-	Logf("Generating RSA cert for host %v", host)
+	framework.Logf("Generating RSA cert for host %v", host)
 
 	if err = generateRSACerts(host, true, &k, &c); err != nil {
 		return
@@ -141,7 +150,15 @@ func createSecret(kubeClient *client.Client, ing *extensions.Ingress) (host stri
 			api.TLSPrivateKeyKey: key,
 		},
 	}
-	Logf("Creating secret %v in ns %v with hosts %v for ingress %v", secret.Name, secret.Namespace, host, ing.Name)
-	_, err = kubeClient.Secrets(ing.Namespace).Create(secret)
+	var s *api.Secret
+	if s, err = kubeClient.Secrets(ing.Namespace).Get(tls.SecretName); err == nil {
+		// TODO: Retry the update. We don't really expect anything to conflict though.
+		framework.Logf("Updating secret %v in ns %v with hosts %v for ingress %v", secret.Name, secret.Namespace, host, ing.Name)
+		s.Data = secret.Data
+		_, err = kubeClient.Secrets(ing.Namespace).Update(s)
+	} else {
+		framework.Logf("Creating secret %v in ns %v with hosts %v for ingress %v", secret.Name, secret.Namespace, host, ing.Name)
+		_, err = kubeClient.Secrets(ing.Namespace).Create(secret)
+	}
 	return host, cert, key, err
 }

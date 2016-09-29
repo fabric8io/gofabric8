@@ -2,13 +2,10 @@
 
 # This script tests the high level end-to-end functionality demonstrated
 # as part of the examples/sample-app
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
 STARTTIME=$(date +%s)
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
+
+readonly JQSETPULLPOLICY='(.items[] | select(.kind == "DeploymentConfig") | .spec.template.spec.containers[0].imagePullPolicy) |= "IfNotPresent"'
 
 if [[ "${TEST_END_TO_END:-}" != "direct" ]]; then
 	if docker version >/dev/null 2>&1; then
@@ -18,11 +15,6 @@ if [[ "${TEST_END_TO_END:-}" != "direct" ]]; then
 	fi
 	echo "++ Docker is not installed, running end-to-end against local binaries"
 fi
-
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/lib/log.sh"
-source "${OS_ROOT}/hack/lib/util/environment.sh"
-os::log::install_errexit
 
 ensure_iptables_or_die
 
@@ -61,5 +53,15 @@ start_os_server
 
 # set our default KUBECONFIG location
 export KUBECONFIG="${ADMIN_KUBECONFIG}"
+
+os::test::junit::declare_suite_start "end-to-end/startup"
+if [[ -n "${USE_IMAGES:-}" ]]; then
+    os::cmd::expect_success "oadm registry --dry-run -o json --images='$USE_IMAGES' | jq '$JQSETPULLPOLICY' | oc create -f -"
+else
+    os::cmd::expect_success "oadm registry"
+fi
+os::cmd::expect_success 'oadm policy add-scc-to-user hostnetwork -z router'
+os::cmd::expect_success 'oadm router'
+os::test::junit::declare_suite_end
 
 ${OS_ROOT}/test/end-to-end/core.sh

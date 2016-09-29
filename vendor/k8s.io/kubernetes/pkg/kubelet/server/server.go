@@ -58,6 +58,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/httpstream/spdy"
 	"k8s.io/kubernetes/pkg/util/limitwriter"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
+	"k8s.io/kubernetes/pkg/util/term"
 	"k8s.io/kubernetes/pkg/volume"
 )
 
@@ -67,6 +68,7 @@ type Server struct {
 	host             HostInterface
 	restfulCont      containerInterface
 	resourceAnalyzer stats.ResourceAnalyzer
+	runtime          kubecontainer.Runtime
 }
 
 type TLSOptions struct {
@@ -104,9 +106,17 @@ func (a *filteringContainer) RegisteredHandlePaths() []string {
 }
 
 // ListenAndServeKubeletServer initializes a server to respond to HTTP network requests on the Kubelet.
-func ListenAndServeKubeletServer(host HostInterface, resourceAnalyzer stats.ResourceAnalyzer, address net.IP, port uint, tlsOptions *TLSOptions, auth AuthInterface, enableDebuggingHandlers bool) {
+func ListenAndServeKubeletServer(
+	host HostInterface,
+	resourceAnalyzer stats.ResourceAnalyzer,
+	address net.IP,
+	port uint,
+	tlsOptions *TLSOptions,
+	auth AuthInterface,
+	enableDebuggingHandlers bool,
+	runtime kubecontainer.Runtime) {
 	glog.Infof("Starting to listen on %s:%d", address, port)
-	handler := NewServer(host, resourceAnalyzer, auth, enableDebuggingHandlers)
+	handler := NewServer(host, resourceAnalyzer, auth, enableDebuggingHandlers, runtime)
 	s := &http.Server{
 		Addr:           net.JoinHostPort(address.String(), strconv.FormatUint(uint64(port), 10)),
 		Handler:        &handler,
@@ -123,9 +133,9 @@ func ListenAndServeKubeletServer(host HostInterface, resourceAnalyzer stats.Reso
 }
 
 // ListenAndServeKubeletReadOnlyServer initializes a server to respond to HTTP network requests on the Kubelet.
-func ListenAndServeKubeletReadOnlyServer(host HostInterface, resourceAnalyzer stats.ResourceAnalyzer, address net.IP, port uint) {
+func ListenAndServeKubeletReadOnlyServer(host HostInterface, resourceAnalyzer stats.ResourceAnalyzer, address net.IP, port uint, runtime kubecontainer.Runtime) {
 	glog.V(1).Infof("Starting to listen read-only on %s:%d", address, port)
-	s := NewServer(host, resourceAnalyzer, nil, false)
+	s := NewServer(host, resourceAnalyzer, nil, false, runtime)
 
 	server := &http.Server{
 		Addr:           net.JoinHostPort(address.String(), strconv.FormatUint(uint64(port), 10)),
@@ -155,8 +165,8 @@ type HostInterface interface {
 	GetRunningPods() ([]*api.Pod, error)
 	GetPodByName(namespace, name string) (*api.Pod, bool)
 	RunInContainer(name string, uid types.UID, container string, cmd []string) ([]byte, error)
-	ExecInContainer(name string, uid types.UID, container string, cmd []string, in io.Reader, out, err io.WriteCloser, tty bool) error
-	AttachContainer(name string, uid types.UID, container string, in io.Reader, out, err io.WriteCloser, tty bool) error
+	ExecInContainer(name string, uid types.UID, container string, cmd []string, in io.Reader, out, err io.WriteCloser, tty bool, resize <-chan term.Size) error
+	AttachContainer(name string, uid types.UID, container string, in io.Reader, out, err io.WriteCloser, tty bool, resize <-chan term.Size) error
 	GetKubeletContainerLogs(podFullName, containerName string, logOptions *api.PodLogOptions, stdout, stderr io.Writer) error
 	ServeLogs(w http.ResponseWriter, req *http.Request)
 	PortForward(name string, uid types.UID, port uint16, stream io.ReadWriteCloser) error
@@ -166,19 +176,25 @@ type HostInterface interface {
 	GetNode() (*api.Node, error)
 	GetNodeConfig() cm.NodeConfig
 	LatestLoopEntryTime() time.Time
-	DockerImagesFsInfo() (cadvisorapiv2.FsInfo, error)
+	ImagesFsInfo() (cadvisorapiv2.FsInfo, error)
 	RootFsInfo() (cadvisorapiv2.FsInfo, error)
 	ListVolumesForPod(podUID types.UID) (map[string]volume.Volume, bool)
 	PLEGHealthCheck() (bool, error)
 }
 
 // NewServer initializes and configures a kubelet.Server object to handle HTTP requests.
-func NewServer(host HostInterface, resourceAnalyzer stats.ResourceAnalyzer, auth AuthInterface, enableDebuggingHandlers bool) Server {
+func NewServer(
+	host HostInterface,
+	resourceAnalyzer stats.ResourceAnalyzer,
+	auth AuthInterface,
+	enableDebuggingHandlers bool,
+	runtime kubecontainer.Runtime) Server {
 	server := Server{
 		host:             host,
 		resourceAnalyzer: resourceAnalyzer,
 		auth:             auth,
 		restfulCont:      &filteringContainer{Container: restful.NewContainer()},
+		runtime:          runtime,
 	}
 	if auth != nil {
 		server.InstallAuthFilter()
@@ -452,6 +468,13 @@ func (s *Server) getContainerLogs(request *restful.Request, response *restful.Re
 	for _, container := range pod.Spec.Containers {
 		if container.Name == containerName {
 			containerExists = true
+		}
+	}
+	if !containerExists {
+		for _, container := range pod.Spec.InitContainers {
+			if container.Name == containerName {
+				containerExists = true
+			}
 		}
 	}
 	if !containerExists {

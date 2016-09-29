@@ -18,34 +18,38 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-KUBE_ROOT="$(cd "$(dirname "${BASH_SOURCE}")/.." && pwd -P)"
+KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 source "${KUBE_ROOT}/hack/lib/init.sh"
 
 readonly branch=${1:-${KUBE_VERIFY_GIT_BRANCH:-master}}
 if ! [[ ${KUBE_FORCE_VERIFY_CHECKS:-} =~ ^[yY]$ ]] && \
-  ! kube::util::has_changes_against_upstream_branch "${branch}" 'Godeps/'; then
+  ! kube::util::has_changes_against_upstream_branch "${branch}" 'Godeps/' && \
+  ! kube::util::has_changes_against_upstream_branch "${branch}" 'vendor/'; then
   exit 0
 fi
 
 # create a nice clean place to put our new godeps
-# must be in the user dir (e.g. KUBE_ROOT) in order for the docker volume mount to work with docker-machine on macs
-_tmpdir="$(mktemp -d "${KUBE_ROOT}/kube-godep-licenses.XXXXXX")"
-echo "Created workspace: ${_tmpdir}"
+# must be in the user dir (e.g. KUBE_ROOT) in order for the docker volume mount
+# to work with docker-machine on macs
+mkdir -p "${KUBE_ROOT}/_tmp"
+_tmpdir="$(mktemp -d "${KUBE_ROOT}/_tmp/kube-godep-licenses.XXXXXX")"
+#echo "Created workspace: ${_tmpdir}"
 function cleanup {
-  echo "Removing workspace: ${_tmpdir}"
+  #echo "Removing workspace: ${_tmpdir}"
   rm -rf "${_tmpdir}"
 }
 trap cleanup EXIT
 
-cp -r "${KUBE_ROOT}/LICENSE" "${_tmpdir}/"
 cp -r "${KUBE_ROOT}/Godeps" "${_tmpdir}/Godeps"
+ln -s "${KUBE_ROOT}/LICENSE" "${_tmpdir}"
+ln -s "${KUBE_ROOT}/vendor" "${_tmpdir}"
 
 # Update Godep Licenses
-KUBE_ROOT="${_tmpdir}" "${KUBE_ROOT}/hack/update-godep-licenses.sh"
+LICENSE_ROOT="${_tmpdir}" "${KUBE_ROOT}/hack/update-godep-licenses.sh"
 
 # Compare Godep Licenses
 if ! _out="$(diff -Naupr ${KUBE_ROOT}/Godeps/LICENSES ${_tmpdir}/Godeps/LICENSES)"; then
-  echo "Your godep licenses file is out of date. Run hack/update-godep-licenses.sh --create-missing and commit the results."
+  echo "Your godep licenses file is out of date. Run hack/update-godep-licenses.sh and commit the results."
   echo "${_out}"
   exit 1
 fi

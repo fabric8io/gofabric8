@@ -8,28 +8,37 @@ import (
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 )
 
-// RollbackGenerator generates a new DeploymentConfig by merging a pair of DeploymentConfigs
-// in a configurable way.
-type RollbackGenerator struct{}
+// RollbackGenerator generates a new deployment config by merging a pair of deployment
+// configs in a configurable way.
+type RollbackGenerator interface {
+	// GenerateRollback creates a new deployment config by merging to onto from
+	// based on the options provided by spec. The latestVersion of the result is
+	// unconditionally incremented, as rollback candidates should be possible
+	// to be deployed manually regardless of other system behavior such as
+	// triggering.
+	//
+	// Any image change triggers on the new config are disabled to prevent
+	// triggered deployments from immediately replacing the rollback.
+	GenerateRollback(from, to *deployapi.DeploymentConfig, spec *deployapi.DeploymentConfigRollbackSpec) (*deployapi.DeploymentConfig, error)
+}
 
-// GenerateRollback creates a new DeploymentConfig by merging to onto from
-// based on the options provided by spec. The LatestVersion of the result is
-// unconditionally incremented, as rollback candidates are should be possible
-// to be deployed manually regardless of other system behavior such as
-// triggering.
-//
-// Any image change triggers on the new config are disabled to prevent
-// triggered deployments from immediately replacing the rollback.
-func (g *RollbackGenerator) GenerateRollback(from, to *deployapi.DeploymentConfig, spec *deployapi.DeploymentConfigRollbackSpec) (*deployapi.DeploymentConfig, error) {
+// NewRollbackGenerator returns a new rollback generator.
+func NewRollbackGenerator() RollbackGenerator {
+	return &rollbackGenerator{}
+}
+
+type rollbackGenerator struct{}
+
+func (g *rollbackGenerator) GenerateRollback(from, to *deployapi.DeploymentConfig, spec *deployapi.DeploymentConfigRollbackSpec) (*deployapi.DeploymentConfig, error) {
 	rollback := &deployapi.DeploymentConfig{}
 
-	if err := kapi.Scheme.Convert(&from, &rollback); err != nil {
+	if err := kapi.Scheme.Convert(&from, &rollback, nil); err != nil {
 		return nil, fmt.Errorf("couldn't clone 'from' DeploymentConfig: %v", err)
 	}
 
 	// construct the candidate deploymentConfig based on the rollback spec
 	if spec.IncludeTemplate {
-		if err := kapi.Scheme.Convert(&to.Spec.Template, &rollback.Spec.Template); err != nil {
+		if err := kapi.Scheme.Convert(&to.Spec.Template, &rollback.Spec.Template, nil); err != nil {
 			return nil, fmt.Errorf("couldn't copy template to rollback:: %v", err)
 		}
 	}
@@ -43,13 +52,13 @@ func (g *RollbackGenerator) GenerateRollback(from, to *deployapi.DeploymentConfi
 	}
 
 	if spec.IncludeTriggers {
-		if err := kapi.Scheme.Convert(&to.Spec.Triggers, &rollback.Spec.Triggers); err != nil {
+		if err := kapi.Scheme.Convert(&to.Spec.Triggers, &rollback.Spec.Triggers, nil); err != nil {
 			return nil, fmt.Errorf("couldn't copy triggers to rollback:: %v", err)
 		}
 	}
 
 	if spec.IncludeStrategy {
-		if err := kapi.Scheme.Convert(&to.Spec.Strategy, &rollback.Spec.Strategy); err != nil {
+		if err := kapi.Scheme.Convert(&to.Spec.Strategy, &rollback.Spec.Strategy, nil); err != nil {
 			return nil, fmt.Errorf("couldn't copy strategy to rollback:: %v", err)
 		}
 	}
@@ -62,6 +71,7 @@ func (g *RollbackGenerator) GenerateRollback(from, to *deployapi.DeploymentConfi
 	}
 
 	// TODO: add a new cause?
+	// TODO: Instantiate instead of incrementing latestVersion
 	rollback.Status.LatestVersion++
 
 	return rollback, nil

@@ -50,6 +50,9 @@ func Generate(paths ...string) (*templateapi.Template, error) {
 		ComposeFiles: paths,
 	}
 	p := project.NewProject(context)
+	if err := project.AddEnvironmentLookUp(context); err != nil {
+		return nil, err
+	}
 	if err := p.Parse(); err != nil {
 		return nil, err
 	}
@@ -268,7 +271,7 @@ func Generate(paths ...string) (*templateapi.Template, error) {
 				for _, s := range v.Ports {
 					container, _ := extractFirstPorts(s)
 					if port, err := strconv.Atoi(container); err == nil {
-						c.Ports = append(c.Ports, kapi.ContainerPort{ContainerPort: port})
+						c.Ports = append(c.Ports, kapi.ContainerPort{ContainerPort: int32(port)})
 					}
 				}
 				c.Args = v.Command.Slice()
@@ -403,6 +406,8 @@ func Generate(paths ...string) (*templateapi.Template, error) {
 		case *deployapi.DeploymentConfig:
 			ports := app.UniqueContainerToServicePorts(app.AllContainerPorts(t.Spec.Template.Spec.Containers...))
 			if len(ports) == 0 {
+				msg := "no ports defined to send traffic to - no OpenShift service was created"
+				warnings[msg] = append(warnings[msg], t.Name)
 				continue
 			}
 			svc := app.GenerateService(t.ObjectMeta, t.Spec.Selector)

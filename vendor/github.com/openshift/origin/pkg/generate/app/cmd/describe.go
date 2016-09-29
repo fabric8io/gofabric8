@@ -14,6 +14,21 @@ import (
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
+// These constants represent common annotations keys
+const (
+	// OpenShiftDisplayName is a common, optional annotation that stores the name displayed by a UI when referencing a resource.
+	OpenShiftDisplayName = "openshift.io/display-name"
+)
+
+func displayName(meta kapi.ObjectMeta) string {
+	// If an object has a display name, prefer it over the meta name.
+	displayName := meta.Annotations[OpenShiftDisplayName]
+	if len(displayName) > 0 {
+		return displayName
+	}
+	return meta.Name
+}
+
 func localOrRemoteName(meta kapi.ObjectMeta, namespace string) string {
 	if len(meta.Namespace) == 0 || namespace == meta.Namespace {
 		return meta.Name
@@ -171,11 +186,18 @@ func describeBuildPipelineWithImage(out io.Writer, ref app.ComponentReference, p
 				fmt.Fprintf(out, "      * The resulting image will be pushed to %s %q\n", to.Kind, to.Name)
 			}
 		}
-		if len(trackedImage) > 0 {
-			if noSource {
-				fmt.Fprintf(out, "      * Use 'start-build --from-dir=DIR' to trigger a new build\n")
-			} else {
+
+		if noSource {
+			// if we have no source, the user must always provide the source from the local dir(binary build)
+			fmt.Fprintf(out, "      * Use 'start-build --from-dir=DIR|--from-repo=DIR|--from-file=FILE' to trigger a new build\n")
+			fmt.Fprintf(out, "      * WARNING: a binary build was created, you must specify one of --from-dir|--from-file|--from-repo when starting builds\n")
+		} else {
+			if len(trackedImage) > 0 {
+				// if we have a trackedImage/ICT and we have source, the build will be triggered automatically.
 				fmt.Fprintf(out, "      * Every time %q changes a new build will be triggered\n", trackedImage)
+			} else {
+				// if we have source (but not a tracked image), the user must manually trigger a build.
+				fmt.Fprintf(out, "      * Use 'start-build' to trigger a new build\n")
 			}
 		}
 	}

@@ -33,28 +33,28 @@ func TestUserEvaluator(t *testing.T) {
 		},
 		{
 			name:     "info",
-			scopes:   []string{UserIndicator + UserInfo},
+			scopes:   []string{UserInfo},
 			numRules: 2,
 		},
 		{
 			name:     "one-error",
-			scopes:   []string{UserIndicator, UserIndicator + UserInfo},
+			scopes:   []string{UserIndicator, UserInfo},
 			err:      "unrecognized scope",
 			numRules: 2,
 		},
 		{
 			name:     "access",
-			scopes:   []string{UserIndicator + UserAccessCheck},
-			numRules: 2,
-		},
-		{
-			name:     "both",
-			scopes:   []string{UserIndicator + UserInfo, UserIndicator + UserAccessCheck},
+			scopes:   []string{UserAccessCheck},
 			numRules: 3,
 		},
 		{
-			name:     "list-projects",
-			scopes:   []string{UserIndicator + UserListProject},
+			name:     "both",
+			scopes:   []string{UserInfo, UserAccessCheck},
+			numRules: 4,
+		},
+		{
+			name:     "list--scoped-projects",
+			scopes:   []string{UserListScopedProjects},
 			numRules: 2,
 		},
 	}
@@ -286,7 +286,18 @@ type fakePolicyGetter struct {
 	err          error
 }
 
-func (f *fakePolicyGetter) GetClusterPolicy(ctx kapi.Context, id string) (*authorizationapi.ClusterPolicy, error) {
+func (f *fakePolicyGetter) List(kapi.ListOptions) (*authorizationapi.ClusterPolicyList, error) {
+	policy, err := f.Get("")
+	if err != nil {
+		return nil, err
+	}
+
+	ret := &authorizationapi.ClusterPolicyList{}
+	ret.Items = append(ret.Items, *policy)
+	return ret, f.err
+}
+
+func (f *fakePolicyGetter) Get(id string) (*authorizationapi.ClusterPolicy, error) {
 	ret := &authorizationapi.ClusterPolicy{}
 	ret.Roles = map[string]*authorizationapi.ClusterRole{}
 	for i := range f.clusterRoles {

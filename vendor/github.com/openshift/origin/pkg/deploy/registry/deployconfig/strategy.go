@@ -13,7 +13,6 @@ import (
 
 	"github.com/openshift/origin/pkg/deploy/api"
 	"github.com/openshift/origin/pkg/deploy/api/validation"
-	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
 // strategy implements behavior for DeploymentConfig objects
@@ -44,6 +43,12 @@ func (strategy) PrepareForCreate(obj runtime.Object) {
 	dc := obj.(*api.DeploymentConfig)
 	dc.Generation = 1
 	dc.Status = api.DeploymentConfigStatus{}
+
+	for i := range dc.Spec.Triggers {
+		if params := dc.Spec.Triggers[i].ImageChangeParams; params != nil {
+			params.LastTriggeredImage = ""
+		}
+	}
 }
 
 // PrepareForUpdate clears fields that are not allowed to be set by end users on update.
@@ -56,13 +61,6 @@ func (strategy) PrepareForUpdate(obj, old runtime.Object) {
 
 	// Persist status
 	newDc.Status = oldDc.Status
-
-	// oc deploy --latest from new clients
-	if newVersion == oldVersion && deployutil.IsInstantiated(newDc) {
-		// TODO: Have an endpoint for this and avoid hacking it here.
-		newDc.Status.LatestVersion = oldVersion + 1
-		delete(newDc.Annotations, api.DeploymentInstantiatedAnnotation)
-	}
 
 	// oc deploy --latest from old clients
 	// TODO: Remove once we drop support for older clients

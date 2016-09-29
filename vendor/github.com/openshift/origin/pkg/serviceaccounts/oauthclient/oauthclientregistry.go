@@ -23,13 +23,14 @@ type saOAuthClientAdapter struct {
 	saClient     kclient.ServiceAccountsNamespacer
 	secretClient kclient.SecretsNamespacer
 
-	delegate oauthclient.Getter
+	delegate    oauthclient.Getter
+	grantMethod oauthapi.GrantHandlerType
 }
 
 var _ oauthclient.Getter = &saOAuthClientAdapter{}
 
-func NewServiceAccountOAuthClientGetter(saClient kclient.ServiceAccountsNamespacer, secretClient kclient.SecretsNamespacer, delegate oauthclient.Getter) oauthclient.Getter {
-	return &saOAuthClientAdapter{saClient: saClient, secretClient: secretClient, delegate: delegate}
+func NewServiceAccountOAuthClientGetter(saClient kclient.ServiceAccountsNamespacer, secretClient kclient.SecretsNamespacer, delegate oauthclient.Getter, grantMethod oauthapi.GrantHandlerType) oauthclient.Getter {
+	return &saOAuthClientAdapter{saClient: saClient, secretClient: secretClient, delegate: delegate, grantMethod: grantMethod}
 }
 
 func (a *saOAuthClientAdapter) GetClient(ctx kapi.Context, name string) (*oauthapi.OAuthClient, error) {
@@ -75,13 +76,19 @@ func (a *saOAuthClientAdapter) GetClient(ctx kapi.Context, name string) (*oautha
 		// 3. route DNS (useful)
 		// 4. loopback? (useful, but maybe a bit weird)
 		RedirectURIs: redirectURIs,
+		GrantMethod:  a.grantMethod,
 	}
 	return saClient, nil
 }
 
 func getScopeRestrictionsFor(namespace, name string) []oauthapi.ScopeRestriction {
 	return []oauthapi.ScopeRestriction{
-		{ExactValues: []string{scopeauthorizer.UserIndicator + scopeauthorizer.UserInfo, scopeauthorizer.UserIndicator + scopeauthorizer.UserAccessCheck}},
+		{ExactValues: []string{
+			scopeauthorizer.UserInfo,
+			scopeauthorizer.UserAccessCheck,
+			scopeauthorizer.UserListScopedProjects,
+			scopeauthorizer.UserListAllProjects,
+		}},
 		{ClusterRole: &oauthapi.ClusterRoleScopeRestriction{RoleNames: []string{"*"}, Namespaces: []string{namespace}, AllowEscalation: true}},
 	}
 }

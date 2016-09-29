@@ -15,6 +15,8 @@ import (
 	"k8s.io/kubernetes/pkg/watch"
 
 	oapi "github.com/openshift/origin/pkg/api"
+	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
+	"github.com/openshift/origin/pkg/authorization/authorizer/scope"
 	"github.com/openshift/origin/pkg/project/api"
 	projectapi "github.com/openshift/origin/pkg/project/api"
 	projectauth "github.com/openshift/origin/pkg/project/auth"
@@ -91,7 +93,12 @@ func (s *REST) Watch(ctx kapi.Context, options *kapi.ListOptions) (watch.Interfa
 
 	includeAllExistingProjects := (options != nil) && options.ResourceVersion == "0"
 
-	watcher := projectauth.NewUserProjectWatcher(userInfo.GetName(), userInfo.GetGroups(), s.projectCache, s.authCache, includeAllExistingProjects)
+	allowedNamespaces, err := scope.ScopesToVisibleNamespaces(userInfo.GetExtra()[authorizationapi.ScopesKey], s.authCache.GetClusterPolicyLister().ClusterPolicies())
+	if err != nil {
+		return nil, err
+	}
+
+	watcher := projectauth.NewUserProjectWatcher(userInfo, allowedNamespaces, s.projectCache, s.authCache, includeAllExistingProjects)
 	s.authCache.AddWatcher(watcher)
 
 	go watcher.Watch()
@@ -131,16 +138,22 @@ func (s *REST) Create(ctx kapi.Context, obj runtime.Object) (runtime.Object, err
 
 var _ = rest.Updater(&REST{})
 
-func (s *REST) Update(ctx kapi.Context, obj runtime.Object) (runtime.Object, bool, error) {
+func (s *REST) Update(ctx kapi.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
+	oldObj, err := s.Get(ctx, name)
+	if err != nil {
+		return nil, false, err
+	}
+
+	obj, err := objInfo.UpdatedObject(ctx, oldObj)
+	if err != nil {
+		return nil, false, err
+	}
+
 	project, ok := obj.(*api.Project)
 	if !ok {
 		return nil, false, fmt.Errorf("not a project: %#v", obj)
 	}
 
-	oldObj, err := s.Get(ctx, project.Name)
-	if err != nil {
-		return nil, false, err
-	}
 	s.updateStrategy.PrepareForUpdate(obj, oldObj)
 	if errs := s.updateStrategy.ValidateUpdate(ctx, obj, oldObj); len(errs) > 0 {
 		return nil, false, kerrors.NewInvalid(projectapi.Kind("Project"), project.Name, errs)

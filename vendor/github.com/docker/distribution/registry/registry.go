@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"rsc.io/letsencrypt"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/Sirupsen/logrus/formatters/logstash"
 	"github.com/bugsnag/bugsnag-go"
@@ -24,16 +26,12 @@ import (
 	"github.com/yvasiyarov/gorelic"
 )
 
-// Cmd is a cobra command for running the registry.
-var Cmd = &cobra.Command{
-	Use:   "registry <config>",
-	Short: "registry stores and distributes Docker images",
-	Long:  "registry stores and distributes Docker images.",
+// ServeCmd is a cobra command for running the registry.
+var ServeCmd = &cobra.Command{
+	Use:   "serve <config>",
+	Short: "`serve` stores and distributes Docker images",
+	Long:  "`serve` stores and distributes Docker images.",
 	Run: func(cmd *cobra.Command, args []string) {
-		if showVersion {
-			version.PrintVersion()
-			return
-		}
 
 		// setup context
 		ctx := context.WithVersion(context.Background(), version.Version)
@@ -65,12 +63,6 @@ var Cmd = &cobra.Command{
 	},
 }
 
-var showVersion bool
-
-func init() {
-	Cmd.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "show the version and exit")
-}
-
 // A Registry represents a complete instance of the registry.
 // TODO(aaronl): It might make sense for Registry to become an interface.
 type Registry struct {
@@ -99,7 +91,9 @@ func NewRegistry(ctx context.Context, config *configuration.Configuration) (*Reg
 	handler = alive("/", handler)
 	handler = health.Handler(handler)
 	handler = panicHandler(handler)
-	handler = gorhandlers.CombinedLoggingHandler(os.Stdout, handler)
+	if !config.Log.AccessLog.Disabled {
+		handler = gorhandlers.CombinedLoggingHandler(os.Stdout, handler)
+	}
 
 	server := &http.Server{
 		Handler: handler,
@@ -121,11 +115,10 @@ func (registry *Registry) ListenAndServe() error {
 		return err
 	}
 
-	if config.HTTP.TLS.Certificate != "" {
+	if config.HTTP.TLS.Certificate != "" || config.HTTP.TLS.LetsEncrypt.CacheFile != "" {
 		tlsConf := &tls.Config{
 			ClientAuth:               tls.NoClientCert,
-			NextProtos:               []string{"http/1.1"},
-			Certificates:             make([]tls.Certificate, 1),
+			NextProtos:               nextProtos(config),
 			MinVersion:               tls.VersionTLS10,
 			PreferServerCipherSuites: true,
 			CipherSuites: []uint16{
@@ -140,9 +133,26 @@ func (registry *Registry) ListenAndServe() error {
 			},
 		}
 
-		tlsConf.Certificates[0], err = tls.LoadX509KeyPair(config.HTTP.TLS.Certificate, config.HTTP.TLS.Key)
-		if err != nil {
-			return err
+		if config.HTTP.TLS.LetsEncrypt.CacheFile != "" {
+			if config.HTTP.TLS.Certificate != "" {
+				return fmt.Errorf("cannot specify both certificate and Let's Encrypt")
+			}
+			var m letsencrypt.Manager
+			if err := m.CacheFile(config.HTTP.TLS.LetsEncrypt.CacheFile); err != nil {
+				return err
+			}
+			if !m.Registered() {
+				if err := m.Register(config.HTTP.TLS.LetsEncrypt.Email, nil); err != nil {
+					return err
+				}
+			}
+			tlsConf.GetCertificate = m.GetCertificate
+		} else {
+			tlsConf.Certificates = make([]tls.Certificate, 1)
+			tlsConf.Certificates[0], err = tls.LoadX509KeyPair(config.HTTP.TLS.Certificate, config.HTTP.TLS.Key)
+			if err != nil {
+				return err
+			}
 		}
 
 		if len(config.HTTP.TLS.ClientCAs) != 0 {
@@ -277,7 +287,7 @@ func logLevel(level configuration.Loglevel) log.Level {
 	return l
 }
 
-// panicHandler add a HTTP handler to web app. The handler recover the happening
+// panicHandler add an HTTP handler to web app. The handler recover the happening
 // panic. logrus.Panic transmits panic message to pre-config log hooks, which is
 // defined in config.yml.
 func panicHandler(handler http.Handler) http.Handler {
@@ -334,4 +344,13 @@ func resolveConfiguration(args []string) (*configuration.Configuration, error) {
 	}
 
 	return config, nil
+}
+
+func nextProtos(config *configuration.Configuration) []string {
+	switch config.HTTP.HTTP2.Disabled {
+	case true:
+		return []string{"http/1.1"}
+	default:
+		return []string{"h2", "http/1.1"}
+	}
 }

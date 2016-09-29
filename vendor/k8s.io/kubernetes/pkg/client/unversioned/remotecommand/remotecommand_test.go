@@ -30,11 +30,13 @@ import (
 	"time"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/testapi"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/kubelet/server/remotecommand"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util/httpstream"
+	"k8s.io/kubernetes/pkg/util/term"
 )
 
 type fakeExecutor struct {
@@ -51,11 +53,11 @@ type fakeExecutor struct {
 	exec          bool
 }
 
-func (ex *fakeExecutor) ExecInContainer(name string, uid types.UID, container string, cmd []string, in io.Reader, out, err io.WriteCloser, tty bool) error {
+func (ex *fakeExecutor) ExecInContainer(name string, uid types.UID, container string, cmd []string, in io.Reader, out, err io.WriteCloser, tty bool, resize <-chan term.Size) error {
 	return ex.run(name, uid, container, cmd, in, out, err, tty)
 }
 
-func (ex *fakeExecutor) AttachContainer(name string, uid types.UID, container string, in io.Reader, out, err io.WriteCloser, tty bool) error {
+func (ex *fakeExecutor) AttachContainer(name string, uid types.UID, container string, in io.Reader, out, err io.WriteCloser, tty bool, resize <-chan term.Size) error {
 	return ex.run(name, uid, container, nil, in, out, err, tty)
 }
 
@@ -212,7 +214,14 @@ func TestStream(t *testing.T) {
 			server := httptest.NewServer(fakeServer(t, name, exec, testCase.Stdin, testCase.Stdout, testCase.Stderr, testCase.Error, testCase.Tty, testCase.MessageCount, testCase.ServerProtocols))
 
 			url, _ := url.ParseRequestURI(server.URL)
-			c := restclient.NewRESTClient(url, "", restclient.ContentConfig{GroupVersion: &unversioned.GroupVersion{Group: "x"}}, -1, -1, nil)
+			config := restclient.ContentConfig{
+				GroupVersion:         &unversioned.GroupVersion{Group: "x"},
+				NegotiatedSerializer: testapi.Default.NegotiatedSerializer(),
+			}
+			c, err := restclient.NewRESTClient(url, "", config, -1, -1, nil, nil)
+			if err != nil {
+				t.Fatalf("failed to create a client: %v", err)
+			}
 			req := c.Post().Resource("testing")
 
 			if exec {
@@ -245,7 +254,13 @@ func TestStream(t *testing.T) {
 				t.Errorf("%s: unexpected error: %v", name, err)
 				continue
 			}
-			err = e.Stream(testCase.ClientProtocols, streamIn, streamOut, streamErr, testCase.Tty)
+			err = e.Stream(StreamOptions{
+				SupportedProtocols: testCase.ClientProtocols,
+				Stdin:              streamIn,
+				Stdout:             streamOut,
+				Stderr:             streamErr,
+				Tty:                testCase.Tty,
+			})
 			hasErr := err != nil
 
 			if len(testCase.Error) > 0 {
@@ -257,32 +272,29 @@ func TestStream(t *testing.T) {
 					}
 				}
 
-				// TODO: Uncomment when fix #19254
-				// server.Close()
+				server.Close()
 				continue
 			}
 
 			if hasErr {
 				t.Errorf("%s: unexpected error: %v", name, err)
-				// TODO: Uncomment when fix #19254
-				// server.Close()
+				server.Close()
 				continue
 			}
 
 			if len(testCase.Stdout) > 0 {
 				if e, a := strings.Repeat(testCase.Stdout, testCase.MessageCount), localOut; e != a.String() {
-					t.Errorf("%s: expected stdout data '%s', got '%s'", name, e, a)
+					t.Errorf("%s: expected stdout data %q, got %q", name, e, a)
 				}
 			}
 
 			if testCase.Stderr != "" {
 				if e, a := strings.Repeat(testCase.Stderr, testCase.MessageCount), localErr; e != a.String() {
-					t.Errorf("%s: expected stderr data '%s', got '%s'", name, e, a)
+					t.Errorf("%s: expected stderr data %q, got %q", name, e, a)
 				}
 			}
 
-			// TODO: Uncomment when fix #19254
-			// server.Close()
+			server.Close()
 		}
 	}
 }

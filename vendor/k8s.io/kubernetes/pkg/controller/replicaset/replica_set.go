@@ -37,6 +37,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util/metrics"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
@@ -99,6 +100,10 @@ func NewReplicaSetController(kubeClient clientset.Interface, resyncPeriod contro
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(glog.Infof)
 	eventBroadcaster.StartRecordingToSink(&unversionedcore.EventSinkImpl{Interface: kubeClient.Core().Events("")})
+
+	if kubeClient != nil && kubeClient.Core().GetRESTClient().GetRateLimiter() != nil {
+		metrics.RegisterMetricAndTrackRateLimiterUsage("replicaset_controller", kubeClient.Core().GetRESTClient().GetRateLimiter())
+	}
 
 	rsc := &ReplicaSetController{
 		kubeClient: kubeClient,
@@ -168,7 +173,7 @@ func NewReplicaSetController(kubeClient clientset.Interface, resyncPeriod contro
 		},
 	)
 
-	rsc.podStore.Store, rsc.podController = framework.NewInformer(
+	rsc.podStore.Indexer, rsc.podController = framework.NewIndexerInformer(
 		&cache.ListWatch{
 			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
 				return rsc.kubeClient.Core().Pods(api.NamespaceAll).List(options)
@@ -187,6 +192,7 @@ func NewReplicaSetController(kubeClient clientset.Interface, resyncPeriod contro
 			UpdateFunc: rsc.updatePod,
 			DeleteFunc: rsc.deletePod,
 		},
+		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
 
 	rsc.syncHandler = rsc.syncReplicaSet
@@ -314,18 +320,15 @@ func (rsc *ReplicaSetController) addPod(obj interface{}) {
 // up. If the labels of the pod have changed we need to awaken both the old
 // and new replica set. old and cur must be *api.Pod types.
 func (rsc *ReplicaSetController) updatePod(old, cur interface{}) {
-	if api.Semantic.DeepEqual(old, cur) {
-		// A periodic relist will send update events for all known pods.
-		return
-	}
 	curPod := cur.(*api.Pod)
 	oldPod := old.(*api.Pod)
-	glog.V(4).Infof("Pod %s updated %+v -> %+v.", curPod.Name, oldPod, curPod)
-	rs := rsc.getPodReplicaSet(curPod)
-	if rs == nil {
+	if curPod.ResourceVersion == oldPod.ResourceVersion {
+		// Periodic resync will send update events for all known pods.
+		// Two different versions of the same pod will always have different RVs.
 		return
 	}
-
+	glog.V(4).Infof("Pod %s updated, objectMeta %+v -> %+v.", curPod.Name, oldPod.ObjectMeta, curPod.ObjectMeta)
+	labelChanged := !reflect.DeepEqual(curPod.Labels, oldPod.Labels)
 	if curPod.DeletionTimestamp != nil {
 		// when a pod is deleted gracefully it's deletion timestamp is first modified to reflect a grace period,
 		// and after such time has passed, the kubelet actually deletes it from the store. We receive an update
@@ -333,11 +336,17 @@ func (rsc *ReplicaSetController) updatePod(old, cur interface{}) {
 		// until the kubelet actually deletes the pod. This is different from the Phase of a pod changing, because
 		// an rs never initiates a phase change, and so is never asleep waiting for the same.
 		rsc.deletePod(curPod)
+		if labelChanged {
+			// we don't need to check the oldPod.DeletionTimestamp because DeletionTimestamp cannot be unset.
+			rsc.deletePod(oldPod)
+		}
 		return
 	}
 
-	rsc.enqueueReplicaSet(rs)
-	if !reflect.DeepEqual(curPod.Labels, oldPod.Labels) {
+	if rs := rsc.getPodReplicaSet(curPod); rs != nil {
+		rsc.enqueueReplicaSet(rs)
+	}
+	if labelChanged {
 		// If the old and new ReplicaSet are the same, the first one that syncs
 		// will set expectations preventing any damage from the second.
 		if oldRS := rsc.getPodReplicaSet(oldPod); oldRS != nil {
@@ -416,7 +425,7 @@ func (rsc *ReplicaSetController) worker() {
 
 // manageReplicas checks and updates replicas for the given ReplicaSet.
 func (rsc *ReplicaSetController) manageReplicas(filteredPods []*api.Pod, rs *extensions.ReplicaSet) {
-	diff := len(filteredPods) - rs.Spec.Replicas
+	diff := len(filteredPods) - int(rs.Spec.Replicas)
 	rsKey, err := controller.KeyFunc(rs)
 	if err != nil {
 		glog.Errorf("Couldn't get key for ReplicaSet %#v: %v", rs, err)

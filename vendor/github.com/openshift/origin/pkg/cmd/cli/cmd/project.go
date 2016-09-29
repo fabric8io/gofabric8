@@ -9,8 +9,8 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/client/restclient"
+	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
-	kubecmdconfig "k8s.io/kubernetes/pkg/kubectl/cmd/config"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	"github.com/openshift/origin/pkg/client"
@@ -26,7 +26,7 @@ type ProjectOptions struct {
 	ClientConfig *restclient.Config
 	ClientFn     func() (*client.Client, error)
 	Out          io.Writer
-	PathOptions  *kubecmdconfig.PathOptions
+	PathOptions  *kclientcmd.PathOptions
 
 	ProjectName  string
 	ProjectOnly  bool
@@ -66,7 +66,6 @@ func NewCmdProject(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.
 		Short:   "Switch to another project",
 		Long:    projectLong,
 		Example: fmt.Sprintf(projectExample, fullName),
-		Aliases: []string{"projects"},
 		Run: func(cmd *cobra.Command, args []string) {
 			options.PathOptions = cliconfig.NewPathOptions(cmd)
 
@@ -123,11 +122,14 @@ func (o ProjectOptions) RunProject() error {
 	clientCfg := o.ClientConfig
 	out := o.Out
 
+	var currentProject string
+	currentContext := config.Contexts[config.CurrentContext]
+	if currentContext != nil {
+		currentProject = currentContext.Namespace
+	}
+
 	// No argument provided, we will just print info
 	if len(o.ProjectName) == 0 {
-		currentContext := config.Contexts[config.CurrentContext]
-		currentProject := currentContext.Namespace
-
 		if len(currentProject) > 0 {
 			if o.DisplayShort {
 				fmt.Fprintln(out, currentProject)
@@ -239,7 +241,7 @@ func (o ProjectOptions) RunProject() error {
 		contextInUse = merged.CurrentContext
 	}
 
-	if err := kubecmdconfig.ModifyConfig(o.PathOptions, config, true); err != nil {
+	if err := kclientcmd.ModifyConfig(o.PathOptions, config, true); err != nil {
 		return err
 	}
 
@@ -256,6 +258,10 @@ func (o ProjectOptions) RunProject() error {
 	// if there is no namespace, then the only information we can provide is the context and server
 	case (len(namespaceInUse) == 0):
 		fmt.Fprintf(out, "Now using context named %q on server %q.\n", contextInUse, clientCfg.Host)
+
+	// inform them that they are already in the project they are trying to switch to
+	case currentProject == namespaceInUse:
+		fmt.Fprintf(out, "Already on project %q on server %q.\n", currentProject, clientCfg.Host)
 
 	// if they specified a project name and got a generated context, then only show the information they care about.  They won't recognize
 	// a context name they didn't choose

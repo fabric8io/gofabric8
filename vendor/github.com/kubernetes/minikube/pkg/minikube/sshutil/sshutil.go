@@ -19,7 +19,9 @@ package sshutil
 import (
 	"fmt"
 	"io"
+	"net"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/docker/machine/libmachine/drivers"
@@ -52,7 +54,7 @@ func NewSSHClient(d drivers.Driver) (*ssh.Client, error) {
 		return nil, errors.Wrapf(err, "Error creating new native config from ssh using: %s, %s", h.Username, auth)
 	}
 
-	client, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", h.IP, h.Port), &config)
+	client, err := ssh.Dial("tcp", net.JoinHostPort(h.IP, strconv.Itoa(h.Port)), &config)
 	if err != nil {
 		return nil, errors.Wrap(err, "Error dialing tcp via ssh client")
 	}
@@ -91,7 +93,8 @@ func Transfer(reader io.Reader, readerLen int, remotedir, filename string, perm 
 		io.Copy(w, reader)
 		fmt.Fprint(w, "\x00")
 	}()
-	scpcmd := fmt.Sprintf("sudo /usr/local/bin/scp -t %s", remotedir)
+
+	scpcmd := fmt.Sprintf("sudo scp -t %s", remotedir)
 	if err := s.Run(scpcmd); err != nil {
 		return errors.Wrap(err, "Error running scp command")
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/record"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -34,7 +35,7 @@ type RecreateDeploymentStrategy struct {
 	getReplicationController func(namespace, name string) (*kapi.ReplicationController, error)
 	// getUpdateAcceptor returns an UpdateAcceptor to verify the first replica
 	// of the deployment.
-	getUpdateAcceptor func(timeout time.Duration) strat.UpdateAcceptor
+	getUpdateAcceptor func(time.Duration, int32) strat.UpdateAcceptor
 	// scaler is used to scale replication controllers.
 	scaler kubectl.Scaler
 	// tagClient is used to tag images
@@ -56,7 +57,7 @@ const AcceptorInterval = 1 * time.Second
 
 // NewRecreateDeploymentStrategy makes a RecreateDeploymentStrategy backed by
 // a real HookExecutor and client.
-func NewRecreateDeploymentStrategy(client kclient.Interface, tagClient client.ImageStreamTagsNamespacer, decoder runtime.Decoder, out, errOut io.Writer, until string) *RecreateDeploymentStrategy {
+func NewRecreateDeploymentStrategy(client kclient.Interface, tagClient client.ImageStreamTagsNamespacer, events record.EventSink, decoder runtime.Decoder, out, errOut io.Writer, until string) *RecreateDeploymentStrategy {
 	if out == nil {
 		out = ioutil.Discard
 	}
@@ -71,12 +72,12 @@ func NewRecreateDeploymentStrategy(client kclient.Interface, tagClient client.Im
 		getReplicationController: func(namespace, name string) (*kapi.ReplicationController, error) {
 			return client.ReplicationControllers(namespace).Get(name)
 		},
-		getUpdateAcceptor: func(timeout time.Duration) strat.UpdateAcceptor {
-			return stratsupport.NewAcceptNewlyObservedReadyPods(out, client, timeout, AcceptorInterval)
+		getUpdateAcceptor: func(timeout time.Duration, minReadySeconds int32) strat.UpdateAcceptor {
+			return stratsupport.NewAcceptNewlyObservedReadyPods(out, client, timeout, AcceptorInterval, minReadySeconds)
 		},
 		scaler:       scaler,
 		decoder:      decoder,
-		hookExecutor: stratsupport.NewHookExecutor(client, tagClient, os.Stdout, decoder),
+		hookExecutor: stratsupport.NewHookExecutor(client, tagClient, events, os.Stdout, decoder),
 		retryTimeout: 120 * time.Second,
 		retryPeriod:  1 * time.Second,
 	}
@@ -105,7 +106,7 @@ func (s *RecreateDeploymentStrategy) DeployWithAcceptor(from *kapi.ReplicationCo
 	waitParams := kubectl.NewRetryParams(s.retryPeriod, s.retryTimeout)
 
 	if updateAcceptor == nil {
-		updateAcceptor = s.getUpdateAcceptor(time.Duration(*params.TimeoutSeconds) * time.Second)
+		updateAcceptor = s.getUpdateAcceptor(time.Duration(*params.TimeoutSeconds)*time.Second, config.Spec.MinReadySeconds)
 	}
 
 	// Execute any pre-hook.
@@ -166,7 +167,7 @@ func (s *RecreateDeploymentStrategy) DeployWithAcceptor(from *kapi.ReplicationCo
 		}
 
 		// Complete the scale up.
-		if to.Spec.Replicas != desiredReplicas {
+		if to.Spec.Replicas != int32(desiredReplicas) {
 			fmt.Fprintf(s.out, "--> Scaling %s to %d\n", to.Name, desiredReplicas)
 			updatedTo, err := s.scaleAndWait(to, desiredReplicas, retryParams, waitParams)
 			if err != nil {
@@ -197,7 +198,7 @@ func (s *RecreateDeploymentStrategy) DeployWithAcceptor(from *kapi.ReplicationCo
 }
 
 func (s *RecreateDeploymentStrategy) scaleAndWait(deployment *kapi.ReplicationController, replicas int, retry *kubectl.RetryParams, wait *kubectl.RetryParams) (*kapi.ReplicationController, error) {
-	if replicas == deployment.Spec.Replicas && replicas == deployment.Status.Replicas {
+	if int32(replicas) == deployment.Spec.Replicas && int32(replicas) == deployment.Status.Replicas {
 		return deployment, nil
 	}
 	if err := s.scaler.Scale(deployment.Namespace, deployment.Name, uint(replicas), &kubectl.ScalePrecondition{Size: -1, ResourceVersion: ""}, retry, wait); err != nil {

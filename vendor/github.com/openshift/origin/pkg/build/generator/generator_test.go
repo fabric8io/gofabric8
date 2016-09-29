@@ -14,6 +14,7 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
+	"github.com/openshift/origin/pkg/build/api/validation"
 	mocks "github.com/openshift/origin/pkg/build/generator/test"
 	buildutil "github.com/openshift/origin/pkg/build/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
@@ -44,6 +45,25 @@ func TestInstantiate(t *testing.T) {
 	_, err := generator.Instantiate(kapi.NewDefaultContext(), &buildapi.BuildRequest{})
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
+	}
+}
+
+func TestInstantiateBinary(t *testing.T) {
+	generator := mockBuildGenerator()
+	build, err := generator.Instantiate(kapi.NewDefaultContext(), &buildapi.BuildRequest{Binary: &buildapi.BinaryBuildSource{}})
+	if err != nil {
+		t.Errorf("Unexpected error %v", err)
+	}
+	if build.Spec.Source.Binary == nil {
+		t.Errorf("build should have a binary source value, has nil")
+	}
+	build, err = generator.Clone(kapi.NewDefaultContext(), &buildapi.BuildRequest{Binary: &buildapi.BinaryBuildSource{}})
+	if err != nil {
+		t.Errorf("Unexpected error %v", err)
+	}
+	// TODO: we should enable this flow.
+	if build.Spec.Source.Binary != nil {
+		t.Errorf("build should not have a binary source value, has %v", build.Spec.Source.Binary)
 	}
 }
 
@@ -82,6 +102,7 @@ func TestInstantiateRetry(t *testing.T) {
 */
 
 func TestInstantiateDeletingError(t *testing.T) {
+	source := mocks.MockSource()
 	generator := BuildGenerator{Client: Client{
 		GetBuildConfigFunc: func(ctx kapi.Context, name string) (*buildapi.BuildConfig, error) {
 			bc := &buildapi.BuildConfig{
@@ -90,11 +111,31 @@ func TestInstantiateDeletingError(t *testing.T) {
 						buildapi.BuildConfigPausedAnnotation: "true",
 					},
 				},
+				Spec: buildapi.BuildConfigSpec{
+					CommonSpec: buildapi.CommonSpec{
+						Source: source,
+						Revision: &buildapi.SourceRevision{
+							Git: &buildapi.GitSourceRevision{
+								Commit: "1234",
+							},
+						},
+					},
+				},
 			}
 			return bc, nil
 		},
 		GetBuildFunc: func(ctx kapi.Context, name string) (*buildapi.Build, error) {
 			build := &buildapi.Build{
+				Spec: buildapi.BuildSpec{
+					CommonSpec: buildapi.CommonSpec{
+						Source: source,
+						Revision: &buildapi.SourceRevision{
+							Git: &buildapi.GitSourceRevision{
+								Commit: "1234",
+							},
+						},
+					},
+				},
 				Status: buildapi.BuildStatus{
 					Config: &kapi.ObjectReference{
 						Name: "buildconfig",
@@ -111,6 +152,61 @@ func TestInstantiateDeletingError(t *testing.T) {
 	_, err = generator.Clone(kapi.NewDefaultContext(), &buildapi.BuildRequest{})
 	if err == nil || !strings.Contains(err.Error(), "BuildConfig is paused") {
 		t.Errorf("Expected error, got different %v", err)
+	}
+}
+
+// TestInstantiateBinaryClear ensures that when instantiating or cloning from a buildconfig/build
+// that has a binary source value, the resulting build does not have a binary source value
+// (because the request did not include one)
+func TestInstantiateBinaryRemoved(t *testing.T) {
+	generator := mockBuildGenerator()
+	client := generator.Client.(Client)
+	client.GetBuildConfigFunc = func(ctx kapi.Context, name string) (*buildapi.BuildConfig, error) {
+		bc := &buildapi.BuildConfig{
+			ObjectMeta: kapi.ObjectMeta{
+				Annotations: map[string]string{},
+			},
+			Spec: buildapi.BuildConfigSpec{
+				CommonSpec: buildapi.CommonSpec{
+					Source: buildapi.BuildSource{
+						Binary: &buildapi.BinaryBuildSource{},
+					},
+				},
+			},
+		}
+		return bc, nil
+	}
+	client.GetBuildFunc = func(ctx kapi.Context, name string) (*buildapi.Build, error) {
+		build := &buildapi.Build{
+			Spec: buildapi.BuildSpec{
+				CommonSpec: buildapi.CommonSpec{
+					Source: buildapi.BuildSource{
+						Binary: &buildapi.BinaryBuildSource{},
+					},
+				},
+			},
+			Status: buildapi.BuildStatus{
+				Config: &kapi.ObjectReference{
+					Name: "buildconfig",
+				},
+			},
+		}
+		return build, nil
+	}
+
+	build, err := generator.Instantiate(kapi.NewDefaultContext(), &buildapi.BuildRequest{})
+	if err != nil {
+		t.Errorf("Unexpected error %v", err)
+	}
+	if build.Spec.Source.Binary != nil {
+		t.Errorf("build should not have a binary source value, has %v", build.Spec.Source.Binary)
+	}
+	build, err = generator.Clone(kapi.NewDefaultContext(), &buildapi.BuildRequest{})
+	if err != nil {
+		t.Errorf("Unexpected error %v", err)
+	}
+	if build.Spec.Source.Binary != nil {
+		t.Errorf("build should not have a binary source value, has %v", build.Spec.Source.Binary)
 	}
 }
 
@@ -239,16 +335,23 @@ func TestInstantiateWithImageTrigger(t *testing.T) {
 		},
 	}
 
+	source := mocks.MockSource()
 	for _, tc := range tests {
 		bc := &buildapi.BuildConfig{
 			Spec: buildapi.BuildConfigSpec{
-				BuildSpec: buildapi.BuildSpec{
+				CommonSpec: buildapi.CommonSpec{
 					Strategy: buildapi.BuildStrategy{
 						SourceStrategy: &buildapi.SourceBuildStrategy{
 							From: kapi.ObjectReference{
 								Name: "image3:tag3",
 								Kind: "ImageStreamTag",
 							},
+						},
+					},
+					Source: source,
+					Revision: &buildapi.SourceRevision{
+						Git: &buildapi.GitSourceRevision{
+							Commit: "1234",
 						},
 					},
 				},
@@ -326,7 +429,7 @@ func TestInstantiateWithLastVersion(t *testing.T) {
 	}
 
 	// Version specified and it matches
-	lastVersion := 1
+	lastVersion := int64(1)
 	_, err = g.Instantiate(kapi.NewDefaultContext(), &buildapi.BuildRequest{LastVersion: &lastVersion})
 	if err != nil {
 		t.Errorf("Unexpected error %v", err)
@@ -409,7 +512,7 @@ func TestFindImageTrigger(t *testing.T) {
 			Namespace: "bcnamespace",
 		},
 		Spec: buildapi.BuildConfigSpec{
-			BuildSpec: buildapi.BuildSpec{
+			CommonSpec: buildapi.CommonSpec{
 				Strategy: buildapi.BuildStrategy{
 					SourceStrategy: &buildapi.SourceBuildStrategy{
 						From: kapi.ObjectReference{
@@ -617,7 +720,7 @@ func TestGenerateBuildFromConfig(t *testing.T) {
 			Labels:    map[string]string{"testlabel": "testvalue"},
 		},
 		Spec: buildapi.BuildConfigSpec{
-			BuildSpec: buildapi.BuildSpec{
+			CommonSpec: buildapi.CommonSpec{
 				Source: source,
 				Revision: &buildapi.SourceRevision{
 					Git: &buildapi.GitSourceRevision{
@@ -681,6 +784,18 @@ func TestGenerateBuildFromConfig(t *testing.T) {
 	if build.Annotations[buildapi.BuildNumberAnnotation] != "13" {
 		t.Errorf("Build number annotation value %s does not match expected value 13", build.Annotations[buildapi.BuildNumberAnnotation])
 	}
+
+	// Test long name
+	bc.Name = strings.Repeat("a", 100)
+	build, err = generator.generateBuildFromConfig(kapi.NewContext(), bc, revision, nil)
+	if err != nil {
+		t.Fatalf("Unexpected error %v", err)
+	}
+	build.Namespace = "test-namespace"
+	errors := validation.ValidateBuild(build)
+	if len(errors) > 0 {
+		t.Fatalf("Unexpected validation errors %v", errors)
+	}
 }
 
 func TestGenerateBuildWithImageTagForSourceStrategyImageRepository(t *testing.T) {
@@ -692,7 +807,7 @@ func TestGenerateBuildWithImageTagForSourceStrategyImageRepository(t *testing.T)
 			Name: "test-build-config",
 		},
 		Spec: buildapi.BuildConfigSpec{
-			BuildSpec: buildapi.BuildSpec{
+			CommonSpec: buildapi.CommonSpec{
 				Source: source,
 				Revision: &buildapi.SourceRevision{
 					Git: &buildapi.GitSourceRevision{
@@ -770,7 +885,7 @@ func TestGenerateBuildWithImageTagForDockerStrategyImageRepository(t *testing.T)
 			Name: "test-build-config",
 		},
 		Spec: buildapi.BuildConfigSpec{
-			BuildSpec: buildapi.BuildSpec{
+			CommonSpec: buildapi.CommonSpec{
 				Source: source,
 				Revision: &buildapi.SourceRevision{
 					Git: &buildapi.GitSourceRevision{
@@ -847,7 +962,7 @@ func TestGenerateBuildWithImageTagForCustomStrategyImageRepository(t *testing.T)
 			Name: "test-build-config",
 		},
 		Spec: buildapi.BuildConfigSpec{
-			BuildSpec: buildapi.BuildSpec{
+			CommonSpec: buildapi.CommonSpec{
 				Source: source,
 				Revision: &buildapi.SourceRevision{
 					Git: &buildapi.GitSourceRevision{
@@ -924,14 +1039,16 @@ func TestGenerateBuildFromBuild(t *testing.T) {
 			Name: "test-build",
 		},
 		Spec: buildapi.BuildSpec{
-			Source: source,
-			Revision: &buildapi.SourceRevision{
-				Git: &buildapi.GitSourceRevision{
-					Commit: "1234",
+			CommonSpec: buildapi.CommonSpec{
+				Source: source,
+				Revision: &buildapi.SourceRevision{
+					Git: &buildapi.GitSourceRevision{
+						Commit: "1234",
+					},
 				},
+				Strategy: strategy,
+				Output:   output,
 			},
-			Strategy: strategy,
-			Output:   output,
 		},
 	}
 
@@ -956,14 +1073,16 @@ func TestGenerateBuildFromBuildWithBuildConfig(t *testing.T) {
 			},
 		},
 		Spec: buildapi.BuildSpec{
-			Source: source,
-			Revision: &buildapi.SourceRevision{
-				Git: &buildapi.GitSourceRevision{
-					Commit: "1234",
+			CommonSpec: buildapi.CommonSpec{
+				Source: source,
+				Revision: &buildapi.SourceRevision{
+					Git: &buildapi.GitSourceRevision{
+						Commit: "1234",
+					},
 				},
+				Strategy: strategy,
+				Output:   output,
 			},
-			Strategy: strategy,
-			Output:   output,
 		},
 	}
 	nonAnnotatedBuild := &buildapi.Build{
@@ -971,14 +1090,16 @@ func TestGenerateBuildFromBuildWithBuildConfig(t *testing.T) {
 			Name: "nonAnnotatedBuild",
 		},
 		Spec: buildapi.BuildSpec{
-			Source: source,
-			Revision: &buildapi.SourceRevision{
-				Git: &buildapi.GitSourceRevision{
-					Commit: "1234",
+			CommonSpec: buildapi.CommonSpec{
+				Source: source,
+				Revision: &buildapi.SourceRevision{
+					Git: &buildapi.GitSourceRevision{
+						Commit: "1234",
+					},
 				},
+				Strategy: strategy,
+				Output:   output,
 			},
-			Strategy: strategy,
-			Output:   output,
 		},
 	}
 
@@ -1158,7 +1279,7 @@ func TestGetNextBuildName(t *testing.T) {
 	if expected, actual := bc.Name+"-1", getNextBuildName(bc); expected != actual {
 		t.Errorf("Wrong buildName, expected %s, got %s", expected, actual)
 	}
-	if expected, actual := 1, bc.Status.LastVersion; expected != actual {
+	if expected, actual := int64(1), bc.Status.LastVersion; expected != actual {
 		t.Errorf("Wrong version, expected %d, got %d", expected, actual)
 	}
 }
@@ -1362,14 +1483,16 @@ func mockBuild(source buildapi.BuildSource, strategy buildapi.BuildStrategy, out
 			Name: "test-build",
 		},
 		Spec: buildapi.BuildSpec{
-			Source: source,
-			Revision: &buildapi.SourceRevision{
-				Git: &buildapi.GitSourceRevision{
-					Commit: "1234",
+			CommonSpec: buildapi.CommonSpec{
+				Source: source,
+				Revision: &buildapi.SourceRevision{
+					Git: &buildapi.GitSourceRevision{
+						Commit: "1234",
+					},
 				},
+				Strategy: strategy,
+				Output:   output,
 			},
-			Strategy: strategy,
-			Output:   output,
 		},
 	}
 }
@@ -1499,6 +1622,163 @@ func TestGenerateBuildFromConfigWithSecrets(t *testing.T) {
 		}
 		if err != nil {
 			t.Fatalf("Unexpected error %v", err)
+		}
+	}
+}
+
+func TestInstantiateBuildTriggerCauseConfigChange(t *testing.T) {
+	changeMessage := "Build configuration change"
+
+	buildTriggerCauses := []buildapi.BuildTriggerCause{}
+	buildRequest := &buildapi.BuildRequest{
+		TriggeredBy: append(buildTriggerCauses,
+			buildapi.BuildTriggerCause{
+				Message: changeMessage,
+			},
+		),
+	}
+	generator := mockBuildGenerator()
+	buildObject, err := generator.Instantiate(kapi.NewDefaultContext(), buildRequest)
+	if err != nil {
+		t.Errorf("Expected error to be nil, got %v", err)
+	}
+
+	for _, cause := range buildObject.Spec.TriggeredBy {
+		if cause.Message != changeMessage {
+			t.Errorf("Expected reason %s, got %s", changeMessage, cause.Message)
+		}
+	}
+}
+
+func TestInstantiateBuildTriggerCauseImageChange(t *testing.T) {
+	buildTriggerCauses := []buildapi.BuildTriggerCause{}
+	changeMessage := "Image change"
+	imageID := "centos@sha256:b3da5267165b"
+	refName := "centos:7"
+	refKind := "ImageStreamTag"
+
+	buildRequest := &buildapi.BuildRequest{
+		TriggeredBy: append(buildTriggerCauses,
+			buildapi.BuildTriggerCause{
+				Message: changeMessage,
+				ImageChangeBuild: &buildapi.ImageChangeCause{
+					ImageID: imageID,
+					FromRef: &kapi.ObjectReference{
+						Name: refName,
+						Kind: refKind,
+					},
+				},
+			},
+		),
+	}
+
+	generator := mockBuildGenerator()
+	buildObject, err := generator.Instantiate(kapi.NewDefaultContext(), buildRequest)
+	if err != nil {
+		t.Errorf("Expected error to be nil, got %v", err)
+	}
+	for _, cause := range buildObject.Spec.TriggeredBy {
+		if cause.Message != "Image change" {
+			t.Errorf("Expected reason %s, got %s", changeMessage, cause.Message)
+		}
+		if cause.ImageChangeBuild.ImageID != imageID {
+			t.Errorf("Expected imageID: %s, got: %s", imageID, cause.ImageChangeBuild.ImageID)
+		}
+		if cause.ImageChangeBuild.FromRef.Name != refName {
+			t.Errorf("Expected image name to be %s, got %s", refName, cause.ImageChangeBuild.FromRef.Name)
+		}
+		if cause.ImageChangeBuild.FromRef.Kind != refKind {
+			t.Errorf("Expected image kind to be %s, got %s", refKind, cause.ImageChangeBuild.FromRef.Kind)
+		}
+	}
+}
+
+func TestInstantiateBuildTriggerCauseGenericWebHook(t *testing.T) {
+	buildTriggerCauses := []buildapi.BuildTriggerCause{}
+	changeMessage := "Generic WebHook"
+	webHookSecret := "testsecret"
+
+	gitRevision := &buildapi.SourceRevision{
+		Git: &buildapi.GitSourceRevision{
+			Author: buildapi.SourceControlUser{
+				Name:  "John Doe",
+				Email: "johndoe@test.com",
+			},
+			Message: "A random act of kindness",
+		},
+	}
+
+	buildRequest := &buildapi.BuildRequest{
+		TriggeredBy: append(buildTriggerCauses,
+			buildapi.BuildTriggerCause{
+				Message: changeMessage,
+				GenericWebHook: &buildapi.GenericWebHookCause{
+					Secret:   webHookSecret,
+					Revision: gitRevision,
+				},
+			},
+		),
+	}
+
+	generator := mockBuildGenerator()
+	buildObject, err := generator.Instantiate(kapi.NewDefaultContext(), buildRequest)
+	if err != nil {
+		t.Errorf("Expected error to be nil, got %v", err)
+	}
+	for _, cause := range buildObject.Spec.TriggeredBy {
+		if cause.Message != changeMessage {
+			t.Errorf("Expected reason %s, got %s", changeMessage, cause.Message)
+		}
+		if cause.GenericWebHook.Secret != webHookSecret {
+			t.Errorf("Expected WebHook secret %s, got %s", webHookSecret, cause.GenericWebHook.Secret)
+		}
+		if !reflect.DeepEqual(gitRevision, cause.GenericWebHook.Revision) {
+			t.Errorf("Expected return revision to match")
+		}
+	}
+}
+
+func TestInstantiateBuildTriggerCauseGitHubWebHook(t *testing.T) {
+	buildTriggerCauses := []buildapi.BuildTriggerCause{}
+	changeMessage := "GitHub WebHook"
+	webHookSecret := "testsecret"
+
+	gitRevision := &buildapi.SourceRevision{
+		Git: &buildapi.GitSourceRevision{
+			Author: buildapi.SourceControlUser{
+				Name:  "John Doe",
+				Email: "johndoe@test.com",
+			},
+			Message: "A random act of kindness",
+		},
+	}
+
+	buildRequest := &buildapi.BuildRequest{
+		TriggeredBy: append(buildTriggerCauses,
+			buildapi.BuildTriggerCause{
+				Message: changeMessage,
+				GenericWebHook: &buildapi.GenericWebHookCause{
+					Secret:   webHookSecret,
+					Revision: gitRevision,
+				},
+			},
+		),
+	}
+
+	generator := mockBuildGenerator()
+	buildObject, err := generator.Instantiate(kapi.NewDefaultContext(), buildRequest)
+	if err != nil {
+		t.Errorf("Expected error to be nil, got %v", err)
+	}
+	for _, cause := range buildObject.Spec.TriggeredBy {
+		if cause.Message != changeMessage {
+			t.Errorf("Expected reason %s, got %s", changeMessage, cause.Message)
+		}
+		if cause.GenericWebHook.Secret != webHookSecret {
+			t.Errorf("Expected WebHook secret %s, got %s", webHookSecret, cause.GenericWebHook.Secret)
+		}
+		if !reflect.DeepEqual(gitRevision, cause.GenericWebHook.Revision) {
+			t.Errorf("Expected return revision to match")
 		}
 	}
 }

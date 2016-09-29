@@ -20,7 +20,7 @@ import (
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
-	"k8s.io/kubernetes/test/e2e"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
@@ -81,7 +81,7 @@ func InitTest() {
 	TestContext.CreateTestingNS = createTestingNS
 
 	// Override the default Kubernetes E2E configuration
-	e2e.SetTestContext(TestContext)
+	e2e.TestContext = TestContext
 }
 
 func ExecuteTest(t *testing.T, suite string) {
@@ -174,7 +174,7 @@ func createTestingNS(baseName string, c *kclient.Client, labels map[string]strin
 
 		// The intra-pod test requires that the service account have
 		// permission to retrieve service endpoints.
-		osClient, _, err := configapi.GetOpenShiftClient(KubeConfigPath())
+		osClient, _, err := configapi.GetOpenShiftClient(KubeConfigPath(), nil)
 		if err != nil {
 			return ns, err
 		}

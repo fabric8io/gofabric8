@@ -6,41 +6,39 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/rest"
-	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/registry/generic"
-	etcdgeneric "k8s.io/kubernetes/pkg/registry/generic/etcd"
+	"k8s.io/kubernetes/pkg/registry/generic/registry"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/storage"
 
 	"github.com/openshift/origin/pkg/deploy/api"
 	"github.com/openshift/origin/pkg/deploy/registry/deployconfig"
-	"github.com/openshift/origin/pkg/deploy/util"
+	"github.com/openshift/origin/pkg/util/restoptions"
 	extvalidation "k8s.io/kubernetes/pkg/apis/extensions/validation"
 )
 
 // REST contains the REST storage for DeploymentConfig objects.
 type REST struct {
-	*etcdgeneric.Etcd
+	*registry.Store
 }
 
 // NewStorage returns a DeploymentConfigStorage containing the REST storage for
 // DeploymentConfig objects and their Scale subresources.
-func NewREST(s storage.Interface, rcNamespacer kclient.ReplicationControllersNamespacer) (*REST, *StatusREST, *ScaleREST) {
+func NewREST(optsGetter restoptions.Getter, rcNamespacer kclient.ReplicationControllersNamespacer) (*REST, *StatusREST, *ScaleREST, error) {
 	prefix := "/deploymentconfigs"
 
-	store := &etcdgeneric.Etcd{
+	store := &registry.Store{
 		NewFunc:           func() runtime.Object { return &api.DeploymentConfig{} },
 		NewListFunc:       func() runtime.Object { return &api.DeploymentConfigList{} },
 		QualifiedResource: api.Resource("deploymentconfigs"),
 		KeyRootFunc: func(ctx kapi.Context) string {
-			return etcdgeneric.NamespaceKeyRootFunc(ctx, prefix)
+			return registry.NamespaceKeyRootFunc(ctx, prefix)
 		},
 		KeyFunc: func(ctx kapi.Context, id string) (string, error) {
-			return etcdgeneric.NamespaceKeyFunc(ctx, prefix, id)
+			return registry.NamespaceKeyFunc(ctx, prefix, id)
 		},
 		ObjectNameFunc: func(obj runtime.Object) (string, error) {
 			return obj.(*api.DeploymentConfig).Name, nil
@@ -52,7 +50,10 @@ func NewREST(s storage.Interface, rcNamespacer kclient.ReplicationControllersNam
 		UpdateStrategy:      deployconfig.Strategy,
 		DeleteStrategy:      deployconfig.Strategy,
 		ReturnDeletedObject: false,
-		Storage:             s,
+	}
+
+	if err := restoptions.ApplyOptions(optsGetter, store, prefix); err != nil {
+		return nil, nil, nil, err
 	}
 
 	deploymentConfigREST := &REST{store}
@@ -64,7 +65,7 @@ func NewREST(s storage.Interface, rcNamespacer kclient.ReplicationControllersNam
 		rcNamespacer: rcNamespacer,
 	}
 
-	return deploymentConfigREST, statusREST, scaleREST
+	return deploymentConfigREST, statusREST, scaleREST, nil
 }
 
 // ScaleREST contains the REST storage for the Scale subresource of DeploymentConfigs.
@@ -88,34 +89,22 @@ func (r *ScaleREST) Get(ctx kapi.Context, name string) (runtime.Object, error) {
 		return nil, err
 	}
 
-	// TODO(directxman12): this is going to be a bit out of sync, since we are calculating it
-	// here and not as part of the deploymentconfig loop -- is there a better way of doing it?
-	totalReplicas, err := r.replicasForDeploymentConfig(deploymentConfig.Namespace, deploymentConfig.Name)
-	if err != nil {
-		return nil, err
-	}
-
-	return &extensions.Scale{
-		ObjectMeta: kapi.ObjectMeta{
-			Name:              name,
-			Namespace:         deploymentConfig.Namespace,
-			CreationTimestamp: deploymentConfig.CreationTimestamp,
-		},
-		Spec: extensions.ScaleSpec{
-			Replicas: deploymentConfig.Spec.Replicas,
-		},
-		Status: extensions.ScaleStatus{
-			Replicas: totalReplicas,
-			Selector: &unversioned.LabelSelector{MatchLabels: deploymentConfig.Spec.Selector},
-		},
-	}, nil
+	return api.ScaleFromConfig(deploymentConfig), nil
 }
 
 // Update scales the DeploymentConfig for the given Scale subresource, returning the updated Scale.
-func (r *ScaleREST) Update(ctx kapi.Context, obj runtime.Object) (runtime.Object, bool, error) {
-	if obj == nil {
-		return nil, false, errors.NewBadRequest(fmt.Sprintf("nil update passed to Scale"))
+func (r *ScaleREST) Update(ctx kapi.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
+	deploymentConfig, err := r.registry.GetDeploymentConfig(ctx, name)
+	if err != nil {
+		return nil, false, errors.NewNotFound(extensions.Resource("scale"), name)
 	}
+
+	old := api.ScaleFromConfig(deploymentConfig)
+	obj, err := objInfo.UpdatedObject(ctx, old)
+	if err != nil {
+		return nil, false, err
+	}
+
 	scale, ok := obj.(*extensions.Scale)
 	if !ok {
 		return nil, false, errors.NewBadRequest(fmt.Sprintf("wrong object passed to Scale update: %v", obj))
@@ -125,60 +114,17 @@ func (r *ScaleREST) Update(ctx kapi.Context, obj runtime.Object) (runtime.Object
 		return nil, false, errors.NewInvalid(extensions.Kind("Scale"), scale.Name, errs)
 	}
 
-	deploymentConfig, err := r.registry.GetDeploymentConfig(ctx, scale.Name)
-	if err != nil {
-		return nil, false, errors.NewNotFound(extensions.Resource("scale"), scale.Name)
-	}
-
-	scaleRet := &extensions.Scale{
-		ObjectMeta: kapi.ObjectMeta{
-			Name:              deploymentConfig.Name,
-			Namespace:         deploymentConfig.Namespace,
-			CreationTimestamp: deploymentConfig.CreationTimestamp,
-		},
-		Spec: extensions.ScaleSpec{
-			Replicas: scale.Spec.Replicas,
-		},
-		Status: extensions.ScaleStatus{
-			Selector: &unversioned.LabelSelector{MatchLabels: deploymentConfig.Spec.Selector},
-		},
-	}
-
-	// TODO(directxman12): this is going to be a bit out of sync, since we are calculating it
-	// here and not as part of the deploymentconfig loop -- is there a better way of doing it?
-	totalReplicas, err := r.replicasForDeploymentConfig(deploymentConfig.Namespace, deploymentConfig.Name)
-	if err != nil {
-		return nil, false, err
-	}
-
-	oldReplicas := deploymentConfig.Spec.Replicas
 	deploymentConfig.Spec.Replicas = scale.Spec.Replicas
 	if err := r.registry.UpdateDeploymentConfig(ctx, deploymentConfig); err != nil {
 		return nil, false, err
 	}
-	scaleRet.Status.Replicas = totalReplicas + (scale.Spec.Replicas - oldReplicas)
 
-	return scaleRet, false, nil
-}
-
-func (r *ScaleREST) replicasForDeploymentConfig(namespace, configName string) (int, error) {
-	options := kapi.ListOptions{LabelSelector: util.ConfigSelector(configName)}
-	rcList, err := r.rcNamespacer.ReplicationControllers(namespace).List(options)
-	if err != nil {
-		return 0, err
-	}
-
-	replicas := 0
-	for _, rc := range rcList.Items {
-		replicas += rc.Spec.Replicas
-	}
-
-	return replicas, nil
+	return scale, false, nil
 }
 
 // StatusREST implements the REST endpoint for changing the status of a DeploymentConfig.
 type StatusREST struct {
-	store *etcdgeneric.Etcd
+	store *registry.Store
 }
 
 // StatusREST implements the Updater interface.
@@ -189,6 +135,6 @@ func (r *StatusREST) New() runtime.Object {
 }
 
 // Update alters the status subset of an deploymentConfig.
-func (r *StatusREST) Update(ctx kapi.Context, obj runtime.Object) (runtime.Object, bool, error) {
-	return r.store.Update(ctx, obj)
+func (r *StatusREST) Update(ctx kapi.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
+	return r.store.Update(ctx, name, objInfo)
 }

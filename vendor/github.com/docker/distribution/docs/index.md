@@ -1,10 +1,12 @@
 <!--[metadata]>
 +++
-title = "Docker Registry"
+title = "Registry Overview"
 description = "High-level overview of the Registry"
 keywords = ["registry, on-prem, images, tags, repository, distribution"]
+aliases = ["/registry/overview/"]
 [menu.main]
 parent="smn_registry"
+weight=1
 +++
 <![end-metadata]-->
 
@@ -27,7 +29,7 @@ You should use the Registry if you want to:
 
 Users looking for a zero maintenance, ready-to-go solution are encouraged to head-over to the [Docker Hub](https://hub.docker.com), which provides a free-to-use, hosted Registry, plus additional features (organization accounts, automated builds, and more).
 
-Users looking for a commercially supported version of the Registry should look into [Docker Trusted Registry](https://docs.docker.com/docker-trusted-registry/).
+Users looking for a commercially supported version of the Registry should look into [Docker Trusted Registry](https://docs.docker.com/docker-trusted-registry/overview/).
 
 ## Requirements
 
@@ -63,4 +65,3 @@ Now stop your registry and remove all data
 ## Next
 
 You should now read the [detailed introduction about the registry](introduction.md), or jump directly to [deployment instructions](deploying.md).
- 

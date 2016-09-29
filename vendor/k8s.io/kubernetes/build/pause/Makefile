@@ -12,20 +12,85 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY:	build push
+.PHONY: all push push-legacy container clean
 
-TAG = 2.0
+REGISTRY ?= gcr.io/google_containers
+IMAGE = $(REGISTRY)/pause-$(ARCH)
+LEGACY_AMD64_IMAGE = $(REGISTRY)/pause
 
-ARCH = amd64
-IMAGE = pause
-# ARCH = arm
-# IMAGE = pause-arm
+TAG = 3.0
 
-build:
-	./prepare.sh ${ARCH}
-	docker build -t gcr.io/google_containers/$(IMAGE):$(TAG) .
+# Architectures supported: amd64, arm, arm64 and ppc64le
+ARCH ?= amd64
 
-push:	build
-	gcloud docker --server=gcr.io push gcr.io/google_containers/$(IMAGE):$(TAG)
+ALL_ARCH = amd64 arm arm64 ppc64le
 
-all:	push
+CFLAGS = -Os -Wall -static
+KUBE_CROSS_IMAGE ?= gcr.io/google_containers/kube-cross
+KUBE_CROSS_VERSION ?= $(shell cat ../build-image/cross/VERSION)
+
+BIN = pause
+SRCS = pause.c
+
+ifeq ($(ARCH),amd64)
+	TRIPLE ?= x86_64-linux-gnu
+endif
+
+ifeq ($(ARCH),arm)
+	TRIPLE ?= arm-linux-gnueabi
+endif
+
+ifeq ($(ARCH),arm64)
+	TRIPLE ?= aarch64-linux-gnu
+endif
+
+ifeq ($(ARCH),ppc64le)
+	TRIPLE ?= powerpc64le-linux-gnu
+endif
+
+# If you want to build AND push all containers, see the 'all-push' rule.
+all: all-container
+
+sub-container-%:
+	$(MAKE) ARCH=$* container
+
+sub-push-%:
+	$(MAKE) ARCH=$* push
+
+all-container: $(addprefix sub-container-,$(ALL_ARCH))
+
+all-push: $(addprefix sub-push-,$(ALL_ARCH))
+
+build: bin/$(BIN)-$(ARCH)
+
+bin/$(BIN)-$(ARCH): $(SRCS)
+	mkdir -p bin
+	docker run -u $$(id -u):$$(id -g) -v $$(pwd):/build \
+		$(KUBE_CROSS_IMAGE):$(KUBE_CROSS_VERSION) \
+		/bin/bash -c "\
+			cd /build && \
+			$(TRIPLE)-gcc $(CFLAGS) -o $@ $^ && \
+			$(TRIPLE)-strip $@"
+
+container: .container-$(ARCH)
+.container-$(ARCH): bin/$(BIN)-$(ARCH)
+	docker build -t $(IMAGE):$(TAG) --build-arg ARCH=$(ARCH) .
+ifeq ($(ARCH),amd64)
+	docker tag -f $(IMAGE):$(TAG) $(LEGACY_AMD64_IMAGE):$(TAG)
+endif
+	touch $@
+
+push: .push-$(ARCH)
+.push-$(ARCH): .container-$(ARCH)
+	gcloud docker push $(IMAGE):$(TAG)
+	touch $@
+
+push-legacy: .push-legacy-$(ARCH)
+.push-legacy-$(ARCH): .container-$(ARCH)
+ifeq ($(ARCH),amd64)
+	gcloud docker push $(LEGACY_AMD64_IMAGE):$(TAG)
+endif
+	touch $@
+
+clean:
+	rm -rf .container-* .push-* bin/

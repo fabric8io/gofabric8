@@ -17,7 +17,6 @@ limitations under the License.
 package e2e
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"path"
@@ -34,92 +33,47 @@ import (
 	"golang.org/x/oauth2/google"
 
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	gcecloud "k8s.io/kubernetes/pkg/cloudprovider/providers/gce"
 	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/util/runtime"
+	"k8s.io/kubernetes/test/e2e/framework"
 )
 
 const (
-	// podStartupTimeout is the time to allow all pods in the cluster to become
-	// running and ready before any e2e tests run. It includes pulling all of
-	// the pods (as of 5/18/15 this is 8 pods).
-	podStartupTimeout = 10 * time.Minute
+	// imagePrePullingTimeout is the time we wait for the e2e-image-puller
+	// static pods to pull the list of seeded images. If they don't pull
+	// images within this time we simply log their output and carry on
+	// with the tests.
+	imagePrePullingTimeout = 5 * time.Minute
 )
 
 var (
-	cloudConfig = &testContext.CloudConfig
+	cloudConfig = &framework.TestContext.CloudConfig
 )
 
-func RegisterFlags() {
-	// Turn on verbose by default to get spec names
-	config.DefaultReporterConfig.Verbose = true
-
-	// Turn on EmitSpecProgress to get spec progress (especially on interrupt)
-	config.GinkgoConfig.EmitSpecProgress = true
-
-	// Randomize specs as well as suites
-	config.GinkgoConfig.RandomizeAllSpecs = true
-
-	flag.StringVar(&testContext.KubeConfig, clientcmd.RecommendedConfigPathFlag, os.Getenv(clientcmd.RecommendedConfigPathEnvVar), "Path to kubeconfig containing embedded authinfo.")
-	flag.StringVar(&testContext.KubeContext, clientcmd.FlagContext, "", "kubeconfig context to use/override. If unset, will use value from 'current-context'")
-	flag.StringVar(&testContext.KubeVolumeDir, "volume-dir", "/var/lib/kubelet", "Path to the directory containing the kubelet volumes.")
-	flag.StringVar(&testContext.CertDir, "cert-dir", "", "Path to the directory containing the certs. Default is empty, which doesn't use certs.")
-	flag.StringVar(&testContext.Host, "host", "", "The host, or apiserver, to connect to")
-	flag.StringVar(&testContext.RepoRoot, "repo-root", "../../", "Root directory of kubernetes repository, for finding test files.")
-	flag.StringVar(&testContext.Provider, "provider", "", "The name of the Kubernetes provider (gce, gke, local, vagrant, etc.)")
-	flag.StringVar(&testContext.KubectlPath, "kubectl-path", "kubectl", "The kubectl binary to use. For development, you might use 'cluster/kubectl.sh' here.")
-	flag.StringVar(&testContext.OutputDir, "e2e-output-dir", "/tmp", "Output directory for interesting/useful test data, like performance data, benchmarks, and other metrics.")
-	flag.StringVar(&testContext.ReportDir, "report-dir", "", "Path to the directory where the JUnit XML reports should be saved. Default is empty, which doesn't generate these reports.")
-	flag.StringVar(&testContext.ReportPrefix, "report-prefix", "", "Optional prefix for JUnit XML reports. Default is empty, which doesn't prepend anything to the default name.")
-	flag.StringVar(&testContext.prefix, "prefix", "e2e", "A prefix to be added to cloud resources created during testing.")
-	flag.StringVar(&testContext.OSDistro, "os-distro", "debian", "The OS distribution of cluster VM instances (debian, trusty, or coreos).")
-
-	// TODO: Flags per provider?  Rename gce-project/gce-zone?
-	flag.StringVar(&cloudConfig.MasterName, "kube-master", "", "Name of the kubernetes master. Only required if provider is gce or gke")
-	flag.StringVar(&cloudConfig.ProjectID, "gce-project", "", "The GCE project being used, if applicable")
-	flag.StringVar(&cloudConfig.Zone, "gce-zone", "", "GCE zone being used, if applicable")
-	flag.StringVar(&cloudConfig.ServiceAccount, "gce-service-account", "", "GCE service account to use for GCE API calls, if applicable")
-	flag.StringVar(&cloudConfig.Cluster, "gke-cluster", "", "GKE name of cluster being used, if applicable")
-	flag.StringVar(&cloudConfig.NodeInstanceGroup, "node-instance-group", "", "Name of the managed instance group for nodes. Valid only for gce, gke or aws")
-	flag.IntVar(&cloudConfig.NumNodes, "num-nodes", -1, "Number of nodes in the cluster")
-
-	flag.StringVar(&cloudConfig.ClusterTag, "cluster-tag", "", "Tag used to identify resources.  Only required if provider is aws.")
-	flag.IntVar(&testContext.MinStartupPods, "minStartupPods", 0, "The number of pods which we need to see in 'Running' state with a 'Ready' condition of true, before we try running tests. This is useful in any cluster which needs some base pod-based services running before it can be used.")
-	flag.StringVar(&testContext.UpgradeTarget, "upgrade-target", "ci/latest", "Version to upgrade to (e.g. 'release/stable', 'release/latest', 'ci/latest', '0.19.1', '0.19.1-669-gabac8c8') if doing an upgrade test.")
-	flag.StringVar(&testContext.PrometheusPushGateway, "prom-push-gateway", "", "The URL to prometheus gateway, so that metrics can be pushed during e2es and scraped by prometheus. Typically something like 127.0.0.1:9091.")
-	flag.BoolVar(&testContext.VerifyServiceAccount, "e2e-verify-service-account", true, "If true tests will verify the service account before running.")
-	flag.BoolVar(&testContext.DeleteNamespace, "delete-namespace", true, "If true tests will delete namespace after completion. It is only designed to make debugging easier, DO NOT turn it off by default.")
-	flag.BoolVar(&testContext.CleanStart, "clean-start", false, "If true, purge all namespaces except default and system before running tests. This serves to cleanup test namespaces from failed/interrupted e2e runs in a long-lived cluster.")
-	flag.BoolVar(&testContext.GatherKubeSystemResourceUsageData, "gather-resource-usage", false, "If set to true framework will be monitoring resource usage of system add-ons in (some) e2e tests.")
-	flag.BoolVar(&testContext.GatherLogsSizes, "gather-logs-sizes", false, "If set to true framework will be monitoring logs sizes on all machines running e2e tests.")
-	flag.BoolVar(&testContext.GatherMetricsAfterTest, "gather-metrics-at-teardown", false, "If set to true framwork will gather metrics from all components after each test.")
-	flag.StringVar(&testContext.OutputPrintType, "output-print-type", "hr", "Comma separated list: 'hr' for human readable summaries 'json' for JSON ones.")
-}
-
-// setupProviderConfig validates and sets up cloudConfig based on testContext.Provider.
+// setupProviderConfig validates and sets up cloudConfig based on framework.TestContext.Provider.
 func setupProviderConfig() error {
-	switch testContext.Provider {
+	switch framework.TestContext.Provider {
 	case "":
 		glog.Info("The --provider flag is not set.  Treating as a conformance test.  Some tests may not be run.")
 
 	case "gce", "gke":
 		var err error
-		Logf("Fetching cloud provider for %q\r\n", testContext.Provider)
+		framework.Logf("Fetching cloud provider for %q\r\n", framework.TestContext.Provider)
 		var tokenSource oauth2.TokenSource
 		tokenSource = nil
 		if cloudConfig.ServiceAccount != "" {
 			// Use specified service account for auth
-			Logf("Using service account %q as token source.", cloudConfig.ServiceAccount)
+			framework.Logf("Using service account %q as token source.", cloudConfig.ServiceAccount)
 			tokenSource = google.ComputeTokenSource(cloudConfig.ServiceAccount)
 		}
-		zone := testContext.CloudConfig.Zone
+		zone := framework.TestContext.CloudConfig.Zone
 		region, err := gcecloud.GetGCERegion(zone)
 		if err != nil {
 			return fmt.Errorf("error parsing GCE/GKE region from zone %q: %v", zone, err)
 		}
 		managedZones := []string{zone} // Only single-zone for now
-		cloudConfig.Provider, err = gcecloud.CreateGCECloud(testContext.CloudConfig.ProjectID, region, zone, managedZones, "" /* networkUrl */, tokenSource, false /* useMetadataServer */)
+		cloudConfig.Provider, err = gcecloud.CreateGCECloud(framework.TestContext.CloudConfig.ProjectID, region, zone, managedZones, "" /* networkUrl */, nil /* nodeTags */, "" /* nodeInstancePerfix */, tokenSource, false /* useMetadataServer */)
 		if err != nil {
 			return fmt.Errorf("Error building GCE/GKE provider: %v", err)
 		}
@@ -128,7 +82,6 @@ func setupProviderConfig() error {
 		if cloudConfig.Zone == "" {
 			return fmt.Errorf("gce-zone must be specified for AWS")
 		}
-
 	}
 
 	return nil
@@ -145,21 +98,25 @@ func setupProviderConfig() error {
 var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	// Run only on Ginkgo node 1
 
+	if err := setupProviderConfig(); err != nil {
+		framework.Failf("Failed to setup provider config: %v", err)
+	}
+
+	c, err := framework.LoadClient()
+	if err != nil {
+		glog.Fatal("Error loading client: ", err)
+	}
+
 	// Delete any namespaces except default and kube-system. This ensures no
 	// lingering resources are left over from a previous test run.
-	if testContext.CleanStart {
-		c, err := loadClient()
+	if framework.TestContext.CleanStart {
+		deleted, err := framework.DeleteNamespaces(c, nil /* deleteFilter */, []string{api.NamespaceSystem, api.NamespaceDefault})
 		if err != nil {
-			glog.Fatal("Error loading client: ", err)
-		}
-
-		deleted, err := deleteNamespaces(c, nil /* deleteFilter */, []string{api.NamespaceSystem, api.NamespaceDefault})
-		if err != nil {
-			Failf("Error deleting orphaned namespaces: %v", err)
+			framework.Failf("Error deleting orphaned namespaces: %v", err)
 		}
 		glog.Infof("Waiting for deletion of the following namespaces: %v", deleted)
-		if err := waitForNamespacesDeleted(c, deleted, namespaceCleanupTimeout); err != nil {
-			Failf("Failed to delete orphaned namespaces %v: %v", deleted, err)
+		if err := framework.WaitForNamespacesDeleted(c, deleted, framework.NamespaceCleanupTimeout); err != nil {
+			framework.Failf("Failed to delete orphaned namespaces %v: %v", deleted, err)
 		}
 	}
 
@@ -167,15 +124,26 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	// cluster infrastructure pods that are being pulled or started can block
 	// test pods from running, and tests that ensure all pods are running and
 	// ready will fail).
-	if err := waitForPodsRunningReady(api.NamespaceSystem, testContext.MinStartupPods, podStartupTimeout); err != nil {
-		if c, errClient := loadClient(); errClient != nil {
-			Logf("Unable to dump cluster information because: %v", errClient)
-		} else {
-			dumpAllNamespaceInfo(c, api.NamespaceSystem)
-		}
-		logFailedContainers(api.NamespaceSystem)
-		runKubernetesServiceTestContainer(testContext.RepoRoot, api.NamespaceDefault)
-		Failf("Error waiting for all pods to be running and ready: %v", err)
+	podStartupTimeout := framework.TestContext.SystemPodsStartupTimeout
+	if err := framework.WaitForPodsRunningReady(c, api.NamespaceSystem, int32(framework.TestContext.MinStartupPods), podStartupTimeout, framework.ImagePullerLabels, true); err != nil {
+		framework.DumpAllNamespaceInfo(c, api.NamespaceSystem)
+		framework.LogFailedContainers(c, api.NamespaceSystem)
+		framework.RunKubernetesServiceTestContainer(c, framework.TestContext.RepoRoot, api.NamespaceDefault)
+		framework.Failf("Error waiting for all pods to be running and ready: %v", err)
+	}
+
+	if err := framework.WaitForPodsSuccess(c, api.NamespaceSystem, framework.ImagePullerLabels, imagePrePullingTimeout); err != nil {
+		// There is no guarantee that the image pulling will succeed in 3 minutes
+		// and we don't even run the image puller on all platforms (including GKE).
+		// We wait for it so we get an indication of failures in the logs, and to
+		// maximize benefit of image pre-pulling.
+		framework.Logf("WARNING: Image pulling pods failed to enter success in %v: %v", imagePrePullingTimeout, err)
+	}
+
+	// Dump the output of the nethealth containers only once per run
+	if framework.TestContext.DumpLogsOnFailure {
+		framework.Logf("Dumping network health container logs from all nodes")
+		framework.LogContainersInPodsWithLabels(c, api.NamespaceSystem, framework.ImagePullerLabels, "nethealth")
 	}
 
 	return nil
@@ -183,6 +151,11 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 }, func(data []byte) {
 	// Run on all Ginkgo nodes
 
+	if cloudConfig.Provider == nil {
+		if err := setupProviderConfig(); err != nil {
+			framework.Failf("Failed to setup provider config: %v", err)
+		}
+	}
 })
 
 type CleanupActionHandle *int
@@ -235,8 +208,8 @@ var _ = ginkgo.SynchronizedAfterSuite(func() {
 	RunCleanupActions()
 }, func() {
 	// Run only Ginkgo on node 1
-	if testContext.ReportDir != "" {
-		CoreDump(testContext.ReportDir)
+	if framework.TestContext.ReportDir != "" {
+		framework.CoreDump(framework.TestContext.ReportDir)
 	}
 })
 
@@ -250,12 +223,6 @@ func RunE2ETests(t *testing.T) {
 	util.InitLogs()
 	defer util.FlushLogs()
 
-	// We must call setupProviderConfig first since SynchronizedBeforeSuite needs
-	// cloudConfig to be set up already.
-	if err := setupProviderConfig(); err != nil {
-		glog.Fatalf(err.Error())
-	}
-
 	gomega.RegisterFailHandler(ginkgo.Fail)
 	// Disable skipped tests unless they are explicitly requested.
 	if config.GinkgoConfig.FocusString == "" && config.GinkgoConfig.SkipString == "" {
@@ -264,15 +231,16 @@ func RunE2ETests(t *testing.T) {
 
 	// Run tests through the Ginkgo runner with output to console + JUnit for Jenkins
 	var r []ginkgo.Reporter
-	if testContext.ReportDir != "" {
+	if framework.TestContext.ReportDir != "" {
 		// TODO: we should probably only be trying to create this directory once
 		// rather than once-per-Ginkgo-node.
-		if err := os.MkdirAll(testContext.ReportDir, 0755); err != nil {
+		if err := os.MkdirAll(framework.TestContext.ReportDir, 0755); err != nil {
 			glog.Errorf("Failed creating report directory: %v", err)
 		} else {
-			r = append(r, reporters.NewJUnitReporter(path.Join(testContext.ReportDir, fmt.Sprintf("junit_%v%02d.xml", testContext.ReportPrefix, config.GinkgoConfig.ParallelNode))))
+			r = append(r, reporters.NewJUnitReporter(path.Join(framework.TestContext.ReportDir, fmt.Sprintf("junit_%v%02d.xml", framework.TestContext.ReportPrefix, config.GinkgoConfig.ParallelNode))))
 		}
 	}
-	glog.Infof("Starting e2e run %q on Ginkgo node %d", runId, config.GinkgoConfig.ParallelNode)
+	glog.Infof("Starting e2e run %q on Ginkgo node %d", framework.RunId, config.GinkgoConfig.ParallelNode)
+
 	ginkgo.RunSpecsWithDefaultAndCustomReporters(t, "Kubernetes e2e suite", r)
 }

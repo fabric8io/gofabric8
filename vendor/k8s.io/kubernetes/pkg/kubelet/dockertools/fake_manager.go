@@ -24,6 +24,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/network"
 	proberesults "k8s.io/kubernetes/pkg/kubelet/prober/results"
 	kubetypes "k8s.io/kubernetes/pkg/kubelet/types"
+	"k8s.io/kubernetes/pkg/kubelet/util/cache"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/util/oom"
@@ -50,8 +51,16 @@ func NewFakeDockerManager(
 	fakePodGetter := &fakePodGetter{}
 	dm := NewDockerManager(client, recorder, livenessManager, containerRefManager, fakePodGetter, machineInfo, podInfraContainerImage, qps,
 		burst, containerLogsDir, osInterface, networkPlugin, runtimeHelper, httpClient, &NativeExecHandler{},
-		fakeOOMAdjuster, fakeProcFs, false, imageBackOff, false, false, true)
+		fakeOOMAdjuster, fakeProcFs, false, imageBackOff, false, false, true, "/var/lib/kubelet/seccomp")
 	dm.dockerPuller = &FakeDockerPuller{}
+
+	// ttl of version cache is set to 0 so we always call version api directly in tests.
+	dm.versionCache = cache.NewObjectCache(
+		func() (interface{}, error) {
+			return dm.getVersionInfo()
+		},
+		0,
+	)
 	return dm
 }
 

@@ -63,7 +63,7 @@ func ictMarker(g osgraph.Graph, f osgraph.Namer, dcNode *deploygraph.DeploymentC
 				}
 			}
 
-			if bcNode := buildedges.BuildConfigForTag(g, istNode); bcNode != nil {
+			for _, bcNode := range buildedges.BuildConfigsForTag(g, istNode) {
 				// Avoid warning for the dc image trigger in case there is a build in flight.
 				if latestBuild := buildedges.GetLatestBuild(g, bcNode); latestBuild != nil && !buildutil.IsBuildComplete(latestBuild.Build) {
 					return nil
@@ -103,7 +103,7 @@ func FindDeploymentConfigReadinessWarnings(g osgraph.Graph, f osgraph.Namer, set
 Node:
 	for _, uncastDcNode := range g.NodesByKind(deploygraph.DeploymentConfigNodeKind) {
 		dcNode := uncastDcNode.(*deploygraph.DeploymentConfigNode)
-		if t := dcNode.Spec.Template; t != nil && len(t.Spec.Containers) > 0 {
+		if t := dcNode.DeploymentConfig.Spec.Template; t != nil && len(t.Spec.Containers) > 0 {
 			for _, container := range t.Spec.Containers {
 				if container.ReadinessProbe != nil {
 					continue Node

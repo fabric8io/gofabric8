@@ -11,11 +11,13 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/test/e2e"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
+
+type NodeType int
 
 const (
 	// Initial pod start can be delayed O(minutes) by slow docker pulls
@@ -28,6 +30,10 @@ const (
 	// How wide to print pod names, by default. Useful for aligning printing to
 	// quickly scan through output.
 	podPrintWidth = 55
+
+	// Indicator for same or different node
+	SAME_NODE      NodeType = iota
+	DIFFERENT_NODE NodeType = iota
 )
 
 func expectNoError(err error, explain ...interface{}) {
@@ -108,7 +114,7 @@ func launchWebserverService(f *e2e.Framework, serviceName string, nodeName strin
 			Ports: []api.ServicePort{
 				{
 					Protocol: api.ProtocolTCP,
-					Port:     servicePort,
+					Port:     int32(servicePort),
 				},
 			},
 			Selector: map[string]string{
@@ -167,6 +173,47 @@ func makeNamespaceGlobal(ns *api.Namespace) {
 	netns.NetID = 0
 	_, err = client.NetNamespaces().Update(netns)
 	expectNoError(err)
+}
+
+func checkPodIsolation(f1, f2 *e2e.Framework, nodeType NodeType) error {
+	nodes := e2e.GetReadySchedulableNodesOrDie(f1.Client)
+	var serverNode, clientNode *api.Node
+	serverNode = &nodes.Items[0]
+	if nodeType == DIFFERENT_NODE {
+		if len(nodes.Items) == 1 {
+			e2e.Skipf("Only one node is available in this environment")
+		}
+		clientNode = &nodes.Items[1]
+	} else {
+		clientNode = serverNode
+	}
+
+	podName := "isolation-webserver"
+	defer f1.Client.Pods(f1.Namespace.Name).Delete(podName, nil)
+	ip := e2e.LaunchWebserverPod(f1, podName, serverNode.Name)
+
+	return checkConnectivityToHost(f2, clientNode.Name, "isolation-wget", ip, 10)
+}
+
+func checkServiceConnectivity(serverFramework, clientFramework *e2e.Framework, nodeType NodeType) error {
+	nodes := e2e.GetReadySchedulableNodesOrDie(serverFramework.Client)
+	var serverNode, clientNode *api.Node
+	serverNode = &nodes.Items[0]
+	if nodeType == DIFFERENT_NODE {
+		if len(nodes.Items) == 1 {
+			e2e.Skipf("Only one node is available in this environment")
+		}
+		clientNode = &nodes.Items[1]
+	} else {
+		clientNode = serverNode
+	}
+
+	podName := api.SimpleNameGenerator.GenerateName(fmt.Sprintf("service-"))
+	defer serverFramework.Client.Pods(serverFramework.Namespace.Name).Delete(podName, nil)
+	defer serverFramework.Client.Services(serverFramework.Namespace.Name).Delete(podName)
+	ip := launchWebserverService(serverFramework, podName, serverNode.Name)
+
+	return checkConnectivityToHost(clientFramework, clientNode.Name, "service-wget", ip, 10)
 }
 
 func InSingleTenantContext(body func()) {

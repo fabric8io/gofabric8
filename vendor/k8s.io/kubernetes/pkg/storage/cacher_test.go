@@ -19,11 +19,13 @@ package storage_test
 import (
 	"fmt"
 	"reflect"
+	goruntime "runtime"
 	"strconv"
 	"testing"
 	"time"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/testapi"
 	apitesting "k8s.io/kubernetes/pkg/api/testing"
@@ -43,7 +45,7 @@ import (
 
 func newEtcdTestStorage(t *testing.T, codec runtime.Codec, prefix string) (*etcdtesting.EtcdTestServer, storage.Interface) {
 	server := etcdtesting.NewEtcdTestClientServer(t)
-	storage := etcdstorage.NewEtcdStorage(server.Client, codec, prefix, false)
+	storage := etcdstorage.NewEtcdStorage(server.Client, codec, prefix, false, etcdtest.DeserializationCacheSize)
 	return server, storage
 }
 
@@ -69,20 +71,22 @@ func makeTestPod(name string) *api.Pod {
 }
 
 func updatePod(t *testing.T, s storage.Interface, obj, old *api.Pod) *api.Pod {
-	key := etcdtest.AddPrefix("pods/ns/" + obj.Name)
+	updateFn := func(input runtime.Object, res storage.ResponseMeta) (runtime.Object, *uint64, error) {
+		newObj, err := api.Scheme.DeepCopy(obj)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+			return nil, nil, err
+		}
+		return newObj.(*api.Pod), nil, nil
+	}
+	key := etcdtest.AddPrefix("pods/" + obj.Namespace + "/" + obj.Name)
+	if err := s.GuaranteedUpdate(context.TODO(), key, &api.Pod{}, old == nil, nil, updateFn); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	obj.ResourceVersion = ""
 	result := &api.Pod{}
-	if old == nil {
-		if err := s.Create(context.TODO(), key, obj, result, 0); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-	} else {
-		// To force "update" behavior of Set() we need to set ResourceVersion of
-		// previous version of object.
-		obj.ResourceVersion = old.ResourceVersion
-		if err := s.Set(context.TODO(), key, obj, result, 0); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-		obj.ResourceVersion = ""
+	if err := s.Get(context.TODO(), key, result, false); err != nil {
+		t.Errorf("unexpected error: %v", err)
 	}
 	return result
 }
@@ -105,6 +109,12 @@ func TestList(t *testing.T) {
 	_ = updatePod(t, etcdStorage, podBaz, nil)
 
 	_ = updatePod(t, etcdStorage, podFooPrime, fooCreated)
+
+	// Create a pod in a namespace that contains "ns" as a prefix
+	// Make sure it is not returned in a watch of "ns"
+	podFooNS2 := makeTestPod("foo")
+	podFooNS2.Namespace += "2"
+	updatePod(t, etcdStorage, podFooNS2, nil)
 
 	deleted := api.Pod{}
 	if err := etcdStorage.Delete(context.TODO(), etcdtest.AddPrefix("pods/ns/bar"), &deleted, nil); err != nil {
@@ -143,6 +153,10 @@ func TestList(t *testing.T) {
 		item.ResourceVersion = ""
 		item.CreationTimestamp = unversioned.Time{}
 
+		if item.Namespace != "ns" {
+			t.Errorf("Unexpected namespace: %s", item.Namespace)
+		}
+
 		var expected *api.Pod
 		switch item.Name {
 		case "foo":
@@ -159,15 +173,19 @@ func TestList(t *testing.T) {
 }
 
 func verifyWatchEvent(t *testing.T, w watch.Interface, eventType watch.EventType, eventObject runtime.Object) {
+	_, _, line, _ := goruntime.Caller(1)
 	select {
 	case event := <-w.ResultChan():
 		if e, a := eventType, event.Type; e != a {
+			t.Logf("(called from line %d)", line)
 			t.Errorf("Expected: %s, got: %s", eventType, event.Type)
 		}
 		if e, a := eventObject, event.Object; !api.Semantic.DeepDerivative(e, a) {
+			t.Logf("(called from line %d)", line)
 			t.Errorf("Expected (%s): %#v, got: %#v", eventType, e, a)
 		}
 	case <-time.After(wait.ForeverTestTimeout):
+		t.Logf("(called from line %d)", line)
 		t.Errorf("Timed out waiting for an event")
 	}
 }
@@ -202,6 +220,9 @@ func TestWatch(t *testing.T) {
 	podFooBis := makeTestPod("foo")
 	podFooBis.Spec.NodeName = "anotherFakeNode"
 
+	podFooNS2 := makeTestPod("foo")
+	podFooNS2.Namespace += "2"
+
 	// initialVersion is used to initate the watcher at the beginning of the world,
 	// which is not defined precisely in etcd.
 	initialVersion, err := cacher.LastSyncResourceVersion()
@@ -217,19 +238,25 @@ func TestWatch(t *testing.T) {
 	}
 	defer watcher.Stop()
 
+	// Create in another namespace first to make sure events from other namespaces don't get delivered
+	updatePod(t, etcdStorage, podFooNS2, nil)
+
 	fooCreated := updatePod(t, etcdStorage, podFoo, nil)
 	_ = updatePod(t, etcdStorage, podBar, nil)
 	fooUpdated := updatePod(t, etcdStorage, podFooPrime, fooCreated)
 
-	t.Log("verifying")
 	verifyWatchEvent(t, watcher, watch.Added, podFoo)
 	verifyWatchEvent(t, watcher, watch.Modified, podFooPrime)
 
-	// Check whether we get too-old error.
-	_, err = cacher.Watch(context.TODO(), "pods/ns/foo", "1", storage.Everything)
-	if err == nil {
-		t.Errorf("Expected 'error too old' error")
+	// Check whether we get too-old error via the watch channel
+	tooOldWatcher, err := cacher.Watch(context.TODO(), "pods/ns/foo", "1", storage.Everything)
+	if err != nil {
+		t.Fatalf("Expected no direct error, got %v", err)
 	}
+	defer tooOldWatcher.Stop()
+	// Ensure we get a "Gone" error
+	expectedGoneError := errors.NewGone("").ErrStatus
+	verifyWatchEvent(t, tooOldWatcher, watch.Error, &expectedGoneError)
 
 	initialWatcher, err := cacher.Watch(context.TODO(), "pods/ns/foo", fooCreated.ResourceVersion, storage.Everything)
 	if err != nil {
@@ -237,7 +264,6 @@ func TestWatch(t *testing.T) {
 	}
 	defer initialWatcher.Stop()
 
-	t.Log("verifying")
 	verifyWatchEvent(t, initialWatcher, watch.Modified, podFooPrime)
 
 	// Now test watch from "now".
@@ -247,12 +273,10 @@ func TestWatch(t *testing.T) {
 	}
 	defer nowWatcher.Stop()
 
-	t.Log("verifying")
 	verifyWatchEvent(t, nowWatcher, watch.Added, podFooPrime)
 
 	_ = updatePod(t, etcdStorage, podFooBis, fooUpdated)
 
-	t.Log("verifying")
 	verifyWatchEvent(t, nowWatcher, watch.Modified, podFooBis)
 }
 
@@ -311,6 +335,13 @@ func TestFiltering(t *testing.T) {
 	podFooPrime := makeTestPod("foo")
 	podFooPrime.Labels = map[string]string{"filter": "foo"}
 	podFooPrime.Spec.NodeName = "fakeNode"
+
+	podFooNS2 := makeTestPod("foo")
+	podFooNS2.Namespace += "2"
+	podFooNS2.Labels = map[string]string{"filter": "foo"}
+
+	// Create in another namespace first to make sure events from other namespaces don't get delivered
+	updatePod(t, etcdStorage, podFooNS2, nil)
 
 	fooCreated := updatePod(t, etcdStorage, podFoo, nil)
 	fooFiltered := updatePod(t, etcdStorage, podFooFiltered, fooCreated)

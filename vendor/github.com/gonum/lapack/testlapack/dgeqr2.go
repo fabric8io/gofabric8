@@ -19,6 +19,7 @@ type Dgeqr2er interface {
 }
 
 func Dgeqr2Test(t *testing.T, impl Dgeqr2er) {
+	rnd := rand.New(rand.NewSource(1))
 	for c, test := range []struct {
 		m, n, lda int
 	}{
@@ -51,17 +52,17 @@ func Dgeqr2Test(t *testing.T, impl Dgeqr2er) {
 		}
 		a := make([]float64, m*lda)
 		for i := range a {
-			a[i] = rand.Float64()
+			a[i] = rnd.Float64()
 		}
 		aCopy := make([]float64, len(a))
 		k := min(m, n)
 		tau := make([]float64, k)
 		for i := range tau {
-			tau[i] = rand.Float64()
+			tau[i] = rnd.Float64()
 		}
 		work := make([]float64, n)
 		for i := range work {
-			work[i] = rand.Float64()
+			work[i] = rnd.Float64()
 		}
 		copy(aCopy, a)
 		impl.Dgeqr2(m, n, a, lda, tau, work)
@@ -72,12 +73,12 @@ func Dgeqr2Test(t *testing.T, impl Dgeqr2er) {
 
 		// Check that q is orthonormal
 		for i := 0; i < m; i++ {
-			nrm := blas64.Nrm2(m, blas64.Vector{1, q.Data[i*m:]})
+			nrm := blas64.Nrm2(m, blas64.Vector{Inc: 1, Data: q.Data[i*m:]})
 			if math.Abs(nrm-1) > 1e-14 {
 				t.Errorf("Case %v, q not normal", c)
 			}
 			for j := 0; j < i; j++ {
-				dot := blas64.Dot(m, blas64.Vector{1, q.Data[i*m:]}, blas64.Vector{1, q.Data[j*m:]})
+				dot := blas64.Dot(m, blas64.Vector{Inc: 1, Data: q.Data[i*m:]}, blas64.Vector{Inc: 1, Data: q.Data[j*m:]})
 				if math.Abs(dot) > 1e-14 {
 					t.Errorf("Case %v, q not orthogonal", i)
 				}

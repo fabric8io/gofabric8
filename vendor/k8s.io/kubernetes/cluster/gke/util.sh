@@ -23,6 +23,8 @@ KUBE_PROMPT_FOR_UPDATE=y
 KUBE_SKIP_UPDATE=${KUBE_SKIP_UPDATE-"n"}
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/../..
 source "${KUBE_ROOT}/cluster/gke/${KUBE_CONFIG_FILE:-config-default.sh}"
+source "${KUBE_ROOT}/cluster/common.sh"
+source "${KUBE_ROOT}/cluster/lib/util.sh"
 
 # Perform preparations required to run e2e tests
 #
@@ -50,7 +52,7 @@ function prepare-e2e() {
 function detect-project() {
   echo "... in gke:detect-project()" >&2
   if [[ -z "${PROJECT:-}" ]]; then
-    export PROJECT=$("${GCLOUD}" config list project | tail -n 1 | cut -f 3 -d ' ')
+    export PROJECT=$("${GCLOUD}" config list project --format 'value(core.project)')
     echo "... Using project: ${PROJECT}" >&2
   fi
   if [[ -z "${PROJECT:-}" ]]; then
@@ -104,6 +106,18 @@ function verify-prereqs() {
   ${sudo_prefix} gcloud ${gcloud_prompt:-} components update || true
 }
 
+# Validate a kubernetes cluster
+function validate-cluster {
+  # Simply override the NUM_NODES variable if we've spread nodes across multiple
+  # zones before calling into the generic validate-cluster logic.
+  local EXPECTED_NUM_NODES="${NUM_NODES}"
+  for zone in $(echo "${ADDITIONAL_ZONES}" | sed "s/,/ /g")
+  do
+    (( EXPECTED_NUM_NODES += NUM_NODES ))
+  done
+  NUM_NODES=${EXPECTED_NUM_NODES} bash -c "${KUBE_ROOT}/cluster/validate-cluster.sh"
+}
+
 # Instantiate a kubernetes cluster
 #
 # Assumed vars:
@@ -112,8 +126,12 @@ function verify-prereqs() {
 #   ZONE
 #   CLUSTER_API_VERSION (optional)
 #   NUM_NODES
+#   ADDITIONAL_ZONES (optional)
 #   NODE_SCOPES
 #   MACHINE_TYPE
+#   HEAPSTER_MACHINE_TYPE (optional)
+#   CLUSTER_IP_RANGE (optional)
+#   GKE_CREATE_FLAGS (optional, space delineated)
 function kube-up() {
   echo "... in gke:kube-up()" >&2
   detect-project >&2
@@ -139,18 +157,48 @@ function kube-up() {
     echo "... Using firewall-rule: ${FIREWALL_SSH}" >&2
   fi
 
-  local create_args=(
+  local shared_args=(
     "--zone=${ZONE}"
     "--project=${PROJECT}"
-    "--num-nodes=${NUM_NODES}"
-    "--network=${NETWORK}"
     "--scopes=${NODE_SCOPES}"
+  )
+
+  if [[ ! -z "${IMAGE_TYPE:-}" ]]; then
+    shared_args+=("--image-type=${IMAGE_TYPE}")
+  fi
+
+  if [[ -z "${HEAPSTER_MACHINE_TYPE:-}" ]]; then
+    local -r nodes="${NUM_NODES}"
+  else
+    local -r nodes=$(( NUM_NODES - 1 ))
+  fi
+
+  local create_args=(
+    ${shared_args[@]}
+    "--num-nodes=${nodes}"
+    "--network=${NETWORK}"
     "--cluster-version=${CLUSTER_API_VERSION}"
     "--machine-type=${MACHINE_TYPE}"
   )
 
+  if [[ ! -z "${ADDITIONAL_ZONES:-}" ]]; then
+    create_args+=("--additional-zones=${ADDITIONAL_ZONES}")
+  fi
+
+  if [[ ! -z "${CLUSTER_IP_RANGE:-}" ]]; then
+    create_args+=("--cluster-ipv4-cidr=${CLUSTER_IP_RANGE}")
+  fi
+
+  create_args+=( ${GKE_CREATE_FLAGS:-} )
+
   # Bring up the cluster.
   "${GCLOUD}" ${CMD_GROUP:-} container clusters create "${CLUSTER_NAME}" "${create_args[@]}"
+
+  create-kubeconfig-for-federation
+
+  if [[ ! -z "${HEAPSTER_MACHINE_TYPE:-}" ]]; then
+    "${GCLOUD}" ${CMD_GROUP:-} container node-pools create "heapster-pool" --cluster "${CLUSTER_NAME}" --num-nodes=1 --machine-type="${HEAPSTER_MACHINE_TYPE}" "${shared_args[@]}"
+  fi
 }
 
 # Execute prior to running tests to initialize required structure. This is
@@ -173,7 +221,7 @@ function test-setup() {
   detect-nodes >&2
 
   # At this point, CLUSTER_NAME should have been used, so its value is final.
-  NODE_TAG=$($GCLOUD compute instances describe ${NODE_NAMES[0]} --project="${PROJECT}" --zone="${ZONE}" | grep -o "gke-${CLUSTER_NAME}-.\{8\}-node" | head -1)
+  NODE_TAG=$($GCLOUD compute instances describe ${NODE_NAMES[0]} --project="${PROJECT}" --zone="${ZONE}" --format='value(tags.items)' | grep -o "gke-${CLUSTER_NAME}-.\{8\}-node")
   OLD_NODE_TAG="k8s-${CLUSTER_NAME}-node"
 
   # Open up port 80 & 8080 so common containers on minions can be reached.
@@ -182,14 +230,20 @@ function test-setup() {
     --allow tcp:80,tcp:8080 \
     --project "${PROJECT}" \
     --target-tags "${NODE_TAG},${OLD_NODE_TAG}" \
-    --network="${NETWORK}"
+    --network="${NETWORK}" &
 
   "${GCLOUD}" compute firewall-rules create \
     "${CLUSTER_NAME}-nodeports" \
     --allow tcp:30000-32767,udp:30000-32767 \
     --project "${PROJECT}" \
     --target-tags "${NODE_TAG},${OLD_NODE_TAG}" \
-    --network="${NETWORK}"
+    --network="${NETWORK}" &
+
+  # Wait for firewall rules.
+  kube::util::wait-for-jobs || {
+    echo "... gke:test-setup(): Could not create firewall" >&2
+    return 1
+  }
 }
 
 # Detect the IP for the master. Note that on GKE, we don't know the name of the
@@ -204,8 +258,8 @@ function detect-master() {
   echo "... in gke:detect-master()" >&2
   detect-project >&2
   KUBE_MASTER_IP=$("${GCLOUD}" ${CMD_GROUP:-} container clusters describe \
-    --project="${PROJECT}" --zone="${ZONE}" "${CLUSTER_NAME}" \
-    | grep endpoint | cut -f 2 -d ' ')
+    --project="${PROJECT}" --zone="${ZONE}" --format='value(endpoint)' \
+    "${CLUSTER_NAME}")
 }
 
 # Assumed vars:
@@ -219,6 +273,9 @@ function detect-nodes() {
 
 # Detect minions created in the minion group
 #
+# Note that this will only select nodes in the same zone as the
+# cluster, meaning that it won't include all nodes in a multi-zone cluster.
+#
 # Assumed vars:
 #   none
 # Vars set:
@@ -226,15 +283,23 @@ function detect-nodes() {
 function detect-node-names {
   echo "... in gke:detect-node-names()" >&2
   detect-project
-  detect-node-instance-group
-  NODE_NAMES=($(gcloud compute instance-groups managed list-instances \
-    "${NODE_INSTANCE_GROUP}" --zone "${ZONE}" --project "${PROJECT}" \
-    --format=yaml | grep instance: | cut -d ' ' -f 2))
+  detect-node-instance-groups
 
-  echo "NODE_NAMES=${NODE_NAMES[*]}"
+  NODE_NAMES=()
+  for group in "${NODE_INSTANCE_GROUPS[@]:-}"; do
+    NODE_NAMES+=($(gcloud compute instance-groups managed list-instances \
+      "${group}" --zone "${ZONE}" \
+      --project "${PROJECT}" --format='value(instance)'))
+  done
+  echo "NODE_NAMES=${NODE_NAMES[*]:-}"
 }
 
-# Detect instance group name generated by gke
+# Detect instance group name generated by gke.
+#
+# Note that the NODE_INSTANCE_GROUPS var will only have instance groups in the
+# same zone as the cluster, meaning that it won't include all groups in a
+# multi-zone cluster. The ALL_INSTANCE_GROUP_URLS will contain all the
+# instance group URLs, which include multi-zone groups.
 #
 # Assumed vars:
 #   GCLOUD
@@ -242,12 +307,22 @@ function detect-node-names {
 #   ZONE
 #   CLUSTER_NAME
 # Vars set:
-#   NODE_INSTANCE_GROUP
-function detect-node-instance-group {
-  echo "... in gke:detect-node-instance-group()" >&2
-  NODE_INSTANCE_GROUP=$("${GCLOUD}" ${CMD_GROUP:-} container clusters describe \
-    --project="${PROJECT}" --zone="${ZONE}" "${CLUSTER_NAME}" \
-    | grep instanceGroupManagers | cut -d '/' -f 11)
+#   NODE_INSTANCE_GROUPS
+#   ALL_INSTANCE_GROUP_URLS
+function detect-node-instance-groups {
+  echo "... in gke:detect-node-instance-groups()" >&2
+  local urls=$("${GCLOUD}" ${CMD_GROUP:-} container clusters describe \
+    --project="${PROJECT}" --zone="${ZONE}" \
+    --format='value(instanceGroupUrls)' "${CLUSTER_NAME}")
+  urls=(${urls//;/ })
+  ALL_INSTANCE_GROUP_URLS=${urls[*]}
+  NODE_INSTANCE_GROUPS=()
+  for url in "${urls[@]:-}"; do
+    local igm_zone=$(expr match ${url} '.*/zones/\([a-z0-9-]*\)/')
+    if [[ "${igm_zone}" == "${ZONE}" ]]; then
+      NODE_INSTANCE_GROUPS+=("${url##*/}")
+    fi
+  done
 }
 
 # SSH to a node by name ($1) and run a command ($2).
@@ -286,15 +361,21 @@ function test-teardown() {
 
   detect-project >&2
 
-  # First, remove anything we did with test-setup (currently, the firewall).
+  # Tear down the cluster first.
+  "${KUBE_ROOT}/cluster/kube-down.sh" || true
+
+  # Then remove the firewall rules. We do it in this order because the
+  # time to delete a firewall is actually dependent on the number of
+  # instances, but we can safely delete the cluster before the firewall.
+  #
   # NOTE: Keep in sync with names above in test-setup.
   "${GCLOUD}" compute firewall-rules delete "${CLUSTER_NAME}-http-alt" \
-    --project="${PROJECT}" || true
+    --project="${PROJECT}" &
   "${GCLOUD}" compute firewall-rules delete "${CLUSTER_NAME}-nodeports" \
-    --project="${PROJECT}" || true
+    --project="${PROJECT}" &
 
-  # Then actually turn down the cluster.
-  "${KUBE_ROOT}/cluster/kube-down.sh"
+  # Wait for firewall rule teardown.
+  kube::util::wait-for-jobs || true
 }
 
 # Actually take down the cluster. This is called from test-teardown.

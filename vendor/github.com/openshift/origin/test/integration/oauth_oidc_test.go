@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -18,6 +16,7 @@ import (
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/cli/cmd"
+	"github.com/openshift/origin/pkg/cmd/cli/cmd/login"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	testutil "github.com/openshift/origin/test/util"
 	testserver "github.com/openshift/origin/test/util/server"
@@ -26,8 +25,6 @@ import (
 // TestOAuthOIDC checks CLI password login against an OIDC provider
 func TestOAuthOIDC(t *testing.T) {
 
-	tokenCalled := false
-	userinfoCalled := false
 	expectedTokenPost := url.Values{
 		"grant_type":    []string{"password"},
 		"client_id":     []string{"myclient"},
@@ -69,6 +66,7 @@ func TestOAuthOIDC(t *testing.T) {
 
 	// Get master config
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 
 	masterOptions, err := testserver.DefaultMasterOptions()
 	if err != nil {
@@ -90,14 +88,12 @@ func TestOAuthOIDC(t *testing.T) {
 			}
 
 			w.Write([]byte(tokenResponse))
-			tokenCalled = true
 
 		case "/userinfo":
 			if r.Header.Get("Authorization") != "Bearer 12345" {
 				t.Fatalf("Expected authorization header, got %#v", r.Header)
 			}
 			w.Write([]byte(userinfoResponse))
-			userinfoCalled = true
 
 		default:
 			t.Fatalf("Unexpected OIDC request: %v", r.URL.String())
@@ -162,7 +158,7 @@ func TestOAuthOIDC(t *testing.T) {
 
 	// Attempt a login using a redirecting auth proxy
 	loginOutput := &bytes.Buffer{}
-	loginOptions := &cmd.LoginOptions{
+	loginOptions := &login.LoginOptions{
 		Server:             clientConfig.Host,
 		CAFile:             masterCAFile,
 		StartingKubeConfig: &clientcmdapi.Config{},

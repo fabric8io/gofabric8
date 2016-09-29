@@ -19,7 +19,7 @@ set -o nounset
 set -o pipefail
 
 # As of go 1.6, the vendor experiment is enabled by default.
-export GO15VENDOREXPERIMENT=0
+export GO15VENDOREXPERIMENT=1
 
 #### HACK ####
 # Sometimes godep just can't handle things. This lets use manually put
@@ -41,14 +41,16 @@ preload-dep() {
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 source "${KUBE_ROOT}/hack/lib/init.sh"
+kube::golang::verify_godep_version
 
 readonly branch=${1:-${KUBE_VERIFY_GIT_BRANCH:-master}}
 if ! [[ ${KUBE_FORCE_VERIFY_CHECKS:-} =~ ^[yY]$ ]] && \
-  ! kube::util::has_changes_against_upstream_branch "${branch}" 'Godeps/'; then
+  ! kube::util::has_changes_against_upstream_branch "${branch}" 'Godeps/' && \
+  ! kube::util::has_changes_against_upstream_branch "${branch}" 'vendor/'; then
   exit 0
 fi
 
-# create a nice clean place to put our new godeps
+# Create a nice clean place to put our new godeps
 _tmpdir="$(mktemp -d -t gopath.XXXXXX)"
 function cleanup {
   echo "Removing ${_tmpdir}"
@@ -56,52 +58,51 @@ function cleanup {
 }
 trap cleanup EXIT
 
-# build the godep tool
-export GOPATH="${_tmpdir}"
-go get -u github.com/tools/godep 2>/dev/null
-GODEP="${_tmpdir}/bin/godep"
-pushd "${GOPATH}/src/github.com/tools/godep" > /dev/null
-  git checkout v53
-  "${GODEP}" go install
-popd > /dev/null
-
-# fill out that nice clean place with the kube godeps
-echo "Starting to download all kubernetes godeps. This takes a while"
-
-"${GODEP}" restore
-echo "Download finished"
-
-# copy the contents of your kube directory into the nice clean place
+# Copy the contents of the kube directory into the nice clean place
 _kubetmp="${_tmpdir}/src/k8s.io"
 mkdir -p "${_kubetmp}"
-#should create ${_kubectmp}/kubernetes
+# should create ${_kubectmp}/kubernetes
 git archive --format=tar --prefix=kubernetes/ $(git write-tree) | (cd "${_kubetmp}" && tar xf -)
 _kubetmp="${_kubetmp}/kubernetes"
 
-# destroy godeps in our COPY of the kube tree
-pushd "${_kubetmp}" > /dev/null
-  rm -rf ./Godeps
+# Do all our work in the new GOPATH
+export GOPATH="${_tmpdir}"
+cd "${_kubetmp}"
 
-  # for some reason the kube tree needs to be a git repo for the godep tool to run. Doesn't make sense
-  git init > /dev/null 2>&1
+# Build the godep tool
+go get -u github.com/tools/godep 2>/dev/null
+GODEP="${GOPATH}/bin/godep"
+pin-godep() {
+  pushd "${GOPATH}/src/github.com/tools/godep" > /dev/null
+    git checkout "$1"
+    "${GODEP}" go install
+  popd > /dev/null
+}
+# Use to following if we ever need to pin godep to a specific version again
+#pin-godep 'v63'
 
-  # recreate the Godeps using the nice clean set we just downloaded
-  "${GODEP}" save ./...
-popd > /dev/null
+# Fill out that nice clean place with the kube godeps
+echo "Starting to download all kubernetes godeps. This takes a while"
+"${GODEP}" restore
+echo "Download finished"
 
-if ! _out="$(diff -Naupr --ignore-matching-lines='^\s*\"GoVersion\":' --ignore-matching-lines='^\s*\"Comment\":' ${KUBE_ROOT}/Godeps/Godeps.json ${_kubetmp}/Godeps/Godeps.json)"; then
+# Destroy deps in the copy of the kube tree
+rm -rf ./Godeps ./vendor
+
+# For some reason the kube tree needs to be a git repo for the godep tool to
+# run. Doesn't make sense.
+git init > /dev/null 2>&1
+
+# Recreate the Godeps using the nice clean set we just downloaded
+hack/godep-save.sh
+
+# Test for diffs
+if ! _out="$(diff -Naupr --ignore-matching-lines='^\s*\"GoVersion\":' --ignore-matching-line='^\s*\"GodepVersion\":' --ignore-matching-lines='^\s*\"Comment\":' ${KUBE_ROOT}/Godeps/Godeps.json ${_kubetmp}/Godeps/Godeps.json)"; then
   echo "Your Godeps.json is different:"
   echo "${_out}"
+  echo "Godeps Verify failed."
   exit 1
 fi
 
-# Godeps/_workstapces/src/github.com/fsouza/go-dockerclient/testing/data/symlink'
-# is an intentionally broken symlink. Linux can use --no-dereference. OS X cannot.
-# So we --exclude='symlink' so diff -r doesn't die following a bad symlink.
-if ! _out="$(diff -Naupr --exclude='symlink' ${KUBE_ROOT}/Godeps/_workspace/src ${_kubetmp}/Godeps/_workspace/src)"; then
-  echo "Your godeps changes are not reproducible"
-  echo "${_out}"
-  exit 1
-fi
-
+echo "Godeps Verified."
 # ex: ts=2 sw=2 et filetype=sh

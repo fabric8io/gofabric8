@@ -19,36 +19,56 @@ FROM BASEIMAGE
 CROSS_BUILD_COPY qemu-ARCH-static /usr/bin/
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update -y \
-    && DEBIAN_FRONTEND=noninteractive apt-get -yy -q \
-    install \
+    && DEBIAN_FRONTEND=noninteractive apt-get -yy -q install \
     iptables \
     ethtool \
     ca-certificates \
+    conntrack \
     file \
     util-linux \
     socat \
     curl \
     git \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
     && DEBIAN_FRONTEND=noninteractive apt-get autoremove -y \
     && DEBIAN_FRONTEND=noninteractive apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN cp /usr/bin/nsenter /nsenter
 
+# Copy the hyperkube binary
 COPY hyperkube /hyperkube
-RUN chmod a+rx /hyperkube
 
-COPY master-multi.json /etc/kubernetes/manifests-multi/master.json
-COPY kube-proxy.json /etc/kubernetes/manifests-multi/kube-proxy.json
+# Manifests for the docker guide
+COPY static-pods/master.json /etc/kubernetes/manifests/
+COPY static-pods/etcd.json /etc/kubernetes/manifests/
+COPY static-pods/addon-manager.json /etc/kubernetes/manifests/
 
-COPY master.json /etc/kubernetes/manifests/master.json
-COPY etcd.json /etc/kubernetes/manifests/etcd.json
-COPY kube-proxy.json /etc/kubernetes/manifests/kube-proxy.json
+# TODO: Move out kube-proxy to a DaemonSet again
+COPY static-pods/kube-proxy.json /etc/kubernetes/manifests/
 
+# Manifests for the docker-multinode guide
+COPY static-pods/master-multi.json /etc/kubernetes/manifests-multi/
+COPY static-pods/addon-manager.json /etc/kubernetes/manifests-multi/
+
+# TODO: Move out kube-proxy to a DaemonSet again
+COPY static-pods/kube-proxy.json /etc/kubernetes/manifests-multi/
+
+# Copy over all addons
+COPY addons /etc/kubernetes/addons
+
+# Other required scripts for the setup
 COPY safe_format_and_mount /usr/share/google/safe_format_and_mount
-RUN chmod a+rx /usr/share/google/safe_format_and_mount
-
 COPY setup-files.sh /setup-files.sh
-RUN chmod a+rx /setup-files.sh
-
 COPY make-ca-cert.sh /make-ca-cert.sh
-RUN chmod a+x /make-ca-cert.sh
+COPY copy-addons.sh /copy-addons.sh
+
+# easy-rsa package required by make-ca-cert
+ADD https://storage.googleapis.com/kubernetes-release/easy-rsa/easy-rsa.tar.gz /root/kube/
+
+# Copy the cni folder into /opt/
+COPY cni /opt/cni
+
+# Create symlinks for each hyperkube server
+# TODO: this is unreliable for now (e.g. running "/kubelet" panics)
+# Also, it doesn't work for other architectures
+# RUN /hyperkube --make-symlinks

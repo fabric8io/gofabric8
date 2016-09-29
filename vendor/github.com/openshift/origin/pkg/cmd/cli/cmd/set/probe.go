@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -76,8 +77,9 @@ type ProbeOptions struct {
 
 	Encoder runtime.Encoder
 
-	ShortOutput bool
-	Mapper      meta.RESTMapper
+	ShortOutput   bool
+	Mapper        meta.RESTMapper
+	OutputVersion unversioned.GroupVersion
 
 	PrintObject            func(runtime.Object) error
 	UpdatePodSpecForObject func(runtime.Object, func(spec *kapi.PodSpec) error) (bool, error)
@@ -115,7 +117,7 @@ func NewCmdProbe(fullName string, f *clientcmd.Factory, out, errOut io.Writer) *
 		ContainerSelector: "*",
 	}
 	cmd := &cobra.Command{
-		Use:     "probe RESOURCE/NAME --readiness|--liveness (--get-url=URL|--open-tcp=PORT|-- CMD)",
+		Use:     "probe RESOURCE/NAME --readiness|--liveness [options] (--get-url=URL|--open-tcp=PORT|-- CMD)",
 		Short:   "Update a probe on a pod template",
 		Long:    probeLong,
 		Example: fmt.Sprintf(probeExample, fullName),
@@ -166,6 +168,16 @@ func (o *ProbeOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, args [
 	}
 
 	cmdNamespace, explicit, err := f.DefaultNamespace()
+	if err != nil {
+		return err
+	}
+
+	clientConfig, err := f.ClientConfig()
+	if err != nil {
+		return err
+	}
+
+	o.OutputVersion, err = kcmdutil.OutputVersion(cmd, clientConfig.GroupVersion)
 	if err != nil {
 		return err
 	}
@@ -304,16 +316,7 @@ func (o *ProbeOptions) Run() error {
 	}
 
 	if o.PrintObject != nil {
-		var infos []*resource.Info
-		for _, patch := range patches {
-			info := patch.Info
-			if patch.Err != nil {
-				fmt.Fprintf(o.Err, "error: %s/%s %v\n", info.Mapping.Resource, info.Name, patch.Err)
-				continue
-			}
-			infos = append(infos, info)
-		}
-		object, err := resource.AsVersionedObject(infos, !singular, "", nil)
+		object, err := resource.AsVersionedObject(infos, !singular, o.OutputVersion, kapi.Codecs.LegacyCodec(o.OutputVersion))
 		if err != nil {
 			return err
 		}
@@ -384,19 +387,19 @@ func (o *ProbeOptions) updateProbe(probe *kapi.Probe) {
 		probe.Handler = kapi.Handler{TCPSocket: &kapi.TCPSocketAction{Port: intOrString(o.OpenTCPSocket)}}
 	}
 	if o.InitialDelaySeconds != nil {
-		probe.InitialDelaySeconds = *o.InitialDelaySeconds
+		probe.InitialDelaySeconds = int32(*o.InitialDelaySeconds)
 	}
 	if o.SuccessThreshold != nil {
-		probe.SuccessThreshold = *o.SuccessThreshold
+		probe.SuccessThreshold = int32(*o.SuccessThreshold)
 	}
 	if o.FailureThreshold != nil {
-		probe.FailureThreshold = *o.FailureThreshold
+		probe.FailureThreshold = int32(*o.FailureThreshold)
 	}
 	if o.TimeoutSeconds != nil {
-		probe.TimeoutSeconds = *o.TimeoutSeconds
+		probe.TimeoutSeconds = int32(*o.TimeoutSeconds)
 	}
 	if o.PeriodSeconds != nil {
-		probe.PeriodSeconds = *o.PeriodSeconds
+		probe.PeriodSeconds = int32(*o.PeriodSeconds)
 	}
 }
 

@@ -1,6 +1,7 @@
 {% set cluster_name = "" -%}
 {% set cluster_cidr = "" -%}
 {% set allocate_node_cidrs = "" -%}
+{% set service_cluster_ip_range = "" %}
 {% set terminated_pod_gc = "" -%}
 
 
@@ -9,6 +10,9 @@
 {% endif -%}
 {% if pillar['cluster_cidr'] is defined and pillar['cluster_cidr'] != "" -%}
   {% set cluster_cidr = "--cluster-cidr=" + pillar['cluster_cidr'] -%}
+{% endif -%}
+{% if pillar['service_cluster_ip_range'] is defined and pillar['service_cluster_ip_range'] != "" -%}
+  {% set service_cluster_ip_range = "--service_cluster_ip_range=" + pillar['service_cluster_ip_range'] -%}
 {% endif -%}
 # When we're using flannel it is responsible for cidr allocation.
 # This is expected to be a short-term compromise.
@@ -32,10 +36,14 @@
 {% set srv_kube_path = "/srv/kubernetes" -%}
 
 {% if grains.cloud is defined -%}
-  {% if grains.cloud not in ['vagrant', 'vsphere'] -%}
+  {% if grains.cloud not in ['vagrant', 'vsphere', 'photon-controller'] -%}
     {% set cloud_provider = "--cloud-provider=" + grains.cloud -%}
   {% endif -%}
   {% set service_account_key = "--service-account-private-key-file=/srv/kubernetes/server.key" -%}
+
+  {% if grains.cloud in [ 'openstack' ] and grains.cloud_config is defined -%}
+    {% set cloud_config = "--cloud-config=" + grains.cloud_config -%}
+  {% endif -%}
 
   {% if grains.cloud in [ 'aws', 'gce' ] and grains.cloud_config is defined -%}
     {% set cloud_config = "--cloud-config=" + grains.cloud_config -%}
@@ -46,7 +54,7 @@
 
 {% set root_ca_file = "" -%}
 
-{% if grains['cloud'] is defined and grains.cloud in [ 'aws', 'gce', 'vagrant', 'vsphere' ]    %}
+{% if grains['cloud'] is defined and grains.cloud in [ 'aws', 'gce', 'vagrant', 'vsphere', 'photon-controller', 'openstack']    %}
    {% set root_ca_file = "--root-ca-file=/srv/kubernetes/ca.crt" -%}
 {% endif -%}
 
@@ -55,7 +63,7 @@
   {% set log_level = pillar['controller_manager_test_log_level'] -%}
 {% endif -%}
 
-{% set params = "--master=127.0.0.1:8080" + " " + cluster_name + " " + cluster_cidr + " " + allocate_node_cidrs + " " + terminated_pod_gc + " " + cloud_provider  + " " + cloud_config + " " + service_account_key + " " + log_level + " " + root_ca_file -%}
+{% set params = "--master=127.0.0.1:8080" + " " + cluster_name + " " + cluster_cidr + " " + allocate_node_cidrs + " " + service_cluster_ip_range + " " + terminated_pod_gc + " " + cloud_provider  + " " + cloud_config + " " + service_account_key + " " + log_level + " " + root_ca_file -%}
 
 
 # test_args has to be kept at the end, so they'll overwrite any prior configuration
@@ -68,7 +76,11 @@
 "kind": "Pod",
 "metadata": {
   "name":"kube-controller-manager",
-  "namespace": "kube-system"
+  "namespace": "kube-system",
+  "labels": {
+    "tier": "control-plane",
+    "component": "kube-controller-manager"
+  }
 },
 "spec":{
 "hostNetwork": true,
@@ -113,8 +125,8 @@
         { "name": "etcopenssl",
         "mountPath": "/etc/openssl",
         "readOnly": true},
-        { "name": "etcpkitls",
-        "mountPath": "/etc/pki/tls",
+        { "name": "etcpki",
+        "mountPath": "/etc/pki",
         "readOnly": true}
       ]
     }
@@ -142,9 +154,9 @@
     "hostPath": {
         "path": "/etc/openssl"}
   },
-  { "name": "etcpkitls",
+  { "name": "etcpki",
     "hostPath": {
-        "path": "/etc/pki/tls"}
+        "path": "/etc/pki"}
   }
 ]
 }}

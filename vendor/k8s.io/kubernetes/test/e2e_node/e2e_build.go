@@ -36,9 +36,12 @@ func buildGo() {
 	if err != nil {
 		glog.Fatalf("Failed to locate kubernetes root directory %v.", err)
 	}
-	out, err := exec.Command(filepath.Join(k8sRoot, "hack/build-go.sh")).CombinedOutput()
+	cmd := exec.Command(filepath.Join(k8sRoot, "hack/build-go.sh"))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err = cmd.Run()
 	if err != nil {
-		glog.Fatalf("Failed to build go packages %v.  Output:\n%s", err, out)
+		glog.Fatalf("Failed to build go packages %v\n", err)
 	}
 }
 
@@ -117,7 +120,7 @@ func getK8sNodeTestDir() (string, error) {
 func getKubeletServerBin() string {
 	bin, err := getK8sBin("kubelet")
 	if err != nil {
-		panic(fmt.Sprintf("Could not locate kubelet binary."))
+		glog.Fatalf("Could not locate kubelet binary %v.", err)
 	}
 	return bin
 }
@@ -125,7 +128,7 @@ func getKubeletServerBin() string {
 func getApiServerBin() string {
 	bin, err := getK8sBin("kube-apiserver")
 	if err != nil {
-		panic(fmt.Sprintf("Could not locate kube-apiserver binary."))
+		glog.Fatalf("Could not locate kube-apiserver binary %v.", err)
 	}
 	return bin
 }

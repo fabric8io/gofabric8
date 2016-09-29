@@ -16,13 +16,13 @@ minishift start
 
 ```
       --cpus=1: Number of CPUs allocated to the minishift VM
-      --deploy-registry[=false]: Should the OpenShift internal Docker registry be deployed?
+      --deploy-registry[=true]: Should the OpenShift internal Docker registry be deployed?
       --deploy-router[=false]: Should the OpenShift router be deployed?
       --disk-size="20g": Disk size allocated to the minishift VM (format: <number>[<unit>], where unit = b, k, m or g)
       --docker-env=[]: Environment variables to pass to the Docker daemon. (format: key=value)
       --host-only-cidr="192.168.99.1/24": The CIDR to be used for the minishift VM (only supported with Virtualbox driver)
       --insecure-registry=[172.30.0.0/16]: Insecure Docker registries to pass to the Docker daemon
-      --iso-url="https://github.com/jimmidyson/minishift/releases/download/v0.6.0/boot2docker.iso": Location of the minishift iso
+      --iso-url="https://github.com/jimmidyson/minishift/releases/download/v0.7.1/boot2docker.iso": Location of the minishift iso
       --memory=1024: Amount of RAM allocated to the minishift VM
       --registry-mirror=[]: Registry mirrors to pass to the Docker daemon
       --vm-driver="kvm": VM driver is one of: [virtualbox vmwarefusion kvm xhyve hyperv]

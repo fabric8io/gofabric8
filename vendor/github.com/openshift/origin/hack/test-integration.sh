@@ -1,20 +1,6 @@
 #!/bin/bash
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
 STARTTIME=$(date +%s)
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/text.sh"
-source "${OS_ROOT}/hack/lib/log.sh"
-source "${OS_ROOT}/hack/lib/util/environment.sh"
-os::log::install_errexit
-
-# Go to the top of the tree.
-cd "${OS_ROOT}"
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 os::build::setup_env
 
@@ -33,43 +19,42 @@ function cleanup() {
 
 trap cleanup EXIT SIGINT
 
-package="${OS_TEST_PACKAGE:-test/integration}"
-
-if docker version >/dev/null 2>&1; then
-	tags="${OS_TEST_TAGS:-integration docker}"
-else
-	echo "++ Docker not available, running only integration tests without the 'docker' tag"
-	tags="${OS_TEST_TAGS:-integration !docker}"
-fi
-
 export GOMAXPROCS="$(grep "processor" -c /proc/cpuinfo 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || 1)"
 
-echo
-echo "Test ${package} -tags='${tags}' ..."
-echo
-
-# setup the test dirs
-testdir="${OS_ROOT}/_output/testbin/${package}"
-name="$(basename ${testdir})"
-testexec="${testdir}/${name}.test"
-mkdir -p "${testdir}"
+# Internalize environment variables we consume and default if they're not set
+package="${OS_TEST_PACKAGE:-test/integration}"
+name="$(basename ${package})"
+dlv_debug="${DLV_DEBUG:-}"
+verbose="${VERBOSE:-}"
 
 # build the test executable (cgo must be disabled to have the symbol table available)
-pushd "${testdir}" &>/dev/null
-echo "Building test executable..."
-CGO_ENABLED=0 go test -c -tags="${tags}" "${OS_GO_PACKAGE}/${package}"
-popd &>/dev/null
+if [[ -n "${OPENSHIFT_SKIP_BUILD:-}" ]]; then
+  echo "WARNING: Skipping build due to OPENSHIFT_SKIP_BUILD"
+else
+	CGO_ENABLED=0 "${OS_ROOT}/hack/build-go.sh" "${package}/${name}.test" -a -installsuffix=cgo
+fi
+testexec="$(pwd)/$(os::build::find-binary "${name}.test")"
 
 os::log::start_system_logger
 
 function exectest() {
 	echo "Running $1..."
 
+	export TEST_ETCD_DIR="${TMPDIR:-/tmp}/etcd-${1}"
+	rm -fr "${TEST_ETCD_DIR}"
+	mkdir -p "${TEST_ETCD_DIR}"
 	result=1
-	if [ -n "${VERBOSE-}" ]; then
-		"${testexec}" -vmodule=*=5 -test.v -test.timeout=4m -test.run="^$1$" "${@:2}" 2>&1
+	if [[ -n "${dlv_debug}" ]]; then
+		# run tests using delve debugger
+		dlv exec "${testexec}" -- -test.run="^$1$" "${@:2}"
+		result=$?
+		out=
+	elif [[ -n "${verbose}" ]]; then
+		# run tests with extra verbosity
+		out=$("${testexec}" -vmodule=*=5 -test.v -test.timeout=4m -test.run="^$1$" "${@:2}" 2>&1)
 		result=$?
 	else
+		# run tests normally
 		out=$("${testexec}" -test.timeout=4m -test.run="^$1$" "${@:2}" 2>&1)
 		result=$?
 	fi
@@ -78,10 +63,12 @@ function exectest() {
 
 	if [[ ${result} -eq 0 ]]; then
 		os::text::print_green "ok      $1"
+		# Remove the etcd directory to cleanup the space.
+		rm -rf "${TEST_ETCD_DIR}"
 		exit 0
 	else
 		os::text::print_red "failed  $1"
-		echo "${out}"
+		echo "${out:-}"
 
 		exit 1
 	fi
@@ -92,7 +79,6 @@ export testexec
 export childargs
 
 loop="${TIMES:-1}"
-pushd "./${package}" &>/dev/null
 # $1 is passed to grep -E to filter the list of tests; this may be the name of a single test,
 # a fragment of a test name, or a regular expression.
 #
@@ -101,9 +87,10 @@ pushd "./${package}" &>/dev/null
 # hack/test-integration.sh WatchBuilds
 # hack/test-integration.sh Template*
 # hack/test-integration.sh "(WatchBuilds|Template)"
-tests=( $(go run "${OS_ROOT}/hack/listtests.go" -prefix="${OS_GO_PACKAGE}/${package}.Test" "${testdir}" | grep -E "${1-Test}") )
+tests=( $(go run "${OS_ROOT}/hack/listtests.go" -prefix="${OS_GO_PACKAGE}/${package}.Test" "${testexec}" | grep -E "${1-Test}") )
 # run each test as its own process
 ret=0
+pushd "${OS_ROOT}/${package}" &>/dev/null
 for test in "${tests[@]}"; do
 	for((i=0;i<${loop};i+=1)); do
 		if ! (exectest "${test}" ${@:2}); then

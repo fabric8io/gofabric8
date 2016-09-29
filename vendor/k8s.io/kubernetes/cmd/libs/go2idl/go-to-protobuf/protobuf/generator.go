@@ -118,6 +118,19 @@ func isProtoable(seen map[*types.Type]bool, t *types.Type) bool {
 	}
 }
 
+// isOptionalAlias should return true if the specified type has an underlying type
+// (is an alias) of a map or slice and has the comment tag protobuf.nullable=true,
+// indicating that the type should be nullable in protobuf.
+func isOptionalAlias(t *types.Type) bool {
+	if t.Underlying == nil || (t.Underlying.Kind != types.Map && t.Underlying.Kind != types.Slice) {
+		return false
+	}
+	if types.ExtractCommentTags("+", t.CommentLines)["protobuf.nullable"] != "true" {
+		return false
+	}
+	return true
+}
+
 func (g *genProtoIDL) Imports(c *generator.Context) (imports []string) {
 	lines := []string{}
 	// TODO: this could be expressed more cleanly
@@ -149,12 +162,13 @@ func (g *genProtoIDL) GenerateType(c *generator.Context, t *types.Type, w io.Wri
 		t: t,
 	}
 	switch t.Kind {
+	case types.Alias:
+		return b.doAlias(sw)
 	case types.Struct:
 		return b.doStruct(sw)
 	default:
 		return b.unknown(sw)
 	}
-	return sw.Error()
 }
 
 // ProtobufFromGoNamer finds the protobuf name of a type (and its package, and
@@ -207,7 +221,7 @@ func (p protobufLocator) ProtoTypeFor(t *types.Type) (*types.Type, error) {
 		return t, nil
 	}
 	// it's a message
-	if t.Kind == types.Struct {
+	if t.Kind == types.Struct || isOptionalAlias(t) {
 		t := &types.Type{
 			Name: p.namer.GoNameToProtoName(t.Name),
 			Kind: types.Protobuf,
@@ -231,6 +245,37 @@ type bodyGen struct {
 
 func (b bodyGen) unknown(sw *generator.SnippetWriter) error {
 	return fmt.Errorf("not sure how to generate: %#v", b.t)
+}
+
+func (b bodyGen) doAlias(sw *generator.SnippetWriter) error {
+	if !isOptionalAlias(b.t) {
+		return nil
+	}
+
+	var kind string
+	switch b.t.Underlying.Kind {
+	case types.Map:
+		kind = "map"
+	default:
+		kind = "slice"
+	}
+	optional := &types.Type{
+		Name: b.t.Name,
+		Kind: types.Struct,
+
+		CommentLines:              b.t.CommentLines,
+		SecondClosestCommentLines: b.t.SecondClosestCommentLines,
+		Members: []types.Member{
+			{
+				Name:         "Items",
+				CommentLines: fmt.Sprintf("items, if empty, will result in an empty %s\n", kind),
+				Type:         b.t.Underlying,
+			},
+		},
+	}
+	nested := b
+	nested.t = optional
+	return nested.doStruct(sw)
 }
 
 func (b bodyGen) doStruct(sw *generator.SnippetWriter) error {
@@ -422,7 +467,7 @@ func memberTypeToProtobufField(locator ProtobufLocator, field *protoField, t *ty
 		if err := memberTypeToProtobufField(locator, keyField, t.Key); err != nil {
 			return err
 		}
-		// All other protobuf types has kind types.Protobuf, so setting types.Map
+		// All other protobuf types have kind types.Protobuf, so setting types.Map
 		// here would be very misleading.
 		field.Type = &types.Type{
 			Kind: types.Protobuf,
@@ -445,14 +490,19 @@ func memberTypeToProtobufField(locator ProtobufLocator, field *protoField, t *ty
 		}
 		field.Nullable = true
 	case types.Alias:
-		if err := memberTypeToProtobufField(locator, field, t.Underlying); err != nil {
-			log.Printf("failed to alias: %s %s: err", t.Name, t.Underlying.Name, err)
-			return err
+		if isOptionalAlias(t) {
+			field.Type, err = locator.ProtoTypeFor(t)
+			field.Nullable = true
+		} else {
+			if err := memberTypeToProtobufField(locator, field, t.Underlying); err != nil {
+				log.Printf("failed to alias: %s %s: err %v", t.Name, t.Underlying.Name, err)
+				return err
+			}
+			if field.Extras == nil {
+				field.Extras = make(map[string]string)
+			}
+			field.Extras["(gogoproto.casttype)"] = strconv.Quote(locator.CastTypeName(t.Name))
 		}
-		if field.Extras == nil {
-			field.Extras = make(map[string]string)
-		}
-		field.Extras["(gogoproto.casttype)"] = strconv.Quote(locator.CastTypeName(t.Name))
 	case types.Slice:
 		if t.Elem.Name.Name == "byte" && len(t.Elem.Name.Package) == 0 {
 			field.Type = &types.Type{Name: types.Name{Name: "bytes"}, Kind: types.Protobuf}
@@ -530,6 +580,8 @@ func protobufTagToField(tag string, field *protoField, m types.Member, t *types.
 			return fmt.Errorf("member %q of %q malformed 'protobuf' tag, tag %d should be key=value, got %q\n", m.Name, t.Name, i+4, extra)
 		}
 		switch parts[0] {
+		case "name":
+			protoExtra[parts[0]] = parts[1]
 		case "casttype", "castkey", "castvalue":
 			parts[0] = fmt.Sprintf("(gogoproto.%s)", parts[0])
 			protoExtra[parts[0]] = parts[1]
@@ -616,7 +668,7 @@ func membersToFields(locator ProtobufLocator, t *types.Type, localPackage types.
 		tag := field.Tag
 		if tag != -1 {
 			if existing, ok := byTag[tag]; ok {
-				return nil, fmt.Errorf("field %q and %q in %q both have tag %d", field.Name, existing.Name, tag)
+				return nil, fmt.Errorf("field %q and %q both have tag %d", field.Name, existing.Name, tag)
 			}
 			byTag[tag] = field
 		}
@@ -662,7 +714,7 @@ func assembleProtoFile(w io.Writer, f *generator.File) {
 	fmt.Fprint(w, "syntax = 'proto2';\n\n")
 
 	if len(f.PackageName) > 0 {
-		fmt.Fprintf(w, "package %v;\n\n", f.PackageName)
+		fmt.Fprintf(w, "package %s;\n\n", f.PackageName)
 	}
 
 	if len(f.Imports) > 0 {

@@ -2,16 +2,8 @@
 
 # This script tests the high level end-to-end functionality demonstrated
 # as part of the examples/sample-app
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
 STARTTIME=$(date +%s)
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/lib/log.sh"
-source "${OS_ROOT}/hack/lib/util/environment.sh"
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 echo "[INFO] Starting containerized end-to-end test"
 
@@ -35,8 +27,9 @@ function cleanup()
 	set +e
 	dump_container_logs
 
-	echo "[INFO] Dumping all resources to ${LOG_DIR}/export_all.json"
-	oc export all --all-namespaces --raw -o json --config=${ADMIN_KUBECONFIG} > ${LOG_DIR}/export_all.json
+	# pull information out of the server log so that we can get failure management in jenkins to highlight it and
+	# really have it smack people in their logs.  This is a severe correctness problem
+    grep -a5 "CACHE.*ALTERED" ${LOG_DIR}/container-origin.log
 
 	echo "[INFO] Dumping etcd contents to ${ARTIFACT_DIR}/etcd_dump.json"
 	set_curl_args 0 1
@@ -56,7 +49,6 @@ function cleanup()
 		set -u
 	fi
 
-	# TODO soltysh: restore the if back once #8399 is resolved
 	journalctl --unit docker.service --since -15minutes > "${LOG_DIR}/docker.log"
 
 	delete_empty_logs
@@ -80,7 +72,8 @@ out=$(
 )
 
 # Setup
-echo "[INFO] `openshift version`"
+echo "[INFO] openshift version: `openshift version`"
+echo "[INFO] oc version:        `oc version`"
 echo "[INFO] Using images:							${USE_IMAGES}"
 
 echo "[INFO] Starting OpenShift containerized server"

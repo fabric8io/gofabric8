@@ -26,7 +26,7 @@ func ValidateRoute(route *routeapi.Route) field.ErrorList {
 
 	//host is not required but if it is set ensure it meets DNS requirements
 	if len(route.Spec.Host) > 0 {
-		if !kvalidation.IsDNS1123Subdomain(route.Spec.Host) {
+		if len(kvalidation.IsDNS1123Subdomain(route.Spec.Host)) != 0 {
 			result = append(result, field.Invalid(specPath.Child("host"), route.Spec.Host, "host must conform to DNS 952 subdomain conventions"))
 		}
 	}
@@ -46,6 +46,25 @@ func ValidateRoute(route *routeapi.Route) field.ErrorList {
 	if route.Spec.To.Kind != "Service" {
 		result = append(result, field.Invalid(specPath.Child("to", "kind"), route.Spec.To.Kind, "must reference a Service"))
 	}
+	if route.Spec.To.Weight != nil && (*route.Spec.To.Weight < 0 || *route.Spec.To.Weight > 256) {
+		result = append(result, field.Invalid(specPath.Child("to", "weight"), route.Spec.To.Weight, "weight must be an integer between 0 and 256"))
+	}
+
+	backendPath := specPath.Child("alternateBackends")
+	if len(route.Spec.AlternateBackends) > 3 {
+		result = append(result, field.Required(backendPath, "cannot specify more than 3 additional backends"))
+	}
+	for i, svc := range route.Spec.AlternateBackends {
+		if len(svc.Name) == 0 {
+			result = append(result, field.Required(backendPath.Index(i).Child("name"), ""))
+		}
+		if svc.Kind != "Service" {
+			result = append(result, field.Invalid(backendPath.Index(i).Child("kind"), svc.Kind, "must reference a Service"))
+		}
+		if svc.Weight != nil && (*svc.Weight < 0 || *svc.Weight > 256) {
+			result = append(result, field.Invalid(backendPath.Index(i).Child("weight"), svc.Weight, "weight must be an integer between 0 and 256"))
+		}
+	}
 
 	if route.Spec.Port != nil {
 		switch target := route.Spec.Port.TargetPort; {
@@ -64,6 +83,7 @@ func ValidateRoute(route *routeapi.Route) field.ErrorList {
 
 func ValidateRouteUpdate(route *routeapi.Route, older *routeapi.Route) field.ErrorList {
 	allErrs := validation.ValidateObjectMetaUpdate(&route.ObjectMeta, &older.ObjectMeta, field.NewPath("metadata"))
+	allErrs = append(allErrs, validation.ValidateImmutableField(route.Spec.Host, older.Spec.Host, field.NewPath("spec", "host"))...)
 	allErrs = append(allErrs, ValidateRoute(route)...)
 	return allErrs
 }

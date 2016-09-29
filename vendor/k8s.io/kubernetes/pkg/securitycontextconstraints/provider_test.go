@@ -44,6 +44,7 @@ func TestCreatePodSecurityContextNonmutating(t *testing.T) {
 			ObjectMeta: api.ObjectMeta{
 				Name: "scc-sa",
 			},
+			SeccompProfiles:          []string{"foo"},
 			DefaultAddCapabilities:   []api.Capability{"foo"},
 			RequiredDropCapabilities: []api.Capability{"bar"},
 			RunAsUser: api.RunAsUserStrategyOptions{
@@ -73,16 +74,20 @@ func TestCreatePodSecurityContextNonmutating(t *testing.T) {
 
 	provider, err := NewSimpleProvider(scc)
 	if err != nil {
-		t.Fatal("unable to create provider %v", err)
+		t.Fatalf("unable to create provider %v", err)
 	}
-	sc, err := provider.CreatePodSecurityContext(pod)
+	sc, annotations, err := provider.CreatePodSecurityContext(pod)
 	if err != nil {
-		t.Fatal("unable to create psc %v", err)
+		t.Fatalf("unable to create psc %v", err)
 	}
 
 	// The generated security context should have filled in missing options, so they should differ
 	if reflect.DeepEqual(sc, &pod.Spec.SecurityContext) {
 		t.Error("expected created security context to be different than container's, but they were identical")
+	}
+
+	if reflect.DeepEqual(annotations, pod.Annotations) {
+		t.Error("expected created annotations to be different than container's, but they were identical")
 	}
 
 	// Creating the provider or the security context should not have mutated the scc or pod
@@ -141,11 +146,11 @@ func TestCreateContainerSecurityContextNonmutating(t *testing.T) {
 
 	provider, err := NewSimpleProvider(scc)
 	if err != nil {
-		t.Fatal("unable to create provider %v", err)
+		t.Fatalf("unable to create provider %v", err)
 	}
 	sc, err := provider.CreateContainerSecurityContext(pod, &pod.Spec.Containers[0])
 	if err != nil {
-		t.Fatal("unable to create container security context %v", err)
+		t.Fatalf("unable to create container security context %v", err)
 	}
 
 	// The generated security context should have filled in missing options, so they should differ
@@ -206,6 +211,15 @@ func TestValidatePodSecurityContextFailures(t *testing.T) {
 		Level: "bar",
 	}
 
+	failNoSeccompAllowed := defaultPod()
+	failNoSeccompAllowed.Annotations[api.SeccompPodAnnotationKey] = "bar"
+
+	failInvalidSeccompProfile := defaultPod()
+	failInvalidSeccompProfile.Annotations[api.SeccompPodAnnotationKey] = "bar"
+
+	failInvalidSeccompProfileSCC := defaultSCC()
+	failInvalidSeccompProfileSCC.SeccompProfiles = []string{"foo"}
+
 	errorCases := map[string]struct {
 		pod           *api.Pod
 		scc           *api.SecurityContextConstraints
@@ -256,11 +270,21 @@ func TestValidatePodSecurityContextFailures(t *testing.T) {
 			scc:           failSELinuxSCC,
 			expectedError: "does not match required level.  Found bar, wanted foo",
 		},
+		"failNoSeccomp": {
+			pod:           failNoSeccompAllowed,
+			scc:           defaultSCC(),
+			expectedError: "seccomp may not be set",
+		},
+		"failInvalidSeccompPod": {
+			pod:           failInvalidSeccompProfile,
+			scc:           failInvalidSeccompProfileSCC,
+			expectedError: "bar is not a valid seccomp profile",
+		},
 	}
 	for k, v := range errorCases {
 		provider, err := NewSimpleProvider(v.scc)
 		if err != nil {
-			t.Fatal("unable to create provider %v", err)
+			t.Fatalf("unable to create provider %v", err)
 		}
 		errs := provider.ValidatePodSecurityContext(v.pod, field.NewPath(""))
 		if len(errs) == 0 {
@@ -327,6 +351,16 @@ func TestValidateContainerSecurityContextFailures(t *testing.T) {
 	readOnlyRootFS := false
 	readOnlyRootFSPodFalse.Spec.Containers[0].SecurityContext.ReadOnlyRootFilesystem = &readOnlyRootFS
 
+	failNoSeccompAllowed := defaultPod()
+	failNoSeccompAllowed.Annotations[api.SeccompContainerAnnotationKeyPrefix+failNoSeccompAllowed.Spec.Containers[0].Name] = "bar"
+	failNoSeccompAllowedPSP := defaultSCC()
+	failNoSeccompAllowedPSP.SeccompProfiles = nil
+
+	failInvalidSeccompProfile := defaultPod()
+	failInvalidSeccompProfile.Annotations[api.SeccompContainerAnnotationKeyPrefix+failNoSeccompAllowed.Spec.Containers[0].Name] = "bar"
+	failInvalidSeccompProfileSCC := defaultSCC()
+	failInvalidSeccompProfileSCC.SeccompProfiles = []string{"foo"}
+
 	errorCases := map[string]struct {
 		pod           *api.Pod
 		scc           *api.SecurityContextConstraints
@@ -372,12 +406,22 @@ func TestValidateContainerSecurityContextFailures(t *testing.T) {
 			scc:           readOnlyRootFSSCC,
 			expectedError: "ReadOnlyRootFilesystem must be set to true",
 		},
+		"failNoSeccompAllowed": {
+			pod:           failNoSeccompAllowed,
+			scc:           failNoSeccompAllowedPSP,
+			expectedError: "seccomp may not be set",
+		},
+		"failInvalidSeccompPod": {
+			pod:           failInvalidSeccompProfile,
+			scc:           failInvalidSeccompProfileSCC,
+			expectedError: "bar is not a valid seccomp profile",
+		},
 	}
 
 	for k, v := range errorCases {
 		provider, err := NewSimpleProvider(v.scc)
 		if err != nil {
-			t.Fatal("unable to create provider %v", err)
+			t.Fatalf("unable to create provider %v", err)
 		}
 		errs := provider.ValidateContainerSecurityContext(v.pod, &v.pod.Spec.Containers[0], field.NewPath(""))
 		if len(errs) == 0 {
@@ -443,6 +487,22 @@ func TestValidatePodSecurityContextSuccess(t *testing.T) {
 		Level: "level",
 	}
 
+	seccompNilWithNoProfiles := defaultPod()
+	seccompNilWithNoProfilesSCC := defaultSCC()
+	seccompNilWithNoProfilesSCC.SeccompProfiles = nil
+
+	seccompEmpty := defaultPod()
+	seccompEmpty.Annotations[api.SeccompPodAnnotationKey] = ""
+
+	seccompAllowAnySCC := defaultSCC()
+	seccompAllowAnySCC.SeccompProfiles = []string{"*"}
+
+	seccompAllowFooSCC := defaultSCC()
+	seccompAllowFooSCC.SeccompProfiles = []string{"foo"}
+
+	seccompFooPod := defaultPod()
+	seccompFooPod.Annotations[api.SeccompPodAnnotationKey] = "foo"
+
 	errorCases := map[string]struct {
 		pod *api.Pod
 		scc *api.SecurityContextConstraints
@@ -471,12 +531,28 @@ func TestValidatePodSecurityContextSuccess(t *testing.T) {
 			pod: seLinuxPod,
 			scc: seLinuxSCC,
 		},
+		"pass seccomp nil with no profiles": {
+			pod: seccompNilWithNoProfiles,
+			scc: seccompNilWithNoProfilesSCC,
+		},
+		"pass seccomp empty with no profiles": {
+			pod: seccompEmpty,
+			scc: seccompNilWithNoProfilesSCC,
+		},
+		"pass seccomp wild card": {
+			pod: seccompFooPod,
+			scc: seccompAllowAnySCC,
+		},
+		"pass seccomp specific profile": {
+			pod: seccompFooPod,
+			scc: seccompAllowFooSCC,
+		},
 	}
 
 	for k, v := range errorCases {
 		provider, err := NewSimpleProvider(v.scc)
 		if err != nil {
-			t.Fatal("unable to create provider %v", err)
+			t.Fatalf("unable to create provider %v", err)
 		}
 		errs := provider.ValidatePodSecurityContext(v.pod, field.NewPath(""))
 		if len(errs) != 0 {
@@ -490,6 +566,9 @@ func TestValidateContainerSecurityContextSuccess(t *testing.T) {
 	var notPriv bool = false
 	defaultPod := func() *api.Pod {
 		return &api.Pod{
+			ObjectMeta: api.ObjectMeta{
+				Annotations: map[string]string{},
+			},
 			Spec: api.PodSpec{
 				SecurityContext: &api.PodSecurityContext{},
 				Containers: []api.Container{
@@ -574,6 +653,22 @@ func TestValidateContainerSecurityContextSuccess(t *testing.T) {
 	readOnlyRootFSTrue := true
 	readOnlyRootFSPodTrue.Spec.Containers[0].SecurityContext.ReadOnlyRootFilesystem = &readOnlyRootFSTrue
 
+	seccompNilWithNoProfiles := defaultPod()
+	seccompNilWithNoProfilesSCC := defaultSCC()
+	seccompNilWithNoProfilesSCC.SeccompProfiles = nil
+
+	seccompEmptyWithNoProfiles := defaultPod()
+	seccompEmptyWithNoProfiles.Annotations[api.SeccompContainerAnnotationKeyPrefix + seccompEmptyWithNoProfiles.Spec.Containers[0].Name] = ""
+
+	seccompAllowAnySCC := defaultSCC()
+	seccompAllowAnySCC.SeccompProfiles = []string{"*"}
+
+	seccompAllowFooSCC := defaultSCC()
+	seccompAllowFooSCC.SeccompProfiles = []string{"foo"}
+
+	seccompFooPod := defaultPod()
+	seccompFooPod.Annotations[api.SeccompContainerAnnotationKeyPrefix + seccompFooPod.Spec.Containers[0].Name] = "foo"
+
 	errorCases := map[string]struct {
 		pod *api.Pod
 		scc *api.SecurityContextConstraints
@@ -618,12 +713,28 @@ func TestValidateContainerSecurityContextSuccess(t *testing.T) {
 			pod: readOnlyRootFSPodTrue,
 			scc: defaultSCC(),
 		},
+		"pass seccomp nil with no profiles": {
+			pod: seccompNilWithNoProfiles,
+			scc: seccompNilWithNoProfilesSCC,
+		},
+		"pass seccomp empty with no profiles": {
+			pod: seccompEmptyWithNoProfiles,
+			scc: seccompNilWithNoProfilesSCC,
+		},
+		"pass seccomp wild card": {
+			pod: seccompFooPod,
+			scc: seccompAllowAnySCC,
+		},
+		"pass seccomp specific profile": {
+			pod: seccompFooPod,
+			scc: seccompAllowFooSCC,
+		},
 	}
 
 	for k, v := range errorCases {
 		provider, err := NewSimpleProvider(v.scc)
 		if err != nil {
-			t.Fatal("unable to create provider %v", err)
+			t.Fatalf("unable to create provider %v", err)
 		}
 		errs := provider.ValidateContainerSecurityContext(v.pod, &v.pod.Spec.Containers[0], field.NewPath(""))
 		if len(errs) != 0 {
@@ -735,6 +846,7 @@ func defaultSCC() *api.SecurityContextConstraints {
 func defaultPod() *api.Pod {
 	var notPriv bool = false
 	return &api.Pod{
+		ObjectMeta: api.ObjectMeta{Annotations: map[string]string{}},
 		Spec: api.PodSpec{
 			SecurityContext: &api.PodSecurityContext{
 			// fill in for test cases

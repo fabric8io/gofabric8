@@ -7,13 +7,14 @@ import (
 	"strings"
 	"time"
 
-	s2iapi "github.com/openshift/source-to-image/pkg/api"
+	"github.com/docker/docker/pkg/parsers"
+	docker "github.com/fsouza/go-dockerclient"
 	"k8s.io/kubernetes/pkg/util/interrupt"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 
-	"github.com/docker/docker/pkg/parsers"
-	docker "github.com/fsouza/go-dockerclient"
 	"github.com/openshift/source-to-image/pkg/tar"
+
+	"github.com/openshift/imagebuilder/imageprogress"
 )
 
 var (
@@ -55,12 +56,18 @@ type DockerClient interface {
 // If any other scenario the push will fail, without retries.
 func pushImage(client DockerClient, name string, authConfig docker.AuthConfiguration) error {
 	repository, tag := docker.ParseRepositoryTag(name)
+	logProgress := func(s string) {
+		glog.V(0).Infof("%s", s)
+	}
 	opts := docker.PushImageOptions{
-		Name: repository,
-		Tag:  tag,
+		Name:          repository,
+		Tag:           tag,
+		OutputStream:  imageprogress.NewPushWriter(logProgress),
+		RawJSONStream: true,
 	}
 	if glog.Is(5) {
 		opts.OutputStream = os.Stderr
+		opts.RawJSONStream = false
 	}
 	var err error
 	var retriableError = false
@@ -93,8 +100,11 @@ func removeImage(client DockerClient, name string) error {
 }
 
 // buildImage invokes a docker build on a particular directory
-func buildImage(client DockerClient, dir string, dockerfilePath string, noCache bool, tag string, tar tar.Tar, pullAuth *docker.AuthConfigurations, forcePull bool, cgLimits *s2iapi.CGroupLimits) error {
+func buildImage(client DockerClient, dir string, tar tar.Tar, opts *docker.BuildImageOptions) error {
 	// TODO: be able to pass a stream directly to the Docker build to avoid the double temp hit
+	if opts == nil {
+		return fmt.Errorf("%s", "build image options nil")
+	}
 	r, w := io.Pipe()
 	go func() {
 		defer utilruntime.HandleCrash()
@@ -104,27 +114,9 @@ func buildImage(client DockerClient, dir string, dockerfilePath string, noCache 
 		}
 	}()
 	defer w.Close()
-	glog.V(5).Infof("Invoking Docker build to create %q", tag)
-	opts := docker.BuildImageOptions{
-		Name:           tag,
-		RmTmpContainer: true,
-		OutputStream:   os.Stdout,
-		InputStream:    r,
-		Dockerfile:     dockerfilePath,
-		NoCache:        noCache,
-		Pull:           forcePull,
-	}
-	if cgLimits != nil {
-		opts.Memory = cgLimits.MemoryLimitBytes
-		opts.Memswap = cgLimits.MemorySwap
-		opts.CPUShares = cgLimits.CPUShares
-		opts.CPUPeriod = cgLimits.CPUPeriod
-		opts.CPUQuota = cgLimits.CPUQuota
-	}
-	if pullAuth != nil {
-		opts.AuthConfigs = *pullAuth
-	}
-	return client.BuildImage(opts)
+	opts.InputStream = r
+	glog.V(5).Infof("Invoking Docker build to create %q", opts.Name)
+	return client.BuildImage(*opts)
 }
 
 // tagImage uses the dockerClient to tag a Docker image with name. It is a
@@ -158,7 +150,7 @@ func dockerRun(client DockerClient, createOpts docker.CreateContainerOptions, lo
 	removeContainer := func() {
 		glog.V(4).Infof("Removing container %q ...", containerName)
 		if err := client.RemoveContainer(docker.RemoveContainerOptions{ID: c.ID}); err != nil {
-			glog.Infof("warning: Failed to remove container %q: %v", containerName, err)
+			glog.V(0).Infof("warning: Failed to remove container %q: %v", containerName, err)
 		} else {
 			glog.V(4).Infof("Removed container %q", containerName)
 		}

@@ -1,14 +1,8 @@
 #!/bin/bash
 #
 # Runs the conformance extended tests for OpenShift
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 source "${OS_ROOT}/test/extended/setup.sh"
-cd "${OS_ROOT}"
 
 os::test::extended::setup
 os::test::extended::focus "$@"
@@ -24,6 +18,7 @@ pf=$(join '|' "${parallel_only[@]}")
 ps=$(join '|' "${parallel_exclude[@]}")
 sf=$(join '|' "${serial_only[@]}")
 ss=$(join '|' "${serial_exclude[@]}")
+
 
 echo "[INFO] Running the following tests:"
 TEST_REPORT_DIR= TEST_OUTPUT_QUIET=true ${EXTENDEDTEST} "--ginkgo.focus=${pf}" "--ginkgo.skip=${ps}" --ginkgo.dryRun --ginkgo.noColor | grep ok | grep -v skip | cut -c 20- | sort

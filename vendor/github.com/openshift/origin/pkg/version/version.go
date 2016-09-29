@@ -1,14 +1,10 @@
 package version
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
-	etcdversion "github.com/coreos/etcd/version"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/spf13/cobra"
-	kubeversion "k8s.io/kubernetes/pkg/version"
 )
 
 var (
@@ -22,6 +18,8 @@ var (
 	majorFromGit string
 	// minor version
 	minorFromGit string
+	// build date in ISO8601 format, output of $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+	buildDate string
 )
 
 // Info contains versioning information.
@@ -32,6 +30,7 @@ type Info struct {
 	Minor      string `json:"minor"`
 	GitCommit  string `json:"gitCommit"`
 	GitVersion string `json:"gitVersion"`
+	BuildDate  string `json:"buildDate"`
 }
 
 // Get returns the overall codebase version. It's for detecting
@@ -42,6 +41,7 @@ func Get() Info {
 		Minor:      minorFromGit,
 		GitCommit:  commitFromGit,
 		GitVersion: versionFromGit,
+		BuildDate:  buildDate,
 	}
 }
 
@@ -55,12 +55,12 @@ func (info Info) String() string {
 }
 
 var (
-	reCommitSegment   = regexp.MustCompile(`^g[0-9a-f]{6,10}$`)
+	reCommitSegment   = regexp.MustCompile(`\+[0-9a-f]{6,14}$`)
 	reCommitIncrement = regexp.MustCompile(`^[0-9a-f]+$`)
 )
 
 // LastSemanticVersion attempts to return a semantic version from the GitVersion - which
-// is either <semver>-<increment>-g<commit> or <semver> on release boundaries.
+// is either <semver>+<commit> or <semver> on release boundaries.
 func (info Info) LastSemanticVersion() string {
 	version := info.GitVersion
 	parts := strings.Split(version, "-")
@@ -69,8 +69,11 @@ func (info Info) LastSemanticVersion() string {
 		parts = parts[:len(parts)-1]
 	}
 	// strip the Git commit
-	if len(parts) > 1 && reCommitSegment.MatchString(parts[len(parts)-1]) {
-		parts = parts[:len(parts)-1]
+	if len(parts) > 0 && reCommitSegment.MatchString(parts[len(parts)-1]) {
+		parts[len(parts)-1] = reCommitSegment.ReplaceAllString(parts[len(parts)-1], "")
+		if len(parts[len(parts)-1]) == 0 {
+			parts = parts[:len(parts)-1]
+		}
 		// strip a version increment, but only if we found the commit
 		if len(parts) > 1 && reCommitIncrement.MatchString(parts[len(parts)-1]) {
 			parts = parts[:len(parts)-1]
@@ -78,21 +81,6 @@ func (info Info) LastSemanticVersion() string {
 	}
 
 	return strings.Join(parts, "-")
-}
-
-// NewVersionCommand creates a command for displaying the version of this binary
-func NewVersionCommand(basename string, printEtcdVersion bool) *cobra.Command {
-	return &cobra.Command{
-		Use:   "version",
-		Short: "Display version",
-		Run: func(c *cobra.Command, args []string) {
-			fmt.Printf("%s %v\n", basename, Get())
-			fmt.Printf("kubernetes %v\n", kubeversion.Get())
-			if printEtcdVersion {
-				fmt.Printf("etcd %v\n", etcdversion.Version)
-			}
-		},
-	}
 }
 
 func init() {

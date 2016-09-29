@@ -1,5 +1,28 @@
 # Changelog
 
+### 0.23.2 (2016-05-18)
+- Final release for Kubernetes 1.3
+- Handle kernel log rotation
+- More rkt support: poll rkt service for new containers
+- Better handling of partial failures when fetching subcontainers
+- Devicemapper thin_ls support (requires Device Mapper kernel module and supporting utilities)
+
+### 0.23.1 (2016-05-11)
+- Add multi-container charts to the UI
+- Add TLS options for Kafka storage driver
+- Switch to official Docker client
+- Systemd:
+  - Ignore .mount cgroups on systemd
+  - Better OOM monitoring
+- Bug: Fix broken -disable_metrics flag
+- Bug: Fix openstack identified as AWS
+- Bug: Fix EventStore when limit is 0
+
+### 0.23.0 (2016-04-21)
+- Docker v1.11 support
+- Preliminary rkt support
+- Bug: Fix file descriptor leak
+
 ### 0.22.0 (2016-02-25)
 - Disk usage calculation bug fixes
 - Systemd integration bug fixes
@@ -74,7 +97,7 @@
 - Enabled CPU load tracking (experimental).
 
 ## 0.11.0 (2015-03-27)
-- Export all stats as [Prometheus](http://prometheus.io/) metrics.
+- Export all stats as [Prometheus](https://prometheus.io/) metrics.
 - Initial support for [events](docs/api.md): creation, deletion, and OOM.
 - Adding machine UUID information.
 - Beta release of the cAdvisor [2.0 API](docs/api_v2.md).

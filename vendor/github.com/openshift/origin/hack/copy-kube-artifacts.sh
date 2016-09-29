@@ -1,19 +1,13 @@
 #!/usr/bin/env bash
 
-set -o errexit
-set -o nounset
-set -o pipefail
 # this will allow matching files also in subdirs with **/*.json pattern
 shopt -s globstar
 
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
-# Go to the top of the tree.
-cd "${OS_ROOT}"
-
+GODEP_ROOT="${OS_ROOT}/vendor"
 KUBE_ROOT=${1:-""}
-KUBE_GODEP_ROOT="${OS_ROOT}/Godeps/_workspace/src/k8s.io/kubernetes"
+KUBE_GODEP_ROOT="${GODEP_ROOT}/k8s.io/kubernetes"
 
 if [ -z "$KUBE_ROOT" ]; then
   echo "usage: copy-kube-artifacts.sh <kubernetes root dir>"
@@ -44,11 +38,27 @@ rsync -av \
 /docs/user-guide/simple-yaml.md
 /docs/user-guide/walkthrough/README.md
 /examples/***
+/federation/client/clientset_generated/**.go
 /pkg/***
 /plugin/***
 /test/e2e/***
 /test/fixtures/***
 /test/integration/***
 /third_party/golang/***
+/third_party/protobuf/***
 /README.md
+EOF
+
+# Copy extra vendored files that aren't direct dependencies of any package
+rsync -av \
+  --exclude='examples/blog-logging/diagrams/***' \
+  --exclude='pkg/ui/data/swagger/datafile.go' \
+  --include-from=- \
+  --include='*/' \
+  --exclude='*' \
+  --prune-empty-dirs \
+  $KUBE_ROOT/vendor/ $GODEP_ROOT <<EOF
+/github.com/onsi/ginkgo/ginkgo/**.go
+/github.com/golang/mock/gomock/**.go
+/github.com/google/cadvisor/info/v1/test/**.go
 EOF

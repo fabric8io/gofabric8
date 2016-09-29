@@ -31,7 +31,7 @@ import (
 	"k8s.io/kubernetes/pkg/registry/cachesize"
 	"k8s.io/kubernetes/pkg/registry/controller"
 	"k8s.io/kubernetes/pkg/registry/generic"
-	etcdgeneric "k8s.io/kubernetes/pkg/registry/generic/etcd"
+	"k8s.io/kubernetes/pkg/registry/generic/registry"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -54,7 +54,7 @@ func NewStorage(opts generic.RESTOptions) ControllerStorage {
 }
 
 type REST struct {
-	*etcdgeneric.Etcd
+	*registry.Store
 }
 
 // NewREST returns a RESTStorage object that will work against replication controllers.
@@ -65,7 +65,7 @@ func NewREST(opts generic.RESTOptions) (*REST, *StatusREST) {
 	storageInterface := opts.Decorator(
 		opts.Storage, cachesize.GetWatchCacheSizeByResource(cachesize.Controllers), &api.ReplicationController{}, prefix, controller.Strategy, newListFunc)
 
-	store := &etcdgeneric.Etcd{
+	store := &registry.Store{
 		NewFunc: func() runtime.Object { return &api.ReplicationController{} },
 
 		// NewListFunc returns an object capable of storing results of an etcd list.
@@ -73,12 +73,12 @@ func NewREST(opts generic.RESTOptions) (*REST, *StatusREST) {
 		// Produces a path that etcd understands, to the root of the resource
 		// by combining the namespace in the context with the given prefix
 		KeyRootFunc: func(ctx api.Context) string {
-			return etcdgeneric.NamespaceKeyRootFunc(ctx, prefix)
+			return registry.NamespaceKeyRootFunc(ctx, prefix)
 		},
 		// Produces a path that etcd understands, to the resource by combining
 		// the namespace in the context with the given prefix
 		KeyFunc: func(ctx api.Context, name string) (string, error) {
-			return etcdgeneric.NamespaceKeyFunc(ctx, prefix, name)
+			return registry.NamespaceKeyFunc(ctx, prefix, name)
 		},
 		// Retrieve the name field of a replication controller
 		ObjectNameFunc: func(obj runtime.Object) (string, error) {
@@ -109,16 +109,21 @@ func NewREST(opts generic.RESTOptions) (*REST, *StatusREST) {
 
 // StatusREST implements the REST endpoint for changing the status of a replication controller
 type StatusREST struct {
-	store *etcdgeneric.Etcd
+	store *registry.Store
 }
 
 func (r *StatusREST) New() runtime.Object {
 	return &api.ReplicationController{}
 }
 
+// Get retrieves the object from the storage. It is required to support Patch.
+func (r *StatusREST) Get(ctx api.Context, name string) (runtime.Object, error) {
+	return r.store.Get(ctx, name)
+}
+
 // Update alters the status subset of an object.
-func (r *StatusREST) Update(ctx api.Context, obj runtime.Object) (runtime.Object, bool, error) {
-	return r.store.Update(ctx, obj)
+func (r *StatusREST) Update(ctx api.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
+	return r.store.Update(ctx, name, objInfo)
 }
 
 type ScaleREST struct {
@@ -141,7 +146,18 @@ func (r *ScaleREST) Get(ctx api.Context, name string) (runtime.Object, error) {
 	return scaleFromRC(rc), nil
 }
 
-func (r *ScaleREST) Update(ctx api.Context, obj runtime.Object) (runtime.Object, bool, error) {
+func (r *ScaleREST) Update(ctx api.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
+	rc, err := r.registry.GetController(ctx, name)
+	if err != nil {
+		return nil, false, errors.NewNotFound(autoscaling.Resource("replicationcontrollers/scale"), name)
+	}
+
+	oldScale := scaleFromRC(rc)
+	obj, err := objInfo.UpdatedObject(ctx, oldScale)
+	if err != nil {
+		return nil, false, err
+	}
+
 	if obj == nil {
 		return nil, false, errors.NewBadRequest("nil update passed to Scale")
 	}
@@ -154,10 +170,6 @@ func (r *ScaleREST) Update(ctx api.Context, obj runtime.Object) (runtime.Object,
 		return nil, false, errors.NewInvalid(autoscaling.Kind("Scale"), scale.Name, errs)
 	}
 
-	rc, err := r.registry.GetController(ctx, scale.Name)
-	if err != nil {
-		return nil, false, errors.NewNotFound(autoscaling.Resource("replicationcontrollers/scale"), scale.Name)
-	}
 	rc.Spec.Replicas = scale.Spec.Replicas
 	rc.ResourceVersion = scale.ResourceVersion
 	rc, err = r.registry.UpdateController(ctx, rc)

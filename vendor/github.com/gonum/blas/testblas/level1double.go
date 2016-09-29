@@ -2,11 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package testblas provides tests for blas implementions.
+// Package testblas provides tests for blas implementations.
 package testblas
 
 import (
+	"fmt"
+	"log"
+
 	"github.com/gonum/blas"
+	"github.com/gonum/floats"
 
 	"math"
 	"testing"
@@ -52,6 +56,30 @@ var DoubleOneVectorCases = []DoubleOneVectorCase{
 			{
 				Alpha: -2,
 				Ans:   []float64{-12, -10, -8, -4, -12},
+			},
+		},
+	},
+	{
+		Name:   "LeadingZero",
+		X:      []float64{0, 1},
+		Incx:   1,
+		N:      2,
+		Panic:  false,
+		Dasum:  1,
+		Dnrm2:  1,
+		Idamax: 1,
+		DscalCases: []DScalCase{
+			{
+				Alpha: 0,
+				Ans:   []float64{0, 0},
+			},
+			{
+				Alpha: 1,
+				Ans:   []float64{0, 1},
+			},
+			{
+				Alpha: -2,
+				Ans:   []float64{0, -2},
 			},
 		},
 	},
@@ -355,6 +383,126 @@ var DoubleOneVectorCases = []DoubleOneVectorCase{
 			{
 				Alpha: 0,
 				Ans:   []float64{0, math.NaN(), 0},
+			},
+		},
+	},
+	{
+		Name:   "Empty",
+		X:      []float64{},
+		Incx:   1,
+		N:      0,
+		Panic:  false,
+		Dasum:  0,
+		Dnrm2:  0,
+		Idamax: -1,
+		DscalCases: []DScalCase{
+			{
+				Alpha: -2,
+				Ans:   []float64{},
+			},
+			{
+				Alpha: 0,
+				Ans:   []float64{},
+			},
+		},
+	},
+	{
+		Name:   "EmptyZeroInc",
+		X:      []float64{},
+		Incx:   0,
+		N:      0,
+		Panic:  true,
+		Dasum:  0,
+		Dnrm2:  0,
+		Idamax: -1,
+		DscalCases: []DScalCase{
+			{
+				Alpha: -2,
+				Ans:   []float64{},
+			},
+			{
+				Alpha: 0,
+				Ans:   []float64{},
+			},
+		},
+	},
+	{
+		Name:   "EmptyReverse",
+		X:      []float64{},
+		Incx:   -1,
+		N:      0,
+		Panic:  false,
+		Dasum:  0,
+		Dnrm2:  0,
+		Idamax: -1,
+		DscalCases: []DScalCase{
+			{
+				Alpha: -2,
+				Ans:   []float64{},
+			},
+			{
+				Alpha: 0,
+				Ans:   []float64{},
+			},
+		},
+	},
+	{
+		Name:   "MultiInf",
+		X:      []float64{5, math.Inf(1), math.Inf(-1), 8, 9},
+		Incx:   1,
+		N:      5,
+		Panic:  false,
+		Dasum:  math.Inf(1),
+		Dnrm2:  math.Inf(1),
+		Idamax: 1,
+		DscalCases: []DScalCase{
+			{
+				Alpha: -2,
+				Ans:   []float64{-10, math.Inf(-1), math.Inf(1), -16, -18},
+			},
+			{
+				Alpha: 0,
+				Ans:   []float64{0, 0, 0, 0, 0},
+			},
+		},
+	},
+	{
+		Name:   "NaNInf",
+		X:      []float64{5, math.NaN(), math.Inf(-1), 8, 9},
+		Incx:   1,
+		N:      5,
+		Panic:  false,
+		Dasum:  math.NaN(),
+		Dnrm2:  math.NaN(),
+		Idamax: 2,
+		DscalCases: []DScalCase{
+			{
+				Alpha: -2,
+				Ans:   []float64{-10, math.NaN(), math.Inf(1), -16, -18},
+			},
+			{
+				Alpha: 0,
+				Ans:   []float64{0, 0, 0, 0, 0},
+			},
+		},
+	},
+	{
+		Name:   "InfNaN",
+		X:      []float64{5, math.Inf(1), math.NaN(), 8, 9},
+		Incx:   1,
+		N:      5,
+		Panic:  false,
+		Dasum:  math.NaN(),
+		Dnrm2:  math.NaN(),
+		Idamax: 1,
+		DscalCases: []DScalCase{
+			{
+				Alpha: -2,
+				Ans:   []float64{-10, math.Inf(-1), math.NaN(), -16, -18},
+			},
+			{
+				Alpha: 0,
+				Ans:   []float64{0, 0, 0, 0, 0},
 			},
 		},
 	},
@@ -1066,6 +1214,138 @@ var DoubleTwoVectorCases = []DoubleTwoVectorCase{
 			},
 		},
 	},
+	{
+		Name:  "Empty",
+		X:     []float64{},
+		Y:     []float64{},
+		Incx:  1,
+		Incy:  1,
+		N:     0,
+		Panic: false,
+		DaxpyCases: []DaxpyCase{
+			{
+				Alpha: 2,
+				Ans:   []float64{},
+			},
+		},
+		DrotCases: []DrotCase{
+			{
+				C:    math.Cos(25 * math.Pi / 180),
+				S:    math.Sin(25 * math.Pi / 180),
+				XAns: []float64{},
+				YAns: []float64{},
+			},
+		},
+		DrotmCases: []DrotmCase{
+			{
+				P: blas.DrotmParams{
+					Flag: blas.Rescaling,
+					H:    [4]float64{0.9, 0.1, -0.1, 0.5},
+				},
+				XAns: []float64{},
+				YAns: []float64{},
+			},
+		},
+	},
+	{
+		Name:  "EmptyZeroIncX",
+		X:     []float64{},
+		Y:     []float64{},
+		Incx:  0,
+		Incy:  1,
+		N:     0,
+		Panic: true,
+		DaxpyCases: []DaxpyCase{
+			{
+				Alpha: 2,
+				Ans:   []float64{},
+			},
+		},
+		DrotCases: []DrotCase{
+			{
+				C:    math.Cos(25 * math.Pi / 180),
+				S:    math.Sin(25 * math.Pi / 180),
+				XAns: []float64{},
+				YAns: []float64{},
+			},
+		},
+		DrotmCases: []DrotmCase{
+			{
+				P: blas.DrotmParams{
+					Flag: blas.Rescaling,
+					H:    [4]float64{0.9, 0.1, -0.1, 0.5},
+				},
+				XAns: []float64{},
+				YAns: []float64{},
+			},
+		},
+	},
+	{
+		Name:  "EmptyZeroIncY",
+		X:     []float64{},
+		Y:     []float64{},
+		Incx:  1,
+		Incy:  0,
+		N:     0,
+		Panic: true,
+		DaxpyCases: []DaxpyCase{
+			{
+				Alpha: 2,
+				Ans:   []float64{},
+			},
+		},
+		DrotCases: []DrotCase{
+			{
+				C:    math.Cos(25 * math.Pi / 180),
+				S:    math.Sin(25 * math.Pi / 180),
+				XAns: []float64{},
+				YAns: []float64{},
+			},
+		},
+		DrotmCases: []DrotmCase{
+			{
+				P: blas.DrotmParams{
+					Flag: blas.Rescaling,
+					H:    [4]float64{0.9, 0.1, -0.1, 0.5},
+				},
+				XAns: []float64{},
+				YAns: []float64{},
+			},
+		},
+	},
+	{
+		Name:  "EmptyReverse",
+		X:     []float64{},
+		Y:     []float64{},
+		Incx:  -1,
+		Incy:  -1,
+		N:     0,
+		Panic: false,
+		DaxpyCases: []DaxpyCase{
+			{
+				Alpha: 2,
+				Ans:   []float64{},
+			},
+		},
+		DrotCases: []DrotCase{
+			{
+				C:    math.Cos(25 * math.Pi / 180),
+				S:    math.Sin(25 * math.Pi / 180),
+				XAns: []float64{},
+				YAns: []float64{},
+			},
+		},
+		DrotmCases: []DrotmCase{
+			{
+				P: blas.DrotmParams{
+					Flag: blas.Rescaling,
+					H:    [4]float64{0.9, 0.1, -0.1, 0.5},
+				},
+				XAns: []float64{},
+				YAns: []float64{},
+			},
+		},
+	},
 }
 
 type Ddotter interface {
@@ -1152,7 +1432,12 @@ func IdamaxTest(t *testing.T, blasser Idamaxer) {
 		}
 		v := idamax(c.N, c.X, c.Incx)
 		if v != c.Idamax {
-			t.Errorf("idamax: mismatch %v: expected %v, found %v", c.Name, c.Idamax, v)
+			s := fmt.Sprintf("idamax: mismatch %v: expected %v, found %v", c.Name, c.Idamax, v)
+			if floats.HasNaN(c.X) {
+				log.Println(s)
+			} else {
+				t.Errorf(s)
+			}
 		}
 	}
 }

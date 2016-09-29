@@ -18,7 +18,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -43,6 +42,8 @@ const (
 	vmDriver              = "vm-driver"
 	kubernetesVersion     = "kubernetes-version"
 	hostOnlyCIDR          = "host-only-cidr"
+	containerRuntime      = "container-runtime"
+	networkPlugin         = "network-plugin"
 )
 
 var (
@@ -88,31 +89,33 @@ func runStart(cmd *cobra.Command, args []string) {
 	err := util.Retry(3, start)
 	if err != nil {
 		glog.Errorln("Error starting host: ", err)
-		os.Exit(1)
+		util.MaybeReportErrorAndExit(err)
 	}
 
 	ip, err := host.Driver.GetIP()
 	if err != nil {
 		glog.Errorln("Error starting host: ", err)
-		os.Exit(1)
+		util.MaybeReportErrorAndExit(err)
 	}
 	kubernetesConfig := cluster.KubernetesConfig{
 		KubernetesVersion: viper.GetString(kubernetesVersion),
 		NodeIP:            ip,
+		ContainerRuntime:  viper.GetString(containerRuntime),
+		NetworkPlugin:     viper.GetString(networkPlugin),
 	}
 	if err := cluster.UpdateCluster(host, host.Driver, kubernetesConfig); err != nil {
 		glog.Errorln("Error updating cluster: ", err)
-		os.Exit(1)
+		util.MaybeReportErrorAndExit(err)
 	}
 
 	if err := cluster.SetupCerts(host.Driver); err != nil {
 		glog.Errorln("Error configuring authentication: ", err)
-		os.Exit(1)
+		util.MaybeReportErrorAndExit(err)
 	}
 
 	if err := cluster.StartCluster(host, kubernetesConfig); err != nil {
 		glog.Errorln("Error starting cluster: ", err)
-		os.Exit(1)
+		util.MaybeReportErrorAndExit(err)
 	}
 
 	kubeHost, err := host.Driver.GetURL()
@@ -129,7 +132,7 @@ func runStart(cmd *cobra.Command, args []string) {
 	clientKey := constants.MakeMiniPath("apiserver.key")
 	if err := setupKubeconfig(name, kubeHost, certAuth, clientCert, clientKey); err != nil {
 		glog.Errorln("Error setting up kubeconfig: ", err)
-		os.Exit(1)
+		util.MaybeReportErrorAndExit(err)
 	}
 	fmt.Println("Kubectl is now configured to use the cluster.")
 }
@@ -195,6 +198,8 @@ func init() {
 	startCmd.Flags().StringSliceVar(&insecureRegistry, "insecure-registry", nil, "Insecure Docker registries to pass to the Docker daemon")
 	startCmd.Flags().StringSliceVar(&registryMirror, "registry-mirror", nil, "Registry mirrors to pass to the Docker daemon")
 	startCmd.Flags().String(kubernetesVersion, constants.DefaultKubernetesVersion, "The kubernetes version that the minikube VM will (ex: v1.2.3) \n OR a URI which contains a localkube binary (ex: https://storage.googleapis.com/minikube/k8sReleases/v1.3.0/localkube-linux-amd64)")
+	startCmd.Flags().String(containerRuntime, "", "The container runtime to be used")
+	startCmd.Flags().String(networkPlugin, "", "The name of the network plugin")
 	viper.BindPFlags(startCmd.Flags())
 	RootCmd.AddCommand(startCmd)
 }

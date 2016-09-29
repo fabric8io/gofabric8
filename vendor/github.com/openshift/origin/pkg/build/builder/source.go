@@ -21,10 +21,15 @@ import (
 )
 
 const (
-	// urlCheckTimeout is the timeout used to check the source URL
-	// If fetching the URL exceeds the timeout, then the build will
-	// not proceed further and stop
-	urlCheckTimeout = 16 * time.Second
+	// initialURLCheckTimeout is the initial timeout used to check the
+	// source URL.  If fetching the URL exceeds the timeout, then a longer
+	// timeout will be tried until the fetch either succeeds or the build
+	// itself times out.
+	initialURLCheckTimeout = 16 * time.Second
+
+	// timeoutIncrementFactor is the factor to use when increasing
+	// the timeout after each unsuccessful try
+	timeoutIncrementFactor = 4
 )
 
 type gitAuthError string
@@ -60,7 +65,7 @@ func fetchSource(dockerClient DockerClient, dir string, build *api.Build, urlTim
 		sourceInfo, errs = gitClient.GetInfo(dir)
 		if len(errs) > 0 {
 			for _, e := range errs {
-				glog.Infof("error: Unable to retrieve Git info: %v", e)
+				glog.V(0).Infof("error: Unable to retrieve Git info: %v", e)
 			}
 		}
 	}
@@ -104,8 +109,7 @@ func fetchSource(dockerClient DockerClient, dir string, build *api.Build, urlTim
 // remote repository failed to authenticate.
 // Since this is calling the 'git' binary, the proxy settings should be
 // available for this command.
-func checkRemoteGit(gitClient GitClient, url string, timeout time.Duration) error {
-	glog.V(4).Infof("git ls-remote --heads %s", url)
+func checkRemoteGit(gitClient GitClient, url string, initialTimeout time.Duration) error {
 
 	var (
 		out    string
@@ -113,39 +117,45 @@ func checkRemoteGit(gitClient GitClient, url string, timeout time.Duration) erro
 		err    error
 	)
 
-	finish := make(chan struct{}, 1)
-	go func() {
-		out, errOut, err = gitClient.ListRemote(url, "--heads")
-		close(finish)
-	}()
-	select {
-	case <-finish:
-	case <-time.After(timeout):
-		return fmt.Errorf("timeout while waiting for remote repository %q", url)
+	timeout := initialTimeout
+	for {
+		glog.V(4).Infof("git ls-remote --heads %s", url)
+		out, errOut, err = gitClient.TimedListRemote(timeout, url, "--heads")
+		if len(out) != 0 {
+			glog.V(4).Infof(out)
+		}
+		if len(errOut) != 0 {
+			glog.V(4).Infof(errOut)
+		}
+		if err != nil {
+			if _, ok := err.(*git.TimeoutError); ok {
+				timeout = timeout * timeoutIncrementFactor
+				glog.Infof("WARNING: timed out waiting for git server, will wait %s", timeout)
+				continue
+			}
+		}
+		break
 	}
-
-	if len(out) != 0 {
-		glog.V(4).Infof(out)
+	if err != nil {
+		combinedOut := out + errOut
+		switch {
+		case strings.Contains(combinedOut, "Authentication failed"):
+			return gitAuthError(url)
+		case strings.Contains(combinedOut, "not found"):
+			return gitNotFoundError(url)
+		}
 	}
-	if len(errOut) != 0 {
-		glog.V(4).Infof(errOut)
-	}
-
-	combinedOut := out + errOut
-	switch {
-	case strings.Contains(combinedOut, "Authentication failed"):
-		return gitAuthError(url)
-	case strings.Contains(combinedOut, "not found"):
-		return gitNotFoundError(url)
-	}
-
 	return err
 }
 
 // checkSourceURI performs a check on the URI associated with the build
 // to make sure that it is valid.
 func checkSourceURI(gitClient GitClient, rawurl string, timeout time.Duration) error {
-	if !s2igit.New().ValidCloneSpec(rawurl) {
+	ok, err := s2igit.New().ValidCloneSpec(rawurl)
+	if err != nil {
+		return fmt.Errorf("Invalid git source url %q: %v", rawurl, err)
+	}
+	if !ok {
 		return fmt.Errorf("Invalid git source url: %s", rawurl)
 	}
 	return checkRemoteGit(gitClient, rawurl, timeout)
@@ -160,7 +170,7 @@ func extractInputBinary(in io.Reader, source *api.BinaryBuildSource, dir string)
 
 	var path string
 	if len(source.AsFile) > 0 {
-		glog.V(2).Infof("Receiving source from STDIN as file %s", source.AsFile)
+		glog.V(0).Infof("Receiving source from STDIN as file %s", source.AsFile)
 		path = filepath.Join(dir, source.AsFile)
 
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0664)
@@ -176,13 +186,15 @@ func extractInputBinary(in io.Reader, source *api.BinaryBuildSource, dir string)
 		return nil
 	}
 
-	glog.Infof("Receiving source from STDIN as archive ...")
+	glog.V(0).Infof("Receiving source from STDIN as archive ...")
 
-	cmd := exec.Command("bsdtar", "-x", "-o", "-m", "-f", "-", "-C", dir)
+	// use bsdtar to process the incoming archive and convert it to a tar stream (since bsdtar autodetects and handles various archive formats)
+	// use gnu tar to extract that tar stream to work around the bsdtar (libarchive) bug https://github.com/libarchive/libarchive/issues/746
+	cmd := exec.Command("sh", "-o", "pipefail", "-c", `bsdtar -cf - @- | tar xf - -m -C "$0"`, dir)
 	cmd.Stdin = in
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		glog.V(2).Infof("Extracting...\n%s", string(out))
+		glog.V(0).Infof("Extracting...\n%s", string(out))
 		return fmt.Errorf("unable to extract binary build input, must be a zip, tar, or gzipped tar, or specified as a file: %v", err)
 	}
 	return nil
@@ -193,7 +205,7 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 		return false, nil
 	}
 
-	glog.Infof("Downloading %q ...", gitSource.URI)
+	glog.V(0).Infof("Cloning %q ...", gitSource.URI)
 
 	// Check source URI, trying to connect to the server only if not using a proxy.
 	if err := checkSourceURI(gitClient, gitSource.URI, timeout); err != nil {
@@ -202,9 +214,6 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 
 	// check if we specify a commit, ref, or branch to check out
 	usingRef := len(gitSource.Ref) != 0 || (revision != nil && revision.Git != nil && len(revision.Git.Commit) != 0)
-
-	// Recursive clone if we're not going to checkout a ref and submodule update later
-	glog.V(2).Infof("Cloning source from %s", gitSource.URI)
 
 	// Only use the quiet flag if Verbosity is not 5 or greater
 	quiet := !glog.Is(5)
@@ -227,6 +236,14 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 		// Recursively update --init
 		if err := gitClient.SubmoduleUpdate(dir, true, true); err != nil {
 			return true, err
+		}
+	}
+
+	if glog.Is(0) {
+		if information, gitErr := gitClient.GetInfo(dir); len(gitErr) == 0 {
+			glog.Infof("\tCommit:\t%s (%s)\n", information.CommitID, information.Message)
+			glog.Infof("\tAuthor:\t%s <%s>\n", information.AuthorName, information.AuthorEmail)
+			glog.Infof("\tDate:\t%s\n", information.Date)
 		}
 	}
 
@@ -261,6 +278,7 @@ func copyImageSource(dockerClient DockerClient, containerID, sourceDir, destDir 
 		Path:         sourceDir,
 	})
 	if err != nil {
+		tempFile.Close()
 		return err
 	}
 	if err := tempFile.Close(); err != nil {
@@ -315,7 +333,7 @@ func extractSourceFromImage(dockerClient DockerClient, image, buildDir string, i
 	}
 
 	if !exists || forcePull {
-		glog.Infof("Pulling image %q ...", image)
+		glog.V(0).Infof("Pulling image %q ...", image)
 		if err := dockerClient.PullImage(docker.PullImageOptions{Repository: image}, dockerAuth); err != nil {
 			return fmt.Errorf("error pulling image %v: %v", image, err)
 		}

@@ -30,6 +30,8 @@ import (
 	"text/template"
 	"time"
 
+	pb "gopkg.in/cheggaaa/pb.v1"
+
 	"github.com/docker/machine/drivers/virtualbox"
 	"github.com/docker/machine/libmachine"
 	"github.com/docker/machine/libmachine/drivers"
@@ -59,7 +61,7 @@ const (
 
 //This init function is used to set the logtostderr variable to false so that INFO level log info does not clutter the CLI
 //INFO lvl logging is displayed due to the kubernetes api calling flag.Set("logtostderr", "true") in its init()
-//see: https://github.com/kubernetes/kubernetes/blob/master/pkg/util/logs.go#L32-34
+//see: https://github.com/kubernetes/kubernetes/blob/master/pkg/util/logs/logs.go#L32-L34
 func init() {
 	flag.Set("logtostderr", "false")
 }
@@ -174,7 +176,8 @@ func StartCluster(h sshAble, ip string, config MachineConfig) error {
 	if config.DeployRegistry {
 		commands = append(commands, `
 cd /var/lib/minishift;
-sudo /usr/local/bin/openshift admin registry --service-account=registry --config=openshift.local.config/master/admin.kubeconfig
+sudo /usr/local/bin/openshift admin registry --service-account=registry --config=openshift.local.config/master/admin.kubeconfig;
+sudo /usr/local/bin/openshift cli patch service docker-registry -p '{"spec": {"type": "NodePort"}}' --config=openshift.local.config/master/admin.kubeconfig
 `)
 	}
 	if config.DeployRouter {
@@ -252,16 +255,29 @@ func createVirtualboxHost(config MachineConfig) drivers.Driver {
 }
 
 func (m *MachineConfig) CacheMinikubeISOFromURL() error {
+	fmt.Println("Downloading ISO")
+
 	// store the miniube-iso inside the .minikube dir
 	response, err := http.Get(m.MinikubeISO)
 	if err != nil {
 		return err
 	}
-
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("Received %d response from %s while trying to download minikube.iso", response.StatusCode, m.MinikubeISO)
+	}
+
+	iso := response.Body
+
+	if response.ContentLength > 0 {
+		bar := pb.New64(response.ContentLength).SetUnits(pb.U_BYTES)
+		bar.Start()
+		iso = bar.NewProxyReader(iso)
+		defer func() {
+			<-time.After(bar.RefreshRate)
+			fmt.Println()
+		}()
 	}
 
 	out, err := os.Create(m.GetISOCacheFilepath())
@@ -269,7 +285,7 @@ func (m *MachineConfig) CacheMinikubeISOFromURL() error {
 		return err
 	}
 	defer out.Close()
-	if _, err = io.Copy(out, response.Body); err != nil {
+	if _, err = io.Copy(out, iso); err != nil {
 		return err
 	}
 	return nil

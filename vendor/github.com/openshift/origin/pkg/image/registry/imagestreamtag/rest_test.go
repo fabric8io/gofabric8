@@ -20,16 +20,18 @@ import (
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	"github.com/openshift/origin/pkg/authorization/registry/subjectaccessreview"
+	"github.com/openshift/origin/pkg/image/admission/testutil"
 	"github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/image/registry/image"
 	imageetcd "github.com/openshift/origin/pkg/image/registry/image/etcd"
 	"github.com/openshift/origin/pkg/image/registry/imagestream"
 	imagestreametcd "github.com/openshift/origin/pkg/image/registry/imagestream/etcd"
+	"github.com/openshift/origin/pkg/util/restoptions"
 
 	_ "github.com/openshift/origin/pkg/api/install"
 )
 
-var testDefaultRegistry = imagestream.DefaultRegistryFunc(func() (string, bool) { return "defaultregistry:5000", true })
+var testDefaultRegistry = api.DefaultRegistryFunc(func() (string, bool) { return "defaultregistry:5000", true })
 
 type fakeSubjectAccessReviewRegistry struct {
 }
@@ -66,8 +68,14 @@ func setup(t *testing.T) (etcd.KeysAPI, *etcdtesting.EtcdTestServer, *REST) {
 	etcdStorage, server := registrytest.NewEtcdStorage(t, "")
 	etcdClient := etcd.NewKeysAPI(server.Client)
 
-	imageStorage := imageetcd.NewREST(etcdStorage)
-	imageStreamStorage, imageStreamStatus, internalStorage := imagestreametcd.NewREST(etcdStorage, testDefaultRegistry, &fakeSubjectAccessReviewRegistry{})
+	imageStorage, err := imageetcd.NewREST(restoptions.NewSimpleGetter(etcdStorage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageStreamStorage, imageStreamStatus, internalStorage, err := imagestreametcd.NewREST(restoptions.NewSimpleGetter(etcdStorage), testDefaultRegistry, &fakeSubjectAccessReviewRegistry{}, &testutil.FakeImageStreamLimitVerifier{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	imageRegistry := image.NewRegistry(imageStorage)
 	imageStreamRegistry := imagestream.NewRegistry(imageStreamStorage, imageStreamStatus, internalStorage)
@@ -79,59 +87,6 @@ func setup(t *testing.T) (etcd.KeysAPI, *etcdtesting.EtcdTestServer, *REST) {
 
 type statusError interface {
 	Status() unversioned.Status
-}
-
-func TestNameAndTag(t *testing.T) {
-	tests := map[string]struct {
-		id           string
-		expectedName string
-		expectedTag  string
-		expectError  bool
-	}{
-		"empty id": {
-			id:          "",
-			expectError: true,
-		},
-		"missing semicolon": {
-			id:          "hello",
-			expectError: true,
-		},
-		"too many semicolons": {
-			id:          "a:b:c",
-			expectError: true,
-		},
-		"empty name": {
-			id:          ":tag",
-			expectError: true,
-		},
-		"empty tag": {
-			id:          "name",
-			expectError: true,
-		},
-		"happy path": {
-			id:           "name:tag",
-			expectError:  false,
-			expectedName: "name",
-			expectedTag:  "tag",
-		},
-	}
-
-	for description, testCase := range tests {
-		name, tag, err := nameAndTag(testCase.id)
-		gotError := err != nil
-		if e, a := testCase.expectError, gotError; e != a {
-			t.Fatalf("%s: expected err: %t, got: %t: %s", description, e, a, err)
-		}
-		if err != nil {
-			continue
-		}
-		if e, a := testCase.expectedName, name; e != a {
-			t.Errorf("%s: name: expected %q, got %q", description, e, a)
-		}
-		if e, a := testCase.expectedTag, tag; e != a {
-			t.Errorf("%s: tag: expected %q, got %q", description, e, a)
-		}
-	}
 }
 
 func TestGetImageStreamTag(t *testing.T) {
@@ -217,55 +172,57 @@ func TestGetImageStreamTag(t *testing.T) {
 	}
 
 	for name, testCase := range tests {
-		client, server, storage := setup(t)
-		defer server.Terminate(t)
+		func() {
+			client, server, storage := setup(t)
+			defer server.Terminate(t)
 
-		if testCase.image != nil {
-			client.Create(
-				context.TODO(),
-				etcdtest.AddPrefix("/images/"+testCase.image.Name),
-				runtime.EncodeOrDie(kapi.Codecs.LegacyCodec(v1.SchemeGroupVersion), testCase.image),
-			)
-		}
-		if testCase.repo != nil {
-			client.Create(
-				context.TODO(),
-				etcdtest.AddPrefix("/imagestreams/default/test"),
-				runtime.EncodeOrDie(kapi.Codecs.LegacyCodec(v1.SchemeGroupVersion), testCase.repo),
-			)
-		}
+			if testCase.image != nil {
+				client.Create(
+					context.TODO(),
+					etcdtest.AddPrefix("/images/"+testCase.image.Name),
+					runtime.EncodeOrDie(kapi.Codecs.LegacyCodec(v1.SchemeGroupVersion), testCase.image),
+				)
+			}
+			if testCase.repo != nil {
+				client.Create(
+					context.TODO(),
+					etcdtest.AddPrefix("/imagestreams/default/test"),
+					runtime.EncodeOrDie(kapi.Codecs.LegacyCodec(v1.SchemeGroupVersion), testCase.repo),
+				)
+			}
 
-		obj, err := storage.Get(kapi.NewDefaultContext(), "test:latest")
-		gotErr := err != nil
-		if e, a := testCase.expectError, gotErr; e != a {
-			t.Errorf("%s: Expected err=%v: got %v: %v", name, e, a, err)
-			continue
-		}
-		if testCase.expectError {
-			if !errors.IsNotFound(err) {
-				t.Errorf("%s: unexpected error type: %v", name, err)
-				continue
+			obj, err := storage.Get(kapi.NewDefaultContext(), "test:latest")
+			gotErr := err != nil
+			if e, a := testCase.expectError, gotErr; e != a {
+				t.Errorf("%s: Expected err=%v: got %v: %v", name, e, a, err)
+				return
 			}
-			status := err.(statusError).Status()
-			if status.Details.Kind != testCase.errorTargetKind || status.Details.Name != testCase.errorTargetID {
-				t.Errorf("%s: unexpected status: %#v", name, status.Details)
-				continue
+			if testCase.expectError {
+				if !errors.IsNotFound(err) {
+					t.Errorf("%s: unexpected error type: %v", name, err)
+					return
+				}
+				status := err.(statusError).Status()
+				if status.Details.Kind != testCase.errorTargetKind || status.Details.Name != testCase.errorTargetID {
+					t.Errorf("%s: unexpected status: %#v", name, status.Details)
+					return
+				}
+			} else {
+				actual := obj.(*api.ImageStreamTag)
+				if e, a := "default", actual.Namespace; e != a {
+					t.Errorf("%s: namespace: expected %v, got %v", name, e, a)
+				}
+				if e, a := "test:latest", actual.Name; e != a {
+					t.Errorf("%s: name: expected %v, got %v", name, e, a)
+				}
+				if e, a := map[string]string{"size": "large", "color": "blue"}, actual.Image.Annotations; !reflect.DeepEqual(e, a) {
+					t.Errorf("%s: annotations: expected %v, got %v", name, e, a)
+				}
+				if e, a := unversioned.Date(2015, 3, 24, 9, 38, 0, 0, time.UTC), actual.CreationTimestamp; !a.Equal(e) {
+					t.Errorf("%s: timestamp: expected %v, got %v", name, e, a)
+				}
 			}
-		} else {
-			actual := obj.(*api.ImageStreamTag)
-			if e, a := "default", actual.Namespace; e != a {
-				t.Errorf("%s: namespace: expected %v, got %v", name, e, a)
-			}
-			if e, a := "test:latest", actual.Name; e != a {
-				t.Errorf("%s: name: expected %v, got %v", name, e, a)
-			}
-			if e, a := map[string]string{"size": "large", "color": "blue"}, actual.Image.Annotations; !reflect.DeepEqual(e, a) {
-				t.Errorf("%s: annotations: expected %v, got %v", name, e, a)
-			}
-			if e, a := unversioned.Date(2015, 3, 24, 9, 38, 0, 0, time.UTC), actual.CreationTimestamp; !a.Equal(e) {
-				t.Errorf("%s: timestamp: expected %v, got %v", name, e, a)
-			}
-		}
+		}()
 	}
 }
 
@@ -419,89 +376,90 @@ func TestDeleteImageStreamTag(t *testing.T) {
 	}
 
 	for name, testCase := range tests {
-		client, server, storage := setup(t)
-		defer server.Terminate(t)
+		func() {
+			client, server, storage := setup(t)
+			defer server.Terminate(t)
 
-		if testCase.repo != nil {
-			client.Create(
-				context.TODO(),
-				etcdtest.AddPrefix("/imagestreams/default/test"),
-				runtime.EncodeOrDie(kapi.Codecs.LegacyCodec(v1.SchemeGroupVersion), testCase.repo),
-			)
-		}
+			if testCase.repo != nil {
+				client.Create(
+					context.TODO(),
+					etcdtest.AddPrefix("/imagestreams/default/test"),
+					runtime.EncodeOrDie(kapi.Codecs.LegacyCodec(v1.SchemeGroupVersion), testCase.repo),
+				)
+			}
 
-		ctx := kapi.WithUser(kapi.NewDefaultContext(), &fakeUser{})
-		obj, err := storage.Delete(ctx, "test:latest")
-		gotError := err != nil
-		if e, a := testCase.expectError, gotError; e != a {
-			t.Fatalf("%s: expectError=%t, gotError=%t: %s", name, e, a, err)
-		}
-		if testCase.expectError {
-			continue
-		}
+			ctx := kapi.WithUser(kapi.NewDefaultContext(), &fakeUser{})
+			obj, err := storage.Delete(ctx, "test:latest")
+			gotError := err != nil
+			if e, a := testCase.expectError, gotError; e != a {
+				t.Fatalf("%s: expectError=%t, gotError=%t: %s", name, e, a, err)
+			}
+			if testCase.expectError {
+				return
+			}
 
-		if obj == nil {
-			t.Fatalf("%s: unexpected nil response", name)
-		}
-		expectedStatus := &unversioned.Status{Status: unversioned.StatusSuccess}
-		if e, a := expectedStatus, obj; !reflect.DeepEqual(e, a) {
-			t.Errorf("%s:\nexpect=%#v\nactual=%#v", name, e, a)
-		}
+			if obj == nil {
+				t.Fatalf("%s: unexpected nil response", name)
+			}
+			expectedStatus := &unversioned.Status{Status: unversioned.StatusSuccess}
+			if e, a := expectedStatus, obj; !reflect.DeepEqual(e, a) {
+				t.Errorf("%s:\nexpect=%#v\nactual=%#v", name, e, a)
+			}
 
-		updatedRepo, err := storage.imageStreamRegistry.GetImageStream(kapi.NewDefaultContext(), "test")
-		if err != nil {
-			t.Fatalf("%s: error retrieving updated repo: %s", name, err)
-		}
-		three := int64(3)
-		expectedStreamSpec := map[string]api.TagReference{
-			"another": {
-				Name: "another",
-				From: &kapi.ObjectReference{
-					Kind: "ImageStreamTag",
-					Name: "test:foo",
+			updatedRepo, err := storage.imageStreamRegistry.GetImageStream(kapi.NewDefaultContext(), "test")
+			if err != nil {
+				t.Fatalf("%s: error retrieving updated repo: %s", name, err)
+			}
+			three := int64(3)
+			expectedStreamSpec := map[string]api.TagReference{
+				"another": {
+					Name: "another",
+					From: &kapi.ObjectReference{
+						Kind: "ImageStreamTag",
+						Name: "test:foo",
+					},
+					Generation: &three,
 				},
-				Generation: &three,
-			},
-		}
-		expectedStreamStatus := map[string]api.TagEventList{
-			"another": {
-				Items: []api.TagEvent{
-					{
-						DockerImageReference: "registry.default.local/default/test@sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
-						Image:                "sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
-						Generation:           2,
+			}
+			expectedStreamStatus := map[string]api.TagEventList{
+				"another": {
+					Items: []api.TagEvent{
+						{
+							DockerImageReference: "registry.default.local/default/test@sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
+							Image:                "sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
+							Generation:           2,
+						},
 					},
 				},
-			},
-			"foo": {
-				Items: []api.TagEvent{
-					{
-						DockerImageReference: "registry.default.local/default/test@sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
-						Image:                "sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
-						Generation:           2,
+				"foo": {
+					Items: []api.TagEvent{
+						{
+							DockerImageReference: "registry.default.local/default/test@sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
+							Image:                "sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
+							Generation:           2,
+						},
 					},
 				},
-			},
-			"bar": {
-				Items: []api.TagEvent{
-					{
-						DockerImageReference: "registry.default.local/default/test@sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
-						Image:                "sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
-						Generation:           2,
+				"bar": {
+					Items: []api.TagEvent{
+						{
+							DockerImageReference: "registry.default.local/default/test@sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
+							Image:                "sha256:381151ac5b7f775e8371e489f3479b84a4c004c90ceddb2ad80b6877215a892f",
+							Generation:           2,
+						},
 					},
 				},
-			},
-		}
+			}
 
-		if updatedRepo.Generation != 3 {
-			t.Errorf("%s: unexpected generation: %d", name, updatedRepo.Generation)
-		}
-		if e, a := expectedStreamStatus, updatedRepo.Status.Tags; !reflect.DeepEqual(e, a) {
-			t.Errorf("%s: stream spec:\nexpect=%#v\nactual=%#v", name, e, a)
-		}
-		if e, a := expectedStreamSpec, updatedRepo.Spec.Tags; !reflect.DeepEqual(e, a) {
-			t.Errorf("%s: stream spec:\nexpect=%#v\nactual=%#v", name, e, a)
-		}
-
+			if updatedRepo.Generation != 3 {
+				t.Errorf("%s: unexpected generation: %d", name, updatedRepo.Generation)
+			}
+			if e, a := expectedStreamStatus, updatedRepo.Status.Tags; !reflect.DeepEqual(e, a) {
+				t.Errorf("%s: stream spec:\nexpect=%#v\nactual=%#v", name, e, a)
+			}
+			if e, a := expectedStreamSpec, updatedRepo.Spec.Tags; !reflect.DeepEqual(e, a) {
+				t.Errorf("%s: stream spec:\nexpect=%#v\nactual=%#v", name, e, a)
+			}
+		}()
 	}
 }

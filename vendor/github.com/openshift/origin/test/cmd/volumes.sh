@@ -1,14 +1,5 @@
 #!/bin/bash
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/cmd_util.sh"
-source "${OS_ROOT}/hack/lib/test/junit.sh"
-os::log::install_errexit
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 trap os::test::junit::reconcile_output EXIT
 
 # Cleanup cluster resources created by this test
@@ -22,7 +13,7 @@ trap os::test::junit::reconcile_output EXIT
 os::test::junit::declare_suite_start "cmd/volumes"
 # This test validates the 'volume' command
 
-os::cmd::expect_success 'oc create -f test/integration/fixtures/test-deployment-config.yaml'
+os::cmd::expect_success 'oc create -f test/integration/testdata/test-deployment-config.yaml'
 
 os::cmd::expect_success_and_text 'oc volume dc/test-deployment-config --list' 'vol1'
 os::cmd::expect_success 'oc volume dc/test-deployment-config --add --name=vol0 -m /opt5'

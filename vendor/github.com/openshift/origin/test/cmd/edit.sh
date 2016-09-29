@@ -1,14 +1,5 @@
 #!/bin/bash
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/cmd_util.sh"
-source "${OS_ROOT}/hack/lib/test/junit.sh"
-os::log::install_errexit
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 trap os::test::junit::reconcile_output EXIT
 
 # Cleanup cluster resources created by this test

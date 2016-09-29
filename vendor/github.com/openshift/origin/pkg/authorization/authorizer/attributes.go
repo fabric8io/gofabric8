@@ -21,9 +21,9 @@ type DefaultAuthorizationAttributes struct {
 	URL               string
 }
 
-// ToDefaultAuthorizationAttributes coerces AuthorizationAttributes to DefaultAuthorizationAttributes.  Namespace is not included
+// ToDefaultAuthorizationAttributes coerces Action to DefaultAuthorizationAttributes.  Namespace is not included
 // because the authorizer takes that information on the context
-func ToDefaultAuthorizationAttributes(in authorizationapi.AuthorizationAttributes) DefaultAuthorizationAttributes {
+func ToDefaultAuthorizationAttributes(in authorizationapi.Action) DefaultAuthorizationAttributes {
 	return DefaultAuthorizationAttributes{
 		Verb:         in.Verb,
 		APIGroup:     in.Group,
@@ -70,11 +70,6 @@ func (a DefaultAuthorizationAttributes) RuleMatches(rule authorizationapi.Policy
 }
 
 func (a DefaultAuthorizationAttributes) apiGroupMatches(allowedGroups []string) bool {
-	// if no APIGroups are specified, then the default APIGroup of "" is assumed.
-	if len(allowedGroups) == 0 && len(a.GetAPIGroup()) == 0 {
-		return true
-	}
-
 	// allowedGroups is expected to be small, so I don't feel bad about this.
 	for _, allowedGroup := range allowedGroups {
 		if allowedGroup == authorizationapi.APIGroupAll {
@@ -141,8 +136,8 @@ func splitPath(thePath string) []string {
 	return strings.Split(thePath, "/")
 }
 
-// DefaultAuthorizationAttributes satisfies the AuthorizationAttributes interface
-var _ AuthorizationAttributes = DefaultAuthorizationAttributes{}
+// DefaultAuthorizationAttributes satisfies the Action interface
+var _ Action = DefaultAuthorizationAttributes{}
 
 func (a DefaultAuthorizationAttributes) GetAPIVersion() string {
 	return a.APIVersion

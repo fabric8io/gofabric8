@@ -21,6 +21,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+echo "Note: This assumes that swagger spec has been updated. Please run hack/update-swagger-spec.sh to ensure that."
+
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
 source "${KUBE_ROOT}/hack/lib/init.sh"
 kube::golang::setup_env
@@ -54,24 +56,23 @@ user_flags="-u $(id -u)"
 if [[ $(uname) == "Darwin" ]]; then
   # mapping in a uid from OS X doesn't make any sense
   user_flags=""
-fi 
+fi
 
 for ver in $VERSIONS; do
   TMP_IN_HOST="${OUTPUT_TMP_IN_HOST}/${ver}"
-  REGISTER_FILE_URL="https://raw.githubusercontent.com/kubernetes/kubernetes/master/pkg"
   if [[ ${ver} == "v1" ]]; then
-    REGISTER_FILE_URL="${REGISTER_FILE_URL}/api/${ver}/register.go"
+    REGISTER_FILE="${REPO_DIR}/pkg/api/${ver}/register.go"
   else
-    REGISTER_FILE_URL="${REGISTER_FILE_URL}/apis/${ver}/register.go"
+    REGISTER_FILE="${REPO_DIR}/pkg/apis/${ver}/register.go"
   fi
   SWAGGER_JSON_NAME="$(kube::util::gv-to-swagger-name "${ver}")"
 
   docker run ${user_flags} \
     --rm -v "${TMP_IN_HOST}":/output:z \
     -v "${SWAGGER_PATH}":/swagger-source:z \
-    gcr.io/google_containers/gen-swagger-docs:v5 \
-    "${SWAGGER_JSON_NAME}" \
-    "${REGISTER_FILE_URL}"
+    -v "${REGISTER_FILE}":/register.go:z \
+    gcr.io/google_containers/gen-swagger-docs:v6 \
+    "${SWAGGER_JSON_NAME}"
 done
 
 # Check if we actually changed anything
@@ -92,8 +93,8 @@ while read file; do
     generated=$(echo "${generated}" | grep -v "Last updated" || :)
 
     # By now, the contents should be normalized and stripped of any
-    # auto-managed content.  
-    if diff -Bw >/dev/null <(echo "${original}") <(echo "${generated}"); then
+    # auto-managed content.
+    if diff -B >/dev/null <(echo "${original}") <(echo "${generated}"); then
       # actual contents same, overwrite generated with original.
       cp "${OUTPUT}/${file}" "${OUTPUT_TMP}/${file}"
     fi

@@ -3,7 +3,6 @@
 title = "HTTP API V2"
 description = "Specification for the Registry API."
 keywords = ["registry, on-prem, images, tags, repository, distribution, api, advanced"]
-aliases = ["/registry/spec/"]
 [menu.main]
 parent="smn_registry_ref"
 +++
@@ -21,11 +20,12 @@ of this API, known as _Docker Registry HTTP API V2_.
 
 While the V1 registry protocol is usable, there are several problems with the
 architecture that have led to this new version. The main driver of this
-specification these changes to the docker the image format, covered in
-[docker/docker#8093](https://github.com/docker/docker/issues/8093). The new, self-contained image manifest simplifies image
-definition and improves security. This specification will build on that work,
-leveraging new properties of the manifest format to improve performance,
-reduce bandwidth usage and decrease the likelihood of backend corruption.
+specification is a set of changes to the docker the image format, covered in
+[docker/docker#8093](https://github.com/docker/docker/issues/8093).
+The new, self-contained image manifest simplifies image definition and improves
+security. This specification will build on that work, leveraging new properties
+of the manifest format to improve performance, reduce bandwidth usage and
+decrease the likelihood of backend corruption.
 
 For relevant details and history leading up to this specification, please see
 the following issues:
@@ -79,7 +79,7 @@ A docker engine instance would like to run verified image named
 requesting the manifest for "library/ubuntu:latest". An untrusted registry
 returns a manifest. Before proceeding to download the individual layers, the
 engine verifies the manifest's signature, ensuring that the content was
-produced from a trusted source and no tampering has occured. After each layer
+produced from a trusted source and no tampering has occurred. After each layer
 is downloaded, the engine verifies the digest of the layer, ensuring that the
 content matches that specified by the manifest.
 
@@ -126,6 +126,48 @@ reference and shouldn't be used outside the specification other than to
 identify a set of modifications.
 
 <dl>
+  <dt>l</dt>
+  <dd>
+    <ul>
+      <li>Document TOOMANYREQUESTS error code.</li>
+    </ul>
+  </dd>
+
+  <dt>k</dt>
+  <dd>
+    <ul>
+      <li>Document use of Accept and Content-Type headers in manifests endpoint.</li>
+    </ul>
+  </dd>
+
+  <dt>j</dt>
+  <dd>
+    <ul>
+      <li>Add ability to mount blobs across repositories.</li>
+    </ul>
+  </dd>
+
+  <dt>i</dt>
+  <dd>
+    <ul>
+      <li>Clarified expected behavior response to manifest HEAD request.</li>
+    </ul>
+  </dd>
+
+  <dt>h</dt>
+  <dd>
+    <ul>
+      <li>All mention of tarsum removed.</li>
+    </ul>
+  </dd>
+
+  <dt>g</dt>
+  <dd>
+    <ul>
+      <li>Clarify behavior of pagination behavior with unspecified parameters.</li>
+    </ul>
+  </dd>
+
   <dt>f</dt>
   <dd>
     <ul>
@@ -246,7 +288,8 @@ error codes as `UNKNOWN`, allowing future error codes to be added without
 breaking API compatibility. For the purposes of the specification error codes
 will only be added and never removed.
 
-For a complete account of all error codes, please see the _Detail_ section.
+For a complete account of all error codes, please see the [_Errors_](#errors-2)
+section.
 
 ### API Version Check
 
@@ -302,11 +345,6 @@ Some examples of _digests_ include the following:
 digest                                                                            | description                                   |
 ----------------------------------------------------------------------------------|------------------------------------------------
 sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b           | Common sha256 based digest                    |
-tarsum.v1+sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b | Tarsum digest, used for legacy layer digests. |
-
-> __NOTE:__ While we show an example of using a `tarsum` digest, the security
-> of tarsum has not been verified. It is recommended that most implementations
-> use sha256 for interoperability.
 
 While the _algorithm_ does allow one to implement a wide variety of
 algorithms, compliant implementations should use sha256. Heavy processing of
@@ -330,9 +368,9 @@ comparing it with identifier `ID(C)`.
 
 #### Digest Header
 
-To provide verification of http content, any response may include a `Docker-
-Content-Digest` header. This will include the digest of the target entity
-returned in the response. For blobs, this is the entire blob content. For
+To provide verification of http content, any response may include a
+`Docker-Content-Digest` header. This will include the digest of the target
+entity returned in the response. For blobs, this is the entire blob content. For
 manifests, this is the manifest body without the signature content, also known
 as the JWS payload. Note that the commonly used canonicalization for digest
 calculation may be dependent on the mediatype of the content, such as with
@@ -349,8 +387,8 @@ server's digest. To maintain security, the client _must_ always verify the
 content against the _digest_ used to fetch the content.
 
 > __IMPORTANT:__ If a _digest_ is used to fetch content, the client should use
-> the same digest used to fetch the content to verify it. The header `Docker-
-> Content-Digest` should not be trusted over the "local" digest.
+> the same digest used to fetch the content to verify it. The header
+> `Docker-Content-Digest` should not be trusted over the "local" digest.
 
 ### Pulling An Image
 
@@ -364,7 +402,7 @@ the relevant manifest fields for the registry are the following:
 ----------|------------------------------------------------|
 name      | The name of the image.                         |
 tag       | The tag for this version of the image.         |
-fsLayers  | A list of layer descriptors (including tarsum) |
+fsLayers  | A list of layer descriptors (including digest) |
 signature | A JWS used to verify the manifest content      |
 
 For more information about the manifest format, please see
@@ -372,8 +410,8 @@ For more information about the manifest format, please see
 
 When the manifest is in hand, the client must verify the signature to ensure
 the names and layers are valid. Once confirmed, the client will then use the
-tarsums to download the individual layers. Layers are stored in as blobs in
-the V2 registry API, keyed by their tarsum digest.
+digests to download the individual layers. Layers are stored in as blobs in
+the V2 registry API, keyed by their digest.
 
 #### Pulling an Image Manifest
 
@@ -386,17 +424,23 @@ GET /v2/<name>/manifests/<reference>
 The `name` and `reference` parameter identify the image and are required. The
 reference may include a tag or digest.
 
+The client should include an Accept header indicating which manifest content
+types it supports. For more details on the manifest formats and their content
+types, see [manifest-v2-1.md](manifest-v2-1.md) and
+[manifest-v2-2.md](manifest-v2-2.md). In a successful response, the Content-Type
+header will indicate which manifest type is being returned.
+
 A `404 Not Found` response will be returned if the image is unknown to the
 registry. If the image exists and the response is successful, the image
-manifest will be returned, with the following format (see docker/docker#8093
-for details):
+manifest will be returned, with the following format (see
+[docker/docker#8093](https://github.com/docker/docker/issues/8093) for details):
 
     {
        "name": <name>,
        "tag": <tag>,
        "fsLayers": [
           {
-             "blobSum": <tarsum>
+             "blobSum": <digest>
           },
           ...
         ]
@@ -408,17 +452,38 @@ for details):
 The client should verify the returned manifest signature for authenticity
 before fetching layers.
 
+##### Existing Manifests
+
+The image manifest can be checked for existence with the following url:
+
+```
+HEAD /v2/<name>/manifests/<reference>
+```
+
+The `name` and `reference` parameter identify the image and are required. The
+reference may include a tag or digest.
+
+A `404 Not Found` response will be returned if the image is unknown to the
+registry. If the image exists and the response is successful the response will
+be as follows:
+
+```
+200 OK
+Content-Length: <length of manifest>
+Docker-Content-Digest: <digest>
+```
+
+
 #### Pulling a Layer
 
-Layers are stored in the blob portion of the registry, keyed by tarsum digest.
+Layers are stored in the blob portion of the registry, keyed by digest.
 Pulling a layer is carried out by a standard http request. The URL is as
 follows:
 
-    GET /v2/<name>/blobs/<tarsum>
+    GET /v2/<name>/blobs/<digest>
 
 Access to a layer will be gated by the `name` of the repository but is
-identified uniquely in the registry by `tarsum`. The `tarsum` parameter is an
-opaque field, to be interpreted by the tarsum library.
+identified uniquely in the registry by `digest`.
 
 This endpoint may issue a 307 (302 for <HTTP 1.1) redirect to another service
 for downloading the layer and clients should be prepared to handle redirects.
@@ -469,7 +534,7 @@ API. The request should be formatted as follows:
 HEAD /v2/<name>/blobs/<digest>
 ```
 
-If the layer with the tarsum specified in `digest` is available, a 200 OK
+If the layer with the digest specified in `digest` is available, a 200 OK
 response will be received, with no actual body content (this is according to
 http specification). The response will look as follows:
 
@@ -482,7 +547,7 @@ Docker-Content-Digest: <digest>
 When this response is received, the client can assume that the layer is
 already available in the registry under the given name and should take no
 further action to upload the layer. Note that the binary digests may differ
-for the existing registry layer, but the tarsums will be guaranteed to match.
+for the existing registry layer, but the digests will be guaranteed to match.
 
 ##### Uploading the Layer
 
@@ -502,7 +567,7 @@ called the "Upload URL" from the `Location` header. All responses to the
 upload url, whether sending data or getting status, will be in this format.
 Though the URI format (`/v2/<name>/blobs/uploads/<uuid>`) for the `Location`
 header is specified, clients should treat it as an opaque url and should never
-try to assemble the it. While the `uuid` parameter may be an actual UUID, this
+try to assemble it. While the `uuid` parameter may be an actual UUID, this
 proposal imposes no constraints on the format and clients should never impose
 any.
 
@@ -549,7 +614,7 @@ carry out a "monolithic" upload, one can simply put the entire content blob to
 the provided URL:
 
 ```
-PUT /v2/<name>/blobs/uploads/<uuid>?digest=<tarsum>[&digest=sha256:<hex digest>]
+PUT /v2/<name>/blobs/uploads/<uuid>?digest=<digest>
 Content-Length: <size of layer>
 Content-Type: application/octet-stream
 
@@ -557,29 +622,9 @@ Content-Type: application/octet-stream
 ```
 
 The "digest" parameter must be included with the PUT request. Please see the
-_Completed Upload_ section for details on the parameters and expected
-responses.
+[_Completed Upload_](#completed-upload) section for details on the parameters
+and expected responses.
 
-Additionally, the upload can be completed with a single `POST` request to
-the uploads endpoint, including the "size" and "digest" parameters:
-
-```
-POST /v2/<name>/blobs/uploads/?digest=<tarsum>[&digest=sha256:<hex digest>]
-Content-Length: <size of layer>
-Content-Type: application/octet-stream
-  
-<Layer Binary Data>
-```
-
-On the registry service, this should allocate a download, accept and verify
-the data and return the same  response as the final chunk of an upload. If the
-POST request fails collecting the data in any way, the registry should attempt
-to return an error response to the client with the `Location` header providing
-a place to continue the download.
-
-The single `POST` method is provided for convenience and most clients should
-implement `POST` + `PUT` to support reliable resume of uploads.
-  
 ##### Chunked Upload
 
 To carry out an upload of a chunk, the client can specify a range header and
@@ -635,7 +680,7 @@ the upload will not be considered complete. The format for the final chunk
 will be as follows:
 
 ```
-PUT /v2/<name>/blob/uploads/<uuid>?digest=<tarsum>[&digest=sha256:<hex digest>]
+PUT /v2/<name>/blob/uploads/<uuid>?digest=<digest>
 Content-Length: <size of chunk>
 Content-Range: <start of range>-<end of range>
 Content-Type: application/octet-stream
@@ -654,7 +699,7 @@ will receive a `201 Created` response:
 
 ```
 201 Created
-Location: /v2/<name>/blobs/<tarsum>
+Location: /v2/<name>/blobs/<digest>
 Content-Length: 0
 Docker-Content-Digest: <digest>
 ```
@@ -668,28 +713,15 @@ the uploaded blob data.
 ###### Digest Parameter
 
 The "digest" parameter is designed as an opaque parameter to support
-verification of a successful transfer. The initial version of the registry API
-will support a tarsum digest, in the standard tarsum format. For example, a
-HTTP URI parameter might be as follows:
-
-```
-tarsum.v1+sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b
-```
-
-Given this parameter, the registry will verify that the provided content does
-result in this tarsum. Optionally, the registry can support other other digest
-parameters for non-tarfile content stored as a layer. A regular hash digest
-might be specified as follows:
+verification of a successful transfer. For example, an HTTP URI parameter
+might be as follows:
 
 ```
 sha256:6c3c624b58dbbcd3c0dd82b4c53f04194d1247c6eebdaab7c610cf7d66709b3b
 ```
 
-Such a parameter would be used to verify that the binary content (as opposed
-to the tar content) would be verified at the end of the upload process.
-
-For the initial version, registry servers are only required to support the
-tarsum format.
+Given this parameter, the registry will verify that the provided content does
+match this digest.
 
 ##### Canceling an Upload
 
@@ -704,6 +736,53 @@ After this request is issued, the upload uuid will no longer be valid and the
 registry server will dump all intermediate data. While uploads will time out
 if not completed, clients should issue this request if they encounter a fatal
 error but still have the ability to issue an http request.
+
+##### Cross Repository Blob Mount
+
+A blob may be mounted from another repository that the client has read access
+to, removing the need to upload a blob already known to the registry. To issue
+a blob mount instead of an upload, a POST request should be issued in the
+following format:
+
+```
+POST /v2/<name>/blobs/uploads/?mount=<digest>&from=<repository name>
+Content-Length: 0
+```
+
+If the blob is successfully mounted, the client will receive a `201 Created`
+response:
+
+```
+201 Created
+Location: /v2/<name>/blobs/<digest>
+Content-Length: 0
+Docker-Content-Digest: <digest>
+```
+
+The `Location` header will contain the registry URL to access the accepted
+layer file. The `Docker-Content-Digest` header returns the canonical digest of
+the uploaded blob which may differ from the provided digest. Most clients may
+ignore the value but if it is used, the client should verify the value against
+the uploaded blob data.
+
+If a mount fails due to invalid repository or digest arguments, the registry
+will fall back to the standard upload behavior and return a `202 Accepted` with
+the upload URL in the `Location` header:
+
+```
+202 Accepted
+Location: /v2/<name>/blobs/uploads/<uuid>
+Range: bytes=0-<offset>
+Content-Length: 0
+Docker-Upload-UUID: <uuid>
+```
+
+This behavior is consistent with older versions of the registry, which do not
+recognize the repository mount query parameters.
+
+Note: a client may issue a HEAD request to check existence of a blob in a source
+repository to distinguish between the registry not supporting blob mounts and
+the blob not existing in the expected repository.
 
 ##### Errors
 
@@ -745,13 +824,14 @@ Once all of the layers for an image are uploaded, the client can upload the
 image manifest. An image can be pushed using the following request format:
 
     PUT /v2/<name>/manifests/<reference>
+    Content-Type: <manifest media type>
 
     {
        "name": <name>,
        "tag": <tag>,
        "fsLayers": [
           {
-             "blobSum": <tarsum>
+             "blobSum": <digest>
           },
           ...
         ]
@@ -761,24 +841,27 @@ image manifest. An image can be pushed using the following request format:
        ...
     }
 
-The `name` and `reference` fields of the response body must match those specified in
-the URL. The `reference` field may be a "tag" or a "digest".
+The `name` and `reference` fields of the response body must match those
+specified in the URL. The `reference` field may be a "tag" or a "digest". The
+content type should match the type of the manifest being uploaded, as specified
+in [manifest-v2-1.md](manifest-v2-1.md) and [manifest-v2-2.md](manifest-v2-2.md).
 
 If there is a problem with pushing the manifest, a relevant 4xx response will
-be returned with a JSON error message. Please see the _PUT Manifest section
-for details on possible error codes that may be returned.
+be returned with a JSON error message. Please see the
+[_PUT Manifest_](#put-manifest) section for details on possible error codes that
+may be returned.
 
 If one or more layers are unknown to the registry, `BLOB_UNKNOWN` errors are
 returned. The `detail` field of the error response will have a `digest` field
-identifying the missing blob, which will be a tarsum. An error is returned for
-each unknown blob. The response format is as follows:
+identifying the missing blob. An error is returned for each unknown blob. The
+response format is as follows:
 
     {
         "errors:" [{
                 "code": "BLOB_UNKNOWN",
                 "message": "blob unknown to registry",
                 "detail": {
-                    "digest": <tarsum>
+                    "digest": <digest>
                 }
             },
             ...
@@ -829,7 +912,8 @@ explicitly requested. In this case the `Link` header will be returned along
 with the results, and subsequent results can be obtained by following the link
 as if pagination had been initially requested.
 
-For details of the `Link` header, please see the _Pagination_ section.
+For details of the `Link` header, please see the [_Pagination_](#pagination)
+section.
 
 #### Pagination
 
@@ -866,7 +950,7 @@ results, the URL for the next block is encoded in an
 relation. The presence of the `Link` header communicates to the client that
 the entire result set has not been returned and another request must be
 issued. If the header is not present, the client can assume that all results
-have been recieved.
+have been received.
 
 > __NOTE:__ In the request template above, note that the brackets
 > are required. For example, if the url is
@@ -911,9 +995,9 @@ to _b_:
 Link: <<url>?n=2&last=b>; rel="next"
 ```
 
-The client can then issue the request with above value from the `Link` header,
-receiving the values _c_ and _d_. Note that n may change on second to last
-response or be omitted fully, if the server may so choose.
+The client can then issue the request with the above value from the `Link`
+header, receiving the values _c_ and _d_. Note that `n` may change on the second
+to last response or be fully omitted, depending on the server implementation.
 
 ### Listing Image Tags
 
@@ -999,6 +1083,14 @@ issued:
 If the image had already been deleted or did not exist, a `404 Not Found`
 response will be issued instead.
 
+> **Note**  When deleting a manifest from a registry version 2.3 or later, the
+> following header must be used when `HEAD` or `GET`-ing the manifest to obtain
+> the correct digest to delete:
+
+    Accept: application/vnd.docker.distribution.manifest.v2+json
+
+> for more details, see: [compatibility.md](../compatibility.md#content-addressable-storage-cas)
+
 ## Detail
 
 > **Note**: This section is still under construction. For the purposes of
@@ -1021,7 +1113,7 @@ A list of methods and URIs are covered in the table below:
 |------|----|------|-----------|
 | GET | `/v2/` | Base | Check that the endpoint implements Docker Registry API V2. |
 | GET | `/v2/<name>/tags/list` | Tags | Fetch the tags under the repository identified by `name`. |
-| GET | `/v2/<name>/manifests/<reference>` | Manifest | Fetch the manifest identified by `name` and `reference` where `reference` can be a tag or digest. |
+| GET | `/v2/<name>/manifests/<reference>` | Manifest | Fetch the manifest identified by `name` and `reference` where `reference` can be a tag or digest. A `HEAD` request can also be issued to this endpoint to obtain resource information without receiving all data. |
 | PUT | `/v2/<name>/manifests/<reference>` | Manifest | Put the manifest identified by `name` and `reference` where `reference` can be a tag or digest. |
 | DELETE | `/v2/<name>/manifests/<reference>` | Manifest | Delete the manifest identified by `name` and `reference`. Note that a manifest can _only_ be deleted by `digest`. |
 | GET | `/v2/<name>/blobs/<digest>` | Blob | Retrieve the blob from the registry identified by `digest`. A `HEAD` request can also be issued to this endpoint to obtain resource information without receiving all data. |
@@ -1148,6 +1240,43 @@ The error codes that may be included in the response body are enumerated below:
 |Code|Message|Description|
 |----|-------|-----------|
 | `UNAUTHORIZED` | authentication required | The access controller was unable to authenticate the client. Often this will be accompanied by a Www-Authenticate HTTP response header indicating how to authenticate. |
+
+
+
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
 
 
 
@@ -1326,6 +1455,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 ##### Tags Paginated
 
 ```
@@ -1488,6 +1654,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 
 
 ### Manifest
@@ -1498,7 +1701,7 @@ Create, update, delete and retrieve manifests.
 
 #### GET Manifest
 
-Fetch the manifest identified by `name` and `reference` where `reference` can be a tag or digest.
+Fetch the manifest identified by `name` and `reference` where `reference` can be a tag or digest. A `HEAD` request can also be issued to this endpoint to obtain resource information without receiving all data.
 
 
 
@@ -1528,7 +1731,7 @@ The following parameters should be specified on the request:
 ```
 200 OK
 Docker-Content-Digest: <digest>
-Content-Type: application/json; charset=utf-8
+Content-Type: <media type of manifest>
 
 {
    "name": <name>,
@@ -1700,6 +1903,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 
 #### PUT Manifest
 
@@ -1711,7 +1951,7 @@ Put the manifest identified by `name` and `reference` where `reference` can be a
 PUT /v2/<name>/manifests/<reference>
 Host: <registry host>
 Authorization: <scheme> <token>
-Content-Type: application/json; charset=utf-8
+Content-Type: <media type of manifest>
 
 {
    "name": <name>,
@@ -1909,6 +2149,43 @@ The error codes that may be included in the response body are enumerated below:
 |Code|Message|Description|
 |----|-------|-----------|
 | `DENIED` | requested access to the resource is denied | The access controller denied access for the operation on a resource. |
+
+
+
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
 
 
 
@@ -2141,6 +2418,43 @@ The error codes that may be included in the response body are enumerated below:
 |Code|Message|Description|
 |----|-------|-----------|
 | `DENIED` | requested access to the resource is denied | The access controller denied access for the operation on a resource. |
+
+
+
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
 
 
 
@@ -2444,6 +2758,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 ##### Fetch Blob Part
 
 ```
@@ -2674,6 +3025,43 @@ The error codes that may be included in the response body are enumerated below:
 |Code|Message|Description|
 |----|-------|-----------|
 | `DENIED` | requested access to the resource is denied | The access controller denied access for the operation on a resource. |
+
+
+
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
 
 
 
@@ -2918,6 +3306,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 
 
 ### Initiate Blob Upload
@@ -3131,6 +3556,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 ##### Initiate Resumable Blob Upload
 
 ```
@@ -3308,6 +3770,278 @@ The error codes that may be included in the response body are enumerated below:
 |Code|Message|Description|
 |----|-------|-----------|
 | `DENIED` | requested access to the resource is denied | The access controller denied access for the operation on a resource. |
+
+
+
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
+##### Mount Blob
+
+```
+POST /v2/<name>/blobs/uploads/?mount=<digest>&from=<repository name>
+Host: <registry host>
+Authorization: <scheme> <token>
+Content-Length: 0
+```
+
+Mount a blob identified by the `mount` parameter from another repository.
+
+
+The following parameters should be specified on the request:
+
+|Name|Kind|Description|
+|----|----|-----------|
+|`Host`|header|Standard HTTP Host Header. Should be set to the registry host.|
+|`Authorization`|header|An RFC7235 compliant authorization header.|
+|`Content-Length`|header|The `Content-Length` header must be zero and the body must be empty.|
+|`name`|path|Name of the target repository.|
+|`mount`|query|Digest of blob to mount from the source repository.|
+|`from`|query|Name of the source repository.|
+
+
+
+
+###### On Success: Created
+
+```
+201 Created
+Location: <blob location>
+Content-Length: 0
+Docker-Upload-UUID: <uuid>
+```
+
+The blob has been mounted in the repository and is available at the provided location.
+
+The following headers will be returned with the response:
+
+|Name|Description|
+|----|-----------|
+|`Location`||
+|`Content-Length`|The `Content-Length` header must be zero and the body must be empty.|
+|`Docker-Upload-UUID`|Identifies the docker upload uuid for the current request.|
+
+
+
+
+###### On Failure: Invalid Name or Digest
+
+```
+400 Bad Request
+```
+
+
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `DIGEST_INVALID` | provided digest did not match uploaded content | When a blob is uploaded, the registry will check that the content matches the digest provided by the client. The error may include a detail structure with the key "digest", including the invalid digest string. This error may also be returned when a manifest includes an invalid layer digest. |
+| `NAME_INVALID` | invalid repository name | Invalid repository name encountered either during manifest validation or any API operation. |
+
+
+
+###### On Failure: Not allowed
+
+```
+405 Method Not Allowed
+```
+
+Blob mount is not allowed because the registry is configured as a pull-through cache or for some other reason
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `UNSUPPORTED` | The operation is unsupported. | The operation was unsupported due to a missing implementation or invalid set of parameters. |
+
+
+
+###### On Failure: Authentication Required
+
+```
+401 Unauthorized
+WWW-Authenticate: <scheme> realm="<realm>", ..."
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client is not authenticated.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`WWW-Authenticate`|An RFC7235 compliant authentication challenge header.|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `UNAUTHORIZED` | authentication required | The access controller was unable to authenticate the client. Often this will be accompanied by a Www-Authenticate HTTP response header indicating how to authenticate. |
+
+
+
+###### On Failure: No Such Repository Error
+
+```
+404 Not Found
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The repository is not known to the registry.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `NAME_UNKNOWN` | repository name not known to registry | This is returned if the name used during an operation is unknown to the registry. |
+
+
+
+###### On Failure: Access Denied
+
+```
+403 Forbidden
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client does not have required access to the repository.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `DENIED` | requested access to the resource is denied | The access controller denied access for the operation on a resource. |
+
+
+
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
 
 
 
@@ -3543,6 +4277,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 
 #### PATCH Blob Upload
 
@@ -3771,6 +4542,43 @@ The error codes that may be included in the response body are enumerated below:
 |Code|Message|Description|
 |----|-------|-----------|
 | `DENIED` | requested access to the resource is denied | The access controller denied access for the operation on a resource. |
+
+
+
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
 
 
 
@@ -4013,6 +4821,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 
 #### PUT Blob Upload
 
@@ -4247,6 +5092,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 
 #### DELETE Blob Upload
 
@@ -4469,6 +5351,43 @@ The error codes that may be included in the response body are enumerated below:
 
 
 
+###### On Failure: Too Many Requests
+
+```
+429 Too Many Requests
+Content-Length: <length>
+Content-Type: application/json; charset=utf-8
+
+{
+	"errors:" [
+	    {
+            "code": <error code>,
+            "message": "<error message>",
+            "detail": ...
+        },
+        ...
+    ]
+}
+```
+
+The client made too many requests within a time interval.
+
+The following headers will be returned on the response:
+
+|Name|Description|
+|----|-----------|
+|`Content-Length`|Length of the JSON response body.|
+
+
+
+The error codes that may be included in the response body are enumerated below:
+
+|Code|Message|Description|
+|----|-------|-----------|
+| `TOOMANYREQUESTS` | too many requests | Returned when a client attempts to contact a service too many times |
+
+
+
 
 
 ### Catalog
@@ -4482,13 +5401,13 @@ List a set of available repositories in the local registry cluster. Does not pro
 Retrieve a sorted, json list of repositories available in the registry.
 
 
-##### Catalog Fetch Complete
+##### Catalog Fetch
 
 ```
 GET /v2/_catalog
 ```
 
-Request an unabridged list of repositories available.
+Request an unabridged list of repositories available.  The implementation may impose a maximum limit and return a partial set with pagination links.
 
 
 

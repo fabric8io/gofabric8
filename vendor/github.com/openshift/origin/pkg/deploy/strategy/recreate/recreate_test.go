@@ -11,7 +11,8 @@ import (
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	deploytest "github.com/openshift/origin/pkg/deploy/api/test"
-	scalertest "github.com/openshift/origin/pkg/deploy/scaler/test"
+	deployv1 "github.com/openshift/origin/pkg/deploy/api/v1"
+	cmdtest "github.com/openshift/origin/pkg/deploy/cmd/test"
 	"github.com/openshift/origin/pkg/deploy/strategy"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 
@@ -20,7 +21,7 @@ import (
 
 func TestRecreate_initialDeployment(t *testing.T) {
 	var deployment *kapi.ReplicationController
-	scaler := &scalertest.FakeScaler{}
+	scaler := &cmdtest.FakeScaler{}
 	strategy := &RecreateDeploymentStrategy{
 		out:          &bytes.Buffer{},
 		errOut:       &bytes.Buffer{},
@@ -54,7 +55,7 @@ func TestRecreate_deploymentPreHookSuccess(t *testing.T) {
 	config := deploytest.OkDeploymentConfig(1)
 	config.Spec.Strategy = recreateParams(30, deployapi.LifecycleHookFailurePolicyAbort, "", "")
 	deployment, _ := deployutil.MakeDeployment(config, kapi.Codecs.LegacyCodec(registered.GroupOrDie(kapi.GroupName).GroupVersions[0]))
-	scaler := &scalertest.FakeScaler{}
+	scaler := &cmdtest.FakeScaler{}
 
 	hookExecuted := false
 	strategy := &RecreateDeploymentStrategy{
@@ -89,7 +90,7 @@ func TestRecreate_deploymentPreHookFail(t *testing.T) {
 	config := deploytest.OkDeploymentConfig(1)
 	config.Spec.Strategy = recreateParams(30, deployapi.LifecycleHookFailurePolicyAbort, "", "")
 	deployment, _ := deployutil.MakeDeployment(config, kapi.Codecs.LegacyCodec(registered.GroupOrDie(kapi.GroupName).GroupVersions[0]))
-	scaler := &scalertest.FakeScaler{}
+	scaler := &cmdtest.FakeScaler{}
 
 	strategy := &RecreateDeploymentStrategy{
 		out:          &bytes.Buffer{},
@@ -121,8 +122,8 @@ func TestRecreate_deploymentPreHookFail(t *testing.T) {
 func TestRecreate_deploymentMidHookSuccess(t *testing.T) {
 	config := deploytest.OkDeploymentConfig(1)
 	config.Spec.Strategy = recreateParams(30, "", deployapi.LifecycleHookFailurePolicyAbort, "")
-	deployment, _ := deployutil.MakeDeployment(config, kapi.Codecs.LegacyCodec(deployapi.SchemeGroupVersion))
-	scaler := &scalertest.FakeScaler{}
+	deployment, _ := deployutil.MakeDeployment(config, kapi.Codecs.LegacyCodec(deployv1.SchemeGroupVersion))
+	scaler := &cmdtest.FakeScaler{}
 
 	hookExecuted := false
 	strategy := &RecreateDeploymentStrategy{
@@ -156,8 +157,8 @@ func TestRecreate_deploymentMidHookSuccess(t *testing.T) {
 func TestRecreate_deploymentMidHookFail(t *testing.T) {
 	config := deploytest.OkDeploymentConfig(1)
 	config.Spec.Strategy = recreateParams(30, "", deployapi.LifecycleHookFailurePolicyAbort, "")
-	deployment, _ := deployutil.MakeDeployment(config, kapi.Codecs.LegacyCodec(deployapi.SchemeGroupVersion))
-	scaler := &scalertest.FakeScaler{}
+	deployment, _ := deployutil.MakeDeployment(config, kapi.Codecs.LegacyCodec(deployv1.SchemeGroupVersion))
+	scaler := &cmdtest.FakeScaler{}
 
 	strategy := &RecreateDeploymentStrategy{
 		out:          &bytes.Buffer{},
@@ -189,7 +190,7 @@ func TestRecreate_deploymentPostHookSuccess(t *testing.T) {
 	config := deploytest.OkDeploymentConfig(1)
 	config.Spec.Strategy = recreateParams(30, "", "", deployapi.LifecycleHookFailurePolicyAbort)
 	deployment, _ := deployutil.MakeDeployment(config, kapi.Codecs.LegacyCodec(registered.GroupOrDie(kapi.GroupName).GroupVersions[0]))
-	scaler := &scalertest.FakeScaler{}
+	scaler := &cmdtest.FakeScaler{}
 
 	hookExecuted := false
 	strategy := &RecreateDeploymentStrategy{
@@ -224,7 +225,7 @@ func TestRecreate_deploymentPostHookFail(t *testing.T) {
 	config := deploytest.OkDeploymentConfig(1)
 	config.Spec.Strategy = recreateParams(30, "", "", deployapi.LifecycleHookFailurePolicyAbort)
 	deployment, _ := deployutil.MakeDeployment(config, kapi.Codecs.LegacyCodec(registered.GroupOrDie(kapi.GroupName).GroupVersions[0]))
-	scaler := &scalertest.FakeScaler{}
+	scaler := &cmdtest.FakeScaler{}
 
 	hookExecuted := false
 	strategy := &RecreateDeploymentStrategy{
@@ -257,7 +258,7 @@ func TestRecreate_deploymentPostHookFail(t *testing.T) {
 
 func TestRecreate_acceptorSuccess(t *testing.T) {
 	var deployment *kapi.ReplicationController
-	scaler := &scalertest.FakeScaler{}
+	scaler := &cmdtest.FakeScaler{}
 
 	strategy := &RecreateDeploymentStrategy{
 		out:          &bytes.Buffer{},
@@ -303,7 +304,7 @@ func TestRecreate_acceptorSuccess(t *testing.T) {
 
 func TestRecreate_acceptorFail(t *testing.T) {
 	var deployment *kapi.ReplicationController
-	scaler := &scalertest.FakeScaler{}
+	scaler := &cmdtest.FakeScaler{}
 
 	strategy := &RecreateDeploymentStrategy{
 		out:          &bytes.Buffer{},
@@ -384,7 +385,7 @@ func (t *testControllerClient) updateReplicationController(namespace string, ctr
 	return t.updateReplicationControllerFunc(namespace, ctrl)
 }
 
-func getUpdateAcceptor(timeout time.Duration) strategy.UpdateAcceptor {
+func getUpdateAcceptor(timeout time.Duration, minReadySeconds int32) strategy.UpdateAcceptor {
 	return &testAcceptor{
 		acceptFn: func(deployment *kapi.ReplicationController) error {
 			return nil

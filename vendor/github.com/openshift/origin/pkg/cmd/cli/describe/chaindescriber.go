@@ -15,10 +15,12 @@ import (
 
 	osgraph "github.com/openshift/origin/pkg/api/graph"
 	buildedges "github.com/openshift/origin/pkg/build/graph"
+	buildanalysis "github.com/openshift/origin/pkg/build/graph/analysis"
 	buildgraph "github.com/openshift/origin/pkg/build/graph/nodes"
 	"github.com/openshift/origin/pkg/client"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	imagegraph "github.com/openshift/origin/pkg/image/graph/nodes"
+	dotutil "github.com/openshift/origin/pkg/util/dot"
 	"github.com/openshift/origin/pkg/util/parallel"
 )
 
@@ -91,6 +93,15 @@ func (d *ChainDescriber) Describe(ist *imageapi.ImageStreamTag, includeInputImag
 		return "", NotFoundErr(fmt.Sprintf("%q", ist.Name))
 	}
 
+	markers := buildanalysis.FindCircularBuilds(g, d.namer)
+	if len(markers) > 0 {
+		for _, marker := range markers {
+			if strings.Contains(marker.Message, ist.Name) {
+				return marker.Message, nil
+			}
+		}
+	}
+
 	buildInputEdgeKinds := []string{buildedges.BuildTriggerImageEdgeKind}
 	if includeInputImages {
 		buildInputEdgeKinds = append(buildInputEdgeKinds, buildedges.BuildInputImageEdgeKind)
@@ -106,7 +117,7 @@ func (d *ChainDescriber) Describe(ist *imageapi.ImageStreamTag, includeInputImag
 
 	switch strings.ToLower(d.outputFormat) {
 	case "dot":
-		data, err := dot.Marshal(partitioned, fmt.Sprintf("%q", ist.Name), "", "  ", false)
+		data, err := dot.Marshal(partitioned, dotutil.Quote(ist.Name), "", "  ", false)
 		if err != nil {
 			return "", err
 		}

@@ -4,10 +4,12 @@ import (
 	"io/ioutil"
 	"net"
 	"path"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
 
+	deployclient "github.com/openshift/origin/pkg/deploy/client/clientset_generated/internalclientset/typed/core/unversioned"
 	kctrlmgr "k8s.io/kubernetes/cmd/kube-controller-manager/app"
 	cmapp "k8s.io/kubernetes/cmd/kube-controller-manager/app/options"
 	"k8s.io/kubernetes/pkg/admission"
@@ -29,14 +31,15 @@ import (
 	buildclient "github.com/openshift/origin/pkg/build/client"
 	buildcontrollerfactory "github.com/openshift/origin/pkg/build/controller/factory"
 	buildstrategy "github.com/openshift/origin/pkg/build/controller/strategy"
+	osclient "github.com/openshift/origin/pkg/client"
+	cmdadmission "github.com/openshift/origin/pkg/cmd/server/admission"
 	"github.com/openshift/origin/pkg/cmd/server/crypto"
-	"github.com/openshift/origin/pkg/cmd/server/etcd"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
-	configchangecontroller "github.com/openshift/origin/pkg/deploy/controller/configchange"
-	deployerpodcontroller "github.com/openshift/origin/pkg/deploy/controller/deployerpod"
+	"github.com/openshift/origin/pkg/controller/shared"
 	deploycontroller "github.com/openshift/origin/pkg/deploy/controller/deployment"
 	deployconfigcontroller "github.com/openshift/origin/pkg/deploy/controller/deploymentconfig"
+	triggercontroller "github.com/openshift/origin/pkg/deploy/controller/generictrigger"
 	imagechangecontroller "github.com/openshift/origin/pkg/deploy/controller/imagechange"
 	"github.com/openshift/origin/pkg/dns"
 	imagecontroller "github.com/openshift/origin/pkg/image/controller"
@@ -45,14 +48,16 @@ import (
 	"github.com/openshift/origin/pkg/security/mcs"
 	"github.com/openshift/origin/pkg/security/uid"
 	"github.com/openshift/origin/pkg/security/uidallocator"
+	"github.com/openshift/origin/pkg/service/controller/ingressip"
 	servingcertcontroller "github.com/openshift/origin/pkg/service/controller/servingcert"
+	unidlingcontroller "github.com/openshift/origin/pkg/unidling/controller"
 
-	"github.com/openshift/openshift-sdn/plugins/osdn/factory"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
-	imageapi "github.com/openshift/origin/pkg/image/api"
 	quota "github.com/openshift/origin/pkg/quota"
 	quotacontroller "github.com/openshift/origin/pkg/quota/controller"
+	"github.com/openshift/origin/pkg/quota/controller/clusterquotareconciliation"
+	sdnplugin "github.com/openshift/origin/pkg/sdn/plugin"
 	serviceaccountcontrollers "github.com/openshift/origin/pkg/serviceaccounts/controllers"
 )
 
@@ -62,6 +67,8 @@ const (
 
 	// from CMServer MinResyncPeriod
 	defaultReplenishmentSyncPeriod time.Duration = 12 * time.Hour
+
+	defaultIngressIPSyncPeriod time.Duration = 10 * time.Minute
 )
 
 // RunProjectAuthorizationCache starts the project authorization cache
@@ -122,10 +129,30 @@ func (c *MasterConfig) RunServiceAccountTokensController(cm *cmapp.CMServer) {
 			glog.Fatalf("Error parsing master ca file for Service Account Token Manager: %s: %v", c.Options.ServiceAccountConfig.MasterCA, err)
 		}
 	}
+	servingServingCABundle := []byte{}
+	if c.Options.ControllerConfig.ServiceServingCert.Signer != nil && len(c.Options.ControllerConfig.ServiceServingCert.Signer.CertFile) > 0 {
+		servingServingCA, err := ioutil.ReadFile(c.Options.ControllerConfig.ServiceServingCert.Signer.CertFile)
+		if err != nil {
+			glog.Fatalf("Error reading ca file for Service Serving Certificate Signer: %s: %v", c.Options.ControllerConfig.ServiceServingCert.Signer.CertFile, err)
+		}
+		if _, err := kcrypto.CertsFromPEM(servingServingCA); err != nil {
+			glog.Fatalf("Error parsing ca file for Service Serving Certificate Signer: %s: %v", c.Options.ControllerConfig.ServiceServingCert.Signer.CertFile, err)
+		}
+
+		// if we have a rootCA bundle add that too.  The rootCA will be used when hitting the default master service, since those are signed
+		// using a different CA by default.  The rootCA's key is more closely guarded than ours and if it is compromised, that power could
+		// be used to change the trusted signers for every pod anyway, so we're already effectively trusting it.
+		if len(rootCA) > 0 {
+			servingServingCABundle = append(servingServingCABundle, rootCA...)
+			servingServingCABundle = append(servingServingCABundle, []byte("\n")...)
+		}
+		servingServingCABundle = append(servingServingCABundle, servingServingCA...)
+	}
 
 	options := sacontroller.TokensControllerOptions{
-		TokenGenerator: serviceaccount.JWTTokenGenerator(privateKey),
-		RootCA:         rootCA,
+		TokenGenerator:   serviceaccount.JWTTokenGenerator(privateKey),
+		RootCA:           rootCA,
+		ServiceServingCA: servingServingCABundle,
 	}
 
 	go sacontroller.NewTokensController(clientadapter.FromUnversionedClient(c.KubeClient()), options).Run(int(cm.ConcurrentSATokenSyncs), utilwait.NeverStop)
@@ -136,21 +163,17 @@ func (c *MasterConfig) RunServiceAccountPullSecretsControllers() {
 	serviceaccountcontrollers.NewDockercfgDeletedController(c.KubeClient(), serviceaccountcontrollers.DockercfgDeletedControllerOptions{}).Run()
 	serviceaccountcontrollers.NewDockercfgTokenDeletedController(c.KubeClient(), serviceaccountcontrollers.DockercfgTokenDeletedControllerOptions{}).Run()
 
-	dockercfgController := serviceaccountcontrollers.NewDockercfgController(c.KubeClient(), serviceaccountcontrollers.DockercfgControllerOptions{DefaultDockerURL: serviceaccountcontrollers.DefaultOpenshiftDockerURL})
-	dockercfgController.Run()
+	dockerURLsIntialized := make(chan struct{})
+	dockercfgController := serviceaccountcontrollers.NewDockercfgController(c.KubeClient(), serviceaccountcontrollers.DockercfgControllerOptions{DockerURLsIntialized: dockerURLsIntialized})
+	go dockercfgController.Run(5, utilwait.NeverStop)
 
 	dockerRegistryControllerOptions := serviceaccountcontrollers.DockerRegistryServiceControllerOptions{
-		RegistryNamespace:   "default",
-		RegistryServiceName: "docker-registry",
-		DockercfgController: dockercfgController,
-		DefaultDockerURL:    serviceaccountcontrollers.DefaultOpenshiftDockerURL,
+		RegistryNamespace:    "default",
+		RegistryServiceName:  "docker-registry",
+		DockercfgController:  dockercfgController,
+		DockerURLsIntialized: dockerURLsIntialized,
 	}
-	serviceaccountcontrollers.NewDockerRegistryServiceController(c.KubeClient(), dockerRegistryControllerOptions).Run()
-}
-
-// RunPolicyCache starts the policy cache
-func (c *MasterConfig) RunPolicyCache() {
-	c.PolicyCache.Run()
+	go serviceaccountcontrollers.NewDockerRegistryServiceController(c.KubeClient(), dockerRegistryControllerOptions).Run(10, make(chan struct{}))
 }
 
 // RunAssetServer starts the asset server for the OpenShift UI.
@@ -189,12 +212,9 @@ func (c *MasterConfig) RunDNSServer() {
 	}
 
 	go func() {
-		etcdClient, err := etcd.GetAndTestEtcdClient(c.Options.EtcdClientInfo)
-		if err != nil {
-			glog.Fatalf("Could not get etcd client: %v", err)
-			return
-		}
-		err = dns.ListenAndServe(config, c.DNSServerClient(), etcdClient)
+		s := dns.NewServer(config, c.DNSServerClient())
+		s.MetricsName = "apiserver"
+		err := s.ListenAndServe()
 		glog.Fatalf("Could not start DNS: %v", err)
 	}()
 
@@ -210,7 +230,7 @@ func (c *MasterConfig) RunProjectCache() {
 }
 
 // RunBuildController starts the build sync loop for builds and buildConfig processing.
-func (c *MasterConfig) RunBuildController() {
+func (c *MasterConfig) RunBuildController(informers shared.InformerFactory) {
 	// initialize build controller
 	dockerImage := c.ImageFor("docker-builder")
 	stiImage := c.ImageFor("sti-builder")
@@ -219,7 +239,10 @@ func (c *MasterConfig) RunBuildController() {
 	groupVersion := unversioned.GroupVersion{Group: "", Version: storageVersion}
 	codec := kapi.Codecs.LegacyCodec(groupVersion)
 
-	admissionControl := admission.NewFromPlugins(clientadapter.FromUnversionedClient(c.PrivilegedLoopbackKubernetesClient), []string{"SecurityContextConstraint"}, "")
+	admissionControl := admission.InitPlugin("SecurityContextConstraint", clientadapter.FromUnversionedClient(c.PrivilegedLoopbackKubernetesClient), "")
+	if wantsInformers, ok := admissionControl.(cmdadmission.WantsInformers); ok {
+		wantsInformers.SetInformers(informers)
+	}
 
 	osclient, kclient := c.BuildControllerClients()
 	factory := buildcontrollerfactory.BuildControllerFactory{
@@ -280,16 +303,17 @@ func (c *MasterConfig) RunBuildConfigChangeController() {
 		Client:                  bcClient,
 		KubeClient:              kClient,
 		BuildConfigInstantiator: bcInstantiator,
-		JenkinsConfig:           c.Options.JenkinsPipelineConfig,
 	}
 	factory.Create().Run()
 }
 
 // RunDeploymentController starts the deployment controller process.
 func (c *MasterConfig) RunDeploymentController() {
+	rcInformer := c.Informers.ReplicationControllers().Informer()
+	podInformer := c.Informers.Pods().Informer()
 	_, kclient := c.DeploymentControllerClients()
 
-	_, kclientConfig, err := configapi.GetKubeClient(c.Options.MasterClients.OpenShiftLoopbackKubeConfig)
+	_, kclientConfig, err := configapi.GetKubeClient(c.Options.MasterClients.OpenShiftLoopbackKubeConfig, c.Options.MasterClients.OpenShiftLoopbackClientConnectionOverrides)
 	if err != nil {
 		glog.Fatalf("Unable to initialize deployment controller: %v", err)
 	}
@@ -301,76 +325,54 @@ func (c *MasterConfig) RunDeploymentController() {
 		path.Join(serviceaccountadmission.DefaultAPITokenMountPath, kapi.ServiceAccountTokenKey),
 	)
 
-	factory := deploycontroller.DeploymentControllerFactory{
-		KubeClient:     kclient,
-		Codec:          c.EtcdHelper.Codec(),
-		Environment:    env,
-		DeployerImage:  c.ImageFor("deployer"),
-		ServiceAccount: bootstrappolicy.DeployerServiceAccountName,
-	}
-
-	controller := factory.Create()
-	controller.Run()
-}
-
-// RunDeployerPodController starts the deployer pod controller process.
-func (c *MasterConfig) RunDeployerPodController() {
-	osclient, kclient := c.DeployerPodControllerClients()
-	factory := deployerpodcontroller.DeployerPodControllerFactory{
-		Client:     osclient,
-		KubeClient: kclient,
-		Codec:      c.EtcdHelper.Codec(),
-	}
-
-	controller := factory.Create()
-	controller.Run()
+	controller := deploycontroller.NewDeploymentController(
+		rcInformer,
+		podInformer,
+		kclient,
+		bootstrappolicy.DeployerServiceAccountName,
+		c.ImageFor("deployer"),
+		env,
+		c.EtcdHelper.Codec(),
+	)
+	go controller.Run(5, utilwait.NeverStop)
 }
 
 // RunDeploymentConfigController starts the deployment config controller process.
 func (c *MasterConfig) RunDeploymentConfigController() {
+	dcInfomer := c.Informers.DeploymentConfigs().Informer()
+	rcInformer := c.Informers.ReplicationControllers().Informer()
+	podInformer := c.Informers.Pods().Informer()
 	osclient, kclient := c.DeploymentConfigControllerClients()
-	factory := deployconfigcontroller.DeploymentConfigControllerFactory{
-		Client:     osclient,
-		KubeClient: kclient,
-		Codec:      c.EtcdHelper.Codec(),
-	}
-	controller := factory.Create()
-	controller.Run()
+
+	controller := deployconfigcontroller.NewDeploymentConfigController(dcInfomer, rcInformer, podInformer, osclient, kclient, c.EtcdHelper.Codec())
+	go controller.Run(5, utilwait.NeverStop)
 }
 
-// RunDeploymentConfigChangeController starts the deployment config change controller process.
-func (c *MasterConfig) RunDeploymentConfigChangeController() {
-	osclient, kclient := c.DeploymentConfigChangeControllerClients()
-	factory := configchangecontroller.DeploymentConfigChangeControllerFactory{
-		Client:     osclient,
-		KubeClient: kclient,
-		Codec:      c.EtcdHelper.Codec(),
-	}
-	controller := factory.Create()
-	controller.Run()
+// RunDeploymentTriggerController starts the deployment trigger controller process.
+func (c *MasterConfig) RunDeploymentTriggerController() {
+	dcInfomer := c.Informers.DeploymentConfigs().Informer()
+	streamInformer := c.Informers.ImageStreams().Informer()
+	osclient, kclient := c.DeploymentTriggerControllerClients()
+
+	controller := triggercontroller.NewDeploymentTriggerController(dcInfomer, streamInformer, osclient, kclient, c.EtcdHelper.Codec())
+	go controller.Run(5, utilwait.NeverStop)
 }
 
 // RunDeploymentImageChangeTriggerController starts the image change trigger controller process.
 func (c *MasterConfig) RunDeploymentImageChangeTriggerController() {
-	osclient := c.DeploymentImageChangeTriggerControllerClient()
-	factory := imagechangecontroller.ImageChangeControllerFactory{Client: osclient}
-	controller := factory.Create()
-	controller.Run()
+	dcInfomer := c.Informers.DeploymentConfigs().Informer()
+	streamInformer := c.Informers.ImageStreams().Informer()
+	osclient, _ := c.DeploymentTriggerControllerClients()
+
+	controller := imagechangecontroller.NewImageChangeController(dcInfomer, streamInformer, osclient)
+	go controller.Run(5, utilwait.NeverStop)
 }
 
 // RunSDNController runs openshift-sdn if the said network plugin is provided
 func (c *MasterConfig) RunSDNController() {
 	oClient, kClient := c.SDNControllerClients()
-	controller, err := factory.NewMasterPlugin(c.Options.NetworkConfig.NetworkPluginName, oClient, kClient)
-	if err != nil {
+	if err := sdnplugin.StartMaster(c.Options.NetworkConfig, oClient, kClient); err != nil {
 		glog.Fatalf("SDN initialization failed: %v", err)
-	}
-
-	if controller != nil {
-		err = controller.StartMaster(c.Options.NetworkConfig.ClusterNetworkCIDR, c.Options.NetworkConfig.HostSubnetLength, c.Options.NetworkConfig.ServiceNetworkCIDR)
-		if err != nil {
-			glog.Fatalf("SDN initialization failed: %v", err)
-		}
 	}
 }
 
@@ -471,20 +473,79 @@ func (c *MasterConfig) RunResourceQuotaManager(cm *cmapp.CMServer) {
 	replenishmentSyncPeriodFunc := controller.StaticResyncPeriodFunc(defaultReplenishmentSyncPeriod)
 	if cm != nil {
 		// TODO: should these be part of os master config?
-		concurrentResourceQuotaSyncs = cm.ConcurrentResourceQuotaSyncs
+		concurrentResourceQuotaSyncs = int(cm.ConcurrentResourceQuotaSyncs)
 		resourceQuotaSyncPeriod = cm.ResourceQuotaSyncPeriod.Duration
 		replenishmentSyncPeriodFunc = kctrlmgr.ResyncPeriod(cm)
 	}
 
 	osClient, kClient := c.ResourceQuotaManagerClients()
-	resourceQuotaRegistry := quota.NewRegistry(osClient, false)
+	resourceQuotaRegistry := quota.NewAllResourceQuotaRegistry(osClient, kClient)
 	resourceQuotaControllerOptions := &kresourcequota.ResourceQuotaControllerOptions{
 		KubeClient:                kClient,
 		ResyncPeriod:              controller.StaticResyncPeriodFunc(resourceQuotaSyncPeriod),
 		Registry:                  resourceQuotaRegistry,
-		GroupKindsToReplenish:     []unversioned.GroupKind{imageapi.Kind("ImageStream")},
-		ControllerFactory:         quotacontroller.NewReplenishmentControllerFactory(osClient),
+		GroupKindsToReplenish:     quota.AllEvaluatedGroupKinds,
+		ControllerFactory:         quotacontroller.NewAllResourceReplenishmentControllerFactory(c.Informers, osClient, kClient),
 		ReplenishmentResyncPeriod: replenishmentSyncPeriodFunc,
 	}
 	go kresourcequota.NewResourceQuotaController(resourceQuotaControllerOptions).Run(concurrentResourceQuotaSyncs, utilwait.NeverStop)
+}
+
+var initClusterQuotaMapping sync.Once
+
+func (c *MasterConfig) RunClusterQuotaMappingController() {
+	initClusterQuotaMapping.Do(func() {
+		go c.ClusterQuotaMappingController.Run(5, utilwait.NeverStop)
+	})
+}
+
+func (c *MasterConfig) RunClusterQuotaReconciliationController() {
+	osClient, kClient := c.ResourceQuotaManagerClients()
+	resourceQuotaRegistry := quota.NewAllResourceQuotaRegistry(osClient, kClient)
+	groupKindsToReplenish := quota.AllEvaluatedGroupKinds
+
+	options := clusterquotareconciliation.ClusterQuotaReconcilationControllerOptions{
+		ClusterQuotaInformer: c.Informers.ClusterResourceQuotas(),
+		ClusterQuotaMapper:   c.ClusterQuotaMappingController.GetClusterQuotaMapper(),
+		ClusterQuotaClient:   osClient,
+
+		Registry:                  resourceQuotaRegistry,
+		ResyncPeriod:              defaultResourceQuotaSyncPeriod,
+		ControllerFactory:         quotacontroller.NewAllResourceReplenishmentControllerFactory(c.Informers, osClient, kClient),
+		ReplenishmentResyncPeriod: controller.StaticResyncPeriodFunc(defaultReplenishmentSyncPeriod),
+		GroupKindsToReplenish:     groupKindsToReplenish,
+	}
+	controller := clusterquotareconciliation.NewClusterQuotaReconcilationController(options)
+	c.ClusterQuotaMappingController.GetClusterQuotaMapper().AddListener(controller)
+	go controller.Run(5, utilwait.NeverStop)
+}
+
+// RunIngressIPController starts the ingress ip controller if IngressIPNetworkCIDR is configured.
+func (c *MasterConfig) RunIngressIPController(client *kclient.Client) {
+	if len(c.Options.NetworkConfig.IngressIPNetworkCIDR) == 0 {
+		return
+	}
+
+	_, ipNet, err := net.ParseCIDR(c.Options.NetworkConfig.IngressIPNetworkCIDR)
+	if err != nil {
+		// should have been caught with validation
+		glog.Fatalf("Unable to start ingress ip controller: %v", err)
+	}
+	if ipNet.IP.IsUnspecified() {
+		return
+	}
+	ingressIPController := ingressip.NewIngressIPController(client, ipNet, defaultIngressIPSyncPeriod)
+	go ingressIPController.Run(utilwait.NeverStop)
+}
+
+// RunUnidlingController starts the unidling controller
+func (c *MasterConfig) RunUnidlingController() {
+	oc, kc := c.UnidlingControllerClients()
+	resyncPeriod := 2 * time.Hour
+	scaleNamespacer := osclient.NewDelegatingScaleNamespacer(oc, kc)
+	coreClient := clientadapter.FromUnversionedClient(kc).Core()
+	dcCoreClient := deployclient.New(oc.RESTClient)
+	cont := unidlingcontroller.NewUnidlingController(scaleNamespacer, coreClient, coreClient, dcCoreClient, coreClient, resyncPeriod)
+
+	cont.Run(utilwait.NeverStop)
 }

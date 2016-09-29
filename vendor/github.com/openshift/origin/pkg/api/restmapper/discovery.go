@@ -107,7 +107,8 @@ func (d *discoveryRESTMapper) getDelegate() (meta.RESTMapper, error) {
 		kindPriority = append(kindPriority, unversioned.GroupVersionKind{Group: group, Version: meta.AnyVersion, Kind: meta.AnyKind})
 	}
 
-	return meta.PriorityRESTMapper{Delegate: unionMapper, ResourcePriority: resourcePriority, KindPriority: kindPriority}, nil
+	d.delegate = meta.PriorityRESTMapper{Delegate: unionMapper, ResourcePriority: resourcePriority, KindPriority: kindPriority}
+	return d.delegate, nil
 }
 
 func (d *discoveryRESTMapper) KindFor(resource unversioned.GroupVersionResource) (unversioned.GroupVersionKind, error) {
@@ -148,6 +149,14 @@ func (d *discoveryRESTMapper) RESTMapping(gk unversioned.GroupKind, versions ...
 		return nil, err
 	}
 	return delegate.RESTMapping(gk, versions...)
+}
+
+func (d *discoveryRESTMapper) RESTMappings(gk unversioned.GroupKind) ([]*meta.RESTMapping, error) {
+	delegate, err := d.getDelegate()
+	if err != nil {
+		return nil, err
+	}
+	return delegate.RESTMappings(gk)
 }
 
 func (d *discoveryRESTMapper) AliasesForResource(resource string) ([]string, bool) {

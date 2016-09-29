@@ -42,6 +42,7 @@ import (
 	_ "k8s.io/kubernetes/plugin/pkg/scheduler/algorithmprovider"
 	schedulerapi "k8s.io/kubernetes/plugin/pkg/scheduler/api"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/factory"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
@@ -191,8 +192,7 @@ func TestSchedulerExtender(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		m.Handler.ServeHTTP(w, req)
 	}))
-	// TODO: Uncomment when fix #19254
-	// defer s.Close()
+	defer s.Close()
 
 	masterConfig := framework.NewIntegrationTestMasterConfig()
 	m, err := master.New(masterConfig)
@@ -210,8 +210,7 @@ func TestSchedulerExtender(t *testing.T) {
 	es1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		extender1.serveHTTP(t, w, req)
 	}))
-	// TODO: Uncomment when fix #19254
-	// defer es1.Close()
+	defer es1.Close()
 
 	extender2 := &Extender{
 		name:         "extender2",
@@ -221,8 +220,7 @@ func TestSchedulerExtender(t *testing.T) {
 	es2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		extender2.serveHTTP(t, w, req)
 	}))
-	// TODO: Uncomment when fix #19254
-	// defer es2.Close()
+	defer es2.Close()
 
 	policy := schedulerapi.Policy{
 		ExtenderConfigs: []schedulerapi.ExtenderConfig{
@@ -244,7 +242,7 @@ func TestSchedulerExtender(t *testing.T) {
 	}
 	policy.APIVersion = testapi.Default.GroupVersion().String()
 
-	schedulerConfigFactory := factory.NewConfigFactory(restClient, api.DefaultSchedulerName)
+	schedulerConfigFactory := factory.NewConfigFactory(restClient, api.DefaultSchedulerName, api.DefaultHardPodAffinitySymmetricWeight, api.DefaultFailureDomains)
 	schedulerConfig, err := schedulerConfigFactory.CreateFromConfig(policy)
 	if err != nil {
 		t.Fatalf("Couldn't create scheduler config: %v", err)
@@ -286,7 +284,7 @@ func DoTestPodScheduling(t *testing.T, restClient *client.Client) {
 	pod := &api.Pod{
 		ObjectMeta: api.ObjectMeta{Name: "extender-test-pod"},
 		Spec: api.PodSpec{
-			Containers: []api.Container{{Name: "container", Image: "kubernetes/pause:go"}},
+			Containers: []api.Container{{Name: "container", Image: e2e.GetPauseImageName(restClient)}},
 		},
 	}
 

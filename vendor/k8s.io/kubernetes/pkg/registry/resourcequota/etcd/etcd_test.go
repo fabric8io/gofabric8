@@ -21,6 +21,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
+	"k8s.io/kubernetes/pkg/api/rest"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/registry/generic"
@@ -59,7 +60,7 @@ func validNewResourceQuota() *api.ResourceQuota {
 func TestCreate(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd)
+	test := registrytest.New(t, storage.Store)
 	resourcequota := validNewResourceQuota()
 	resourcequota.ObjectMeta = api.ObjectMeta{}
 	test.TestCreate(
@@ -98,28 +99,28 @@ func TestCreateSetsFields(t *testing.T) {
 func TestDelete(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd).ReturnDeletedObject()
+	test := registrytest.New(t, storage.Store).ReturnDeletedObject()
 	test.TestDelete(validNewResourceQuota())
 }
 
 func TestGet(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd)
+	test := registrytest.New(t, storage.Store)
 	test.TestGet(validNewResourceQuota())
 }
 
 func TestList(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd)
+	test := registrytest.New(t, storage.Store)
 	test.TestList(validNewResourceQuota())
 }
 
 func TestWatch(t *testing.T) {
 	storage, _, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd)
+	test := registrytest.New(t, storage.Store)
 	test.TestWatch(
 		validNewResourceQuota(),
 		// matching labels
@@ -147,7 +148,7 @@ func TestUpdateStatus(t *testing.T) {
 	key, _ := storage.KeyFunc(ctx, "foo")
 	key = etcdtest.AddPrefix(key)
 	resourcequotaStart := validNewResourceQuota()
-	err := storage.Storage.Set(ctx, key, resourcequotaStart, nil, 0)
+	err := storage.Storage.Create(ctx, key, resourcequotaStart, nil, 0)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -177,7 +178,7 @@ func TestUpdateStatus(t *testing.T) {
 		},
 	}
 
-	_, _, err = status.Update(ctx, resourcequotaIn)
+	_, _, err = status.Update(ctx, resourcequotaIn.Name, rest.DefaultUpdatedObjectInfo(resourcequotaIn, api.Scheme))
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

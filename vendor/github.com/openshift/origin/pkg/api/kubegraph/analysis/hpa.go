@@ -35,13 +35,13 @@ func FindHPASpecsMissingCPUTargets(graph osgraph.Graph, namer osgraph.Namer) []o
 	for _, uncastNode := range graph.NodesByKind(kubenodes.HorizontalPodAutoscalerNodeKind) {
 		node := uncastNode.(*kubenodes.HorizontalPodAutoscalerNode)
 
-		if node.HorizontalPodAutoscaler.Spec.CPUUtilization == nil {
+		if node.HorizontalPodAutoscaler.Spec.TargetCPUUtilizationPercentage == nil {
 			markers = append(markers, osgraph.Marker{
 				Node:       node,
 				Severity:   osgraph.ErrorSeverity,
 				Key:        HPAMissingCPUTargetError,
 				Message:    fmt.Sprintf("%s is missing a CPU utilization target", namer.ResourceName(node)),
-				Suggestion: osgraph.Suggestion(fmt.Sprintf(`oc patch %s -p '{"spec":{"cpuUtilization":{"targetPercentage": 80}}}'`, namer.ResourceName(node))),
+				Suggestion: osgraph.Suggestion(fmt.Sprintf(`oc patch %s -p '{"spec":{"targetCPUUtilizationPercentage": 80}}'`, namer.ResourceName(node))),
 			})
 		}
 	}
@@ -86,8 +86,8 @@ func createMissingScaleRefMarker(hpaNode *kubenodes.HorizontalPodAutoscalerNode,
 		Key:          HPAMissingScaleRefError,
 		Message: fmt.Sprintf("%s is attempting to scale %s/%s, which doesn't exist",
 			namer.ResourceName(hpaNode),
-			hpaNode.HorizontalPodAutoscaler.Spec.ScaleRef.Kind,
-			hpaNode.HorizontalPodAutoscaler.Spec.ScaleRef.Name,
+			hpaNode.HorizontalPodAutoscaler.Spec.ScaleTargetRef.Kind,
+			hpaNode.HorizontalPodAutoscaler.Spec.ScaleTargetRef.Name,
 		),
 	}
 }
@@ -100,7 +100,7 @@ func createMissingScaleRefMarker(hpaNode *kubenodes.HorizontalPodAutoscalerNode,
 // can assume that it will be handled before this step. Therefore, we are only concerned with finding HPAs that are trying to
 // scale the same resources.
 //
-// The algorithm that is used to implement this check is decribed as follows:
+// The algorithm that is used to implement this check is described as follows:
 //  - create a sub-graph containing only HPA nodes and other nodes that can be scaled, as well as any scaling edges or other
 //    edges used to connect between objects that can be scaled
 //  - for every resulting edge in the new sub-graph, create an edge in the reverse direction

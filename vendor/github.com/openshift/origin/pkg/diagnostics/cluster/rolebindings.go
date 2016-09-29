@@ -38,7 +38,7 @@ func (d *ClusterRoleBindings) CanRun() (bool, error) {
 		return false, fmt.Errorf("must have client.SubjectAccessReviews")
 	}
 
-	return userCan(d.SARClient, authorizationapi.AuthorizationAttributes{
+	return userCan(d.SARClient, authorizationapi.Action{
 		Verb:     "list",
 		Group:    authorizationapi.GroupName,
 		Resource: "clusterrolebindings",
@@ -56,7 +56,11 @@ func (d *ClusterRoleBindings) Check() types.DiagnosticResult {
 	}
 
 	changedClusterRoleBindings, err := reconcileOptions.ChangedClusterRoleBindings()
-	if err != nil {
+	if policycmd.IsClusterRoleBindingLookupError(err) {
+		// we got a partial match, so we log the error that stopped us from getting a full match
+		// but continue to interpret the partial results that we did get
+		r.Warn("CRBD1008", err, fmt.Sprintf("Error finding ClusterRoleBindings: %v", err))
+	} else if err != nil {
 		r.Error("CRBD1000", err, fmt.Sprintf("Error inspecting ClusterRoleBindings: %v", err))
 		return r
 	}

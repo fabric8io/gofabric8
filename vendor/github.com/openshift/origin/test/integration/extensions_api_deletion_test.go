@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -11,6 +9,8 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/apis/autoscaling"
+	"k8s.io/kubernetes/pkg/apis/batch"
 	expapi "k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/util/wait"
 )
@@ -19,6 +19,7 @@ func TestExtensionsAPIDeletion(t *testing.T) {
 	const projName = "ext-deletion-proj"
 
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMaster()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -52,21 +53,22 @@ func TestExtensionsAPIDeletion(t *testing.T) {
 	}
 
 	// create the extensions resources as the project admin
-	hpa := expapi.HorizontalPodAutoscaler{
+	percent := int32(10)
+	hpa := autoscaling.HorizontalPodAutoscaler{
 		ObjectMeta: kapi.ObjectMeta{Name: "test-hpa"},
-		Spec: expapi.HorizontalPodAutoscalerSpec{
-			ScaleRef:       expapi.SubresourceReference{Kind: "DeploymentConfig", Name: "frontend", APIVersion: "v1", Subresource: "scale"},
-			MaxReplicas:    10,
-			CPUUtilization: &expapi.CPUTargetUtilization{TargetPercentage: 10},
+		Spec: autoscaling.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef:                 autoscaling.CrossVersionObjectReference{Kind: "DeploymentConfig", Name: "frontend", APIVersion: "v1"},
+			MaxReplicas:                    10,
+			TargetCPUUtilizationPercentage: &percent,
 		},
 	}
-	if _, err := projectAdminKubeClient.Extensions().HorizontalPodAutoscalers(projName).Create(&hpa); err != nil {
+	if _, err := projectAdminKubeClient.Autoscaling().HorizontalPodAutoscalers(projName).Create(&hpa); err != nil {
 		t.Fatalf("unexpected error creating the HPA object: %v", err)
 	}
 
-	job := expapi.Job{
+	job := batch.Job{
 		ObjectMeta: kapi.ObjectMeta{Name: "test-job"},
-		Spec: expapi.JobSpec{
+		Spec: batch.JobSpec{
 			Template: kapi.PodTemplateSpec{
 				ObjectMeta: kapi.ObjectMeta{Labels: map[string]string{"foo": "bar"}},
 				Spec: kapi.PodSpec{
@@ -94,7 +96,7 @@ func TestExtensionsAPIDeletion(t *testing.T) {
 		t.Fatalf("unexpected error while waiting for project to delete: %v", err)
 	}
 
-	if _, err := clusterAdminKubeClient.Extensions().HorizontalPodAutoscalers(projName).Get(hpa.Name); err == nil {
+	if _, err := clusterAdminKubeClient.Autoscaling().HorizontalPodAutoscalers(projName).Get(hpa.Name); err == nil {
 		t.Fatalf("HPA object was still present after project was deleted!")
 	} else if !errors.IsNotFound(err) {
 		t.Fatalf("Error trying to get deleted HPA object (not a not-found error): %v", err)

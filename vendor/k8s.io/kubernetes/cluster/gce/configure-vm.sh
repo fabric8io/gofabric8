@@ -55,7 +55,17 @@ ensure-packages() {
 
 # A hookpoint for setting up local devices
 ensure-local-disks() {
-  :
+ for ssd in /dev/disk/by-id/google-local-ssd-*; do
+    if [ -e "$ssd" ]; then
+      ssdnum=`echo $ssd | sed -e 's/\/dev\/disk\/by-id\/google-local-ssd-\([0-9]*\)/\1/'`
+      echo "Formatting and mounting local SSD $ssd to /mnt/disks/ssd$ssdnum"
+      mkdir -p /mnt/disks/ssd$ssdnum
+      /usr/share/google/safe_format_and_mount -m "mkfs.ext4 -F" "${ssd}" /mnt/disks/ssd$ssdnum &>/var/log/local-ssd-$ssdnum-mount.log || \
+      { echo "Local SSD $ssdnum mount failed, review /var/log/local-ssd-$ssdnum-mount.log"; return 1; }
+    else
+      echo "No local SSD disks found."
+    fi
+  done
 }
 
 function ensure-install-dir() {
@@ -96,7 +106,9 @@ Welcome to Kubernetes ${version}!
 You can find documentation for Kubernetes at:
   http://docs.kubernetes.io/
 
-You can download the build image for this release at:
+The source for this release can be found at:
+  /usr/local/share/doc/kubernetes/kubernetes-src.tar.gz
+Or you can download it at:
   https://storage.googleapis.com/kubernetes-release/release/${version}/kubernetes-src.tar.gz
 
 It is based on the Kubernetes source at:
@@ -154,7 +166,7 @@ download-or-bust() {
     for url in "${urls[@]}"; do
       local file="${url##*/}"
       rm -f "${file}"
-      if ! curl -f --ipv4 -Lo "${file}" --connect-timeout 20 --retry 6 --retry-delay 10 "${url}"; then
+      if ! curl -f --ipv4 -Lo "${file}" --connect-timeout 20 --max-time 80 --retry 6 --retry-delay 10 "${url}"; then
         echo "== Failed to download ${url}. Retrying. =="
       elif [[ -n "${hash}" ]] && ! validate-hash "${file}" "${hash}"; then
         echo "== Hash validation of ${url} failed. Retrying. =="
@@ -348,7 +360,6 @@ stop-salt-minion() {
 # Finds the master PD device; returns it in MASTER_PD_DEVICE
 find-master-pd() {
   MASTER_PD_DEVICE=""
-  # TODO(zmerlynn): GKE is still lagging in master-pd creation
   if [[ ! -e /dev/disk/by-id/google-master-pd ]]; then
     return
   fi
@@ -366,7 +377,7 @@ find-master-pd() {
 # already exists.
 mount-master-pd() {
   find-master-pd
-  if [[ -z "${MASTER_PD_DEVICE}" ]]; then
+  if [[ -z "${MASTER_PD_DEVICE:-}" ]]; then
     return
   fi
 
@@ -419,6 +430,7 @@ service_cluster_ip_range: '$(echo "$SERVICE_CLUSTER_IP_RANGE" | sed -e "s/'/''/g
 enable_cluster_monitoring: '$(echo "$ENABLE_CLUSTER_MONITORING" | sed -e "s/'/''/g")'
 enable_cluster_logging: '$(echo "$ENABLE_CLUSTER_LOGGING" | sed -e "s/'/''/g")'
 enable_cluster_ui: '$(echo "$ENABLE_CLUSTER_UI" | sed -e "s/'/''/g")'
+enable_node_problem_detector: '$(echo "$ENABLE_NODE_PROBLEM_DETECTOR" | sed -e "s/'/''/g")'
 enable_l7_loadbalancing: '$(echo "$ENABLE_L7_LOADBALANCING" | sed -e "s/'/''/g")'
 enable_node_logging: '$(echo "$ENABLE_NODE_LOGGING" | sed -e "s/'/''/g")'
 logging_destination: '$(echo "$LOGGING_DESTINATION" | sed -e "s/'/''/g")'
@@ -430,15 +442,17 @@ dns_server: '$(echo "$DNS_SERVER_IP" | sed -e "s/'/''/g")'
 dns_domain: '$(echo "$DNS_DOMAIN" | sed -e "s/'/''/g")'
 admission_control: '$(echo "$ADMISSION_CONTROL" | sed -e "s/'/''/g")'
 network_provider: '$(echo "$NETWORK_PROVIDER" | sed -e "s/'/''/g")'
+prepull_e2e_images: '$(echo "$PREPULL_E2E_IMAGES" | sed -e "s/'/''/g")'
 hairpin_mode: '$(echo "$HAIRPIN_MODE" | sed -e "s/'/''/g")'
 opencontrail_tag: '$(echo "$OPENCONTRAIL_TAG" | sed -e "s/'/''/g")'
 opencontrail_kubernetes_tag: '$(echo "$OPENCONTRAIL_KUBERNETES_TAG")'
 opencontrail_public_subnet: '$(echo "$OPENCONTRAIL_PUBLIC_SUBNET")'
-enable_manifest_url: '$(echo "$ENABLE_MANIFEST_URL" | sed -e "s/'/''/g")'
-manifest_url: '$(echo "$MANIFEST_URL" | sed -e "s/'/''/g")'
-manifest_url_header: '$(echo "$MANIFEST_URL_HEADER" | sed -e "s/'/''/g")'
-num_nodes: $(echo "${NUM_NODES}" | sed -e "s/'/''/g")
+enable_manifest_url: '$(echo "${ENABLE_MANIFEST_URL:-}" | sed -e "s/'/''/g")'
+manifest_url: '$(echo "${MANIFEST_URL:-}" | sed -e "s/'/''/g")'
+manifest_url_header: '$(echo "${MANIFEST_URL_HEADER:-}" | sed -e "s/'/''/g")'
+num_nodes: $(echo "${NUM_NODES:-}" | sed -e "s/'/''/g")
 e2e_storage_test_environment: '$(echo "$E2E_STORAGE_TEST_ENVIRONMENT" | sed -e "s/'/''/g")'
+kube_uid: '$(echo "${KUBE_UID}" | sed -e "s/'/''/g")'
 EOF
     if [ -n "${KUBELET_PORT:-}" ]; then
       cat <<EOF >>/srv/salt-overlay/pillar/cluster-params.sls
@@ -524,6 +538,36 @@ EOF
 node_labels: '$(echo "${NODE_LABELS}" | sed -e "s/'/''/g")'
 EOF
     fi
+    if [ -n "${EVICTION_HARD:-}" ]; then
+      cat <<EOF >>/srv/salt-overlay/pillar/cluster-params.sls
+eviction_hard: '$(echo "${EVICTION_HARD}" | sed -e "s/'/''/g")'
+EOF
+    fi
+    if [[ "${ENABLE_CLUSTER_AUTOSCALER:-false}" == "true" ]]; then
+      cat <<EOF >>/srv/salt-overlay/pillar/cluster-params.sls
+enable_cluster_autoscaler: '$(echo "${ENABLE_CLUSTER_AUTOSCALER}" | sed -e "s/'/''/g")'
+autoscaler_mig_config: '$(echo "${AUTOSCALER_MIG_CONFIG}" | sed -e "s/'/''/g")'
+EOF
+    fi
+    if [[ "${FEDERATION:-}" == "true" ]]; then
+      FEDERATIONS_DOMAIN_MAP="${FEDERATIONS_DOMAIN_MAP:-}"
+      if [[ -z "${FEDERATIONS_DOMAIN_MAP}" && -n "${FEDERATION_NAME:-}" && -n "${DNS_ZONE_NAME:-}" ]]; then
+        FEDERATIONS_DOMAIN_MAP="${FEDERATION_NAME}=${DNS_ZONE_NAME}"
+      fi
+      if [[ -n "${FEDERATIONS_DOMAIN_MAP}" ]]; then
+        cat <<EOF >>/srv/salt-overlay/pillar/cluster-params.sls
+federations_domain_map: '$(echo "- --federations=${FEDERATIONS_DOMAIN_MAP}" | sed -e "s/'/''/g")'
+EOF
+      else
+        cat <<EOF >>/srv/salt-overlay/pillar/cluster-params.sls
+federations_domain_map: ''
+EOF
+      fi
+    else
+      cat <<EOF >>/srv/salt-overlay/pillar/cluster-params.sls
+federations_domain_map: ''
+EOF
+    fi
 }
 
 # The job of this function is simple, but the basic regular expression syntax makes
@@ -550,7 +594,7 @@ function convert-bytes-gce-kube() {
 #  - Optionally uses KUBECFG_CERT and KUBECFG_KEY to store a copy of the client
 #    cert credentials.
 #
-# After the first boot and on upgrade, these files exists on the master-pd
+# After the first boot and on upgrade, these files exist on the master-pd
 # and should never be touched again (except perhaps an additional service
 # account, see NB below.)
 function create-salt-master-auth() {
@@ -558,14 +602,14 @@ function create-salt-master-auth() {
     if  [[ ! -z "${CA_CERT:-}" ]] && [[ ! -z "${MASTER_CERT:-}" ]] && [[ ! -z "${MASTER_KEY:-}" ]]; then
       mkdir -p /srv/kubernetes
       (umask 077;
-        echo "${CA_CERT}" | base64 -d > /srv/kubernetes/ca.crt;
-        echo "${MASTER_CERT}" | base64 -d > /srv/kubernetes/server.cert;
-        echo "${MASTER_KEY}" | base64 -d > /srv/kubernetes/server.key;
+        echo "${CA_CERT}" | base64 --decode > /srv/kubernetes/ca.crt;
+        echo "${MASTER_CERT}" | base64 --decode > /srv/kubernetes/server.cert;
+        echo "${MASTER_KEY}" | base64 --decode > /srv/kubernetes/server.key;
         # Kubecfg cert/key are optional and included for backwards compatibility.
         # TODO(roberthbailey): Remove these two lines once GKE no longer requires
         # fetching clients certs from the master VM.
-        echo "${KUBECFG_CERT:-}" | base64 -d > /srv/kubernetes/kubecfg.crt;
-        echo "${KUBECFG_KEY:-}" | base64 -d > /srv/kubernetes/kubecfg.key)
+        echo "${KUBECFG_CERT:-}" | base64 --decode > /srv/kubernetes/kubecfg.crt;
+        echo "${KUBECFG_KEY:-}" | base64 --decode > /srv/kubernetes/kubecfg.key)
     fi
   fi
   if [ ! -e "${BASIC_AUTH_FILE}" ]; then
@@ -579,17 +623,6 @@ function create-salt-master-auth() {
       echo "${KUBE_BEARER_TOKEN},admin,admin" > "${KNOWN_TOKENS_FILE}";
       echo "${KUBELET_TOKEN},kubelet,kubelet" >> "${KNOWN_TOKENS_FILE}";
       echo "${KUBE_PROXY_TOKEN},kube_proxy,kube_proxy" >> "${KNOWN_TOKENS_FILE}")
-
-    # Generate tokens for other "service accounts".  Append to known_tokens.
-    #
-    # NB: If this list ever changes, this script actually has to
-    # change to detect the existence of this file, kill any deleted
-    # old tokens and add any new tokens (to handle the upgrade case).
-    local -r service_accounts=("system:scheduler" "system:controller_manager" "system:logging" "system:monitoring")
-    for account in "${service_accounts[@]}"; do
-      token=$(dd if=/dev/urandom bs=128 count=1 2>/dev/null | base64 | tr -d "=+/" | dd bs=32 count=1 2>/dev/null)
-      echo "${token},${account},${account}" >> "${KNOWN_TOKENS_FILE}"
-    done
   fi
 }
 
@@ -777,6 +810,14 @@ EOF
 EOF
   fi
 
+  if [[ -n "${NODE_INSTANCE_PREFIX:-}" ]]; then
+    cat <<EOF >>/etc/gce.conf
+node-tags = ${NODE_INSTANCE_PREFIX}
+node-instance-prefix = ${NODE_INSTANCE_PREFIX}
+EOF
+    CLOUD_CONFIG=/etc/gce.conf
+  fi
+
   if [[ -n "${MULTIZONE:-}" ]]; then
     cat <<EOF >>/etc/gce.conf
 multizone = ${MULTIZONE}
@@ -784,12 +825,58 @@ EOF
     CLOUD_CONFIG=/etc/gce.conf
   fi
 
-  if [[ -n ${CLOUD_CONFIG:-} ]]; then
-  cat <<EOF >>/etc/salt/minion.d/grains.conf
+  if [[ -n "${CLOUD_CONFIG:-}" ]]; then
+    cat <<EOF >>/etc/salt/minion.d/grains.conf
   cloud_config: ${CLOUD_CONFIG}
 EOF
   else
     rm -f /etc/gce.conf
+  fi
+
+  if [[ -n "${GCP_AUTHN_URL:-}" ]]; then
+    cat <<EOF >>/etc/salt/minion.d/grains.conf
+  webhook_authentication_config: /etc/gcp_authn.config
+EOF
+    cat <<EOF >/etc/gcp_authn.config
+clusters:
+  - name: gcp-authentication-server
+    cluster:
+      server: ${GCP_AUTHN_URL}
+users:
+  - name: kube-apiserver
+    user:
+      auth-provider:
+        name: gcp
+current-context: webhook
+contexts:
+- context:
+    cluster: gcp-authentication-server
+    user: kube-apiserver
+  name: webhook
+EOF
+  fi
+
+  if [[ -n "${GCP_AUTHZ_URL:-}" ]]; then
+    cat <<EOF >>/etc/salt/minion.d/grains.conf
+  webhook_authorization_config: /etc/gcp_authz.config
+EOF
+    cat <<EOF >/etc/gcp_authz.config
+clusters:
+  - name: gcp-authorization-server
+    cluster:
+      server: ${GCP_AUTHZ_URL}
+users:
+  - name: kube-apiserver
+    user:
+      auth-provider:
+        name: gcp
+current-context: webhook
+contexts:
+- context:
+    cluster: gcp-authorization-server
+    user: kube-apiserver
+  name: webhook
+EOF
   fi
 
   # If the kubelet on the master is enabled, give it the same CIDR range
@@ -836,6 +923,13 @@ EOF
 function node-docker-opts() {
   if [[ -n "${EXTRA_DOCKER_OPTS-}" ]]; then
     DOCKER_OPTS="${DOCKER_OPTS:-} ${EXTRA_DOCKER_OPTS}"
+  fi
+
+  # Decide whether to enable a docker registry mirror. This is taken from
+  # the "kube-env" metadata value.
+  if [[ -n "${DOCKER_REGISTRY_MIRROR_URL:-}" ]]; then
+    echo "Enable docker registry mirror at: ${DOCKER_REGISTRY_MIRROR_URL}"
+    DOCKER_OPTS="${DOCKER_OPTS:-} --registry-mirror=${DOCKER_REGISTRY_MIRROR_URL}"
   fi
 }
 

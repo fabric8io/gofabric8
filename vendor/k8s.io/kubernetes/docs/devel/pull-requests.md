@@ -1,34 +1,5 @@
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-
-<h2>PLEASE NOTE: This document applies to the HEAD of the source tree</h2>
-
-If you are using a released version of Kubernetes, you should
-refer to the docs that go with that version.
-
-<!-- TAG RELEASE_LINK, added by the munger automatically -->
-<strong>
-The latest release of this document can be found
-[here](http://releases.k8s.io/release-1.2/docs/devel/pull-requests.md).
-
-Documentation for other releases can be found at
-[releases.k8s.io](http://releases.k8s.io).
-</strong>
---
-
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
@@ -69,20 +40,25 @@ Additionally, for infrequent or new contributors, we require the on call to appl
 The following will save time for both you and your reviewer:
 
 * Enable [pre-commit hooks](development.md#committing-changes-to-your-fork) and verify they pass.
-* Verify `hack/verify-generated-docs.sh` passes.
+* Verify `hack/verify-all.sh` passes.
 * Verify `hack/test-go.sh` passes.
+* Verify `hack/test-integration.sh` passes.
 
 ## Release Notes
 
 This section applies only to pull requests on the master branch.
+For cherry-pick PRs, see the [Cherrypick instructions](cherry-picks.md)
 
 1. All pull requests are initiated with a `release-note-label-needed` label.
 1. For a PR to be ready to merge, the `release-note-label-needed` label must be removed and one of the other `release-note-*` labels must be added.
 1. `release-note-none` is a valid option if the PR does not need to be mentioned
  at release time.
-1. The PR title is the **release note** you want published at release time.
-  * NOTE: PR titles are mutable and should reflect a release note friendly
-    message for any `release-note-*` labeled PRs.
+1. `release-note` labeled PRs generate a release note using the PR title by
+   default OR the release-note block in the PR template if filled in.
+  * See the [PR template](../../.github/PULL_REQUEST_TEMPLATE.md) for more
+    details.
+  * PR titles and body comments are mutable and can be modified at any time
+    prior to the release to reflect a release note friendly message.
 
 The only exception to these rules is when a PR is not a cherry-pick and is
 targeted directly to the non-master branch.  In this case, a `release-note-*`
@@ -128,6 +104,13 @@ request that subsequently needs to be reopened. We want to limit the total numbe
 
 We use a variety of automation to manage pull requests.  This automation is described in detail
 [elsewhere.](automation.md)
+
+
+
+
+<!-- BEGIN MUNGE: IS_VERSIONED -->
+<!-- TAG IS_VERSIONED -->
+<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

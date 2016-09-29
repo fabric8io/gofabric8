@@ -1,11 +1,10 @@
 #!/bin/bash
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
+if ! git status &> /dev/null; then
+  echo "SKIPPED: Not a Git repository"
+  exit 0
+fi
 
 "${OS_ROOT}/hack/build-go.sh" tools/rebasehelpers/commitchecker
 

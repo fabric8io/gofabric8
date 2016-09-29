@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
@@ -28,10 +29,10 @@ const (
 )
 
 const (
-	addRoleToUserExample = `  # Add the 'view' role to user1 in the current project
+	addRoleToUserExample = `  # Add the 'view' role to user1 for the current project
   %[1]s view user1
 
-  # Add the 'edit' role to serviceaccount1 in the current project
+  # Add the 'edit' role to serviceaccount1 for the current project
   %[1]s edit -z serviceaccount1`
 )
 
@@ -51,8 +52,8 @@ func NewCmdAddRoleToGroup(name, fullName string, f *clientcmd.Factory, out io.Wr
 
 	cmd := &cobra.Command{
 		Use:   name + " ROLE GROUP [GROUP ...]",
-		Short: "Add groups to a role in the current project",
-		Long:  `Add groups to a role in the current project`,
+		Short: "Add a role to groups for the current project",
+		Long:  `Add a role to groups for the current project`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.Complete(f, args, &options.Groups, "group", true); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
@@ -76,8 +77,8 @@ func NewCmdAddRoleToUser(name, fullName string, f *clientcmd.Factory, out io.Wri
 
 	cmd := &cobra.Command{
 		Use:     name + " ROLE (USER | -z SERVICEACCOUNT) [USER ...]",
-		Short:   "Add users or serviceaccounts to a role in the current project",
-		Long:    `Add users or serviceaccounts to a role in the current project`,
+		Short:   "Add a role to users or serviceaccounts for the current project",
+		Long:    `Add a role to users or serviceaccounts for the current project`,
 		Example: fmt.Sprintf(addRoleToUserExample, fullName),
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.CompleteUserWithSA(f, args, saNames); err != nil {
@@ -102,8 +103,8 @@ func NewCmdRemoveRoleFromGroup(name, fullName string, f *clientcmd.Factory, out 
 
 	cmd := &cobra.Command{
 		Use:   name + " ROLE GROUP [GROUP ...]",
-		Short: "Remove group from role in the current project",
-		Long:  `Remove group from role in the current project`,
+		Short: "Remove a role from groups for the current project",
+		Long:  `Remove a role from groups for the current project`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.Complete(f, args, &options.Groups, "group", true); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
@@ -127,8 +128,8 @@ func NewCmdRemoveRoleFromUser(name, fullName string, f *clientcmd.Factory, out i
 
 	cmd := &cobra.Command{
 		Use:   name + " ROLE USER [USER ...]",
-		Short: "Remove user from role in the current project",
-		Long:  `Remove user from role in the current project`,
+		Short: "Remove a role from users for the current project",
+		Long:  `Remove a role from users for the current project`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.CompleteUserWithSA(f, args, saNames); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
@@ -152,8 +153,8 @@ func NewCmdAddClusterRoleToGroup(name, fullName string, f *clientcmd.Factory, ou
 
 	cmd := &cobra.Command{
 		Use:   name + " <role> <group> [group]...",
-		Short: "Add groups to a role for all projects in the cluster",
-		Long:  `Add groups to a role for all projects in the cluster`,
+		Short: "Add a role to groups for all projects in the cluster",
+		Long:  `Add a role to groups for all projects in the cluster`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.Complete(f, args, &options.Groups, "group", false); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
@@ -174,8 +175,8 @@ func NewCmdAddClusterRoleToUser(name, fullName string, f *clientcmd.Factory, out
 
 	cmd := &cobra.Command{
 		Use:   name + " <role> <user> [user]...",
-		Short: "Add users to a role for all projects in the cluster",
-		Long:  `Add users to a role for all projects in the cluster`,
+		Short: "Add a role to users for all projects in the cluster",
+		Long:  `Add a role to users for all projects in the cluster`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.Complete(f, args, &options.Users, "user", false); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
@@ -196,8 +197,8 @@ func NewCmdRemoveClusterRoleFromGroup(name, fullName string, f *clientcmd.Factor
 
 	cmd := &cobra.Command{
 		Use:   name + " <role> <group> [group]...",
-		Short: "Remove group from role for all projects in the cluster",
-		Long:  `Remove group from role for all projects in the cluster`,
+		Short: "Remove a role from groups for all projects in the cluster",
+		Long:  `Remove a role from groups for all projects in the cluster`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.Complete(f, args, &options.Groups, "group", false); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
@@ -218,8 +219,8 @@ func NewCmdRemoveClusterRoleFromUser(name, fullName string, f *clientcmd.Factory
 
 	cmd := &cobra.Command{
 		Use:   name + " <role> <user> [user]...",
-		Short: "Remove user from role for all projects in the cluster",
-		Long:  `Remove user from role for all projects in the cluster`,
+		Short: "Remove a role from users for all projects in the cluster",
+		Long:  `Remove a role from users for all projects in the cluster`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.Complete(f, args, &options.Users, "user", false); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
@@ -338,6 +339,10 @@ subjectCheck:
 	} else {
 		roleBinding.Name = getUniqueName(o.RoleName, roleBindingNames)
 		err = o.RoleBindingAccessor.CreateRoleBinding(roleBinding)
+		// If the rolebinding was created in the meantime, rerun
+		if kapierrors.IsAlreadyExists(err) {
+			return o.AddRole()
+		}
 	}
 	if err != nil {
 		return err

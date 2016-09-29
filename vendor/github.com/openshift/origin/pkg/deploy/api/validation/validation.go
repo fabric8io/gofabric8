@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	unversionedvalidation "k8s.io/kubernetes/pkg/api/unversioned/validation"
 	"k8s.io/kubernetes/pkg/api/validation"
+	kapivalidation "k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	kvalidation "k8s.io/kubernetes/pkg/util/validation"
 	"k8s.io/kubernetes/pkg/util/validation/field"
@@ -35,11 +38,23 @@ func ValidateDeploymentConfigSpec(spec deployapi.DeploymentConfigSpec) field.Err
 	if spec.Template != nil {
 		podSpec = &spec.Template.Spec
 	}
+
 	allErrs = append(allErrs, validateDeploymentStrategy(&spec.Strategy, podSpec, specPath.Child("strategy"))...)
+	if spec.RevisionHistoryLimit != nil {
+		allErrs = append(allErrs, kapivalidation.ValidateNonnegativeField(int64(*spec.RevisionHistoryLimit), specPath.Child("revisionHistoryLimit"))...)
+	}
+	allErrs = append(allErrs, kapivalidation.ValidateNonnegativeField(int64(spec.MinReadySeconds), specPath.Child("minReadySeconds"))...)
+	if int64(spec.MinReadySeconds) >= deployapi.DefaultRollingTimeoutSeconds {
+		allErrs = append(allErrs, field.Invalid(specPath.Child("minReadySeconds"), spec.MinReadySeconds,
+			fmt.Sprintf("must be less than the deployment timeout (%ds)", deployapi.DefaultRollingTimeoutSeconds)))
+	}
 	if spec.Template == nil {
 		allErrs = append(allErrs, field.Required(specPath.Child("template"), ""))
 	} else {
-		allErrs = append(allErrs, validation.ValidatePodTemplateSpec(spec.Template, specPath.Child("template"))...)
+		originalContainerImageNames := getContainerImageNames(spec.Template)
+		defer setContainerImageNames(spec.Template, originalContainerImageNames)
+		handleEmptyImageReferences(spec.Template, spec.Triggers)
+		allErrs = append(allErrs, validation.ValidatePodTemplateSpecForRC(spec.Template, spec.Selector, spec.Replicas, specPath.Child("template"))...)
 	}
 	if spec.Replicas < 0 {
 		allErrs = append(allErrs, field.Invalid(specPath.Child("replicas"), spec.Replicas, "replicas cannot be negative"))
@@ -48,6 +63,63 @@ func ValidateDeploymentConfigSpec(spec deployapi.DeploymentConfigSpec) field.Err
 		allErrs = append(allErrs, field.Invalid(specPath.Child("selector"), spec.Selector, "selector cannot be empty"))
 	}
 	return allErrs
+}
+
+func getContainerImageNames(template *kapi.PodTemplateSpec) []string {
+	originalContainerImageNames := make([]string, len(template.Spec.Containers))
+	for i := range template.Spec.Containers {
+		originalContainerImageNames[i] = template.Spec.Containers[i].Image
+	}
+	return originalContainerImageNames
+}
+
+func setContainerImageNames(template *kapi.PodTemplateSpec, originalNames []string) {
+	for i := range template.Spec.Containers {
+		template.Spec.Containers[i].Image = originalNames[i]
+	}
+}
+
+func handleEmptyImageReferences(template *kapi.PodTemplateSpec, triggers []deployapi.DeploymentTriggerPolicy) {
+	// if we have both an ICT defined and an empty Template->PodSpec->Container->Image field, we are going
+	// to modify this method's local copy (a pointer was NOT used for the parameter) by setting the field to a non-empty value to
+	// work around the k8s validation as our ICT will supply the image field value
+	containerEmptyImageInICT := make(map[string]bool)
+	for _, container := range template.Spec.Containers {
+		if len(container.Image) == 0 {
+			containerEmptyImageInICT[container.Name] = false
+		}
+	}
+
+	if len(containerEmptyImageInICT) == 0 {
+		return
+	}
+
+	needToChangeImageField := false
+	for _, trigger := range triggers {
+		// note, the validateTrigger call above will add an error if ImageChangeParams is nil, but
+		// we can still fall down this path so account for it being nil
+		if trigger.Type != deployapi.DeploymentTriggerOnImageChange || trigger.ImageChangeParams == nil {
+			continue
+		}
+
+		for _, container := range trigger.ImageChangeParams.ContainerNames {
+			if _, ok := containerEmptyImageInICT[container]; ok {
+				needToChangeImageField = true
+				containerEmptyImageInICT[container] = true
+			}
+		}
+	}
+
+	if needToChangeImageField {
+		for i, container := range template.Spec.Containers {
+			// only update containers listed in the ict
+			match, ok := containerEmptyImageInICT[container.Name]
+			if match && ok {
+				template.Spec.Containers[i].Image = "unset"
+			}
+		}
+	}
+
 }
 
 func ValidateDeploymentConfigStatus(status deployapi.DeploymentConfigStatus) field.ErrorList {
@@ -85,6 +157,23 @@ func ValidateDeploymentConfigStatusUpdate(newConfig *deployapi.DeploymentConfig,
 }
 
 func ValidateDeploymentConfigRollback(rollback *deployapi.DeploymentConfigRollback) field.ErrorList {
+	result := field.ErrorList{}
+
+	if len(rollback.Name) == 0 {
+		result = append(result, field.Required(field.NewPath("name"), "name of the deployment config is missing"))
+	} else if len(kvalidation.IsDNS1123Subdomain(rollback.Name)) != 0 {
+		result = append(result, field.Invalid(field.NewPath("name"), rollback.Name, "name of the deployment config is invalid"))
+	}
+
+	specPath := field.NewPath("spec")
+	if rollback.Spec.Revision < 0 {
+		result = append(result, field.Invalid(specPath.Child("revision"), rollback.Spec.Revision, "must be non-negative"))
+	}
+
+	return result
+}
+
+func ValidateDeploymentConfigRollbackDeprecated(rollback *deployapi.DeploymentConfigRollback) field.ErrorList {
 	result := field.ErrorList{}
 
 	fromPath := field.NewPath("spec", "from")
@@ -142,7 +231,7 @@ func validateDeploymentStrategy(strategy *deployapi.DeploymentStrategy, pod *kap
 	}
 
 	if strategy.Labels != nil {
-		errs = append(errs, validation.ValidateLabels(strategy.Labels, fldPath.Child("labels"))...)
+		errs = append(errs, unversionedvalidation.ValidateLabels(strategy.Labels, fldPath.Child("labels"))...)
 	}
 	if strategy.Annotations != nil {
 		errs = append(errs, validation.ValidateAnnotations(strategy.Annotations, fldPath.Child("annotations"))...)
@@ -339,7 +428,7 @@ func validateImageChangeParams(params *deployapi.DeploymentTriggerImageChangePar
 		if err := validateImageStreamTagName(params.From.Name); err != nil {
 			errs = append(errs, field.Invalid(fromPath.Child("name"), params.From.Name, err.Error()))
 		}
-		if len(params.From.Namespace) != 0 && !kvalidation.IsDNS1123Subdomain(params.From.Namespace) {
+		if len(params.From.Namespace) != 0 && len(kvalidation.IsDNS1123Subdomain(params.From.Namespace)) != 0 {
 			errs = append(errs, field.Invalid(fromPath.Child("namespace"), params.From.Namespace, "namespace must be a valid subdomain"))
 		}
 	}
@@ -354,11 +443,10 @@ func validateImageChangeParams(params *deployapi.DeploymentTriggerImageChangePar
 func validateImageStreamTagName(istag string) error {
 	name, _, ok := imageapi.SplitImageStreamTag(istag)
 	if !ok {
-		return fmt.Errorf("invalid ImageStreamTag: %s", istag)
+		return fmt.Errorf("must be in the form of <name>:<tag>")
 	}
-	ok, reason := imageval.ValidateImageStreamName(name, false)
-	if !ok {
-		return errors.New(reason)
+	if reasons := imageval.ValidateImageStreamName(name, false); len(reasons) != 0 {
+		return errors.New(strings.Join(reasons, ", "))
 	}
 	return nil
 }

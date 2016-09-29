@@ -13,7 +13,7 @@
 # limitations under the License.
 
 FROM BASEIMAGE
-MAINTAINER  Dawn Chen <dawnchen@google.com>
+MAINTAINER Dawn Chen <dawnchen@google.com>
 
-COPY ./etcd /usr/local/bin/etcd
-COPY ./etcdctl /usr/local/bin/etcdctl
+EXPOSE 2379 2380 4001 7001
+COPY etcd etcdctl /usr/local/bin/

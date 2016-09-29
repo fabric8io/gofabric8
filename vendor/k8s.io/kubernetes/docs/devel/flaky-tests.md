@@ -1,34 +1,5 @@
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-
-<h2>PLEASE NOTE: This document applies to the HEAD of the source tree</h2>
-
-If you are using a released version of Kubernetes, you should
-refer to the docs that go with that version.
-
-<!-- TAG RELEASE_LINK, added by the munger automatically -->
-<strong>
-The latest release of this document can be found
-[here](http://releases.k8s.io/release-1.2/docs/devel/flaky-tests.md).
-
-Documentation for other releases can be found at
-[releases.k8s.io](http://releases.k8s.io).
-</strong>
---
-
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
@@ -88,11 +59,20 @@ we have the following guidelines:
 3. If you can reproduce it (or it's obvious from the logs what happened), you
    should then be able to fix it, or in the case where someone is clearly more
    qualified to fix it, reassign it with very clear instructions.
-4. If you can't reproduce it: __don't just close it!__ Every time a flake comes
+4. PRs that fix or help debug flakes may have the P0 priority set to get them
+   through the merge queue as fast as possible.
+5. Once you have made a change that you believe fixes a flake, it is conservative
+   to keep the issue for the flake open and see if it manifests again after the
+   change is merged.
+6. If you can't reproduce a flake: __don't just close it!__ Every time a flake comes
    back, at least 2 hours of merge time is wasted. So we need to make monotonic
    progress towards narrowing it down every time a flake occurs. If you can't
    figure it out from the logs, add log messages that would have help you figure
-   it out.
+   it out.  If you make changes to make a flake more reproducible, please link
+   your pull request to the flake you're working on.
+7. If a flake has been open, could not be reproduced, and has not manifested in
+   3 months, it is reasonable to close the flake issue with a note saying
+   why.
 
 # Reproducing unit test flakes
 
@@ -107,7 +87,7 @@ $ go install golang.org/x/tools/cmd/stress
 Then build your test binary
 
 ```
-$ godep go test -c -race
+$ go test -c -race
 ```
 
 Then run it under stress
@@ -186,6 +166,13 @@ kubectl delete replicationcontroller flakecontroller
 If you do a final check for flakes with `docker ps -a`, ignore tasks that exited -1, since that's what happens when you stop the replication controller.
 
 Happy flake hunting!
+
+
+
+
+<!-- BEGIN MUNGE: IS_VERSIONED -->
+<!-- TAG IS_VERSIONED -->
+<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

@@ -2,41 +2,20 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package webdav etc etc TODO.
+// Package webdav provides a WebDAV server implementation.
 package webdav // import "golang.org/x/net/webdav"
 
 import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
-	"runtime"
 	"strings"
 	"time"
 )
-
-// Package webdav's XML output requires the standard library's encoding/xml
-// package version 1.5 or greater. Otherwise, it will produce malformed XML.
-//
-// As of May 2015, the Go stable release is version 1.4, so we print a message
-// to let users know that this golang.org/x/etc package won't work yet.
-//
-// This package also won't work with Go 1.3 and earlier, but making this
-// runtime version check catch all the earlier versions too, and not just
-// "1.4.x", isn't worth the complexity.
-//
-// TODO: delete this check at some point after Go 1.5 is released.
-var go1Dot4 = strings.HasPrefix(runtime.Version(), "go1.4.")
-
-func init() {
-	if go1Dot4 {
-		log.Println("package webdav requires Go version 1.5 or greater")
-	}
-}
 
 type Handler struct {
 	// Prefix is the URL path prefix to strip from WebDAV resource paths.
@@ -169,7 +148,10 @@ func (h *Handler) confirmLocks(r *http.Request, src, dst string) (release func()
 			if u.Host != r.Host {
 				continue
 			}
-			lsrc = u.Path
+			lsrc, status, err = h.stripPrefix(u.Path)
+			if err != nil {
+				return nil, status, err
+			}
 		}
 		release, err = h.LockSystem.Confirm(time.Now(), lsrc, dst, l.conditions...)
 		if err == ErrConfirmationFailed {
@@ -195,7 +177,7 @@ func (h *Handler) handleOptions(w http.ResponseWriter, r *http.Request) (status 
 	allow := "OPTIONS, LOCK, PUT, MKCOL"
 	if fi, err := h.FileSystem.Stat(reqPath); err == nil {
 		if fi.IsDir() {
-			allow = "OPTIONS, LOCK, GET, HEAD, POST, DELETE, PROPPATCH, COPY, MOVE, UNLOCK, PROPFIND"
+			allow = "OPTIONS, LOCK, DELETE, PROPPATCH, COPY, MOVE, UNLOCK, PROPFIND"
 		} else {
 			allow = "OPTIONS, LOCK, GET, HEAD, POST, DELETE, PROPPATCH, COPY, MOVE, UNLOCK, PROPFIND, PUT"
 		}
@@ -223,13 +205,14 @@ func (h *Handler) handleGetHeadPost(w http.ResponseWriter, r *http.Request) (sta
 	if err != nil {
 		return http.StatusNotFound, err
 	}
-	if !fi.IsDir() {
-		etag, err := findETag(h.FileSystem, h.LockSystem, reqPath, fi)
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-		w.Header().Set("ETag", etag)
+	if fi.IsDir() {
+		return http.StatusMethodNotAllowed, nil
 	}
+	etag, err := findETag(h.FileSystem, h.LockSystem, reqPath, fi)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	w.Header().Set("ETag", etag)
 	// Let ServeContent determine the Content-Type header.
 	http.ServeContent(w, r, reqPath, fi.ModTime(), f)
 	return 0, nil
@@ -615,7 +598,7 @@ func (h *Handler) handleProppatch(w http.ResponseWriter, r *http.Request) (statu
 
 func makePropstatResponse(href string, pstats []Propstat) *response {
 	resp := response{
-		Href:     []string{href},
+		Href:     []string{(&url.URL{Path: href}).EscapedPath()},
 		Propstat: make([]propstat, 0, len(pstats)),
 	}
 	for _, p := range pstats {

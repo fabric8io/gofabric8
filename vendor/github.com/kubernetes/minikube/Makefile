@@ -12,19 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Use the native vendor/ dependency system
-export GO15VENDOREXPERIMENT=1
-
 # Bump these on release
-VERSION ?= v0.9.0
-DEB_VERSION ?= 0.9-0
+VERSION_MAJOR ?= 0
+VERSION_MINOR ?= 10
+VERSION_BUILD ?= 0
+VERSION ?= v$(VERSION_MAJOR).$(VERSION_MINOR).$(VERSION_BUILD)
+DEB_VERSION ?= $(VERSION_MAJOR).$(VERSION_MINOR)-$(VERSION_BUILD)
+INSTALL_SIZE ?= $(shell du out/minikube-windows-amd64.exe | cut -f1)
 
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 BUILD_DIR ?= ./out
 ORG := k8s.io
 REPOPATH ?= $(ORG)/minikube
-BUILD_IMAGE ?= gcr.io/google_containers/kube-cross:v1.6.2-1
+BUILD_IMAGE ?= gcr.io/google_containers/kube-cross:v1.7.1-0
+IS_EXE ?=
 
 ifeq ($(IN_DOCKER),1)
 	GOPATH := /go
@@ -46,8 +48,11 @@ MKGOPATH := if [ ! -e $(GOPATH)/src/$(ORG) ]; then mkdir -p $(GOPATH)/src/$(ORG)
 LOCALKUBEFILES := go list  -f '{{join .Deps "\n"}}' ./cmd/localkube/ | grep k8s.io | xargs go list -f '{{ range $$file := .GoFiles }} {{$$.Dir}}/{{$$file}}{{"\n"}}{{end}}'
 MINIKUBEFILES := go list  -f '{{join .Deps "\n"}}' ./cmd/minikube/ | grep k8s.io | xargs go list -f '{{ range $$file := .GoFiles }} {{$$.Dir}}/{{$$file}}{{"\n"}}{{end}}'
 
-out/minikube: out/minikube-$(GOOS)-$(GOARCH)
-	cp $(BUILD_DIR)/minikube-$(GOOS)-$(GOARCH) $(BUILD_DIR)/minikube
+ifeq ($(GOOS),windows)
+	IS_EXE = ".exe"
+endif
+out/minikube$(IS_EXE): out/minikube-$(GOOS)-$(GOARCH)$(IS_EXE)
+	cp $(BUILD_DIR)/minikube-$(GOOS)-$(GOARCH)$(IS_EXE) $(BUILD_DIR)/minikube$(IS_EXE)
 
 out/localkube: $(shell $(LOCALKUBEFILES))
 	$(MKGOPATH)
@@ -122,3 +127,21 @@ out/minikube_$(DEB_VERSION).deb: out/minikube-linux-amd64
 	cp out/minikube-linux-amd64 out/minikube_$(DEB_VERSION)/usr/bin
 	dpkg-deb --build out/minikube_$(DEB_VERSION)
 	rm -rf out/minikube_$(DEB_VERSION)
+
+out/minikube-installer.exe: out/minikube-windows-amd64.exe
+	rm -rf out/windows_tmp
+	cp -r installers/windows/ out/windows_tmp
+	cp -r LICENSE out/windows_tmp/LICENSE
+	awk 'sub("$$", "\r")' out/windows_tmp/LICENSE > out/windows_tmp/LICENSE.txt
+	sed -E -i 's/--VERSION_MAJOR--/'$(VERSION_MAJOR)'/g' out/windows_tmp/minikube.nsi
+	sed -E -i 's/--VERSION_MINOR--/'$(VERSION_MINOR)'/g' out/windows_tmp/minikube.nsi
+	sed -E -i 's/--VERSION_BUILD--/'$(VERSION_BUILD)'/g' out/windows_tmp/minikube.nsi
+	sed -E -i 's/--INSTALL_SIZE--/'$(INSTALL_SIZE)'/g' out/windows_tmp/minikube.nsi
+	cp out/minikube-windows-amd64.exe out/windows_tmp/minikube.exe
+	makensis out/windows_tmp/minikube.nsi
+	mv out/windows_tmp/minikube-installer.exe out/minikube-installer.exe
+	rm -rf out/windows_tmp
+
+.PHONY: check-release
+check-release:
+	go test -v ./deploy/minikube/release_sanity_test.go -tags=release

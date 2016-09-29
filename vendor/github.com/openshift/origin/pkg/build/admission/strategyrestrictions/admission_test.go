@@ -26,6 +26,7 @@ func TestBuildAdmission(t *testing.T) {
 		resource         unversioned.GroupResource
 		subResource      string
 		object           runtime.Object
+		oldObject        runtime.Object
 		responseObject   runtime.Object
 		reviewResponse   *authorizationapi.SubjectAccessReviewResponse
 		expectedResource string
@@ -167,7 +168,7 @@ func TestBuildAdmission(t *testing.T) {
 			client := fakeClient(test.expectedResource, test.reviewResponse, test.responseObject)
 			c := NewBuildByStrategy()
 			c.(oadmission.WantsOpenshiftClient).SetOpenshiftClient(client)
-			attrs := admission.NewAttributesRecord(test.object, test.kind.WithVersion("version"), "default", "name", test.resource.WithVersion("version"), test.subResource, op, fakeUser())
+			attrs := admission.NewAttributesRecord(test.object, test.oldObject, test.kind.WithVersion("version"), "default", "name", test.resource.WithVersion("version"), test.subResource, op, fakeUser())
 			err := c.Admit(attrs)
 			if err != nil && test.expectAccept {
 				t.Errorf("%s: unexpected error: %v", test.name, err)
@@ -224,7 +225,9 @@ func testBuild(strategy buildapi.BuildStrategy) *buildapi.Build {
 			Name: "test-build",
 		},
 		Spec: buildapi.BuildSpec{
-			Strategy: strategy,
+			CommonSpec: buildapi.CommonSpec{
+				Strategy: strategy,
+			},
 		},
 	}
 }
@@ -235,7 +238,7 @@ func testBuildConfig(strategy buildapi.BuildStrategy) *buildapi.BuildConfig {
 			Name: "test-buildconfig",
 		},
 		Spec: buildapi.BuildConfigSpec{
-			BuildSpec: buildapi.BuildSpec{
+			CommonSpec: buildapi.CommonSpec{
 				Strategy: strategy,
 			},
 		},

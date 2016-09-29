@@ -25,7 +25,6 @@ import (
 	strategy "github.com/openshift/origin/pkg/build/controller/strategy"
 	buildutil "github.com/openshift/origin/pkg/build/util"
 	osclient "github.com/openshift/origin/pkg/client"
-	serverapi "github.com/openshift/origin/pkg/cmd/server/api"
 	controller "github.com/openshift/origin/pkg/controller"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	errors "github.com/openshift/origin/pkg/util/errors"
@@ -74,7 +73,7 @@ type BuildControllerFactory struct {
 
 // Create constructs a BuildController
 func (factory *BuildControllerFactory) Create() controller.RunnableController {
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&buildLW{client: factory.OSClient}, &buildapi.Build{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -138,7 +137,7 @@ func (factory *BuildControllerFactory) CreateDeleteController() controller.Runna
 		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
 			queue,
-			cache.MetaNamespaceKeyFunc,
+			queue.KeyOf,
 			controller.RetryNever,
 			flowcontrol.NewTokenBucketRateLimiter(1, 10)),
 		Handle: func(obj interface{}) error {
@@ -191,13 +190,14 @@ func (factory *BuildPodControllerFactory) Create() controller.RunnableController
 	factory.buildStore = cache.NewStore(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&buildLW{client: factory.OSClient}, &buildapi.Build{}, factory.buildStore, 2*time.Minute).RunUntil(factory.Stop)
 
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&podLW{client: factory.KubeClient}, &kapi.Pod{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	client := ControllerClient{factory.KubeClient, factory.OSClient}
 	buildPodController := &buildcontroller.BuildPodController{
 		BuildStore:   factory.buildStore,
 		BuildUpdater: factory.BuildUpdater,
+		SecretClient: factory.KubeClient,
 		PodManager:   client,
 	}
 
@@ -254,7 +254,7 @@ func (factory *BuildPodControllerFactory) CreateDeleteController() controller.Ru
 		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
 			queue,
-			cache.MetaNamespaceKeyFunc,
+			queue.KeyOf,
 			controller.RetryNever,
 			flowcontrol.NewTokenBucketRateLimiter(1, 10)),
 		Handle: func(obj interface{}) error {
@@ -281,7 +281,7 @@ type ImageChangeControllerFactory struct {
 // Create creates a new ImageChangeController which is used to trigger builds when a new
 // image is available
 func (factory *ImageChangeControllerFactory) Create() controller.RunnableController {
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&imageStreamLW{factory.Client}, &imageapi.ImageStream{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
@@ -314,14 +314,13 @@ type BuildConfigControllerFactory struct {
 	Client                  osclient.Interface
 	KubeClient              kclient.Interface
 	BuildConfigInstantiator buildclient.BuildConfigInstantiator
-	JenkinsConfig           serverapi.JenkinsPipelineConfig
 	// Stop may be set to allow controllers created by this factory to be terminated.
 	Stop <-chan struct{}
 }
 
 // Create creates a new ConfigChangeController which is used to trigger builds on creation
 func (factory *BuildConfigControllerFactory) Create() controller.RunnableController {
-	queue := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&buildConfigLW{client: factory.Client}, &buildapi.BuildConfig{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	eventBroadcaster := record.NewBroadcaster()
@@ -329,9 +328,6 @@ func (factory *BuildConfigControllerFactory) Create() controller.RunnableControl
 
 	bcController := &buildcontroller.BuildConfigController{
 		BuildConfigInstantiator: factory.BuildConfigInstantiator,
-		KubeClient:              factory.KubeClient,
-		Client:                  factory.Client,
-		JenkinsConfig:           factory.JenkinsConfig,
 		Recorder:                eventBroadcaster.NewRecorder(kapi.EventSource{Component: "build-config-controller"}),
 	}
 
@@ -398,15 +394,6 @@ func (f *typeBasedFactoryStrategy) CreateBuildPod(build *buildapi.Build) (*kapi.
 	return pod, err
 }
 
-// panicIfStopped panics with the provided object if the channel is closed
-func panicIfStopped(ch <-chan struct{}, message interface{}) {
-	select {
-	case <-ch:
-		panic(message)
-	default:
-	}
-}
-
 // podLW is a ListWatcher implementation for Pods.
 type podLW struct {
 	client kclient.Interface
@@ -428,20 +415,6 @@ func listPods(client kclient.Interface) (*kapi.PodList, error) {
 		return nil, err
 	}
 	return listNew, nil
-}
-
-func mergeWithoutDuplicates(arrays ...[]kapi.Pod) []kapi.Pod {
-	tmpMap := make(map[string]kapi.Pod)
-	for _, array := range arrays {
-		for _, v := range array {
-			tmpMap[fmt.Sprintf("%s/%s", v.Namespace, v.Name)] = v
-		}
-	}
-	var result []kapi.Pod
-	for _, v := range tmpMap {
-		result = append(result, v)
-	}
-	return result
 }
 
 // Watch watches all Pods that have a build label.
@@ -502,7 +475,6 @@ func (lw *buildDeleteLW) List(options kapi.ListOptions) (runtime.Object, error) 
 		}
 		if err != nil && kerrors.IsNotFound(err) {
 			build = nil
-
 		}
 		if build == nil {
 			deletedBuild := &buildapi.Build{
@@ -576,6 +548,10 @@ func (lw *buildPodDeleteLW) List(options kapi.ListOptions) (runtime.Object, erro
 		glog.V(5).Infof("Found build %s/%s", build.Namespace, build.Name)
 		if buildutil.IsBuildComplete(&build) {
 			glog.V(5).Infof("Ignoring build %s/%s because it is complete", build.Namespace, build.Name)
+			continue
+		}
+		if build.Spec.Strategy.JenkinsPipelineStrategy != nil {
+			glog.V(5).Infof("Ignoring build %s/%s because it is a pipeline build", build.Namespace, build.Name)
 			continue
 		}
 		pod, err := lw.KubeClient.Pods(build.Namespace).Get(buildapi.GetBuildPodName(&build))
