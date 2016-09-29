@@ -405,7 +405,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 					}
 					port := 0
 					for _, p := range service.Spec.Ports {
-						port = p.NodePort
+						port = int(p.NodePort)
 					}
 					if port == 0 {
 						util.Errorf("Failed to find nodePort on the Service called fabric8\n")
@@ -491,7 +491,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				items := pvcs.Items
 				for _, item := range items {
 					status := item.Status.Phase
-					if status == api.ClaimPending || status == "Lost" {
+					if status == api.ClaimPending || status == api.ClaimLost {
 						err = c.PersistentVolumeClaims(ns).Delete(item.ObjectMeta.Name)
 						if err != nil {
 							util.Infof("Error deleting PVC %s\n", item.ObjectMeta.Name)
@@ -751,7 +751,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	}
 	var tmpl tapi.Template
 
-	err = api.Scheme.Convert(&v1tmpl, &tmpl)
+	err = api.Scheme.Convert(&v1tmpl, &tmpl, nil)
 	if err != nil {
 		util.Fatalf("Cannot convert %s template to deploy: %v", templateName, err)
 	}
@@ -786,9 +786,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 					objectKind := o.GetObjectKind()
 					if objectKind != nil {
 						groupVersionKind := objectKind.GroupVersionKind()
-						if groupVersionKind != nil {
-							kind = groupVersionKind.Kind
-						}
+						kind = groupVersionKind.Kind
 					}
 				}
 				if len(kind) == 0 {
@@ -1211,7 +1209,7 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 
 		var tmpl tapi.Template
 
-		err = api.Scheme.Convert(&v1tmpl, &tmpl)
+		err = api.Scheme.Convert(&v1tmpl, &tmpl, nil)
 		if err != nil {
 			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
 			return err
@@ -1294,7 +1292,7 @@ func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Fact
 					}
 				} else {
 					var kubeList api.List
-					err = api.Scheme.Convert(&v1List, &kubeList)
+					err = api.Scheme.Convert(&v1List, &kubeList, nil)
 					if err != nil {
 						util.Fatalf("Cannot convert %s List to deploy: %v", templateName, err)
 					}
@@ -1401,11 +1399,12 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 	if ns != "default" {
 		name += "-" + ns
 	}
+	var priority int32 = 10
 	scc := kapi.SecurityContextConstraints{
 		ObjectMeta: kapi.ObjectMeta{
 			Name: name,
 		},
-		Priority:                 &[]int{10}[0],
+		Priority:                 &priority,
 		AllowPrivilegedContainer: true,
 		AllowHostNetwork:         true,
 		AllowHostPorts:           true,

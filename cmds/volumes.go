@@ -59,20 +59,21 @@ func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
 					createPV(c, ns, pendingClaimNames, sshCommand)
 					items := pvcs.Items
 					for _, item := range items {
+						name := item.ObjectMeta.Name
 						status := item.Status.Phase
-						if status == api.ClaimPending || status == "Lost" {
-							err = c.PersistentVolumeClaims(ns).Delete(item.ObjectMeta.Name)
+						if status == api.ClaimPending || status == api.ClaimLost {
+							err = c.PersistentVolumeClaims(ns).Delete(name)
 							if err != nil {
-								util.Infof("Error deleting PVC %s\n", item.ObjectMeta.Name)
+								util.Infof("Error deleting PVC %s\n", name)
 							} else {
-								util.Infof("Recreating PVC %s\n", item.ObjectMeta.Name)
+								util.Infof("Recreating PVC %s\n", name)
 								c.PersistentVolumeClaims(ns).Create(&api.PersistentVolumeClaim{
 									ObjectMeta: api.ObjectMeta{
-										Name:      item.ObjectMeta.Name,
+										Name:      name,
 										Namespace: ns,
 									},
 									Spec: api.PersistentVolumeClaimSpec{
-										VolumeName:  ns + "-" + item.ObjectMeta.Name,
+										VolumeName:  ns + "-" + name,
 										AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteOnce},
 										Resources: api.ResourceRequirements{
 											Requests: api.ResourceList{
@@ -100,16 +101,13 @@ func findPendingPVs(c *k8sclient.Client, ns string) (bool, *api.PersistentVolume
 		util.Infof("Failed to find any PersistentVolumeClaims, %s in namespace %s\n", err, ns)
 	}
 
-	var pendingClaims []api.PersistentVolumeClaim
-
 	if pvcs != nil {
-		pendingClaims = pvcs.Items
-		pendingClaimNames := make([]string, 0, len(pendingClaims))
+		pendingClaims := pvcs.Items
+		var pendingClaimNames []string
 		for _, item := range pendingClaims {
 			status := item.Status.Phase
-			if status == api.ClaimPending || status == "Lost" {
-				pvcName := item.ObjectMeta.Name
-				pendingClaimNames = append(pendingClaimNames, pvcName)
+			if status == api.ClaimPending || status == api.ClaimLost {
+				pendingClaimNames = append(pendingClaimNames, item.ObjectMeta.Name)
 			}
 		}
 		if len(pendingClaimNames) > 0 {
@@ -131,8 +129,7 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand stri
 		}
 		items := rc.Items
 		for _, volume := range items {
-			vname := volume.ObjectMeta.Name
-			if vname == nsPvcName {
+			if nsPvcName == volume.ObjectMeta.Name {
 				util.Infof("Already created PersistentVolumes for %s\n", nsPvcName)
 			}
 		}
