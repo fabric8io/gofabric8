@@ -21,6 +21,8 @@ import (
 	"os/exec"
 	"syscall"
 
+	"path/filepath"
+
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
@@ -49,12 +51,39 @@ func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
 				util.Fatal("No default namespace")
 			} else {
 
-				found, pendingClaimNames := findPendingPVS(c, ns)
+				found, pvcs, pendingClaimNames := findPendingPVs(c, ns)
 				if found {
 
 					sshCommand := cmd.Flags().Lookup(sshCommandFlag).Value.String()
 
 					createPV(c, ns, pendingClaimNames, sshCommand)
+					items := pvcs.Items
+					for _, item := range items {
+						status := item.Status.Phase
+						if status == api.ClaimPending || status == "Lost" {
+							err = c.PersistentVolumeClaims(ns).Delete(item.ObjectMeta.Name)
+							if err != nil {
+								util.Infof("Error deleting PVC %s\n", item.ObjectMeta.Name)
+							} else {
+								util.Infof("Recreating PVC %s\n", item.ObjectMeta.Name)
+								c.PersistentVolumeClaims(ns).Create(&api.PersistentVolumeClaim{
+									ObjectMeta: api.ObjectMeta{
+										Name:      item.ObjectMeta.Name,
+										Namespace: ns,
+									},
+									Spec: api.PersistentVolumeClaimSpec{
+										VolumeName:  ns + "-" + item.ObjectMeta.Name,
+										AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteOnce},
+										Resources: api.ResourceRequirements{
+											Requests: api.ResourceList{
+												api.ResourceName(api.ResourceStorage): resource.MustParse("1Gi"),
+											},
+										},
+									},
+								})
+							}
+						}
+					}
 				}
 			}
 		},
@@ -63,33 +92,38 @@ func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func findPendingPVS(c *k8sclient.Client, ns string) (bool, []string) {
+func findPendingPVs(c *k8sclient.Client, ns string) (bool, *api.PersistentVolumeClaimList, []string) {
 
 	pvcs, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{})
+
 	if err != nil {
 		util.Infof("Failed to find any PersistentVolumeClaims, %s in namespace %s\n", err, ns)
 	}
 
+	var pendingClaims []api.PersistentVolumeClaim
+
 	if pvcs != nil {
-		items := pvcs.Items
-		pendingClaimNames := make([]string, 0, len(items))
-		for _, item := range items {
+		pendingClaims = pvcs.Items
+		pendingClaimNames := make([]string, 0, len(pendingClaims))
+		for _, item := range pendingClaims {
 			status := item.Status.Phase
-			if status == "Pending" || status == "Lost" {
-				pendingClaimNames = append(pendingClaimNames, item.ObjectMeta.Name)
+			if status == api.ClaimPending || status == "Lost" {
+				pvcName := item.ObjectMeta.Name
+				pendingClaimNames = append(pendingClaimNames, pvcName)
 			}
 		}
 		if len(pendingClaimNames) > 0 {
-			return true, pendingClaimNames
+			return true, pvcs, pendingClaimNames
 		}
 	}
-	return false, nil
+	return false, nil, nil
 }
 
 func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand string) (Result, error) {
 
 	for _, pvcName := range pvcNames {
-		hostPath := "/data/" + pvcName
+		hostPath := filepath.Join("/data", ns, pvcName)
+		nsPvcName := ns + "-" + pvcName
 		pvs := c.PersistentVolumes()
 		rc, err := pvs.List(api.ListOptions{})
 		if err != nil {
@@ -98,8 +132,8 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand stri
 		items := rc.Items
 		for _, volume := range items {
 			vname := volume.ObjectMeta.Name
-			if vname == pvcName {
-				util.Infof("Already created PersistentVolumes for %s\n", pvcName)
+			if vname == nsPvcName {
+				util.Infof("Already created PersistentVolumes for %s\n", nsPvcName)
 			}
 		}
 
@@ -109,10 +143,10 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand stri
 		}
 
 		// lets create a new PV
-		util.Infof("PersistentVolume name %s will be created on host path %s\n", pvcName, hostPath)
+		util.Infof("PersistentVolume name %s will be created on host path %s\n", nsPvcName, hostPath)
 		pv := api.PersistentVolume{
 			ObjectMeta: api.ObjectMeta{
-				Name: pvcName,
+				Name: nsPvcName,
 			},
 			Spec: api.PersistentVolumeSpec{
 				Capacity: api.ResourceList{
@@ -122,13 +156,15 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand stri
 				PersistentVolumeSource: api.PersistentVolumeSource{
 					HostPath: &api.HostPathVolumeSource{Path: hostPath},
 				},
+				PersistentVolumeReclaimPolicy: api.PersistentVolumeReclaimRecycle,
 			},
 		}
 
 		_, err = pvs.Create(&pv)
 		if err != nil {
-			util.Errorf("Failed to create PersistentVolume %s at %s with error %v\n", pvcName, hostPath, err)
+			util.Errorf("Failed to create PersistentVolume %s at %s with error %v\n", nsPvcName, hostPath, err)
 		}
+
 	}
 
 	return Success, nil

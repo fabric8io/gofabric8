@@ -57,6 +57,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
+	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
@@ -483,10 +484,38 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			runTemplate(c, oc, d.appToRun, ns, domain, apiserver, pv)
 
 			// lets create any missing PVs if on minikube or minishift
-			found, pendingClaimNames := findPendingPVS(c, ns)
+			found, pvcs, pendingClaimNames := findPendingPVs(c, ns)
 			if found {
 				sshCommand := ""
 				createPV(c, ns, pendingClaimNames, sshCommand)
+				items := pvcs.Items
+				for _, item := range items {
+					status := item.Status.Phase
+					if status == api.ClaimPending || status == "Lost" {
+						err = c.PersistentVolumeClaims(ns).Delete(item.ObjectMeta.Name)
+						if err != nil {
+							util.Infof("Error deleting PVC %s\n", item.ObjectMeta.Name)
+						} else {
+							util.Infof("Recreating PVC %s\n", item.ObjectMeta.Name)
+
+							c.PersistentVolumeClaims(ns).Create(&api.PersistentVolumeClaim{
+								ObjectMeta: api.ObjectMeta{
+									Name:      item.ObjectMeta.Name,
+									Namespace: ns,
+								},
+								Spec: api.PersistentVolumeClaimSpec{
+									VolumeName:  ns + "-" + item.ObjectMeta.Name,
+									AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteOnce},
+									Resources: api.ResourceRequirements{
+										Requests: api.ResourceList{
+											api.ResourceName(api.ResourceStorage): resource.MustParse("1Gi"),
+										},
+									},
+								},
+							})
+						}
+					}
+				}
 			}
 		}
 
