@@ -21,7 +21,7 @@ import (
 	"os/exec"
 	"syscall"
 
-	"strings"
+	"path/filepath"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -51,7 +51,7 @@ func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
 				util.Fatal("No default namespace")
 			} else {
 
-				found, pvcs, pendingClaimNames := findPendingPVS(c, ns)
+				found, pvcs, pendingClaimNames := findPendingPVs(c, ns)
 				if found {
 
 					sshCommand := cmd.Flags().Lookup(sshCommandFlag).Value.String()
@@ -59,26 +59,24 @@ func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
 					createPV(c, ns, pendingClaimNames, sshCommand)
 					items := pvcs.Items
 					for _, item := range items {
-						pvcName := item.ObjectMeta.Name
 						status := item.Status.Phase
-						if status == "Pending" || status == "Lost" {
-							err = c.PersistentVolumeClaims(ns).Delete(pvcName)
+						if status == api.ClaimPending || status == "Lost" {
+							err = c.PersistentVolumeClaims(ns).Delete(item.ObjectMeta.Name)
 							if err != nil {
-								util.Infof("Error deleting PVC %s\n", pvcName)
+								util.Infof("Error deleting PVC %s\n", item.ObjectMeta.Name)
 							} else {
-								util.Infof("Recreating PVC %s\n", pvcName)
-								strs := []string{ns, pvcName}
+								util.Infof("Recreating PVC %s\n", item.ObjectMeta.Name)
 								c.PersistentVolumeClaims(ns).Create(&api.PersistentVolumeClaim{
 									ObjectMeta: api.ObjectMeta{
-										Name:      pvcName,
+										Name:      item.ObjectMeta.Name,
 										Namespace: ns,
 									},
 									Spec: api.PersistentVolumeClaimSpec{
-										VolumeName:  strings.Join(strs, "-"),
+										VolumeName:  ns + "-" + item.ObjectMeta.Name,
 										AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteOnce},
 										Resources: api.ResourceRequirements{
 											Requests: api.ResourceList{
-												api.ResourceName(api.ResourceStorage): resource.MustParse("5Gi"),
+												api.ResourceName(api.ResourceStorage): resource.MustParse("1Gi"),
 											},
 										},
 									},
@@ -94,7 +92,7 @@ func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func findPendingPVS(c *k8sclient.Client, ns string) (bool, *api.PersistentVolumeClaimList, []string) {
+func findPendingPVs(c *k8sclient.Client, ns string) (bool, *api.PersistentVolumeClaimList, []string) {
 
 	pvcs, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{})
 
@@ -102,12 +100,14 @@ func findPendingPVS(c *k8sclient.Client, ns string) (bool, *api.PersistentVolume
 		util.Infof("Failed to find any PersistentVolumeClaims, %s in namespace %s\n", err, ns)
 	}
 
+	var pendingClaims []api.PersistentVolumeClaim
+
 	if pvcs != nil {
-		items := pvcs.Items
-		pendingClaimNames := make([]string, 0, len(items))
-		for _, item := range items {
+		pendingClaims = pvcs.Items
+		pendingClaimNames := make([]string, 0, len(pendingClaims))
+		for _, item := range pendingClaims {
 			status := item.Status.Phase
-			if status == "Pending" || status == "Lost" {
+			if status == api.ClaimPending || status == "Lost" {
 				pvcName := item.ObjectMeta.Name
 				pendingClaimNames = append(pendingClaimNames, pvcName)
 			}
@@ -122,11 +122,8 @@ func findPendingPVS(c *k8sclient.Client, ns string) (bool, *api.PersistentVolume
 func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand string) (Result, error) {
 
 	for _, pvcName := range pvcNames {
-		paths := []string{"/data", ns, pvcName}
-		strs := []string{ns, pvcName}
-		nsPvcName := strings.Join(strs, "-")
-
-		hostPath := strings.Join(paths, "/")
+		hostPath := filepath.Join("/data", ns, pvcName)
+		nsPvcName := ns + "-" + pvcName
 		pvs := c.PersistentVolumes()
 		rc, err := pvs.List(api.ListOptions{})
 		if err != nil {
