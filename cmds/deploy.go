@@ -976,6 +976,9 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 	o := *item
 	switch o := o.(type) {
 	case *runtime.Unstructured:
+		var (
+			ns, name, kind string
+		)
 		data := o.Object
 		metadata := data["metadata"]
 		switch metadata := metadata.(type) {
@@ -997,6 +1000,16 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 					printErr(err)
 				}
 			}
+			n := metadata["name"]
+			switch n := n.(type) {
+			case string:
+				name = n
+			}
+			k := data["kind"]
+			switch k := k.(type) {
+			case string:
+				kind = k
+			}
 		}
 		//util.Infof("processItem %s with value: %#v\n", ns, o.Object)
 		b, err := json.Marshal(o.Object)
@@ -1004,12 +1017,12 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 			return err
 		}
 		if !pv {
-			if o.Kind == "PersistentVolumeClaim" {
+			if kind == "PersistentVolumeClaim" {
 				return nil
 			}
-			b = removePVCVolumes(b, "json", o.Name, o.Kind)
+			b = removePVCVolumes(b, "json", name, kind)
 		}
-		return processResource(c, b, ns, o.TypeMeta.Kind)
+		return processResource(c, b, ns, kind)
 	default:
 		util.Infof("Unknown type %v\n", reflect.TypeOf(item))
 	}

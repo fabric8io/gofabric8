@@ -150,7 +150,7 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand stri
 			},
 			Spec: api.PersistentVolumeSpec{
 				Capacity: api.ResourceList{
-					api.ResourceName(api.ResourceStorage): resource.MustParse("5Gi"),
+					api.ResourceName(api.ResourceStorage): resource.MustParse("1Gi"),
 				},
 				AccessModes: []api.PersistentVolumeAccessMode{api.ReadWriteOnce},
 				PersistentVolumeSource: api.PersistentVolumeSource{
