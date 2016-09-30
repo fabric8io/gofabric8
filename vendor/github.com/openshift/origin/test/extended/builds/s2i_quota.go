@@ -17,7 +17,7 @@ var _ = g.Describe("[builds][Conformance] s2i build with a quota", func() {
 	)
 
 	var (
-		buildFixture = exutil.FixturePath("fixtures", "test-s2i-build-quota.json")
+		buildFixture = exutil.FixturePath("testdata", "test-s2i-build-quota.json")
 		oc           = exutil.NewCLI("s2i-build-quota", exutil.KubeConfigPath())
 	)
 
@@ -36,24 +36,17 @@ var _ = g.Describe("[builds][Conformance] s2i build with a quota", func() {
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("starting a test build")
-			_, err = oc.Run("start-build").Args("s2i-build-quota", "--from-dir", exutil.FixturePath("fixtures", "build-quota")).Output()
-			o.Expect(err).NotTo(o.HaveOccurred())
-
-			g.By("expecting the build is in Complete phase")
-			err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), "s2i-build-quota-1", exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
-			if err != nil {
-				exutil.DumpBuildLogs("s2i-build-quota", oc)
-			}
-			o.Expect(err).NotTo(o.HaveOccurred())
+			br, _ := exutil.StartBuildAndWait(oc, "s2i-build-quota", "--from-dir", exutil.FixturePath("testdata", "build-quota"))
+			br.AssertSuccess()
 
 			g.By("expecting the build logs to contain the correct cgroups values")
-			out, err := oc.Run("logs").Args(fmt.Sprintf("build/s2i-build-quota-1")).Output()
+			buildLog, err := br.Logs()
 			o.Expect(err).NotTo(o.HaveOccurred())
-			o.Expect(out).To(o.ContainSubstring("MEMORY=209715200"))
-			o.Expect(out).To(o.ContainSubstring("MEMORYSWAP=209715200"))
-			o.Expect(out).To(o.ContainSubstring("SHARES=61"))
-			o.Expect(out).To(o.ContainSubstring("PERIOD=100000"))
-			o.Expect(out).To(o.ContainSubstring("QUOTA=6000"))
+			o.Expect(buildLog).To(o.ContainSubstring("MEMORY=209715200"))
+			o.Expect(buildLog).To(o.ContainSubstring("MEMORYSWAP=209715200"))
+			o.Expect(buildLog).To(o.ContainSubstring("SHARES=61"))
+			o.Expect(buildLog).To(o.ContainSubstring("PERIOD=100000"))
+			o.Expect(buildLog).To(o.ContainSubstring("QUOTA=6000"))
 		})
 	})
 })

@@ -16,7 +16,7 @@ import (
 //  c = h * c if side == Left and trans == NoTrans
 //  c = c * h if side == Right and trans == NoTrans
 //  c = h^T * c if side == Left and trans == Trans
-//  c = c * h^t if side == Right and trans == Trans
+//  c = c * h^T if side == Right and trans == Trans
 // h is a product of elementary reflectors. direct sets the direction of multiplication
 //  h = h_1 * h_2 * ... * h_k if direct == Forward
 //  h = h_k * h_k-1 * ... * h_1 if direct == Backward
@@ -24,25 +24,25 @@ import (
 // reflectors. In all cases the ones on the diagonal are implicitly represented.
 //
 // If direct == lapack.Forward and store == lapack.ColumnWise
-//  V = (  1       )
-//      ( v1  1    )
-//      ( v1 v2  1 )
-//      ( v1 v2 v3 )
-//      ( v1 v2 v3 )
+//  V = [ 1        ]
+//      [v1   1    ]
+//      [v1  v2   1]
+//      [v1  v2  v3]
+//      [v1  v2  v3]
 // If direct == lapack.Forward and store == lapack.RowWise
-//  V = (  1 v1 v1 v1 v1 )
-//      (     1 v2 v2 v2 )
-//      (        1 v3 v3 )
+//  V = [ 1  v1  v1  v1  v1]
+//      [     1  v2  v2  v2]
+//      [         1  v3  v3]
 // If direct == lapack.Backward and store == lapack.ColumnWise
-//  V = ( v1 v2 v3 )
-//      ( v1 v2 v3 )
-//      (  1 v2 v3 )
-//      (     1 v3 )
-//      (        1 )
+//  V = [v1  v2  v3]
+//      [v1  v2  v3]
+//      [ 1  v2  v3]
+//      [     1  v3]
+//      [         1]
 // If direct == lapack.Backward and store == lapack.RowWise
-//  V = ( v1 v1  1       )
-//      ( v2 v2 v2  1    )
-//      ( v3 v3 v3 v3  1 )
+//  V = [v1  v1   1        ]
+//      [v2  v2  v2   1    ]
+//      [v3  v3  v3  v3   1]
 // An elementary reflector can be explicitly constructed by extracting the
 // corresponding elements of v, placing a 1 where the diagonal would be, and
 // placing zeros in the remaining elements.
@@ -50,9 +50,11 @@ import (
 // t is a k×k matrix containing the block reflector, and this function will panic
 // if t is not of sufficient size. See Dlarft for more information.
 //
-// Work is a temporary storage matrix with stride ldwork.
-// Work must be of size at least n×k side == Left and m×k if side == Right, and
+// work is a temporary storage matrix with stride ldwork.
+// work must be of size at least n×k side == Left and m×k if side == Right, and
 // this function will panic if this size is not met.
+//
+// Dlarfb is an internal routine. It is exported for testing purposes.
 func (Implementation) Dlarfb(side blas.Side, trans blas.Transpose, direct lapack.Direct,
 	store lapack.StoreV, m, n, k int, v []float64, ldv int, t []float64, ldt int,
 	c []float64, ldc int, work []float64, ldwork int) {

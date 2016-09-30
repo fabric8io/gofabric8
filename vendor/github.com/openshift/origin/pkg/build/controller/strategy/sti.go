@@ -11,7 +11,6 @@ import (
 	"k8s.io/kubernetes/pkg/serviceaccount"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
-	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 )
 
 // SourceBuildStrategy creates STI(source to image) builds
@@ -43,7 +42,6 @@ func (bs *SourceBuildStrategy) CreateBuildPod(build *buildapi.Build) (*kapi.Pod,
 
 	containerEnv := []kapi.EnvVar{
 		{Name: "BUILD", Value: string(data)},
-		{Name: "BUILD_LOGLEVEL", Value: fmt.Sprintf("%d", cmdutil.GetLogLevel())},
 	}
 
 	addSourceEnvVars(build.Spec.Source, &containerEnv)
@@ -82,7 +80,7 @@ func (bs *SourceBuildStrategy) CreateBuildPod(build *buildapi.Build) (*kapi.Pod,
 					SecurityContext: &kapi.SecurityContext{
 						Privileged: &privileged,
 					},
-					Args: []string{"--loglevel=" + getContainerVerbosity(containerEnv)},
+					Args: []string{},
 				},
 			},
 			RestartPolicy: kapi.RestartPolicyNever,
@@ -129,7 +127,7 @@ func (bs *SourceBuildStrategy) canRunAsRoot(build *buildapi.Build) bool {
 		},
 	}
 	userInfo := serviceaccount.UserInfo(build.Namespace, build.Spec.ServiceAccount, "")
-	attrs := admission.NewAttributesRecord(pod, kapi.Kind("Pod").WithVersion(""), pod.Namespace, pod.Name, kapi.Resource("pods").WithVersion(""), "", admission.Create, userInfo)
+	attrs := admission.NewAttributesRecord(pod, pod, kapi.Kind("Pod").WithVersion(""), pod.Namespace, pod.Name, kapi.Resource("pods").WithVersion(""), "", admission.Create, userInfo)
 	err := bs.AdmissionControl.Admit(attrs)
 	if err != nil {
 		glog.V(2).Infof("Admit for root user returned error: %v", err)

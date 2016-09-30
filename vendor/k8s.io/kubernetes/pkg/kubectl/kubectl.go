@@ -43,7 +43,7 @@ type NamespaceInfo struct {
 }
 
 func listOfImages(spec *api.PodSpec) []string {
-	var images []string
+	images := make([]string, 0, len(spec.Containers))
 	for _, container := range spec.Containers {
 		images = append(images, container.Image)
 	}
@@ -64,7 +64,7 @@ func NewThirdPartyResourceMapper(gvs []unversioned.GroupVersion, gvks []unversio
 				}, nil
 			}
 		}
-		groupVersions := []string{}
+		groupVersions := make([]string, 0, len(gvs))
 		for ix := range gvs {
 			groupVersions = append(groupVersions, gvs[ix].String())
 		}
@@ -127,12 +127,16 @@ func (e ShortcutExpander) ResourceFor(resource unversioned.GroupVersionResource)
 	return e.RESTMapper.ResourceFor(expandResourceShortcut(resource))
 }
 
-func (e ShortcutExpander) ResourceSingularizer(resource string) (string, error) {
-	return e.RESTMapper.ResourceSingularizer(expandResourceShortcut(unversioned.GroupVersionResource{Resource: resource}).Resource)
-}
-
 func (e ShortcutExpander) RESTMapping(gk unversioned.GroupKind, versions ...string) (*meta.RESTMapping, error) {
 	return e.RESTMapper.RESTMapping(gk, versions...)
+}
+
+func (e ShortcutExpander) RESTMappings(gk unversioned.GroupKind) ([]*meta.RESTMapping, error) {
+	return e.RESTMapper.RESTMappings(gk)
+}
+
+func (e ShortcutExpander) ResourceSingularizer(resource string) (string, error) {
+	return e.RESTMapper.ResourceSingularizer(expandResourceShortcut(unversioned.GroupVersionResource{Resource: resource}).Resource)
 }
 
 func (e ShortcutExpander) AliasesForResource(resource string) ([]string, bool) {
@@ -165,6 +169,19 @@ var shortForms = map[string]string{
 	"svc":    "services",
 }
 
+// Look-up for resource short forms by value
+func ResourceShortFormFor(resource string) (string, bool) {
+	var alias string
+	exists := false
+	for k, val := range shortForms {
+		if val == resource {
+			alias = k
+			exists = true
+		}
+	}
+	return alias, exists
+}
+
 // expandResourceShortcut will return the expanded version of resource
 // (something that a pkg/api/meta.RESTMapper can understand), if it is
 // indeed a shortcut. Otherwise, will return resource unmodified.
@@ -174,6 +191,35 @@ func expandResourceShortcut(resource unversioned.GroupVersionResource) unversion
 		resource.Resource = expanded
 	}
 	return resource
+}
+
+// ResourceAliases returns the resource shortcuts and plural forms for the given resources.
+func ResourceAliases(rs []string) []string {
+	as := make([]string, 0, len(rs))
+	plurals := make(map[string]struct{}, len(rs))
+	for _, r := range rs {
+		var plural string
+		switch {
+		case r == "endpoints":
+			plural = r // exception. "endpoint" does not exist. Why?
+		case strings.HasSuffix(r, "y"):
+			plural = r[0:len(r)-1] + "ies"
+		case strings.HasSuffix(r, "s"):
+			plural = r + "es"
+		default:
+			plural = r + "s"
+		}
+		as = append(as, plural)
+
+		plurals[plural] = struct{}{}
+	}
+
+	for sf, r := range shortForms {
+		if _, found := plurals[r]; found {
+			as = append(as, sf)
+		}
+	}
+	return as
 }
 
 // parseFileSource parses the source given. Acceptable formats include:
@@ -201,7 +247,12 @@ func parseFileSource(source string) (keyName, filePath string, err error) {
 
 // parseLiteralSource parses the source key=val pair
 func parseLiteralSource(source string) (keyName, value string, err error) {
-	items := strings.Split(source, "=")
+	// leading equal is invalid
+	if strings.Index(source, "=") == 0 {
+		return "", "", fmt.Errorf("invalid literal source %v, expected key=value", source)
+	}
+	// split after the first equal (so values can have the = character)
+	items := strings.SplitN(source, "=", 2)
 	if len(items) != 2 {
 		return "", "", fmt.Errorf("invalid literal source %v, expected key=value", source)
 	}

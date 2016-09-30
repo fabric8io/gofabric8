@@ -19,6 +19,10 @@ type Dorml2er interface {
 }
 
 func Dorml2Test(t *testing.T, impl Dorml2er) {
+	rnd := rand.New(rand.NewSource(1))
+	// TODO(btracey): This test is not complete, because it
+	// doesn't test individual values of m, n, and k, instead only testing
+	// a specific subset of possible k values.
 	for _, side := range []blas.Side{blas.Left, blas.Right} {
 		for _, trans := range []blas.Transpose{blas.NoTrans, blas.Trans} {
 			for _, test := range []struct {
@@ -30,6 +34,7 @@ func Dorml2Test(t *testing.T, impl Dorml2er) {
 				{4, 5, 3, 0, 0},
 				{5, 3, 4, 0, 0},
 				{5, 4, 3, 0, 0},
+
 				{3, 4, 5, 6, 20},
 				{3, 5, 4, 6, 20},
 				{4, 3, 5, 6, 20},
@@ -62,7 +67,7 @@ func Dorml2Test(t *testing.T, impl Dorml2er) {
 				}
 				a := make([]float64, ma*lda)
 				for i := range a {
-					a[i] = rand.Float64()
+					a[i] = rnd.Float64()
 				}
 				ldc := test.ldc
 				if ldc == 0 {
@@ -71,7 +76,7 @@ func Dorml2Test(t *testing.T, impl Dorml2er) {
 				// Compute random C matrix
 				c := make([]float64, mc*ldc)
 				for i := range c {
-					c[i] = rand.Float64()
+					c[i] = rnd.Float64()
 				}
 
 				// Compute LQ
@@ -129,7 +134,9 @@ func Dorml2Test(t *testing.T, impl Dorml2er) {
 					t.Errorf("tau changed in call")
 				}
 				if !floats.EqualApprox(cMat.Data, c, 1e-14) {
-					t.Errorf("Multiplication mismatch.\n Want %v \n got %v.", cMat.Data, c)
+					isLeft := side == blas.Left
+					isTrans := trans == blas.Trans
+					t.Errorf("Multiplication mismatch. IsLeft = %v. IsTrans = %v", isLeft, isTrans)
 				}
 			}
 		}

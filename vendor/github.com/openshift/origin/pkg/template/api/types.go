@@ -6,20 +6,30 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
+// +genclient=true
+
 // Template contains the inputs needed to produce a Config.
 type Template struct {
 	unversioned.TypeMeta
 	kapi.ObjectMeta
 
-	// Optional: Parameters is an array of Parameters used during the
+	// message is an optional instructional message that will
+	// be displayed when this template is instantiated.
+	// This field should inform the user how to utilize the newly created resources.
+	// Parameter substitution will be performed on the message before being
+	// displayed so that generated credentials and other parameters can be
+	// included in the output.
+	Message string
+
+	// parameters is an optional array of Parameters used during the
 	// Template to Config transformation.
 	Parameters []Parameter
 
-	// Required: A list of resources to create
+	// objects is an array of resources to include in this template.
 	Objects []runtime.Object
 
-	// Optional: ObjectLabels is a set of labels that are applied to every
-	// object during the Template to Config transformation
+	// objectLabels is an optional set of labels that are applied to every
+	// object during the Template to Config transformation.
 	ObjectLabels map[string]string
 }
 
@@ -60,3 +70,9 @@ type Parameter struct {
 	// Optional: Indicates the parameter must have a value.  Defaults to false.
 	Required bool
 }
+
+// These constants represent annotations keys affixed to templates
+const (
+	// TemplateDisplayName is an optional annotation that stores the name displayed by a UI when referencing a template.
+	TemplateDisplayName = "openshift.io/display-name"
+)

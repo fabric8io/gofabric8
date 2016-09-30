@@ -31,7 +31,7 @@ type FakeDiscovery struct {
 func (c *FakeDiscovery) ServerResourcesForGroupVersion(groupVersion string) (*unversioned.APIResourceList, error) {
 	action := core.ActionImpl{
 		Verb:     "get",
-		Resource: "resource",
+		Resource: unversioned.GroupVersionResource{Resource: "resource"},
 	}
 	c.Invokes(action, nil)
 	return c.Resources[groupVersion], nil
@@ -40,10 +40,18 @@ func (c *FakeDiscovery) ServerResourcesForGroupVersion(groupVersion string) (*un
 func (c *FakeDiscovery) ServerResources() (map[string]*unversioned.APIResourceList, error) {
 	action := core.ActionImpl{
 		Verb:     "get",
-		Resource: "resource",
+		Resource: unversioned.GroupVersionResource{Resource: "resource"},
 	}
 	c.Invokes(action, nil)
 	return c.Resources, nil
+}
+
+func (c *FakeDiscovery) ServerPreferredResources() ([]unversioned.GroupVersionResource, error) {
+	return nil, nil
+}
+
+func (c *FakeDiscovery) ServerPreferredNamespacedResources() ([]unversioned.GroupVersionResource, error) {
+	return nil, nil
 }
 
 func (c *FakeDiscovery) ServerGroups() (*unversioned.APIGroupList, error) {
@@ -53,7 +61,7 @@ func (c *FakeDiscovery) ServerGroups() (*unversioned.APIGroupList, error) {
 func (c *FakeDiscovery) ServerVersion() (*version.Info, error) {
 	action := core.ActionImpl{}
 	action.Verb = "get"
-	action.Resource = "version"
+	action.Resource = unversioned.GroupVersionResource{Resource: "version"}
 
 	c.Invokes(action, nil)
 	versionInfo := version.Get()
@@ -64,9 +72,9 @@ func (c *FakeDiscovery) SwaggerSchema(version unversioned.GroupVersion) (*swagge
 	action := core.ActionImpl{}
 	action.Verb = "get"
 	if version == v1.SchemeGroupVersion {
-		action.Resource = "/swaggerapi/api/" + version.Version
+		action.Resource = unversioned.GroupVersionResource{Resource: "/swaggerapi/api/" + version.Version}
 	} else {
-		action.Resource = "/swaggerapi/apis/" + version.Group + "/" + version.Version
+		action.Resource = unversioned.GroupVersionResource{Resource: "/swaggerapi/apis/" + version.Group + "/" + version.Version}
 	}
 
 	c.Invokes(action, nil)

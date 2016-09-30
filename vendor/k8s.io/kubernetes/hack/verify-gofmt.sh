@@ -21,13 +21,9 @@ set -o nounset
 set -o pipefail
 
 KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
+source "${KUBE_ROOT}/hack/lib/init.sh"
 
-GO_VERSION=($(go version))
-
-if [[ -n $(echo "${GO_VERSION[2]}" | grep -E 'go1.1|go1.2|go1.3') ]]; then
-  echo "Unsupported go version '${GO_VERSION}', skipping gofmt."
-  exit 0
-fi
+kube::golang::verify_go_version
 
 cd "${KUBE_ROOT}"
 
@@ -40,12 +36,12 @@ find_files() {
         -o -wholename './release' \
         -o -wholename './target' \
         -o -wholename '*/third_party/*' \
-        -o -wholename '*/Godeps/*' \
+        -o -wholename '*/vendor/*' \
       \) -prune \
     \) -name '*.go'
 }
 
-GOFMT="gofmt -s"
+GOFMT="gofmt -s -w"
 bad_files=$(find_files | xargs $GOFMT -l)
 if [[ -n "${bad_files}" ]]; then
   echo "!!! '$GOFMT' needs to be run on the following files: "

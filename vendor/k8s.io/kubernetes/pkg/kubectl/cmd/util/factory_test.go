@@ -65,28 +65,6 @@ func TestNewFactoryNoFlagBindings(t *testing.T) {
 	}
 }
 
-func TestPodSelectorForObject(t *testing.T) {
-	f := NewFactory(nil)
-
-	svc := &api.Service{
-		ObjectMeta: api.ObjectMeta{Name: "baz", Namespace: "test"},
-		Spec: api.ServiceSpec{
-			Selector: map[string]string{
-				"foo": "bar",
-			},
-		},
-	}
-
-	expected := "foo=bar"
-	got, err := f.PodSelectorForObject(svc)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if expected != got {
-		t.Fatalf("Selector mismatch! Expected %s, got %s", expected, got)
-	}
-}
-
 func TestPortsForObject(t *testing.T) {
 	f := NewFactory(nil)
 
@@ -120,6 +98,48 @@ func TestPortsForObject(t *testing.T) {
 	for i, port := range got {
 		if port != expected[i] {
 			t.Fatalf("Port mismatch! Expected %s, got %s", expected[i], port)
+		}
+	}
+}
+
+func TestProtocolsForObject(t *testing.T) {
+	f := NewFactory(nil)
+
+	pod := &api.Pod{
+		ObjectMeta: api.ObjectMeta{Name: "baz", Namespace: "test", ResourceVersion: "12"},
+		Spec: api.PodSpec{
+			Containers: []api.Container{
+				{
+					Ports: []api.ContainerPort{
+						{
+							ContainerPort: 101,
+							Protocol:      api.ProtocolTCP,
+						},
+						{
+							ContainerPort: 102,
+							Protocol:      api.ProtocolUDP,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	expected := "101/TCP,102/UDP"
+	protocolsMap, err := f.ProtocolsForObject(pod)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	got := kubectl.MakeProtocols(protocolsMap)
+	expectedSlice := strings.Split(expected, ",")
+	gotSlice := strings.Split(got, ",")
+
+	sort.Strings(expectedSlice)
+	sort.Strings(gotSlice)
+
+	for i, protocol := range gotSlice {
+		if protocol != expectedSlice[i] {
+			t.Fatalf("Protocols mismatch! Expected %s, got %s", expectedSlice[i], protocol)
 		}
 	}
 }
@@ -220,7 +240,13 @@ func loadSchemaForTest() (validation.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	return validation.NewSwaggerSchemaFromBytes(data)
+	return validation.NewSwaggerSchemaFromBytes(data, nil)
+}
+
+func header() http.Header {
+	header := http.Header{}
+	header.Set("Content-Type", runtime.ContentTypeJSON)
+	return header
 }
 
 func TestRefetchSchemaWhenValidationFails(t *testing.T) {
@@ -242,7 +268,7 @@ func TestRefetchSchemaWhenValidationFails(t *testing.T) {
 			switch p, m := req.URL.Path, req.Method; {
 			case strings.HasPrefix(p, "/swaggerapi") && m == "GET":
 				requests[p] = requests[p] + 1
-				return &http.Response{StatusCode: 200, Body: ioutil.NopCloser(bytes.NewBuffer(output))}, nil
+				return &http.Response{StatusCode: 200, Header: header(), Body: ioutil.NopCloser(bytes.NewBuffer(output))}, nil
 			default:
 				t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 				return nil, nil
@@ -272,7 +298,7 @@ func TestRefetchSchemaWhenValidationFails(t *testing.T) {
 	}
 
 	// Re-get request, should use HTTP and write
-	if getSchemaAndValidate(c, data, "foo", "bar", dir); err != nil {
+	if getSchemaAndValidate(c, data, "foo", "bar", dir, nil); err != nil {
 		t.Errorf("unexpected error validating: %v", err)
 	}
 	if requests["/swaggerapi/foo/bar"] != 1 {
@@ -299,7 +325,7 @@ func TestValidateCachesSchema(t *testing.T) {
 			switch p, m := req.URL.Path, req.Method; {
 			case strings.HasPrefix(p, "/swaggerapi") && m == "GET":
 				requests[p] = requests[p] + 1
-				return &http.Response{StatusCode: 200, Body: ioutil.NopCloser(bytes.NewBuffer(output))}, nil
+				return &http.Response{StatusCode: 200, Header: header(), Body: ioutil.NopCloser(bytes.NewBuffer(output))}, nil
 			default:
 				t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 				return nil, nil
@@ -317,7 +343,7 @@ func TestValidateCachesSchema(t *testing.T) {
 	}
 
 	// Initial request, should use HTTP and write
-	if getSchemaAndValidate(c, data, "foo", "bar", dir); err != nil {
+	if getSchemaAndValidate(c, data, "foo", "bar", dir, nil); err != nil {
 		t.Errorf("unexpected error validating: %v", err)
 	}
 	if _, err := os.Stat(path.Join(dir, "foo", "bar", schemaFileName)); err != nil {
@@ -328,7 +354,7 @@ func TestValidateCachesSchema(t *testing.T) {
 	}
 
 	// Same version and group, should skip HTTP
-	if getSchemaAndValidate(c, data, "foo", "bar", dir); err != nil {
+	if getSchemaAndValidate(c, data, "foo", "bar", dir, nil); err != nil {
 		t.Errorf("unexpected error validating: %v", err)
 	}
 	if requests["/swaggerapi/foo/bar"] != 2 {
@@ -336,7 +362,7 @@ func TestValidateCachesSchema(t *testing.T) {
 	}
 
 	// Different API group, should go to HTTP and write
-	if getSchemaAndValidate(c, data, "foo", "baz", dir); err != nil {
+	if getSchemaAndValidate(c, data, "foo", "baz", dir, nil); err != nil {
 		t.Errorf("unexpected error validating: %v", err)
 	}
 	if _, err := os.Stat(path.Join(dir, "foo", "baz", schemaFileName)); err != nil {
@@ -347,7 +373,7 @@ func TestValidateCachesSchema(t *testing.T) {
 	}
 
 	// Different version, should go to HTTP and write
-	if getSchemaAndValidate(c, data, "foo2", "bar", dir); err != nil {
+	if getSchemaAndValidate(c, data, "foo2", "bar", dir, nil); err != nil {
 		t.Errorf("unexpected error validating: %v", err)
 	}
 	if _, err := os.Stat(path.Join(dir, "foo2", "bar", schemaFileName)); err != nil {
@@ -358,7 +384,7 @@ func TestValidateCachesSchema(t *testing.T) {
 	}
 
 	// No cache dir, should go straight to HTTP and not write
-	if getSchemaAndValidate(c, data, "foo", "blah", ""); err != nil {
+	if getSchemaAndValidate(c, data, "foo", "blah", "", nil); err != nil {
 		t.Errorf("unexpected error validating: %v", err)
 	}
 	if requests["/swaggerapi/foo/blah"] != 1 {
@@ -450,12 +476,12 @@ func TestGetFirstPod(t *testing.T) {
 		{
 			name:    "kubectl logs - two ready pods",
 			podList: newPodList(2, -1, -1, labelSet),
-			sortBy:  func(pods []*api.Pod) sort.Interface { return controller.ActivePods(pods) },
+			sortBy:  func(pods []*api.Pod) sort.Interface { return controller.ByLogging(pods) },
 			expected: &api.Pod{
 				ObjectMeta: api.ObjectMeta{
-					Name:              "pod-2",
+					Name:              "pod-1",
 					Namespace:         api.NamespaceDefault,
-					CreationTimestamp: unversioned.Date(2016, time.April, 1, 1, 0, 1, 0, time.UTC),
+					CreationTimestamp: unversioned.Date(2016, time.April, 1, 1, 0, 0, 0, time.UTC),
 					Labels:            map[string]string{"test": "selector"},
 				},
 				Status: api.PodStatus{
@@ -472,7 +498,7 @@ func TestGetFirstPod(t *testing.T) {
 		{
 			name:    "kubectl logs - one unhealthy, one healthy",
 			podList: newPodList(2, -1, 1, labelSet),
-			sortBy:  func(pods []*api.Pod) sort.Interface { return controller.ActivePods(pods) },
+			sortBy:  func(pods []*api.Pod) sort.Interface { return controller.ByLogging(pods) },
 			expected: &api.Pod{
 				ObjectMeta: api.ObjectMeta{
 					Name:              "pod-2",
@@ -594,6 +620,97 @@ func TestGetFirstPod(t *testing.T) {
 		}
 		if !reflect.DeepEqual(test.expected, pod) {
 			t.Errorf("%s:\nexpected pod:\n%#v\ngot:\n%#v\n\n", test.name, test.expected, pod)
+		}
+	}
+}
+
+func TestPrintObjectSpecificMessage(t *testing.T) {
+	f := NewFactory(nil)
+	tests := []struct {
+		obj          runtime.Object
+		expectOutput bool
+	}{
+		{
+			obj:          &api.Service{},
+			expectOutput: false,
+		},
+		{
+			obj:          &api.Pod{},
+			expectOutput: false,
+		},
+		{
+			obj:          &api.Service{Spec: api.ServiceSpec{Type: api.ServiceTypeLoadBalancer}},
+			expectOutput: false,
+		},
+		{
+			obj:          &api.Service{Spec: api.ServiceSpec{Type: api.ServiceTypeNodePort}},
+			expectOutput: true,
+		},
+	}
+	for _, test := range tests {
+		buff := &bytes.Buffer{}
+		f.PrintObjectSpecificMessage(test.obj, buff)
+		if test.expectOutput && buff.Len() == 0 {
+			t.Errorf("Expected output, saw none for %v", test.obj)
+		}
+		if !test.expectOutput && buff.Len() > 0 {
+			t.Errorf("Expected no output, saw %s for %v", buff.String(), test.obj)
+		}
+	}
+}
+
+func TestMakePortsString(t *testing.T) {
+	tests := []struct {
+		ports          []api.ServicePort
+		useNodePort    bool
+		expectedOutput string
+	}{
+		{ports: nil, expectedOutput: ""},
+		{ports: []api.ServicePort{}, expectedOutput: ""},
+		{ports: []api.ServicePort{
+			{
+				Port:     80,
+				Protocol: "TCP",
+			},
+		},
+			expectedOutput: "tcp:80",
+		},
+		{ports: []api.ServicePort{
+			{
+				Port:     80,
+				Protocol: "TCP",
+			},
+			{
+				Port:     8080,
+				Protocol: "UDP",
+			},
+			{
+				Port:     9000,
+				Protocol: "TCP",
+			},
+		},
+			expectedOutput: "tcp:80,udp:8080,tcp:9000",
+		},
+		{ports: []api.ServicePort{
+			{
+				Port:     80,
+				NodePort: 9090,
+				Protocol: "TCP",
+			},
+			{
+				Port:     8080,
+				NodePort: 80,
+				Protocol: "UDP",
+			},
+		},
+			useNodePort:    true,
+			expectedOutput: "tcp:9090,udp:80",
+		},
+	}
+	for _, test := range tests {
+		output := makePortsString(test.ports, test.useNodePort)
+		if output != test.expectedOutput {
+			t.Errorf("expected: %s, saw: %s.", test.expectedOutput, output)
 		}
 	}
 }

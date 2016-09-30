@@ -18,6 +18,9 @@ package internalclientset
 
 import (
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	unversionedauthentication "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/authentication/unversioned"
+	unversionedautoscaling "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/autoscaling/unversioned"
+	unversionedbatch "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/batch/unversioned"
 	unversionedcore "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/unversioned"
 	unversionedextensions "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/extensions/unversioned"
 	"k8s.io/kubernetes/pkg/client/typed/discovery"
@@ -39,7 +42,21 @@ func FromUnversionedClient(c *unversioned.Client) *internalclientset.Clientset {
 	} else {
 		clientset.ExtensionsClient = unversionedextensions.New(nil)
 	}
-
+	if c != nil && c.BatchClient != nil {
+		clientset.BatchClient = unversionedbatch.New(c.BatchClient.RESTClient)
+	} else {
+		clientset.BatchClient = unversionedbatch.New(nil)
+	}
+	if c != nil && c.AutoscalingClient != nil {
+		clientset.AutoscalingClient = unversionedautoscaling.New(c.AutoscalingClient.RESTClient)
+	} else {
+		clientset.AutoscalingClient = unversionedautoscaling.New(nil)
+	}
+	if c != nil && c.AuthenticationClient != nil {
+		clientset.AuthenticationClient = unversionedauthentication.New(c.AuthenticationClient.RESTClient)
+	} else {
+		clientset.AuthenticationClient = unversionedauthentication.New(nil)
+	}
 	if c != nil && c.DiscoveryClient != nil {
 		clientset.DiscoveryClient = discovery.NewDiscoveryClient(c.DiscoveryClient.RESTClient)
 	} else {

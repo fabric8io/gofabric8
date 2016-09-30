@@ -475,10 +475,10 @@ func (p *F5Plugin) HandleNamespaces(namespaces sets.String) error {
 func (p *F5Plugin) HandleRoute(eventType watch.EventType,
 	route *routeapi.Route) error {
 	glog.V(4).Infof("Processing route for service: %v (%v)",
-		route.Spec.To.Name, route)
+		route.Spec.To, route)
 
 	// Name of the pool in F5.
-	poolname := poolName(route.Namespace, route.Spec.To.Name)
+	poolname := poolName(route.Namespace, route.Name)
 
 	// Virtual hostname for policy rule in F5.
 	hostname := route.Spec.Host
@@ -540,5 +540,10 @@ func (p *F5Plugin) HandleRoute(eventType watch.EventType,
 
 	glog.V(4).Infof("Done processing route %s.", routename)
 
+	return nil
+}
+
+// No-op since f5 configuration can be updated piecemeal
+func (p *F5Plugin) SetLastSyncProcessed(processed bool) error {
 	return nil
 }

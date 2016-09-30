@@ -17,6 +17,7 @@ limitations under the License.
 package cache
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -52,7 +53,7 @@ func TestFIFO_basic(t *testing.T) {
 	lastInt := int(0)
 	lastUint := uint64(0)
 	for i := 0; i < amount*2; i++ {
-		switch obj := f.Pop().(testFifoObject).val.(type) {
+		switch obj := Pop(f).(testFifoObject).val.(type) {
 		case int:
 			if obj <= lastInt {
 				t.Errorf("got %v (int) out of order, last was %v", obj, lastInt)
@@ -67,6 +68,50 @@ func TestFIFO_basic(t *testing.T) {
 		default:
 			t.Fatalf("unexpected type %#v", obj)
 		}
+	}
+}
+
+func TestFIFO_requeueOnPop(t *testing.T) {
+	f := NewFIFO(testFifoObjectKeyFunc)
+
+	f.Add(mkFifoObj("foo", 10))
+	_, err := f.Pop(func(obj interface{}) error {
+		if obj.(testFifoObject).name != "foo" {
+			t.Fatalf("unexpected object: %#v", obj)
+		}
+		return ErrRequeue{Err: nil}
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok, err := f.GetByKey("foo"); !ok || err != nil {
+		t.Fatalf("object should have been requeued: %t %v", ok, err)
+	}
+
+	_, err = f.Pop(func(obj interface{}) error {
+		if obj.(testFifoObject).name != "foo" {
+			t.Fatalf("unexpected object: %#v", obj)
+		}
+		return ErrRequeue{Err: fmt.Errorf("test error")}
+	})
+	if err == nil || err.Error() != "test error" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok, err := f.GetByKey("foo"); !ok || err != nil {
+		t.Fatalf("object should have been requeued: %t %v", ok, err)
+	}
+
+	_, err = f.Pop(func(obj interface{}) error {
+		if obj.(testFifoObject).name != "foo" {
+			t.Fatalf("unexpected object: %#v", obj)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok, err := f.GetByKey("foo"); ok || err != nil {
+		t.Fatalf("object should have been removed: %t %v", ok, err)
 	}
 }
 
@@ -85,7 +130,7 @@ func TestFIFO_addUpdate(t *testing.T) {
 	got := make(chan testFifoObject, 2)
 	go func() {
 		for {
-			got <- f.Pop().(testFifoObject)
+			got <- Pop(f).(testFifoObject)
 		}
 	}()
 
@@ -111,7 +156,7 @@ func TestFIFO_addReplace(t *testing.T) {
 	got := make(chan testFifoObject, 2)
 	go func() {
 		for {
-			got <- f.Pop().(testFifoObject)
+			got <- Pop(f).(testFifoObject)
 		}
 	}()
 
@@ -139,21 +184,21 @@ func TestFIFO_detectLineJumpers(t *testing.T) {
 	f.Add(mkFifoObj("foo", 13))
 	f.Add(mkFifoObj("zab", 30))
 
-	if e, a := 13, f.Pop().(testFifoObject).val; a != e {
+	if e, a := 13, Pop(f).(testFifoObject).val; a != e {
 		t.Fatalf("expected %d, got %d", e, a)
 	}
 
 	f.Add(mkFifoObj("foo", 14)) // ensure foo doesn't jump back in line
 
-	if e, a := 1, f.Pop().(testFifoObject).val; a != e {
+	if e, a := 1, Pop(f).(testFifoObject).val; a != e {
 		t.Fatalf("expected %d, got %d", e, a)
 	}
 
-	if e, a := 30, f.Pop().(testFifoObject).val; a != e {
+	if e, a := 30, Pop(f).(testFifoObject).val; a != e {
 		t.Fatalf("expected %d, got %d", e, a)
 	}
 
-	if e, a := 14, f.Pop().(testFifoObject).val; a != e {
+	if e, a := 14, Pop(f).(testFifoObject).val; a != e {
 		t.Fatalf("expected %d, got %d", e, a)
 	}
 }
@@ -172,7 +217,7 @@ func TestFIFO_addIfNotPresent(t *testing.T) {
 
 	expectedValues := []int{1, 2, 4}
 	for _, expected := range expectedValues {
-		if actual := f.Pop().(testFifoObject).val; actual != expected {
+		if actual := Pop(f).(testFifoObject).val; actual != expected {
 			t.Fatalf("expected value %d, got %d", expected, actual)
 		}
 	}
@@ -208,15 +253,15 @@ func TestFIFO_HasSynced(t *testing.T) {
 		{
 			actions: []func(f *FIFO){
 				func(f *FIFO) { f.Replace([]interface{}{mkFifoObj("a", 1), mkFifoObj("b", 2)}, "0") },
-				func(f *FIFO) { f.Pop() },
+				func(f *FIFO) { Pop(f) },
 			},
 			expectedSynced: false,
 		},
 		{
 			actions: []func(f *FIFO){
 				func(f *FIFO) { f.Replace([]interface{}{mkFifoObj("a", 1), mkFifoObj("b", 2)}, "0") },
-				func(f *FIFO) { f.Pop() },
-				func(f *FIFO) { f.Pop() },
+				func(f *FIFO) { Pop(f) },
+				func(f *FIFO) { Pop(f) },
 			},
 			expectedSynced: true,
 		},
@@ -231,5 +276,23 @@ func TestFIFO_HasSynced(t *testing.T) {
 		if e, a := test.expectedSynced, f.HasSynced(); a != e {
 			t.Errorf("test case %v failed, expected: %v , got %v", i, e, a)
 		}
+	}
+}
+
+func TestFIFO_resync(t *testing.T) {
+	f := NewResyncableFIFO(testFifoObjectKeyFunc)
+	f.Add(mkFifoObj("foo", 10))
+	f.Add(mkFifoObj("bar", 15))
+	Pop(f)
+
+	if err := f.Resync(); err != nil {
+		t.Fatal(err)
+	}
+
+	if e, a := "bar", Pop(f).(testFifoObject).name; e != a {
+		t.Fatalf("expected %v, got %v", e, a)
+	}
+	if e, a := "foo", Pop(f).(testFifoObject).name; e != a {
+		t.Fatalf("expected %v, got %v", e, a)
 	}
 }

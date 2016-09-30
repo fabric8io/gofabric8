@@ -112,6 +112,14 @@ bGvtpjWA4r9WASIDPFsxk/cDEEEO6iPxgMOf5MdpQC2y2MU0rzF/Gg==
 	testDestinationCACertificate = testCACertificate
 )
 
+func createRouteSpecTo(name string, kind string) api.RouteTargetReference {
+	svc := api.RouteTargetReference{
+		Name: name,
+		Kind: kind,
+	}
+	return svc
+}
+
 // TestValidateRouteBad ensures not specifying a required field results in error and a fully specified
 // route passes successfully
 func TestValidateRoute(t *testing.T) {
@@ -128,10 +136,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "host",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("serviceName", "Service"),
 				},
 			},
 			expectedErrors: 1,
@@ -144,10 +149,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "host",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("serviceName", "Service"),
 				},
 			},
 			expectedErrors: 1,
@@ -160,10 +162,7 @@ func TestValidateRoute(t *testing.T) {
 					Namespace: "foo",
 				},
 				Spec: api.RouteSpec{
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To: createRouteSpecTo("serviceName", "Service"),
 				},
 			},
 			expectedErrors: 0,
@@ -177,10 +176,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "**",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("serviceName", "Service"),
 				},
 			},
 			expectedErrors: 1,
@@ -194,9 +190,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "host",
-					To: kapi.ObjectReference{
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("", "Service"),
 				},
 			},
 			expectedErrors: 1,
@@ -210,9 +204,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "host",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-					},
+					To:   createRouteSpecTo("serviceName", ""),
 				},
 			},
 			expectedErrors: 1,
@@ -226,10 +218,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "www.example.com",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("serviceName", "Service"),
 					Port: &api.RoutePort{
 						TargetPort: intstr.FromInt(0),
 					},
@@ -246,10 +235,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "www.example.com",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("serviceName", "Service"),
 					Port: &api.RoutePort{
 						TargetPort: intstr.FromString(""),
 					},
@@ -266,10 +252,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "www.example.com",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("serviceName", "Service"),
 				},
 			},
 			expectedErrors: 0,
@@ -283,10 +266,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "www.example.com",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("serviceName", "Service"),
 					Path: "/test",
 				},
 			},
@@ -301,10 +281,7 @@ func TestValidateRoute(t *testing.T) {
 				},
 				Spec: api.RouteSpec{
 					Host: "www.example.com",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("serviceName", "Service"),
 					Path: "test",
 				},
 			},
@@ -320,10 +297,7 @@ func TestValidateRoute(t *testing.T) {
 				Spec: api.RouteSpec{
 					Host: "www.example.com",
 					Path: "/test",
-					To: kapi.ObjectReference{
-						Name: "serviceName",
-						Kind: "Service",
-					},
+					To:   createRouteSpecTo("serviceName", "Service"),
 					TLS: &api.TLSConfig{
 						Termination: api.TLSTerminationPassthrough,
 					},
@@ -571,6 +545,85 @@ func TestValidateTLSInsecureEdgeTerminationPolicy(t *testing.T) {
 				t.Errorf("Test case %s with insecure=%q got %d errors where one was expected. %v",
 					tc.name, val, len(errs), errs)
 			}
+		}
+	}
+}
+
+// TestValidateRouteBad ensures not specifying a required field results in error and a fully specified
+// route passes successfully
+func TestValidateRouteUpdate(t *testing.T) {
+	tests := []struct {
+		name           string
+		route          *api.Route
+		change         func(route *api.Route)
+		expectedErrors int
+	}{
+		{
+			route: &api.Route{
+				ObjectMeta: kapi.ObjectMeta{
+					Name:            "bar",
+					Namespace:       "foo",
+					ResourceVersion: "1",
+				},
+				Spec: api.RouteSpec{
+					Host: "host",
+					To: api.RouteTargetReference{
+						Name: "serviceName",
+						Kind: "Service",
+					},
+				},
+			},
+			change:         func(route *api.Route) { route.Spec.Host = "" },
+			expectedErrors: 1,
+		},
+		{
+			route: &api.Route{
+				ObjectMeta: kapi.ObjectMeta{
+					Name:            "bar",
+					Namespace:       "foo",
+					ResourceVersion: "1",
+				},
+				Spec: api.RouteSpec{
+					Host: "host",
+					To: api.RouteTargetReference{
+						Name: "serviceName",
+						Kind: "Service",
+					},
+				},
+			},
+			change:         func(route *api.Route) { route.Spec.Host = "other" },
+			expectedErrors: 1,
+		},
+		{
+			route: &api.Route{
+				ObjectMeta: kapi.ObjectMeta{
+					Name:            "bar",
+					Namespace:       "foo",
+					ResourceVersion: "1",
+				},
+				Spec: api.RouteSpec{
+					Host: "host",
+					To: api.RouteTargetReference{
+						Name: "serviceName",
+						Kind: "Service",
+					},
+				},
+			},
+			change:         func(route *api.Route) { route.Name = "baz" },
+			expectedErrors: 1,
+		},
+	}
+
+	for i, tc := range tests {
+		copied, err := kapi.Scheme.Copy(tc.route)
+		if err != nil {
+			t.Fatal(err)
+		}
+		newRoute := copied.(*api.Route)
+		tc.change(newRoute)
+		errs := ValidateRouteUpdate(newRoute, tc.route)
+		if len(errs) != tc.expectedErrors {
+			t.Errorf("%d: expected %d error(s), got %d. %v", i, tc.expectedErrors, len(errs), errs)
 		}
 	}
 }

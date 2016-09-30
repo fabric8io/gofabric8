@@ -1,17 +1,18 @@
 package builds
 
 import (
-	"fmt"
 	"strings"
 
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
 
+	kapi "k8s.io/kubernetes/pkg/api"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
+
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	buildclient "github.com/openshift/origin/pkg/build/client"
 	buildutil "github.com/openshift/origin/pkg/build/util"
 	exutil "github.com/openshift/origin/test/extended/util"
-	kapi "k8s.io/kubernetes/pkg/api"
 )
 
 var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() {
@@ -26,7 +27,7 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 		err := exutil.WaitForBuilderAccount(oc.KubeREST().ServiceAccounts(oc.Namespace()))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		// Create all fixtures
-		oc.Run("create").Args("-f", exutil.FixturePath("..", "extended", "fixtures", "run_policy")).Execute()
+		oc.Run("create").Args("-f", exutil.FixturePath("testdata", "run_policy")).Execute()
 	})
 
 	g.Describe("build configuration with Parallel build run policy", func() {
@@ -44,10 +45,11 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 			defer buildWatch.Stop()
 
 			// Start first build
-			out, err := oc.Run("start-build").Args(bcName).Output()
+			stdout, _, err := exutil.StartBuild(oc, bcName, "-o=name")
 			o.Expect(err).NotTo(o.HaveOccurred())
-			o.Expect(strings.TrimSpace(out)).ShouldNot(o.HaveLen(0))
-			startedBuilds = append(startedBuilds, strings.TrimSpace(out))
+			o.Expect(strings.TrimSpace(stdout)).ShouldNot(o.HaveLen(0))
+			// extract build name from "build/buildName" resource id
+			startedBuilds = append(startedBuilds, strings.TrimSpace(strings.Split(stdout, "/")[1]))
 
 			// Wait for it to become running
 			for {
@@ -60,10 +62,10 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 			}
 
 			for i := 0; i < 2; i++ {
-				out, err := oc.Run("start-build").Args(bcName).Output()
+				stdout, _, err = exutil.StartBuild(oc, bcName, "-o=name")
 				o.Expect(err).NotTo(o.HaveOccurred())
-				o.Expect(strings.TrimSpace(out)).ShouldNot(o.HaveLen(0))
-				startedBuilds = append(startedBuilds, strings.TrimSpace(out))
+				o.Expect(strings.TrimSpace(stdout)).ShouldNot(o.HaveLen(0))
+				startedBuilds = append(startedBuilds, strings.TrimSpace(strings.Split(stdout, "/")[1]))
 			}
 
 			o.Expect(err).NotTo(o.HaveOccurred())
@@ -118,9 +120,9 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 			buildVerified := map[string]bool{}
 
 			for i := 0; i < 3; i++ {
-				out, err := oc.Run("start-build").Args(bcName).Output()
+				stdout, _, err := exutil.StartBuild(oc, bcName, "-o=name")
 				o.Expect(err).NotTo(o.HaveOccurred())
-				startedBuilds = append(startedBuilds, strings.TrimSpace(out))
+				startedBuilds = append(startedBuilds, strings.TrimSpace(strings.Split(stdout, "/")[1]))
 			}
 
 			buildWatch, err := oc.REST().Builds(oc.Namespace()).Watch(kapi.ListOptions{
@@ -170,9 +172,9 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 		g.It("runs the builds in serial order but cancel previous builds", func() {
 			g.By("starting multiple builds")
 			var (
-				startedBuilds []string
-				counter       int
-				wasCancelled  bool
+				startedBuilds        []string
+				expectedRunningBuild int
+				wasCancelled         bool
 			)
 
 			bcName := "sample-serial-latest-only-build"
@@ -183,37 +185,43 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 			defer buildWatch.Stop()
 			o.Expect(err).NotTo(o.HaveOccurred())
 
-			out, err := oc.Run("start-build").Args(bcName).Output()
+			stdout, _, err := exutil.StartBuild(oc, bcName, "-o=name")
 			o.Expect(err).NotTo(o.HaveOccurred())
-			startedBuilds = append(startedBuilds, strings.TrimSpace(out))
+			startedBuilds = append(startedBuilds, strings.TrimSpace(strings.Split(stdout, "/")[1]))
+
 			// Wait for the first build to become running
 			for {
 				event := <-buildWatch.ResultChan()
 				build := event.Object.(*buildapi.Build)
 				if build.Name == startedBuilds[0] {
 					if build.Status.Phase == buildapi.BuildPhaseRunning {
+						buildVerified[build.Name] = true
+						// now expect the last build to be run.
+						expectedRunningBuild = 2
 						break
 					}
 					o.Expect(buildutil.IsBuildComplete(build)).Should(o.BeFalse())
 				}
 			}
-			// Trigger another two builds
+
+			// Trigger two more builds
 			for i := 0; i < 2; i++ {
-				out, err := oc.Run("start-build").Args(bcName).Output()
+				stdout, _, err = exutil.StartBuild(oc, bcName, "-o=name")
 				o.Expect(err).NotTo(o.HaveOccurred())
-				startedBuilds = append(startedBuilds, strings.TrimSpace(out))
+				startedBuilds = append(startedBuilds, strings.TrimSpace(strings.Split(stdout, "/")[1]))
 			}
+
 			// Verify that the first build will complete and the next build to run
 			// will be the last build created.
 			for {
 				event := <-buildWatch.ResultChan()
 				build := event.Object.(*buildapi.Build)
+				e2e.Logf("got event for build %s with phase %s", build.Name, build.Status.Phase)
 				// The second build should be cancelled
 				if build.Status.Phase == buildapi.BuildPhaseCancelled {
 					if build.Name == startedBuilds[1] {
 						buildVerified[build.Name] = true
 						wasCancelled = true
-						counter++
 					}
 				}
 				// Only first and third build should actually run (serially).
@@ -227,7 +235,7 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 					// build as serial build always runs alone.
 					c := buildclient.NewOSClientBuildClient(oc.REST())
 					builds, err := buildutil.BuildConfigBuilds(c, oc.Namespace(), bcName, func(b buildapi.Build) bool {
-						fmt.Printf("[%s] build %s is %s", build.Name, b.Name, b.Status.Phase)
+						e2e.Logf("[%s] build %s is %s", build.Name, b.Name, b.Status.Phase)
 						if b.Name == build.Name {
 							return false
 						}
@@ -240,10 +248,9 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 					o.Expect(builds.Items).Should(o.BeEmpty())
 
 					// The builds should start in the same order as they were created.
-					o.Expect(build.Name).Should(o.BeEquivalentTo(startedBuilds[counter]))
+					o.Expect(build.Name).Should(o.BeEquivalentTo(startedBuilds[expectedRunningBuild]))
 
 					buildVerified[build.Name] = true
-					counter++
 				}
 				if len(buildVerified) == len(startedBuilds) {
 					break

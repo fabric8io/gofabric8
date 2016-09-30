@@ -8,7 +8,9 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	_ "k8s.io/kubernetes/pkg/api/install"
-	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	kapps "k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/runtime"
 
 	osgraph "github.com/openshift/origin/pkg/api/graph"
@@ -38,6 +40,14 @@ func TestNamespaceEdgeMatching(t *testing.T) {
 		rc.Spec.Selector = map[string]string{"a": "1"}
 		kubegraph.EnsureReplicationControllerNode(g, rc)
 
+		p := &kapps.PetSet{}
+		p.Namespace = namespace
+		p.Name = "the-petset"
+		p.Spec.Selector = &unversioned.LabelSelector{
+			MatchLabels: map[string]string{"a": "1"},
+		}
+		kubegraph.EnsurePetSetNode(g, p)
+
 		svc := &kapi.Service{}
 		svc.Namespace = namespace
 		svc.Name = "the-svc"
@@ -49,7 +59,7 @@ func TestNamespaceEdgeMatching(t *testing.T) {
 	fn("other", g)
 	AddAllExposedPodEdges(g)
 	AddAllExposedPodTemplateSpecEdges(g)
-	AddAllManagedByRCPodEdges(g)
+	AddAllManagedByControllerPodEdges(g)
 
 	for _, edge := range g.Edges() {
 		nsTo, err := namespaceFor(edge.To())
@@ -79,6 +89,10 @@ func namespaceFor(node graph.Node) (string, error) {
 		return node.(*kubegraph.PodSpecNode).Namespace, nil
 	case *kapi.ReplicationControllerSpec:
 		return node.(*kubegraph.ReplicationControllerSpecNode).Namespace, nil
+	case *kapps.PetSetSpec:
+		return node.(*kubegraph.PetSetSpecNode).Namespace, nil
+	case *kapi.PodTemplateSpec:
+		return node.(*kubegraph.PodTemplateSpecNode).Namespace, nil
 	default:
 		return "", fmt.Errorf("unknown object: %#v", obj)
 	}
@@ -130,11 +144,11 @@ func TestSecretEdges(t *testing.T) {
 }
 
 func TestHPARCEdges(t *testing.T) {
-	hpa := &extensions.HorizontalPodAutoscaler{}
+	hpa := &autoscaling.HorizontalPodAutoscaler{}
 	hpa.Namespace = "test-ns"
 	hpa.Name = "test-hpa"
-	hpa.Spec = extensions.HorizontalPodAutoscalerSpec{
-		ScaleRef: extensions.SubresourceReference{
+	hpa.Spec = autoscaling.HorizontalPodAutoscalerSpec{
+		ScaleTargetRef: autoscaling.CrossVersionObjectReference{
 			Name: "test-rc",
 			Kind: "ReplicationController",
 		},
@@ -160,11 +174,11 @@ func TestHPARCEdges(t *testing.T) {
 }
 
 func TestHPADCEdges(t *testing.T) {
-	hpa := &extensions.HorizontalPodAutoscaler{}
+	hpa := &autoscaling.HorizontalPodAutoscaler{}
 	hpa.Namespace = "test-ns"
 	hpa.Name = "test-hpa"
-	hpa.Spec = extensions.HorizontalPodAutoscalerSpec{
-		ScaleRef: extensions.SubresourceReference{
+	hpa.Spec = autoscaling.HorizontalPodAutoscalerSpec{
+		ScaleTargetRef: autoscaling.CrossVersionObjectReference{
 			Name: "test-dc",
 			Kind: "DeploymentConfig",
 		},

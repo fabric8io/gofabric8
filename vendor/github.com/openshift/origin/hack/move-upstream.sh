@@ -6,18 +6,7 @@
 #  2. Set TARGET_BRANCH for the new branch to work in
 #  3. In your kube git directory, set the current branch to the level to want to apply patches to
 #  4. Run `hack/move-upstream.sh master...<commit hash you want to start pulling patches from>`
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
-source "${OS_ROOT}/hack/util.sh"
-os::log::install_errexit
-
-# Go to the top of the tree.
-cd "${OS_ROOT}"
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 repo="${UPSTREAM_REPO:-k8s.io/kubernetes}"
 package="${UPSTREAM_PACKAGE:-pkg/api}"
@@ -48,8 +37,8 @@ fi
 
 echo "++ Generating patch for ${selector} onto ${lastrev} ..." 2>&1
 index=0
-for commit in $(git log --no-merges --format="%H" --reverse "${selector}" -- "Godeps/_workspace/src/${repo}/"); do
-  git format-patch --raw --start-number=${index} --relative="Godeps/_workspace/src/${repo}/" "${commit}^..${commit}" -o "${patch}"
+for commit in $(git log --no-merges --format="%H" --reverse "${selector}" -- "vendor/${repo}/"); do
+  git format-patch --raw --start-number=${index} --relative="vendor/${repo}/" "${commit}^..${commit}" -o "${patch}"
   let index+=10
 done
 

@@ -4,9 +4,9 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/runtime/serializer"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	"github.com/openshift/origin/pkg/api/extension"
 	internal "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
 )
@@ -36,15 +36,31 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 				obj.JenkinsPipelineConfig.TemplateNamespace = "openshift"
 			}
 			if len(obj.JenkinsPipelineConfig.TemplateName) == 0 {
-				obj.JenkinsPipelineConfig.TemplateName = "jenkins"
+				obj.JenkinsPipelineConfig.TemplateName = "jenkins-ephemeral"
 			}
 			if len(obj.JenkinsPipelineConfig.ServiceName) == 0 {
 				obj.JenkinsPipelineConfig.ServiceName = "jenkins"
 			}
-			if obj.JenkinsPipelineConfig.Enabled == nil {
-				v := true
-				obj.JenkinsPipelineConfig.Enabled = &v
+			if obj.JenkinsPipelineConfig.AutoProvisionEnabled == nil {
+				v := false
+				obj.JenkinsPipelineConfig.AutoProvisionEnabled = &v
 			}
+			if obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides == nil {
+				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides = &ClientConnectionOverrides{
+					// historical values
+					QPS:   150.0,
+					Burst: 300,
+				}
+			}
+			setDefault_ClientConnectionOverrides(obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides)
+			if obj.MasterClients.ExternalKubernetesClientConnectionOverrides == nil {
+				obj.MasterClients.ExternalKubernetesClientConnectionOverrides = &ClientConnectionOverrides{
+					// historical values
+					QPS:   100.0,
+					Burst: 200,
+				}
+			}
+			setDefault_ClientConnectionOverrides(obj.MasterClients.ExternalKubernetesClientConnectionOverrides)
 
 			// Populate the new NetworkConfig.ServiceNetworkCIDR field from the KubernetesMasterConfig.ServicesSubnet field if needed
 			if len(obj.NetworkConfig.ServiceNetworkCIDR) == 0 {
@@ -54,6 +70,17 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 				} else {
 					// default ServiceClusterIPRange used by kubernetes if nothing is specified
 					obj.NetworkConfig.ServiceNetworkCIDR = "10.0.0.0/24"
+				}
+			}
+
+			// TODO Detect cloud provider when not using built-in kubernetes
+			kubeConfig := obj.KubernetesMasterConfig
+			noCloudProvider := kubeConfig != nil && (len(kubeConfig.ControllerArguments["cloud-provider"]) == 0 || kubeConfig.ControllerArguments["cloud-provider"][0] == "")
+
+			if noCloudProvider && len(obj.NetworkConfig.IngressIPNetworkCIDR) == 0 {
+				cidr := "172.46.0.0/16"
+				if !(internal.CIDRsOverlap(cidr, obj.NetworkConfig.ClusterNetworkCIDR) || internal.CIDRsOverlap(cidr, obj.NetworkConfig.ServiceNetworkCIDR)) {
+					obj.NetworkConfig.IngressIPNetworkCIDR = cidr
 				}
 			}
 
@@ -80,6 +107,15 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 			}
 		},
 		func(obj *NodeConfig) {
+			if obj.MasterClientConnectionOverrides == nil {
+				obj.MasterClientConnectionOverrides = &ClientConnectionOverrides{
+					// historical values
+					QPS:   10.0,
+					Burst: 20,
+				}
+			}
+			setDefault_ClientConnectionOverrides(obj.MasterClientConnectionOverrides)
+
 			// Defaults/migrations for NetworkConfig
 			if len(obj.NetworkConfig.NetworkPluginName) == 0 {
 				obj.NetworkConfig.NetworkPluginName = obj.DeprecatedNetworkPluginName
@@ -88,7 +124,7 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 				obj.NetworkConfig.MTU = 1450
 			}
 			if len(obj.IPTablesSyncPeriod) == 0 {
-				obj.IPTablesSyncPeriod = "5s"
+				obj.IPTablesSyncPeriod = "30s"
 			}
 
 			// Auth cache defaults
@@ -103,6 +139,12 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 			}
 			if obj.AuthConfig.AuthorizationCacheSize == 0 {
 				obj.AuthConfig.AuthorizationCacheSize = 1000
+			}
+
+			// EnableUnidling by default
+			if obj.EnableUnidling == nil {
+				v := true
+				obj.EnableUnidling = &v
 			}
 		},
 		func(obj *EtcdStorageConfig) {
@@ -178,6 +220,9 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 
 func addConversionFuncs(scheme *runtime.Scheme) {
 	err := scheme.AddConversionFuncs(
+		convert_runtime_Object_To_runtime_RawExtension,
+		convert_runtime_RawExtension_To_runtime_Object,
+
 		func(in *NodeConfig, out *internal.NodeConfig, s conversion.Scope) error {
 			return s.DefaultConvert(in, out, conversion.IgnoreMissingFields)
 		},
@@ -277,54 +322,6 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 			out.KeyFile = in.ClientCert.KeyFile
 			return nil
 		},
-		func(in *internal.IdentityProvider, out *IdentityProvider, s conversion.Scope) error {
-			if err := convert_runtime_Object_To_runtime_RawExtension(in.Provider, &out.Provider, s); err != nil {
-				return err
-			}
-			out.Name = in.Name
-			out.UseAsChallenger = in.UseAsChallenger
-			out.UseAsLogin = in.UseAsLogin
-			out.MappingMethod = in.MappingMethod
-			return nil
-		},
-		func(in *IdentityProvider, out *internal.IdentityProvider, s conversion.Scope) error {
-			if err := convert_runtime_RawExtension_To_runtime_Object(&in.Provider, out.Provider, s); err != nil {
-				return err
-			}
-			if in.Provider.Object != nil {
-				var err error
-				out.Provider, err = internal.Scheme.ConvertToVersion(in.Provider.Object, internal.SchemeGroupVersion.String())
-				if err != nil {
-					return err
-				}
-			}
-			out.Name = in.Name
-			out.UseAsChallenger = in.UseAsChallenger
-			out.UseAsLogin = in.UseAsLogin
-			out.MappingMethod = in.MappingMethod
-			return nil
-		},
-		func(in *internal.AdmissionPluginConfig, out *AdmissionPluginConfig, s conversion.Scope) error {
-			if err := convert_runtime_Object_To_runtime_RawExtension(in.Configuration, &out.Configuration, s); err != nil {
-				return err
-			}
-			out.Location = in.Location
-			return nil
-		},
-		func(in *AdmissionPluginConfig, out *internal.AdmissionPluginConfig, s conversion.Scope) error {
-			if err := convert_runtime_RawExtension_To_runtime_Object(&in.Configuration, out.Configuration, s); err != nil {
-				return err
-			}
-			if in.Configuration.Object != nil {
-				var err error
-				out.Configuration, err = internal.Scheme.ConvertToVersion(in.Configuration.Object, internal.SchemeGroupVersion.String())
-				if err != nil {
-					return err
-				}
-			}
-			out.Location = in.Location
-			return nil
-		},
 		func(in *MasterVolumeConfig, out *internal.MasterVolumeConfig, s conversion.Scope) error {
 			out.DynamicProvisioningEnabled = (in.DynamicProvisioningEnabled == nil) || (*in.DynamicProvisioningEnabled)
 			return nil
@@ -334,7 +331,10 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 			out.DynamicProvisioningEnabled = &enabled
 			return nil
 		},
+
 		api.Convert_resource_Quantity_To_resource_Quantity,
+		api.Convert_bool_To_Pointer_bool,
+		api.Convert_Pointer_bool_To_bool,
 	)
 	if err != nil {
 		// If one of the conversion functions is malformed, detect it immediately.
@@ -342,67 +342,78 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 	}
 }
 
-var codec = serializer.NewCodecFactory(internal.Scheme).LegacyCodec(SchemeGroupVersion)
+// convert_runtime_Object_To_runtime_RawExtension attempts to convert runtime.Objects to the appropriate target.
+func convert_runtime_Object_To_runtime_RawExtension(in *runtime.Object, out *runtime.RawExtension, s conversion.Scope) error {
+	return extension.Convert_runtime_Object_To_runtime_RawExtension(internal.Scheme, in, out, s)
+}
 
-// Convert_runtime_Object_To_runtime_RawExtension is conversion function that assumes that the runtime.Object you've embedded is in
-// the same GroupVersion that your containing type is in.  This is signficantly better than simply breaking.
-// Given an ordered list of preferred external versions for a given encode or conversion call, the behavior of this function could be
-// made generic, predictable, and controllable.
-func convert_runtime_Object_To_runtime_RawExtension(in runtime.Object, out *runtime.RawExtension, s conversion.Scope) error {
-	if in == nil {
-		return nil
+// convert_runtime_RawExtension_To_runtime_Object attempts to convert an incoming object into the
+// appropriate output type.
+func convert_runtime_RawExtension_To_runtime_Object(in *runtime.RawExtension, out *runtime.Object, s conversion.Scope) error {
+	return extension.Convert_runtime_RawExtension_To_runtime_Object(internal.Scheme, in, out, s)
+}
+
+// setDefault_ClientConnectionOverrides defaults a client connection to the pre-1.3 settings of
+// being JSON only. Callers must explicitly opt-in to Protobuf support in 1.3+.
+func setDefault_ClientConnectionOverrides(overrides *ClientConnectionOverrides) {
+	if len(overrides.AcceptContentTypes) == 0 {
+		overrides.AcceptContentTypes = "application/json"
 	}
+	if len(overrides.ContentType) == 0 {
+		overrides.ContentType = "application/json"
+	}
+}
 
-	externalObject, err := internal.Scheme.ConvertToVersion(in, s.Meta().DestVersion)
-	if runtime.IsNotRegisteredError(err) {
-		switch cast := in.(type) {
-		case *runtime.Unknown:
-			out.Raw = cast.Raw
-			return nil
-		case *runtime.Unstructured:
-			bytes, err := runtime.Encode(runtime.UnstructuredJSONScheme, externalObject)
-			if err != nil {
-				return err
-			}
-			out.Raw = bytes
-			return nil
+var _ runtime.NestedObjectDecoder = &MasterConfig{}
+
+// DecodeNestedObjects handles encoding RawExtensions on the MasterConfig, ensuring the
+// objects are decoded with the provided decoder.
+func (c *MasterConfig) DecodeNestedObjects(d runtime.Decoder) error {
+	// decoding failures result in a runtime.Unknown object being created in Object and passed
+	// to conversion
+	for k, v := range c.AdmissionConfig.PluginConfig {
+		extension.DecodeNestedRawExtensionOrUnknown(d, &v.Configuration)
+		c.AdmissionConfig.PluginConfig[k] = v
+	}
+	if c.KubernetesMasterConfig != nil {
+		for k, v := range c.KubernetesMasterConfig.AdmissionConfig.PluginConfig {
+			extension.DecodeNestedRawExtensionOrUnknown(d, &v.Configuration)
+			c.KubernetesMasterConfig.AdmissionConfig.PluginConfig[k] = v
 		}
 	}
-	if err != nil {
-		return err
+	if c.OAuthConfig != nil {
+		for i := range c.OAuthConfig.IdentityProviders {
+			extension.DecodeNestedRawExtensionOrUnknown(d, &c.OAuthConfig.IdentityProviders[i].Provider)
+		}
 	}
-
-	bytes, err := runtime.Encode(codec, externalObject)
-	if err != nil {
-		return err
-	}
-
-	out.Raw = bytes
-	out.Object = externalObject
-
 	return nil
 }
 
-// Convert_runtime_RawExtension_To_runtime_Object well, this is the reason why there was runtime.Embedded.  The `out` here is hopeless.
-// The caller doesn't know the type ahead of time and that means this method can't communicate the return value.  This sucks really badly.
-// I'm going to set the `in.Object` field can have callers to this function do magic to pull it back out.  I'm also going to bitch about it.
-func convert_runtime_RawExtension_To_runtime_Object(in *runtime.RawExtension, out runtime.Object, s conversion.Scope) error {
-	if in == nil || len(in.Raw) == 0 || in.Object != nil {
-		return nil
+var _ runtime.NestedObjectEncoder = &MasterConfig{}
+
+// EncodeNestedObjects handles encoding RawExtensions on the MasterConfig, ensuring the
+// objects are encoded with the provided encoder.
+func (c *MasterConfig) EncodeNestedObjects(e runtime.Encoder) error {
+	for k, v := range c.AdmissionConfig.PluginConfig {
+		if err := extension.EncodeNestedRawExtension(e, &v.Configuration); err != nil {
+			return err
+		}
+		c.AdmissionConfig.PluginConfig[k] = v
 	}
-
-	decodedObject, err := runtime.Decode(codec, in.Raw)
-	if err != nil {
-		in.Object = &runtime.Unknown{Raw: in.Raw}
-		return nil
+	if c.KubernetesMasterConfig != nil {
+		for k, v := range c.KubernetesMasterConfig.AdmissionConfig.PluginConfig {
+			if err := extension.EncodeNestedRawExtension(e, &v.Configuration); err != nil {
+				return err
+			}
+			c.KubernetesMasterConfig.AdmissionConfig.PluginConfig[k] = v
+		}
 	}
-
-	internalObject, err := internal.Scheme.ConvertToVersion(decodedObject, s.Meta().DestVersion)
-	if err != nil {
-		return err
+	if c.OAuthConfig != nil {
+		for i := range c.OAuthConfig.IdentityProviders {
+			if err := extension.EncodeNestedRawExtension(e, &c.OAuthConfig.IdentityProviders[i].Provider); err != nil {
+				return err
+			}
+		}
 	}
-
-	in.Object = internalObject
-
 	return nil
 }

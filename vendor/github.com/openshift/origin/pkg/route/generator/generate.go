@@ -21,12 +21,12 @@ var _ kubectl.Generator = RouteGenerator{}
 // ParamNames returns the parameters required for generating a route
 func (RouteGenerator) ParamNames() []kubectl.GeneratorParam {
 	return []kubectl.GeneratorParam{
-		{"labels", false},
-		{"default-name", true},
-		{"target-port", false},
-		{"name", false},
-		{"hostname", false},
-		{"path", false},
+		{Name: "labels", Required: false},
+		{Name: "default-name", Required: true},
+		{Name: "port", Required: false},
+		{Name: "name", Required: false},
+		{Name: "hostname", Required: false},
+		{Name: "path", Required: false},
 	}
 }
 
@@ -70,13 +70,13 @@ func (RouteGenerator) Generate(genericParams map[string]interface{}) (runtime.Ob
 		Spec: api.RouteSpec{
 			Host: params["hostname"],
 			Path: params["path"],
-			To: kapi.ObjectReference{
+			To: api.RouteTargetReference{
 				Name: params["default-name"],
 			},
 		},
 	}
 
-	portString := params["target-port"]
+	portString := params["port"]
 	if len(portString) > 0 {
 		var targetPort intstr.IntOrString
 		if port, err := strconv.Atoi(portString); err == nil {

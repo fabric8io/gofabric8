@@ -79,12 +79,50 @@ func TestValidateDeploymentConfigOK(t *testing.T) {
 	}
 }
 
+func TestValidateDeploymentConfigICTMissingImage(t *testing.T) {
+	dc := &api.DeploymentConfig{
+		ObjectMeta: kapi.ObjectMeta{Name: "foo", Namespace: "bar"},
+		Spec: api.DeploymentConfigSpec{
+			Replicas: 1,
+			Triggers: []api.DeploymentTriggerPolicy{test.OkImageChangeTrigger()},
+			Selector: test.OkSelector(),
+			Strategy: test.OkStrategy(),
+			Template: test.OkPodTemplateMissingImage("container1"),
+		},
+	}
+	errs := ValidateDeploymentConfig(dc)
+
+	if len(errs) > 0 {
+		t.Errorf("Unexpected non-empty error list: %+v", errs)
+	}
+
+	for _, c := range dc.Spec.Template.Spec.Containers {
+		if c.Image == "unset" {
+			t.Errorf("%s image field still has validation fake out value of %s", c.Name, c.Image)
+		}
+	}
+}
+
 func TestValidateDeploymentConfigMissingFields(t *testing.T) {
 	errorCases := map[string]struct {
 		DeploymentConfig api.DeploymentConfig
 		ErrorType        field.ErrorType
 		Field            string
 	}{
+		"empty container field": {
+			api.DeploymentConfig{
+				ObjectMeta: kapi.ObjectMeta{Name: "foo", Namespace: "bar"},
+				Spec: api.DeploymentConfigSpec{
+					Replicas: 1,
+					Triggers: []api.DeploymentTriggerPolicy{test.OkConfigChangeTrigger()},
+					Selector: test.OkSelector(),
+					Strategy: test.OkStrategy(),
+					Template: test.OkPodTemplateMissingImage("container1"),
+				},
+			},
+			field.ErrorTypeRequired,
+			"spec.template.spec.containers[0].image",
+		},
 		"missing name": {
 			api.DeploymentConfig{
 				ObjectMeta: kapi.ObjectMeta{Name: "", Namespace: "bar"},
@@ -652,8 +690,8 @@ func TestValidateDeploymentConfigUpdate(t *testing.T) {
 	}
 
 	scenarios := []struct {
-		oldLatestVersion int
-		newLatestVersion int
+		oldLatestVersion int64
+		newLatestVersion int64
 	}{
 		{5, 3},
 		{5, 7},
@@ -688,6 +726,20 @@ func TestValidateDeploymentConfigUpdate(t *testing.T) {
 
 func TestValidateDeploymentConfigRollbackOK(t *testing.T) {
 	rollback := &api.DeploymentConfigRollback{
+		Name: "config",
+		Spec: api.DeploymentConfigRollbackSpec{
+			Revision: 2,
+		},
+	}
+
+	errs := ValidateDeploymentConfigRollback(rollback)
+	if len(errs) > 0 {
+		t.Errorf("Unxpected non-empty error list: %v", errs)
+	}
+}
+
+func TestValidateDeploymentConfigRollbackDeprecatedOK(t *testing.T) {
+	rollback := &api.DeploymentConfigRollback{
 		Spec: api.DeploymentConfigRollbackSpec{
 			From: kapi.ObjectReference{
 				Name: "deployment",
@@ -695,7 +747,7 @@ func TestValidateDeploymentConfigRollbackOK(t *testing.T) {
 		},
 	}
 
-	errs := ValidateDeploymentConfigRollback(rollback)
+	errs := ValidateDeploymentConfigRollbackDeprecated(rollback)
 	if len(errs) > 0 {
 		t.Errorf("Unxpected non-empty error list: %v", errs)
 	}
@@ -706,6 +758,59 @@ func TestValidateDeploymentConfigRollbackOK(t *testing.T) {
 }
 
 func TestValidateDeploymentConfigRollbackInvalidFields(t *testing.T) {
+	errorCases := map[string]struct {
+		D api.DeploymentConfigRollback
+		T field.ErrorType
+		F string
+	}{
+		"missing name": {
+			api.DeploymentConfigRollback{
+				Spec: api.DeploymentConfigRollbackSpec{
+					Revision: 2,
+				},
+			},
+			field.ErrorTypeRequired,
+			"name",
+		},
+		"invalid name": {
+			api.DeploymentConfigRollback{
+				Name: "*_*myconfig",
+				Spec: api.DeploymentConfigRollbackSpec{
+					Revision: 2,
+				},
+			},
+			field.ErrorTypeInvalid,
+			"name",
+		},
+		"invalid revision": {
+			api.DeploymentConfigRollback{
+				Name: "config",
+				Spec: api.DeploymentConfigRollbackSpec{
+					Revision: -1,
+				},
+			},
+			field.ErrorTypeInvalid,
+			"spec.revision",
+		},
+	}
+
+	for k, v := range errorCases {
+		errs := ValidateDeploymentConfigRollback(&v.D)
+		if len(errs) == 0 {
+			t.Errorf("Expected failure for scenario %q", k)
+		}
+		for i := range errs {
+			if errs[i].Type != v.T {
+				t.Errorf("%s: expected errors to have type %q: %v", k, v.T, errs[i])
+			}
+			if errs[i].Field != v.F {
+				t.Errorf("%s: expected errors to have field %q: %v", k, v.F, errs[i])
+			}
+		}
+	}
+}
+
+func TestValidateDeploymentConfigRollbackDeprecatedInvalidFields(t *testing.T) {
 	errorCases := map[string]struct {
 		D api.DeploymentConfigRollback
 		T field.ErrorType
@@ -735,7 +840,7 @@ func TestValidateDeploymentConfigRollbackInvalidFields(t *testing.T) {
 	}
 
 	for k, v := range errorCases {
-		errs := ValidateDeploymentConfigRollback(&v.D)
+		errs := ValidateDeploymentConfigRollbackDeprecated(&v.D)
 		if len(errs) == 0 {
 			t.Errorf("Expected failure for scenario %s", k)
 		}
@@ -785,4 +890,56 @@ func mkint64p(i int) *int64 {
 
 func mkintp(i int) *int {
 	return &i
+}
+
+func TestValidateSelectorMatchesPodTemplateLabels(t *testing.T) {
+	tests := map[string]struct {
+		spec        api.DeploymentConfigSpec
+		expectedErr bool
+		errorType   field.ErrorType
+		field       string
+	}{
+		"valid template labels": {
+			spec: api.DeploymentConfigSpec{
+				Selector: test.OkSelector(),
+				Strategy: test.OkStrategy(),
+				Template: test.OkPodTemplate(),
+			},
+		},
+		"invalid template labels": {
+			spec: api.DeploymentConfigSpec{
+				Selector: test.OkSelector(),
+				Strategy: test.OkStrategy(),
+				Template: test.OkPodTemplate(),
+			},
+			expectedErr: true,
+			errorType:   field.ErrorTypeInvalid,
+			field:       "spec.template.metadata.labels",
+		},
+	}
+
+	for name, test := range tests {
+		if test.expectedErr {
+			test.spec.Template.Labels["a"] = "c"
+		}
+		errs := ValidateDeploymentConfigSpec(test.spec)
+		if len(errs) == 0 && test.expectedErr {
+			t.Errorf("%s: expected failure", name)
+			continue
+		}
+		if !test.expectedErr {
+			continue
+		}
+		if len(errs) != 1 {
+			t.Errorf("%s: expected one error, got %d", name, len(errs))
+			continue
+		}
+		err := errs[0]
+		if err.Type != test.errorType {
+			t.Errorf("%s: expected error to have type %q, got %q", name, test.errorType, err.Type)
+		}
+		if err.Field != test.field {
+			t.Errorf("%s: expected error to have field %q, got %q", name, test.field, err.Field)
+		}
+	}
 }

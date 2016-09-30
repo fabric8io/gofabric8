@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -19,6 +17,7 @@ import (
 )
 
 func TestPolicyBasedRestrictionOfBuildCreateAndCloneByStrategy(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	clusterAdminClient, projectAdminClient, projectEditorClient := setupBuildStrategyTest(t, false)
 
 	clients := map[string]*client.Client{"admin": projectAdminClient, "editor": projectEditorClient}
@@ -74,6 +73,7 @@ func TestPolicyBasedRestrictionOfBuildCreateAndCloneByStrategy(t *testing.T) {
 }
 
 func TestPolicyBasedRestrictionOfBuildConfigCreateAndInstantiateByStrategy(t *testing.T) {
+	defer testutil.DumpEtcdOnFailure(t)
 	clusterAdminClient, projectAdminClient, projectEditorClient := setupBuildStrategyTest(t, true)
 
 	clients := map[string]*client.Client{"admin": projectAdminClient, "editor": projectEditorClient}
@@ -195,6 +195,18 @@ func setupBuildStrategyTest(t *testing.T, includeControllers bool) (clusterAdmin
 	err = clusterAdminClient.ImageStreamMappings(testutil.Namespace()).Create(imageStreamMapping)
 	if err != nil {
 		t.Fatalf("Couldn't create ImageStreamMapping: %v", err)
+	}
+
+	template, err := testutil.GetTemplateFixture("../../examples/jenkins/jenkins-ephemeral-template.json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	template.Name = "jenkins"
+	template.Namespace = "openshift"
+
+	_, err = clusterAdminClient.Templates("openshift").Create(template)
+	if err != nil {
+		t.Fatalf("Couldn't create jenkins template: %v", err)
 	}
 
 	return

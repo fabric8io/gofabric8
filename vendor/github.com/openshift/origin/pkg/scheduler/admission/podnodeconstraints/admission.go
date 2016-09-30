@@ -11,17 +11,22 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	"github.com/openshift/origin/pkg/api/meta"
 	"github.com/openshift/origin/pkg/authorization/authorizer"
 	oadmission "github.com/openshift/origin/pkg/cmd/server/admission"
 	configlatest "github.com/openshift/origin/pkg/cmd/server/api/latest"
-	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	"github.com/openshift/origin/pkg/scheduler/admission/podnodeconstraints/api"
 )
+
+// kindsToIgnore is a list of kinds that contain a PodSpec that
+// we choose not to handle in this plugin
+var kindsToIgnore = []unversioned.GroupKind{
+	extensions.Kind("DaemonSet"),
+}
 
 func init() {
 	admission.RegisterPlugin("PodNodeConstraints", func(c clientset.Interface, config io.Reader) (admission.Interface, error) {
@@ -58,31 +63,15 @@ type podNodeConstraints struct {
 	authorizer             authorizer.Authorizer
 }
 
-// resourcesToCheck is a map of resources and corresponding kinds of things that
-// we want handled in this plugin
-// TODO: Include a function that will extract the PodSpec from the resource for
-// each type added here.
-var resourcesToCheck = map[unversioned.GroupResource]unversioned.GroupKind{
-	kapi.Resource("pods"):                   kapi.Kind("Pod"),
-	kapi.Resource("podtemplates"):           kapi.Kind("PodTemplate"),
-	kapi.Resource("replicationcontrollers"): kapi.Kind("ReplicationController"),
-	batch.Resource("jobs"):                  batch.Kind("Job"),
-	extensions.Resource("deployments"):      extensions.Kind("Deployment"),
-	extensions.Resource("replicasets"):      extensions.Kind("ReplicaSet"),
-	extensions.Resource("jobs"):             extensions.Kind("Job"),
-	deployapi.Resource("deploymentconfigs"): deployapi.Kind("DeploymentConfig"),
-}
-
-// resourcesToIgnore is a list of resource kinds that contain a PodSpec that
-// we choose not to handle in this plugin
-var resourcesToIgnore = []unversioned.GroupKind{
-	extensions.Kind("DaemonSet"),
-}
-
 func shouldCheckResource(resource unversioned.GroupResource, kind unversioned.GroupKind) (bool, error) {
-	expectedKind, shouldCheck := resourcesToCheck[resource]
+	expectedKind, shouldCheck := meta.HasPodSpec(resource)
 	if !shouldCheck {
 		return false, nil
+	}
+	for _, ignore := range kindsToIgnore {
+		if ignore == expectedKind {
+			return false, nil
+		}
 	}
 	if expectedKind != kind {
 		return false, fmt.Errorf("Unexpected resource kind %v for resource %v", &kind, &resource)
@@ -138,23 +127,11 @@ func (o *podNodeConstraints) Admit(attr admission.Attributes) error {
 
 // extract the PodSpec from the pod templates for each object we care about
 func (o *podNodeConstraints) getPodSpec(attr admission.Attributes) (kapi.PodSpec, error) {
-	switch r := attr.GetObject().(type) {
-	case *kapi.Pod:
-		return r.Spec, nil
-	case *kapi.PodTemplate:
-		return r.Template.Spec, nil
-	case *kapi.ReplicationController:
-		return r.Spec.Template.Spec, nil
-	case *extensions.Deployment:
-		return r.Spec.Template.Spec, nil
-	case *extensions.ReplicaSet:
-		return r.Spec.Template.Spec, nil
-	case *extensions.Job:
-		return r.Spec.Template.Spec, nil
-	case *deployapi.DeploymentConfig:
-		return r.Spec.Template.Spec, nil
+	spec, _, err := meta.GetPodSpec(attr.GetObject())
+	if err != nil {
+		return kapi.PodSpec{}, kapierrors.NewInternalError(err)
 	}
-	return kapi.PodSpec{}, kapierrors.NewInternalError(fmt.Errorf("No PodSpec available for supplied admission attribute"))
+	return *spec, nil
 }
 
 // validate PodSpec if NodeName or NodeSelector are specified

@@ -21,6 +21,7 @@ package kubenet
 import (
 	"fmt"
 
+	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/network"
 )
@@ -29,11 +30,11 @@ type kubenetNetworkPlugin struct {
 	network.NoopNetworkPlugin
 }
 
-func NewPlugin() network.NetworkPlugin {
+func NewPlugin(networkPluginDir string) network.NetworkPlugin {
 	return &kubenetNetworkPlugin{}
 }
 
-func (plugin *kubenetNetworkPlugin) Init(host network.Host) error {
+func (plugin *kubenetNetworkPlugin) Init(host network.Host, hairpinMode componentconfig.HairpinMode, nonMasqueradeCIDR string) error {
 	return fmt.Errorf("Kubenet is not supported in this build")
 }
 
@@ -41,14 +42,14 @@ func (plugin *kubenetNetworkPlugin) Name() string {
 	return "kubenet"
 }
 
-func (plugin *kubenetNetworkPlugin) SetUpPod(namespace string, name string, id kubecontainer.DockerID) error {
+func (plugin *kubenetNetworkPlugin) SetUpPod(namespace string, name string, id kubecontainer.ContainerID) error {
 	return fmt.Errorf("Kubenet is not supported in this build")
 }
 
-func (plugin *kubenetNetworkPlugin) TearDownPod(namespace string, name string, id kubecontainer.DockerID) error {
+func (plugin *kubenetNetworkPlugin) TearDownPod(namespace string, name string, id kubecontainer.ContainerID) error {
 	return fmt.Errorf("Kubenet is not supported in this build")
 }
 
-func (plugin *kubenetNetworkPlugin) Status(namespace string, name string, id kubecontainer.DockerID) (*network.PodNetworkStatus, error) {
+func (plugin *kubenetNetworkPlugin) GetPodNetworkStatus(namespace string, name string, id kubecontainer.ContainerID) (*network.PodNetworkStatus, error) {
 	return nil, fmt.Errorf("Kubenet is not supported in this build")
 }

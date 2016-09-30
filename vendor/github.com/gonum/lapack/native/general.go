@@ -17,19 +17,47 @@ type Implementation struct{}
 
 var _ lapack.Float64 = Implementation{}
 
+// This list is duplicated in lapack/cgo. Keep in sync.
 const (
-	badDirect     = "lapack: bad direct"
-	badLdA        = "lapack: index of a out of range"
-	badSide       = "lapack: bad side"
-	badStore      = "lapack: bad store"
-	badTau        = "lapack: tau has insufficient length"
-	badTrans      = "lapack: bad trans"
-	badUplo       = "lapack: illegal triangle"
-	badWork       = "lapack: insufficient working memory"
-	badWorkStride = "lapack: insufficient working array stride"
-	negDimension  = "lapack: negative matrix dimension"
-	nLT0          = "lapack: n < 0"
-	shortWork     = "lapack: working array shorter than declared"
+	absIncNotOne    = "lapack: increment not one or negative one"
+	badD            = "lapack: d has insufficient length"
+	badDecompUpdate = "lapack: bad decomp update"
+	badDiag         = "lapack: bad diag"
+	badDims         = "lapack: bad input dimensions"
+	badDirect       = "lapack: bad direct"
+	badE            = "lapack: e has insufficient length"
+	badEigComp      = "lapack: bad EigComp"
+	badEigVecSide   = "lapack: bad EigVecSide"
+	badHowMany      = "lapack: bad HowMany"
+	badIlo          = "lapack: ilo out of range"
+	badIhi          = "lapack: ihi out of range"
+	badIpiv         = "lapack: insufficient permutation length"
+	badJob          = "lapack: bad Job"
+	badLdA          = "lapack: index of a out of range"
+	badNorm         = "lapack: bad norm"
+	badPivot        = "lapack: bad pivot"
+	badS            = "lapack: s has insufficient length"
+	badShifts       = "lapack: bad shifts"
+	badSide         = "lapack: bad side"
+	badSlice        = "lapack: bad input slice length"
+	badStore        = "lapack: bad store"
+	badTau          = "lapack: tau has insufficient length"
+	badTauQ         = "lapack: tauQ has insufficient length"
+	badTauP         = "lapack: tauP has insufficient length"
+	badTrans        = "lapack: bad trans"
+	badUplo         = "lapack: illegal triangle"
+	badWork         = "lapack: insufficient working memory"
+	badWorkStride   = "lapack: insufficient working array stride"
+	badZ            = "lapack: insufficient z length"
+	kGTM            = "lapack: k > m"
+	kGTN            = "lapack: k > n"
+	kLT0            = "lapack: k < 0"
+	mLTN            = "lapack: m < n"
+	negDimension    = "lapack: negative matrix dimension"
+	negZ            = "lapack: negative z value"
+	nLT0            = "lapack: n < 0"
+	nLTM            = "lapack: n < m"
+	shortWork       = "lapack: working array shorter than declared"
 )
 
 // checkMatrix verifies the parameters of a matrix input.
@@ -37,7 +65,7 @@ func checkMatrix(m, n int, a []float64, lda int) {
 	if m < 0 {
 		panic("lapack: has negative number of rows")
 	}
-	if m < 0 {
+	if n < 0 {
 		panic("lapack: has negative number of columns")
 	}
 	if lda < n {
@@ -50,7 +78,7 @@ func checkMatrix(m, n int, a []float64, lda int) {
 
 func checkVector(n int, v []float64, inc int) {
 	if n < 0 {
-		panic("lapack: negative matrix length")
+		panic("lapack: negative vector length")
 	}
 	if (inc > 0 && (n-1)*inc >= len(v)) || (inc < 0 && (1-n)*inc >= len(v)) {
 		panic("lapack: insufficient vector slice length")
@@ -71,22 +99,21 @@ func max(a, b int) int {
 	return b
 }
 
-// dlamch is a function in fortran, but since go forces IEEE-754 these are all
-// fixed values. Probably a way to get them as constants.
-// TODO(btracey): Is there a better way to find the smallest number such that 1+E > 1
+var (
+	// dlamchE is the machine epsilon. For IEEE this is 2^-53.
+	dlamchE = 1.0 / (1 << 53)
 
-var dlamchE, dlamchS, dlamchP float64
+	// dlamchP is 2 * eps
+	dlamchP = 2 * dlamchE
 
-func init() {
-	onePlusEps := math.Nextafter(1, math.Inf(1))
-	eps := (math.Nextafter(1, math.Inf(1)) - 1) * 0.5
-	dlamchE = eps
-	sfmin := math.SmallestNonzeroFloat64
-	small := 1 / math.MaxFloat64
-	if small >= sfmin {
-		sfmin = small * onePlusEps
-	}
-	dlamchS = sfmin
-	radix := 2.0
-	dlamchP = radix * eps
-}
+	// dlamchS is the "safe min", that is, the lowest number such that 1/sfmin does
+	// not overflow. The Netlib code for calculating this number is not correct --
+	// it overflows. Found by comparison with the FORTRAN value.
+	dlamchS = math.Nextafter((4 / math.MaxFloat64), 0)
+
+	smlnum = dlamchS / dlamchP
+	bignum = 1 / smlnum
+
+	// dlamchB is the radix of the machine (the base of the number system).
+	dlamchB = 2
+)

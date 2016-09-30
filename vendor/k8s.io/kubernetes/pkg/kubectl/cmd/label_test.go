@@ -333,16 +333,16 @@ func TestLabelForResourceFromFile(t *testing.T) {
 			switch req.Method {
 			case "GET":
 				switch req.URL.Path {
-				case "/namespaces/test/pods/cassandra":
-					return &http.Response{StatusCode: 200, Body: objBody(codec, &pods.Items[0])}, nil
+				case "/namespaces/test/replicationcontrollers/cassandra":
+					return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &pods.Items[0])}, nil
 				default:
 					t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 					return nil, nil
 				}
 			case "PATCH":
 				switch req.URL.Path {
-				case "/namespaces/test/pods/cassandra":
-					return &http.Response{StatusCode: 200, Body: objBody(codec, &pods.Items[0])}, nil
+				case "/namespaces/test/replicationcontrollers/cassandra":
+					return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &pods.Items[0])}, nil
 				default:
 					t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 					return nil, nil
@@ -359,7 +359,7 @@ func TestLabelForResourceFromFile(t *testing.T) {
 	buf := bytes.NewBuffer([]byte{})
 	cmd := NewCmdLabel(f, buf)
 	options := &LabelOptions{
-		Filenames: []string{"../../../examples/cassandra/cassandra.yaml"},
+		Filenames: []string{"../../../examples/cassandra/cassandra-controller.yaml"},
 	}
 
 	err := RunLabel(f, buf, cmd, []string{"a=b"}, options)
@@ -381,7 +381,7 @@ func TestLabelMultipleObjects(t *testing.T) {
 			case "GET":
 				switch req.URL.Path {
 				case "/namespaces/test/pods":
-					return &http.Response{StatusCode: 200, Body: objBody(codec, pods)}, nil
+					return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, pods)}, nil
 				default:
 					t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 					return nil, nil
@@ -389,9 +389,9 @@ func TestLabelMultipleObjects(t *testing.T) {
 			case "PATCH":
 				switch req.URL.Path {
 				case "/namespaces/test/pods/foo":
-					return &http.Response{StatusCode: 200, Body: objBody(codec, &pods.Items[0])}, nil
+					return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &pods.Items[0])}, nil
 				case "/namespaces/test/pods/bar":
-					return &http.Response{StatusCode: 200, Body: objBody(codec, &pods.Items[1])}, nil
+					return &http.Response{StatusCode: 200, Header: defaultHeader(), Body: objBody(codec, &pods.Items[1])}, nil
 				default:
 					t.Fatalf("unexpected request: %#v\n%#v", req.URL, req)
 					return nil, nil

@@ -16,13 +16,13 @@ import (
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	"github.com/openshift/origin/pkg/client"
+	ocmd "github.com/openshift/origin/pkg/cmd/cli/cmd"
 	"github.com/openshift/origin/pkg/cmd/util"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	"github.com/openshift/origin/pkg/deploy/strategy"
 	"github.com/openshift/origin/pkg/deploy/strategy/recreate"
 	"github.com/openshift/origin/pkg/deploy/strategy/rolling"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
-	"github.com/openshift/origin/pkg/version"
 )
 
 const (
@@ -69,7 +69,7 @@ func NewCommandDeployer(name string) *cobra.Command {
 		Long:  deployerLong,
 		Run: func(c *cobra.Command, args []string) {
 			cfg.Out = os.Stdout
-			cfg.ErrOut = c.Out()
+			cfg.ErrOut = c.OutOrStderr()
 			err := cfg.RunDeployer()
 			if strategy.IsConditionReached(err) {
 				fmt.Fprintf(os.Stdout, "--> %s\n", err.Error())
@@ -79,7 +79,7 @@ func NewCommandDeployer(name string) *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(version.NewVersionCommand(name, false))
+	cmd.AddCommand(ocmd.NewCmdVersion(name, nil, os.Stdout, ocmd.VersionOptions{}))
 
 	flag := cmd.Flags()
 	flag.StringVar(&cfg.rcName, "deployment", util.Env("OPENSHIFT_DEPLOYMENT_NAME", ""), "The deployment name to start")
@@ -131,10 +131,10 @@ func NewDeployer(client kclient.Interface, oclient client.Interface, out, errOut
 		strategyFor: func(config *deployapi.DeploymentConfig) (strategy.DeploymentStrategy, error) {
 			switch config.Spec.Strategy.Type {
 			case deployapi.DeploymentStrategyTypeRecreate:
-				return recreate.NewRecreateDeploymentStrategy(client, oclient, kapi.Codecs.UniversalDecoder(), out, errOut, until), nil
+				return recreate.NewRecreateDeploymentStrategy(client, oclient, client.Events(""), kapi.Codecs.UniversalDecoder(), out, errOut, until), nil
 			case deployapi.DeploymentStrategyTypeRolling:
-				recreate := recreate.NewRecreateDeploymentStrategy(client, oclient, kapi.Codecs.UniversalDecoder(), out, errOut, until)
-				return rolling.NewRollingDeploymentStrategy(config.Namespace, client, oclient, kapi.Codecs.UniversalDecoder(), recreate, out, errOut, until), nil
+				recreate := recreate.NewRecreateDeploymentStrategy(client, oclient, client.Events(""), kapi.Codecs.UniversalDecoder(), out, errOut, until)
+				return rolling.NewRollingDeploymentStrategy(config.Namespace, client, oclient, client.Events(""), kapi.Codecs.UniversalDecoder(), recreate, out, errOut, until), nil
 			default:
 				return nil, fmt.Errorf("unsupported strategy type: %s", config.Spec.Strategy.Type)
 			}
@@ -213,6 +213,10 @@ func (d *Deployer) Deploy(namespace, rcName string) error {
 		}
 	}
 
+	if deployutil.DeploymentVersionFor(to) < deployutil.DeploymentVersionFor(from) {
+		return fmt.Errorf("deployment %s is older than %s", to.Name, from.Name)
+	}
+
 	// Scale down any deployments which aren't the new or last deployment.
 	for _, candidate := range deployments {
 		// Skip the from/to deployments.
@@ -240,7 +244,7 @@ func (d *Deployer) Deploy(namespace, rcName string) error {
 	}
 
 	// Perform the deployment.
-	if err := s.Deploy(from, to, desiredReplicas); err != nil {
+	if err := s.Deploy(from, to, int(desiredReplicas)); err != nil {
 		return err
 	}
 	fmt.Fprintf(d.out, "--> Success\n")

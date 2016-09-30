@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -15,10 +13,15 @@ import (
 
 func TestCLIGetToken(t *testing.T) {
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	clusterAdminClientConfig, err := testutil.GetClusterAdminClientConfig(clusterAdminKubeConfig)
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	anonymousConfig := clientcmd.AnonymousClientConfig(clusterAdminClientConfig)
 	reader := bytes.NewBufferString("user\npass")
@@ -33,10 +36,14 @@ func TestCLIGetToken(t *testing.T) {
 	clientConfig := clientcmd.AnonymousClientConfig(clusterAdminClientConfig)
 	clientConfig.BearerToken = accessToken
 	osClient, err := client.New(&clientConfig)
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	user, err := osClient.Users().Get("~")
-	checkErr(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if user.Name != "user" {
 		t.Errorf("expected %v, got %v", "user", user.Name)

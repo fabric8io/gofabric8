@@ -17,6 +17,7 @@ type Dgeqrfer interface {
 }
 
 func DgeqrfTest(t *testing.T, impl Dgeqrfer) {
+	rnd := rand.New(rand.NewSource(1))
 	for c, test := range []struct {
 		m, n, lda int
 	}{
@@ -50,12 +51,12 @@ func DgeqrfTest(t *testing.T, impl Dgeqrfer) {
 		a := make([]float64, m*lda)
 		for i := 0; i < m; i++ {
 			for j := 0; j < n; j++ {
-				a[i*lda+j] = rand.Float64()
+				a[i*lda+j] = rnd.Float64()
 			}
 		}
 		tau := make([]float64, n)
 		for i := 0; i < n; i++ {
-			tau[i] = rand.Float64()
+			tau[i] = rnd.Float64()
 		}
 		aCopy := make([]float64, len(a))
 		copy(aCopy, a)
@@ -66,7 +67,7 @@ func DgeqrfTest(t *testing.T, impl Dgeqrfer) {
 		impl.Dgeqr2(m, n, ans, lda, tau, work)
 		// Compute blocked QR with small work.
 		impl.Dgeqrf(m, n, a, lda, tau, work, len(work))
-		if !floats.EqualApprox(ans, a, 1e-14) {
+		if !floats.EqualApprox(ans, a, 1e-12) {
 			t.Errorf("Case %v, mismatch small work.", c)
 		}
 		// Try the full length of work.
@@ -80,6 +81,9 @@ func DgeqrfTest(t *testing.T, impl Dgeqrfer) {
 		}
 
 		// Try a slightly smaller version of work to test blocking.
+		if len(work) <= n {
+			continue
+		}
 		work = work[1:]
 		lwork--
 		copy(a, aCopy)

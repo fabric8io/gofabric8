@@ -7,6 +7,14 @@ package mat64
 
 import (
 	"math"
+
+	"github.com/gonum/lapack"
+	"github.com/gonum/lapack/lapack64"
+	"github.com/gonum/matrix"
+)
+
+const (
+	badFact = "mat64: use without successful factorization"
 )
 
 func symmetric(m *Dense) bool {
@@ -21,12 +29,161 @@ func symmetric(m *Dense) bool {
 	return true
 }
 
-type EigenFactors struct {
+// EigenSym is a type for creating and manipulating the Eigen decomposition of
+// symmetric matrices.
+type EigenSym struct {
+	vectorsComputed bool
+
+	values  []float64
+	vectors *Dense
+}
+
+// Factorize computes the eigenvalue decomposition of the symmetric matrix a.
+// The Eigen decomposition is defined as
+//  A = P * D * P^-1
+// where D is a diagonal matrix containing the eigenvalues of the matrix, and
+// P is a matrix of the eigenvectors of A. If the vectors input argument is
+// false, the eigenvectors are not computed.
+//
+// Factorize returns whether the decomposition succeeded. If the decomposition
+// failed, methods that require a successful factorization will panic.
+func (e *EigenSym) Factorize(a Symmetric, vectors bool) (ok bool) {
+	n := a.Symmetric()
+	sd := NewSymDense(n, nil)
+	sd.CopySym(a)
+
+	jobz := lapack.EigValueOnly
+	if vectors {
+		jobz = lapack.EigDecomp
+	}
+	w := make([]float64, n)
+	work := make([]float64, 1)
+	lapack64.Syev(jobz, sd.mat, w, work, -1)
+
+	work = make([]float64, int(work[0]))
+	ok = lapack64.Syev(jobz, sd.mat, w, work, len(work))
+	if !ok {
+		e.vectorsComputed = false
+		e.values = nil
+		e.vectors = nil
+		return false
+	}
+	e.vectorsComputed = vectors
+	e.values = w
+	e.vectors = NewDense(n, n, sd.mat.Data)
+	return true
+}
+
+// succFact returns whether the receiver contains a successful factorization.
+func (e *EigenSym) succFact() bool {
+	return len(e.values) != 0
+}
+
+// Values extracts the eigenvalues of the factorized matrix. If dst is
+// non-nil, the values are stored in-place into dst. In this case
+// dst must have length n, otherwise Values will panic. If dst is
+// nil, then a new slice will be allocated of the proper length and filled
+// with the eigenvalues.
+//
+// Values panics if the Eigen decomposition was not successful.
+func (e *EigenSym) Values(dst []float64) []float64 {
+	if !e.succFact() {
+		panic(badFact)
+	}
+	if dst == nil {
+		dst = make([]float64, len(e.values))
+	}
+	if len(dst) != len(e.values) {
+		panic(matrix.ErrSliceLengthMismatch)
+	}
+	copy(dst, e.values)
+	return dst
+}
+
+// EigenvectorsSym extracts the eigenvectors of the factorized matrix and stores
+// them in the receiver. Each eigenvector is a column corresponding to the
+// respective eigenvalue returned by e.Values.
+//
+// EigenvectorsSym panics if the factorization was not successful or if the
+// decomposition did not compute the eigenvectors.
+func (m *Dense) EigenvectorsSym(e *EigenSym) {
+	if !e.succFact() {
+		panic(badFact)
+	}
+	m.reuseAs(len(e.values), len(e.values))
+	m.Copy(e.vectors)
+}
+
+// Eigen is a type for creating and using the eigenvalue decomposition of a matrix.
+type Eigen struct {
+	vectorsComputed bool
+
+	n int // The size of the factorized matrix.
+
+	ef eigenFactors
+}
+
+// Factorize computes the eigenvalue decomposition of the input square matrix a.
+// The Eigen decomposition is defined as
+//  A = P * D * P^-1
+// where D is a diagonal matrix containing the eigenvalues of the matrix, and
+// P is a matrix of the eigenvectors of A. If the vectors input argument is
+// false, the eigenvectors are not computed.
+//
+// Factorize returns whether the decomposition succeeded. If the decomposition
+// failed, methods that require a successful factorization will panic.
+//
+// BUG: The current implementation always computes the eigenvectors.
+func (e *Eigen) Factorize(a Matrix, vectors bool) (ok bool) {
+	// TODO(btracey): Replace this with a lapack-based implementation.
+	r, c := a.Dims()
+	if r != c {
+		panic(matrix.ErrShape)
+	}
+	aCopy := DenseCopyOf(a)
+	e.vectorsComputed = vectors
+
+	e.ef = eigen(aCopy, 1e-14)
+	e.n = r
+	return true
+}
+
+// Values extracts the eigenvalues of the factorized matrix. If dst is
+// non-nil, the values are stored in-place into dst. In this case
+// dst must have length n, otherwise Values will panic. If dst is
+// nil, then a new slice will be allocated of the proper length and
+// filed with the eigenvalues.
+func (e *Eigen) Values(dst []complex128) []complex128 {
+	if dst == nil {
+		dst = make([]complex128, e.n)
+	}
+	if len(dst) != e.n {
+		panic(matrix.ErrSliceLengthMismatch)
+	}
+	for i := range dst {
+		dst[i] = complex(e.ef.d[i], e.ef.e[i])
+	}
+	return dst
+}
+
+// Vectors returns the eigenvectors of the decomposition.
+//
+// This signature and behavior will change when issue #308 is resolved.
+//
+// The columns of v represent the eigenvectors in the sense that a*v = v*D,
+// i.e. a.v equals v.D. The matrix v may be badly conditioned, or even
+// singular, so the validity of the equation a = v*D*inverse(v) depends
+// upon the 2-norm condition number of v.
+func (e *Eigen) Vectors() *Dense {
+	return DenseCopyOf(e.ef.V)
+}
+
+type eigenFactors struct {
 	V    *Dense
 	d, e []float64
 }
 
-// Eigen returns the Eigenvalues and eigenvectors of a square real matrix.
+// eigen returns the eigenvalues and eigenvectors of a square real matrix.
 // The matrix a is overwritten during the decomposition. If a is symmetric,
 // then a = v*D*v' where the eigenvalue matrix D is diagonal and the
 // eigenvector matrix v is orthogonal.
@@ -38,10 +195,10 @@ type EigenFactors struct {
 // i.e. a.v equals v.D. The matrix v may be badly conditioned, or even
 // singular, so the validity of the equation a = v*D*inverse(v) depends
 // upon the 2-norm condition number of v.
-func Eigen(a *Dense, epsilon float64) EigenFactors {
+func eigen(a *Dense, epsilon float64) eigenFactors {
 	m, n := a.Dims()
 	if m != n {
-		panic(ErrSquare)
+		panic(matrix.ErrSquare)
 	}
 
 	var v *Dense
@@ -63,7 +220,7 @@ func Eigen(a *Dense, epsilon float64) EigenFactors {
 		hqr2(d, e, hess, v, epsilon)
 	}
 
-	return EigenFactors{v, d, e}
+	return eigenFactors{v, d, e}
 }
 
 // Symmetric Householder reduction to tridiagonal form.
@@ -800,11 +957,11 @@ func hqr2(d, e []float64, hess, v *Dense, epsilon float64) {
 
 // D returns the block diagonal eigenvalue matrix from the real and imaginary
 // components d and e.
-func (f EigenFactors) D() *Dense {
+func (f eigenFactors) D() *Dense {
 	d, e := f.d, f.e
 	var n int
 	if n = len(d); n != len(e) {
-		panic(ErrSquare)
+		panic(matrix.ErrSquare)
 	}
 	dm := NewDense(n, n, nil)
 	for i := 0; i < n; i++ {

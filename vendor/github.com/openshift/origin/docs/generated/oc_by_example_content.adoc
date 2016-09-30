@@ -57,6 +57,33 @@ Encrypt data with AES-256-CBC encryption
 ====
 
 
+== oc adm completion
+Output shell completion code for the given shell (bash or zsh)
+
+====
+
+[options="nowrap"]
+----
+  # Generate the oc adm completion code for bash
+  oc adm completion bash > bash_completion.sh
+  source bash_completion.sh
+
+  # The above example depends on the bash-completion framework.
+  It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
+
+  brew install bash-completion
+  source $(brew --prefix)/etc/bash_completion
+  oc adm completion bash > bash_completion.sh
+  source bash_completion.sh
+
+  # In zsh*, the following will load openshift cli zsh completion:
+  source <(oc adm completion zsh)
+
+  * zsh completions are only supported in versions of zsh >= 5.2
+----
+====
+
+
 == oc adm config
 Change configuration files for the client
 
@@ -150,6 +177,37 @@ Displays merged kubeconfig settings or a specified kubeconfig file.
   
   # Get the password for the e2e user
   oc adm config view -o jsonpath='{.users[?(@.name == "e2e")].user.password}'
+----
+====
+
+
+== oc adm cordon
+Mark node as unschedulable
+
+====
+
+[options="nowrap"]
+----
+# Mark node "foo" as unschedulable.
+oc adm cordon foo
+
+----
+====
+
+
+== oc adm drain
+Drain node in preparation for maintenance
+
+====
+
+[options="nowrap"]
+----
+# Drain node "foo", even if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet on it.
+$ oc adm drain foo --force
+
+# As above, but abort if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet, and use a grace period of 15 minutes.
+$ oc adm drain foo --grace-period=900
+
 ----
 ====
 
@@ -288,11 +346,81 @@ Manage nodes - list pods, evacuate, or mark ready
 	# Migrate selected pods
 	oc adm manage-node <mynode> --evacuate --pod-selector="<service=myapp>"
 
+	# Migrate selected pods, use a grace period of 60 seconds
+	oc adm manage-node <mynode> --evacuate --grace-period=60 --pod-selector="<service=myapp>"
+
+	# Migrate selected pods not backed by replication controller
+	oc adm manage-node <mynode> --evacuate --force --pod-selector="<service=myapp>"
+
 	# Show pods that will be migrated
 	oc adm manage-node <mynode> --evacuate --dry-run --pod-selector="<service=myapp>"
 
 	# List all pods on given nodes
 	oc adm manage-node <mynode1> <mynode2> --list-pods
+----
+====
+
+
+== oc adm migrate image-references
+Update embedded Docker image references
+
+====
+
+[options="nowrap"]
+----
+  # Perform a dry-run of migrating all "docker.io" references to "myregistry.com"
+  oc adm migrate image-references docker.io/*=myregistry.com/*
+
+  # To actually perform the migration, the confirm flag must be appended
+  oc adm migrate image-references docker.io/*=myregistry.com/* --confirm
+
+  # To see more details of what will be migrated, use the loglevel and output flags
+  oc adm migrate image-references docker.io/*=myregistry.com/* --loglevel=2 -o yaml
+
+  # Migrate from a service IP to an internal service DNS name
+  oc adm migrate image-references 172.30.1.54/*=registry.openshift.svc.cluster.local/*
+
+  # Migrate from a service IP to an internal service DNS name for all deployment configs and builds
+  oc adm migrate image-references 172.30.1.54/*=registry.openshift.svc.cluster.local/* --include=buildconfigs,deploymentconfigs
+----
+====
+
+
+== oc adm migrate storage
+Update the stored version of API objects
+
+====
+
+[options="nowrap"]
+----
+  # Perform a dry-run of updating all objects
+  oc adm migrate storage
+
+  # To actually perform the update, the confirm flag must be appended
+  oc adm migrate storage --confirm
+
+  # Only migrate pods
+  oc adm migrate storage --include=pods --confirm
+
+  # Only pods that are in namespaces starting with "bar"
+  oc adm migrate storage --include=pods --confirm --from-key=bar/ --to-key=bar/\xFF
+
+----
+====
+
+
+== oc adm pod-network isolate-projects
+Isolate project network
+
+====
+
+[options="nowrap"]
+----
+	# Provide isolation for project p1
+	oc adm pod-network isolate-projects <p1>
+
+	# Allow all projects with label name=top-secret to have their own isolated project network
+	oc adm pod-network isolate-projects --selector='name=top-secret'
 ----
 ====
 
@@ -305,10 +433,10 @@ Join project network
 [options="nowrap"]
 ----
 	# Allow project p2 to use project p1 network
-	$ oc adm pod-network join-projects --to=<p1> <p2>
+	oc adm pod-network join-projects --to=<p1> <p2>
 
 	# Allow all projects with label name=top-secret to use project p1 network
-	$ oc adm pod-network join-projects --to=<p1> --selector='name=top-secret'
+	oc adm pod-network join-projects --to=<p1> --selector='name=top-secret'
 ----
 ====
 
@@ -321,25 +449,25 @@ Make project network global
 [options="nowrap"]
 ----
 	# Allow project p1 to access all pods in the cluster and vice versa
-	$ oc adm pod-network make-projects-global <p1>
+	oc adm pod-network make-projects-global <p1>
 
 	# Allow all projects with label name=share to access all pods in the cluster and vice versa
-	$ oc adm pod-network make-projects-global --selector='name=share'
+	oc adm pod-network make-projects-global --selector='name=share'
 ----
 ====
 
 
 == oc adm policy add-role-to-user
-Add users or serviceaccounts to a role in the current project
+Add a role to users or serviceaccounts for the current project
 
 ====
 
 [options="nowrap"]
 ----
-  # Add the 'view' role to user1 in the current project
+  # Add the 'view' role to user1 for the current project
   oc adm policy add-role-to-user view user1
 
-  # Add the 'edit' role to serviceaccount1 in the current project
+  # Add the 'edit' role to serviceaccount1 for the current project
   oc adm policy add-role-to-user edit -z serviceaccount1
 ----
 ====
@@ -498,6 +626,13 @@ Remove unreferenced images
 
   # To actually perform the prune operation, the confirm flag must be appended
   oc adm prune images --keep-tag-revisions=3 --keep-younger-than=60m --confirm
+
+  # See, what the prune command would delete if we're interested in removing images
+  # exceeding currently set LimitRanges ('openshift.io/Image')
+  oc adm prune images --prune-over-size-limit
+
+  # To actually perform the prune operation, the confirm flag must be appended
+  oc adm prune images --prune-over-size-limit --confirm
 ----
 ====
 
@@ -520,6 +655,9 @@ Install the integrated Docker registry
 
   # Use a different registry image
   oc adm registry --images=myrepo/docker-registry:mytag
+
+  # Enforce quota and limits on images
+  oc adm registry --enforce-quota
 ----
 ====
 
@@ -546,6 +684,62 @@ Install a router
   # Run the router with a hint to the underlying implementation to _not_ expose statistics.
   oc adm router router-west --stats-port=0
   
+----
+====
+
+
+== oc adm taint
+Update the taints on one or more nodes
+
+====
+
+[options="nowrap"]
+----
+# Update node 'foo' with a taint with key 'dedicated' and value 'special-user' and effect 'NoSchedule'.
+# If a taint with that key already exists, its value and effect are replaced as specified.
+oc adm taint nodes foo dedicated=special-user:NoSchedule
+# Remove from node 'foo' the taint with key 'dedicated' if one exists.
+oc adm taint nodes foo dedicated-
+----
+====
+
+
+== oc adm top images
+Show usage statistics for Images
+
+====
+
+[options="nowrap"]
+----
+  # Show usage statistics for Images
+  oc adm top images
+----
+====
+
+
+== oc adm top imagestreams
+Show usage statistics for ImageStreams
+
+====
+
+[options="nowrap"]
+----
+  # Show usage statistics for ImageStreams
+  oc adm top imagestreams
+----
+====
+
+
+== oc adm uncordon
+Mark node as schedulable
+
+====
+
+[options="nowrap"]
+----
+# Mark node "foo" as schedulable.
+$ oc adm uncordon foo
+
 ----
 ====
 
@@ -686,13 +880,40 @@ Start OpenShift on Docker with reasonable defaults
 
   # Start OpenShift using a specific public host name
   oc cluster up --public-hostname=my.address.example.com
-  
+
   # Start OpenShift and preserve data and config between restarts
   oc cluster up --host-data-dir=/mydata --use-existing-config
 
   # Use a different set of images
   oc cluster up --image="registry.example.com/origin" --version="v1.1"
 
+----
+====
+
+
+== oc completion
+Output shell completion code for the given shell (bash or zsh)
+
+====
+
+[options="nowrap"]
+----
+  # Generate the oc completion code for bash
+  oc completion bash > bash_completion.sh
+  source bash_completion.sh
+
+  # The above example depends on the bash-completion framework.
+  It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
+
+  brew install bash-completion
+  source $(brew --prefix)/etc/bash_completion
+  oc completion bash > bash_completion.sh
+  source bash_completion.sh
+
+  # In zsh*, the following will load openshift cli zsh completion:
+  source <(oc completion zsh)
+
+  * zsh completions are only supported in versions of zsh >= 5.2
 ----
 ====
 
@@ -801,15 +1022,15 @@ Convert config files between different API versions
 
 [options="nowrap"]
 ----
-# Convert 'pod.yaml' to latest version and print to stdout.
-oc convert -f pod.yaml
+  # Convert 'pod.yaml' to latest version and print to stdout.
+  oc convert -f pod.yaml
 
-# Convert the live state of the resource specified by 'pod.yaml' to the latest version
-# and print to stdout in json format.
-oc convert -f pod.yaml --local -o json
+  # Convert the live state of the resource specified by 'pod.yaml' to the latest version
+  # and print to stdout in json format.
+  oc convert -f pod.yaml --local -o json
 
-# Convert all files under current directory to latest version and create them all.
-oc convert -f . | kubectl create -f -
+  # Convert all files under current directory to latest version and create them all.
+  oc convert -f . | oc create -f -
 
 ----
 ====
@@ -831,6 +1052,19 @@ Create a resource by filename or stdin
 ====
 
 
+== oc create clusterresourcequota
+Create cluster resource quota resource.
+
+====
+
+[options="nowrap"]
+----
+  # Create an cluster resource quota limited to 10 pods
+  oc create clusterresourcequota limit-bob --project-label-selector=openshift.io/requester=user-bob --hard=pods=10
+----
+====
+
+
 == oc create configmap
 Create a configMap from a local file, directory or literal value.
 
@@ -839,13 +1073,13 @@ Create a configMap from a local file, directory or literal value.
 [options="nowrap"]
 ----
   # Create a new configmap named my-config with keys for each file in folder bar
-  oc create configmap generic my-config --from-file=path/to/bar
+  oc create configmap my-config --from-file=path/to/bar
   
   # Create a new configmap named my-config with specified keys instead of names on disk
-  oc create configmap generic my-config --from-file=ssh-privatekey=~/.ssh/id_rsa --from-file=ssh-publickey=~/.ssh/id_rsa.pub
+  oc create configmap my-config --from-file=key1=/path/to/bar/file1.txt --from-file=key2=/path/to/bar/file2.txt
   
   # Create a new configMap named my-config with key1=config1 and key2=config2
-  oc create configmap generic my-config --from-literal=key1=config1 --from-literal=key2=config2
+  oc create configmap my-config --from-literal=key1=config1 --from-literal=key2=config2
 ----
 ====
 
@@ -876,6 +1110,19 @@ Manually create an identity (only needed if automatic creation is disabled).
 ====
 
 
+== oc create imagestream
+Create a new empty image stream.
+
+====
+
+[options="nowrap"]
+----
+  # Create a new image stream
+  oc create imagestream mysql
+----
+====
+
+
 == oc create namespace
 Create a namespace with the specified name.
 
@@ -898,6 +1145,22 @@ Create a policy binding that references the policy in the targetted namespace.
 ----
   # Create a policy binding in namespace "foo" that references the policy in namespace "bar"
   oc create policybinding bar -n foo
+----
+====
+
+
+== oc create quota
+Create a quota with the specified name.
+
+====
+
+[options="nowrap"]
+----
+  // Create a new resourcequota named my-quota
+  $ oc create quota my-quota --hard=cpu=1,memory=1G,pods=2,services=3,replicationcontrollers=2,resourcequotas=1,secrets=5,persistentvolumeclaims=10
+  
+  // Create a new resourcequota named best-effort
+  $ oc create quota best-effort --hard=pods=100 --scopes=BestEffort
 ----
 ====
 
@@ -961,7 +1224,7 @@ Create a secret for use with a Docker registry.
 [options="nowrap"]
 ----
   # If you don't already have a .dockercfg file, you can create a dockercfg secret directly by using:
-  $ oc create secret docker-registry my-secret --docker-server=DOCKER_REGISTRY_SERVER --docker-username=DOCKER_USER --docker-password=DOCKER_PASSWORD --docker-email=DOCKER_EMAIL
+  oc create secret docker-registry my-secret --docker-server=DOCKER_REGISTRY_SERVER --docker-username=DOCKER_USER --docker-password=DOCKER_PASSWORD --docker-email=DOCKER_EMAIL
 ----
 ====
 
@@ -981,6 +1244,19 @@ Create a secret from a local file, directory or literal value.
   
   # Create a new secret named my-secret with key1=supersecret and key2=topsecret
   oc create secret generic my-secret --from-literal=key1=supersecret --from-literal=key2=topsecret
+----
+====
+
+
+== oc create secret tls
+Create a TLS secret.
+
+====
+
+[options="nowrap"]
+----
+  # Create a new TLS secret named tls-secret with the given key pair:
+  oc create secret tls tls-secret --cert=path/to/tls.cert --key=path/to/tls.key
 ----
 ====
 
@@ -1063,8 +1339,8 @@ Delete one or more resources
   # Delete pods and services with label name=myLabel.
   oc delete pods,services -l name=myLabel
 
-  # Delete a pod with ID 1234-56-7890-234234-456456.
-  oc delete pod 1234-56-7890-234234-456456
+  # Delete a pod with name node-1-vsjnm.
+  oc delete pod node-1-vsjnm
 
   # Delete all resources associated with a running app, includes
   # buildconfig,deploymentconfig,service,imagestream,route and pod,
@@ -1089,6 +1365,9 @@ View, start, cancel, or retry a deployment
 
   # Start a new deployment based on the 'database'
   oc deploy database --latest
+
+  # Start a new deployment and follow its log
+  oc deploy database --latest --follow
 
   # Retry the latest failed deployment based on 'frontend'
   # The deployer pod and any hook pods are deleted for the latest failed deployment
@@ -1132,8 +1411,8 @@ Edit a resource on the server
   # Use an alternative editor
   OC_EDITOR="nano" oc edit dc/my-deployment
 
-  # Edit the service 'docker-registry' in JSON using the v1beta3 API format:
-  oc edit svc/docker-registry --output-version=v1beta3 -o json
+  # Edit the service 'docker-registry' in JSON using the v1 API format:
+  oc edit svc/docker-registry --output-version=v1 -o json
 ----
 ====
 
@@ -1160,6 +1439,12 @@ DEPRECATED: set env
   # Update all containers in all replication controllers in the project to have ENV=prod
   oc env rc --all ENV=prod
 
+  # Import environment from a secret
+  oc env --from=secret/mysecret dc/myapp
+
+  # Import environment from a config map with a prefix
+  oc env --from=configmap/myconfigmap --prefix=MYSQL_ dc/myapp
+
   # Remove the environment variable ENV from container 'c1' in all deployment configs
   oc env dc --all --containers="c1" ENV-
 
@@ -1181,7 +1466,10 @@ Perform a direct Docker build
 [options="nowrap"]
 ----
   # Build the current directory into a single layer and tag
-  oc dockerbuild . myimage:latest
+  oc ex dockerbuild . myimage:latest
+
+  # Mount a client secret into the build at a certain path
+  oc ex dockerbuild . myimage:latest --mount ~/mysecret.pem:/etc/pki/secret/mysecret.pem
 ----
 ====
 
@@ -1193,11 +1481,11 @@ Execute a command in a container.
 
 [options="nowrap"]
 ----
-  # Get output from running 'date' in ruby-container from pod 123456-7890
-  oc exec -p 123456-7890 -c ruby-container date
+  # Get output from running 'date' in ruby-container from pod 'mypod'
+  oc exec mypod -c ruby-container date
 
-  # Switch to raw terminal mode, sends stdin to 'bash' in ruby-container from pod 123456-780 and sends stdout/stderr from 'bash' back to the client
-  oc exec -p 123456-7890 -c ruby-container -i -t -- bash -il
+  # Switch to raw terminal mode, sends stdin to 'bash' in ruby-container from pod 'mypod' and sends stdout/stderr from 'bash' back to the client
+  oc exec mypod -c ruby-container -i -t -- bash -il
 ----
 ====
 
@@ -1233,9 +1521,6 @@ Export resources so they can be used elsewhere
 
   # export to JSON
   oc export service -o json
-
-  # convert a file on disk to the latest API version (in YAML, the default)
-  oc export -f a_v1beta3_service.json --output-version=v1 --exact
 ----
 ====
 
@@ -1265,6 +1550,25 @@ Expose a replicated application as a service or route
 ====
 
 
+== oc extract
+Extract secrets or config maps to disk
+
+====
+
+[options="nowrap"]
+----
+  # extract the secret "test" to the current directory
+  oc extract secret/test
+
+  # extract the config map "nginx" to the /tmp directory
+  oc extract configmap/nginx --to=/tmp
+
+  # extract only the key "nginx.conf" from config map "nginx" to the /tmp directory
+  oc extract configmap/nginx --to=/tmp --keys=nginx.conf
+----
+====
+
+
 == oc get
 Display one or many resources
 
@@ -1290,8 +1594,38 @@ Display one or many resources
 ====
 
 
+== oc idle
+Idle scalable resources
+
+====
+
+[options="nowrap"]
+----
+  # Idle the scalable controllers associated with the services listed in to-idle.txt
+  $ oc idle --resource-names-file to-idle.txt
+----
+====
+
+
+== oc import app.json
+Import an app.json definition into OpenShift (experimental)
+
+====
+
+[options="nowrap"]
+----
+  # Import a directory containing an app.json file
+  $ oc import app.json -f .
+
+  # Turn an app.json file into a template
+  $ oc import app.json -f ./app.json -o yaml --as-template
+
+----
+====
+
+
 == oc import docker-compose
-Import a docker-compose.yml project into OpenShift
+Import a docker-compose.yml project into OpenShift (experimental)
 
 ====
 
@@ -1416,9 +1750,6 @@ Create a new application
   # List all local templates and image streams that can be used to create an app
   oc new-app --list
 
-  # Search all templates, image streams, and Docker images for the ones that match "ruby"
-  oc new-app --search ruby
-
   # Create an application based on the source code in the current git repository (with a public remote)
   # and a Docker image
   oc new-app . --docker-image=repo/langimage
@@ -1444,10 +1775,10 @@ Create a new application
   # Create an application based on a template file, explicitly setting a parameter value
   oc new-app --file=./example/myapp/template.json --param=MYSQL_USER=admin
 
-  # Search for "mysql" in all image repositories and stored templates
-  oc new-app --search mysql
+  # Search all templates, image streams, and Docker images for the ones that match "ruby"
+  oc new-app --search ruby
 
-  # Search for "ruby", but only in stored templates (--template, --image and --docker-image
+  # Search for "ruby", but only in stored templates (--template, --image-stream and --docker-image
   # can be used to filter search results)
   oc new-app --search --template=ruby
 
@@ -1506,6 +1837,23 @@ Request a new project
 ====
 
 
+== oc observe
+Observe changes to resources and react to them (experimental)
+
+====
+
+[options="nowrap"]
+----
+	# observe changes to services
+	oc observe services
+
+	# observe changes to services, including the clusterIP and invoke a script for each
+	oc observe services -a '{ .spec.clusterIP }' -- register_dns.sh
+
+----
+====
+
+
 == oc patch
 Update field(s) of a resource using strategic merge patch.
 
@@ -1520,16 +1868,16 @@ Update field(s) of a resource using strategic merge patch.
 
 
 == oc policy add-role-to-user
-Add users or serviceaccounts to a role in the current project
+Add a role to users or serviceaccounts for the current project
 
 ====
 
 [options="nowrap"]
 ----
-  # Add the 'view' role to user1 in the current project
+  # Add the 'view' role to user1 for the current project
   oc policy add-role-to-user view user1
 
-  # Add the 'edit' role to serviceaccount1 in the current project
+  # Add the 'edit' role to serviceaccount1 for the current project
   oc policy add-role-to-user edit -z serviceaccount1
 ----
 ====
@@ -1543,16 +1891,16 @@ Forward one or more local ports to a pod.
 [options="nowrap"]
 ----
   # Listens on ports 5000 and 6000 locally, forwarding data to/from ports 5000 and 6000 in the pod
-  oc port-forward -p mypod 5000 6000
+  oc port-forward mypod 5000 6000
 
   # Listens on port 8888 locally, forwarding to 5000 in the pod
-  oc port-forward -p mypod 8888:5000
+  oc port-forward mypod 8888:5000
 
   # Listens on a random port locally, forwarding to 5000 in the pod
-  oc port-forward -p mypod :5000
+  oc port-forward mypod :5000
 
   # Listens on a random port locally, forwarding to 5000 in the pod
-  oc port-forward -p mypod 0:5000
+  oc port-forward mypod 0:5000
 ----
 ====
 
@@ -1581,9 +1929,6 @@ Process a template into list of resources
 
   # Convert template.json into resource list
   cat template.json | oc process -f -
-
-  # Combine multiple templates into single resource list
-  cat template.json second_template.json | oc process -f -
 ----
 ====
 
@@ -1611,12 +1956,16 @@ Run a proxy to the Kubernetes API server
 
 [options="nowrap"]
 ----
-  # Run a proxy to kubernetes apiserver on port 8011, serving static content from ./local/www/
+  # Run a proxy to the api server on port 8011, serving static content from ./local/www/
   oc proxy --port=8011 --www=./local/www/
 
-  # Run a proxy to kubernetes apiserver, changing the api prefix to k8s-api
-  # This makes e.g. the pods api available at localhost:8011/k8s-api/v1beta3/pods/
-  oc proxy --api-prefix=k8s-api
+  # Run a proxy to the api server on an arbitrary local port.
+  # The chosen port for the server will be output to stdout.
+  oc proxy --port=0
+
+  # Run a proxy to the api server, changing the api prefix to my-api
+  # This makes e.g. the pods api available at localhost:8011/my-api/api/v1/pods/
+  oc proxy --api-prefix=/my-api
 ----
 ====
 
@@ -1658,6 +2007,66 @@ Revert part of an application back to a previous deployment
 
   # Perform the rollback manually by piping the JSON of the new config back to oc
   oc rollback frontend -o json | oc replace dc/frontend -f -
+----
+====
+
+
+== oc rollout history
+view rollout history
+
+====
+
+[options="nowrap"]
+----
+  # View the rollout history of a deployment
+  oc rollout history dc/nginx
+
+  # View the details of deployment revision 3
+  oc rollout history dc/nginx --revision=3
+----
+====
+
+
+== oc rollout pause
+Mark the provided resource as paused
+
+====
+
+[options="nowrap"]
+----
+  # Mark the nginx deployment as paused. Any current state of
+  # the deployment will continue its function, new updates to the deployment will not
+  # have an effect as long as the deployment is paused.
+  oc rollout pause dc/nginx
+----
+====
+
+
+== oc rollout resume
+Resume a paused resource
+
+====
+
+[options="nowrap"]
+----
+  # Resume an already paused deployment
+  oc rollout resume dc/nginx
+----
+====
+
+
+== oc rollout undo
+undoes a previous rollout
+
+====
+
+[options="nowrap"]
+----
+  # Rollback to the previous deployment
+  oc rollout undo dc/nginx
+
+  # Rollback to deployment revision 3. The replication controller for that version must exist.
+  oc rollout undo dc/nginx --to-revision=3
 ----
 ====
 
@@ -1749,20 +2158,39 @@ Change the number of pods in a deployment
 
 
 == oc secrets add
-Add secrets to a ServiceAccount
+DEPRECATED: secrets link
 
 ====
 
 [options="nowrap"]
 ----
-  // To use your secret inside of a pod or as a push, pull, or source secret for a build, you must add a 'mount' secret to your service account like this:
-  oc secrets add serviceaccount/sa-name secrets/secret-name secrets/another-secret-name
+  # Add an image pull secret to a service account to automatically use it for pulling pod images:
+  oc serviceaccount-name pull-secret --for=pull
 
-  // To use your secret as an image pull secret, you must add a 'pull' secret to your service account like this:
-  oc secrets add serviceaccount/sa-name secrets/secret-name --for=pull
+  # Add an image pull secret to a service account to automatically use it for both pulling and pushing build images:
+  oc builder builder-image-secret --for=pull,mount
 
-  // To use your secret for image pulls or inside a pod:
-  oc secrets add serviceaccount/sa-name secrets/secret-name --for=pull,mount
+  # If the cluster's serviceAccountConfig is operating with limitSecretReferences: True, secrets must be added to the pod's service account whitelist in order to be available to the pod:
+  oc pod-sa pod-secret
+----
+====
+
+
+== oc secrets link
+Link secrets to a ServiceAccount
+
+====
+
+[options="nowrap"]
+----
+  # Add an image pull secret to a service account to automatically use it for pulling pod images:
+  oc secrets link serviceaccount-name pull-secret --for=pull
+
+  # Add an image pull secret to a service account to automatically use it for both pulling and pushing build images:
+  oc secrets link builder builder-image-secret --for=pull,mount
+
+  # If the cluster's serviceAccountConfig is operating with limitSecretReferences: True, secrets must be added to the pod's service account whitelist in order to be available to the pod:
+  oc secrets link pod-sa pod-secret
 ----
 ====
 
@@ -1852,6 +2280,19 @@ Create a new secret for SSH authentication
 ====
 
 
+== oc secrets unlink
+Detach secrets from a ServiceAccount
+
+====
+
+[options="nowrap"]
+----
+ # Unlink a secret currently associated with a service account:
+oc secrets unlink serviceaccount-name secret-name another-secret-name ...
+----
+====
+
+
 == oc serviceaccounts get-token
 Get a token assigned to a service account.
 
@@ -1876,10 +2317,52 @@ Generate a new token for a service account.
   # Generate a new token for service account 'default'
   oc serviceaccounts new-token 'default'
 
-  # Generate a new token for service account 'default' and apply 
+  # Generate a new token for service account 'default' and apply
   # labels 'foo' and 'bar' to the new token for identification
   # oc serviceaccounts new-token 'default' --labels foo=foo-value,bar=bar-value
 
+----
+====
+
+
+== oc set build-hook
+Update a build hook on a build config
+
+====
+
+[options="nowrap"]
+----
+  # Clear post-commit hook on a build config
+  oc set build-hook bc/mybuild --post-commit --remove
+
+  # Set the post-commit hook to execute a test suite using a new entrypoint
+  oc set build-hook bc/mybuild --post-commit --command -- /bin/bash -c /var/lib/test-image.sh
+
+  # Set the post-commit hook to execute a shell script
+  oc set build-hook bc/mybuild --post-commit --script="/var/lib/test-image.sh param1 param2 && /var/lib/done.sh"
+
+  # Set the post-commit hook as a set of arguments to the default image entrypoint
+  oc set build-hook bc/mybuild --post-commit  -- arg1 arg2
+----
+====
+
+
+== oc set deployment-hook
+Update a deployment hook on a deployment config
+
+====
+
+[options="nowrap"]
+----
+  # Clear pre and post hooks on a deployment config
+  oc set deployment-hook dc/myapp --remove --pre --post
+
+  # Set the pre deployment hook to execute a db migration command for an application
+  # using the data volume from the application
+  oc set deployment-hook dc/myapp --pre -v data -- /var/lib/migrate-db.sh
+
+  # Set a mid deployment hook along with additional environment variables
+  oc set deployment-hook dc/myapp --mid -v data -e VAR1=value1 -e VAR2=value2 -- /var/lib/prepare-deploy.sh
 ----
 ====
 
@@ -1905,6 +2388,12 @@ Update environment variables on a pod template
 
   # Update all containers in all replication controllers in the project to have ENV=prod
   oc set env rc --all ENV=prod
+
+  # Import environment from a secret
+  oc set env --from=secret/mysecret dc/myapp
+
+  # Import environment from a config map with a prefix
+  oc set env --from=configmap/myconfigmap --prefix=MYSQL_ dc/myapp
 
   # Remove the environment variable ENV from container 'c1' in all deployment configs
   oc set env dc --all --containers="c1" ENV-
@@ -1943,6 +2432,34 @@ Update a probe on a pod template
 
   # Set only the initial-delay-seconds field on all deployments
   oc set probe dc --all --readiness --initial-delay-seconds=30
+----
+====
+
+
+== oc set route-backends
+Update the backends for a route
+
+====
+
+[options="nowrap"]
+----
+  # Print the backends on the route 'web'
+  oc set route-backends web
+
+  # Set two backend services on route 'web' with 2/3rds of traffic going to 'a'
+  oc set route-backends web a=2 b=1
+
+  # Increase the traffic percentage going to b by 10% relative to a
+  oc set route-backends web --adjust b=+10%
+
+  # Set traffic percentage going to b to 10% of the traffic going to a
+  oc set route-backends web --adjust b=10%
+
+  # Set weight of b to 10
+  oc set route-backends web --adjust b=10
+
+  # Set the weight to all backends to zero
+  oc set route-backends web --zero
 ----
 ====
 

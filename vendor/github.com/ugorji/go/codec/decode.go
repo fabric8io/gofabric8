@@ -91,10 +91,12 @@ type decDriver interface {
 	uncacheRead()
 }
 
-type decNoSeparator struct{}
+type decNoSeparator struct {
+}
 
-func (_ decNoSeparator) ReadEnd()     {}
-func (_ decNoSeparator) uncacheRead() {}
+func (_ decNoSeparator) ReadEnd() {}
+
+// func (_ decNoSeparator) uncacheRead() {}
 
 type DecodeOptions struct {
 	// MapType specifies type to use during schema-less decoding of a map in the stream.
@@ -431,6 +433,10 @@ func (f *decFnInfo) builtin(rv reflect.Value) {
 
 func (f *decFnInfo) rawExt(rv reflect.Value) {
 	f.d.d.DecodeExt(rv.Addr().Interface(), 0, nil)
+}
+
+func (f *decFnInfo) raw(rv reflect.Value) {
+	rv.SetBytes(f.d.raw())
 }
 
 func (f *decFnInfo) ext(rv reflect.Value) {
@@ -1169,7 +1175,7 @@ type decRtidFn struct {
 // primitives are being decoded.
 //
 // maps and arrays are not handled by this mechanism.
-// However, RawExt is, and we accomodate for extensions that decode
+// However, RawExt is, and we accommodate for extensions that decode
 // RawExt from DecodeNaked, but need to decode the value subsequently.
 // kInterfaceNaked and swallow, which call DecodeNaked, handle this caveat.
 //
@@ -1507,6 +1513,8 @@ func (d *Decoder) decode(iv interface{}) {
 			*v = 0
 		case *[]uint8:
 			*v = nil
+		case *Raw:
+			*v = nil
 		case reflect.Value:
 			if v.Kind() != reflect.Ptr || v.IsNil() {
 				d.errNotValidPtrValue(v)
@@ -1546,7 +1554,6 @@ func (d *Decoder) decode(iv interface{}) {
 		d.decodeValueNotNil(v.Elem(), nil)
 
 	case *string:
-
 		*v = d.d.DecodeString()
 	case *bool:
 		*v = d.d.DecodeBool()
@@ -1576,6 +1583,9 @@ func (d *Decoder) decode(iv interface{}) {
 		*v = d.d.DecodeFloat(false)
 	case *[]uint8:
 		*v = d.d.DecodeBytes(*v, false, false)
+
+	case *Raw:
+		*v = d.raw()
 
 	case *interface{}:
 		d.decodeValueNotNil(reflect.ValueOf(iv).Elem(), nil)
@@ -1698,6 +1708,8 @@ func (d *Decoder) getDecFn(rt reflect.Type, checkFastpath, checkCodecSelfer bool
 		fn.f = (*decFnInfo).selferUnmarshal
 	} else if rtid == rawExtTypId {
 		fn.f = (*decFnInfo).rawExt
+	} else if rtid == rawTypId {
+		fn.f = (*decFnInfo).raw
 	} else if d.d.IsBuiltinType(rtid) {
 		fn.f = (*decFnInfo).builtin
 	} else if xfFn := d.h.getExt(rtid); xfFn != nil {
@@ -1796,12 +1808,13 @@ func (d *Decoder) getDecFn(rt reflect.Type, checkFastpath, checkCodecSelfer bool
 }
 
 func (d *Decoder) structFieldNotFound(index int, rvkencname string) {
+	// NOTE: rvkencname may be a stringView, so don't pass it to another function.
 	if d.h.ErrorIfNoField {
 		if index >= 0 {
 			d.errorf("no matching struct field found when decoding stream array at index %v", index)
 			return
 		} else if rvkencname != "" {
-			d.errorf("no matching struct field found when decoding stream map with key %s", rvkencname)
+			d.errorf("no matching struct field found when decoding stream map with key " + rvkencname)
 			return
 		}
 	}
@@ -1871,6 +1884,15 @@ func (d *Decoder) nextValueBytes() []byte {
 	d.r.track()
 	d.swallow()
 	return d.r.stopTrack()
+}
+
+func (d *Decoder) raw() []byte {
+	// ensure that this is not a view into the bytes
+	// i.e. make new copy always.
+	bs := d.nextValueBytes()
+	bs2 := make([]byte, len(bs))
+	copy(bs2, bs)
+	return bs2
 }
 
 // --------------------------------------------------

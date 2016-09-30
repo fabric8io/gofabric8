@@ -23,16 +23,18 @@ import (
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	"github.com/openshift/origin/pkg/authorization/registry/subjectaccessreview"
+	"github.com/openshift/origin/pkg/image/admission/testutil"
 	"github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/image/registry/image"
 	imageetcd "github.com/openshift/origin/pkg/image/registry/image/etcd"
 	"github.com/openshift/origin/pkg/image/registry/imagestream"
 	imagestreametcd "github.com/openshift/origin/pkg/image/registry/imagestream/etcd"
+	"github.com/openshift/origin/pkg/util/restoptions"
 
 	_ "github.com/openshift/origin/pkg/api/install"
 )
 
-var testDefaultRegistry = imagestream.DefaultRegistryFunc(func() (string, bool) { return "defaultregistry:5000", true })
+var testDefaultRegistry = api.DefaultRegistryFunc(func() (string, bool) { return "defaultregistry:5000", true })
 
 type fakeSubjectAccessReviewRegistry struct {
 }
@@ -48,13 +50,19 @@ func setup(t *testing.T) (etcd.KeysAPI, *etcdtesting.EtcdTestServer, *REST) {
 	etcdStorage, server := registrytest.NewEtcdStorage(t, "")
 	etcdClient := etcd.NewKeysAPI(server.Client)
 
-	imageStorage := imageetcd.NewREST(etcdStorage)
-	imageStreamStorage, imageStreamStatus, internalStorage := imagestreametcd.NewREST(etcdStorage, testDefaultRegistry, &fakeSubjectAccessReviewRegistry{})
+	imageStorage, err := imageetcd.NewREST(restoptions.NewSimpleGetter(etcdStorage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageStreamStorage, imageStreamStatus, internalStorage, err := imagestreametcd.NewREST(restoptions.NewSimpleGetter(etcdStorage), testDefaultRegistry, &fakeSubjectAccessReviewRegistry{}, &testutil.FakeImageStreamLimitVerifier{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	imageRegistry := image.NewRegistry(imageStorage)
 	imageStreamRegistry := imagestream.NewRegistry(imageStreamStorage, imageStreamStatus, internalStorage)
 
-	storage := NewREST(imageRegistry, imageStreamRegistry)
+	storage := NewREST(imageRegistry, imageStreamRegistry, testDefaultRegistry)
 
 	return etcdClient, server, storage
 }
@@ -447,6 +455,7 @@ func TestTrackingTags(t *testing.T) {
 // using failing registry update calls will return an error.
 func TestCreateRetryUnrecoverable(t *testing.T) {
 	rest := &REST{
+		strategy: NewStrategy(testDefaultRegistry),
 		imageRegistry: &fakeImageRegistry{
 			createImage: func(ctx kapi.Context, image *api.Image) error {
 				return nil
@@ -480,6 +489,7 @@ func TestCreateRetryUnrecoverable(t *testing.T) {
 func TestCreateRetryConflictNoTagDiff(t *testing.T) {
 	firstUpdate := true
 	rest := &REST{
+		strategy: NewStrategy(testDefaultRegistry),
 		imageRegistry: &fakeImageRegistry{
 			createImage: func(ctx kapi.Context, image *api.Image) error {
 				return nil
@@ -522,6 +532,7 @@ func TestCreateRetryConflictTagDiff(t *testing.T) {
 	firstGet := true
 	firstUpdate := true
 	rest := &REST{
+		strategy: NewStrategy(testDefaultRegistry),
 		imageRegistry: &fakeImageRegistry{
 			createImage: func(ctx kapi.Context, image *api.Image) error {
 				return nil
@@ -578,6 +589,7 @@ type fakeImageRegistry struct {
 	createImage func(ctx kapi.Context, image *api.Image) error
 	deleteImage func(ctx kapi.Context, id string) error
 	watchImages func(ctx kapi.Context, options *kapi.ListOptions) (watch.Interface, error)
+	updateImage func(ctx kapi.Context, image *api.Image) (*api.Image, error)
 }
 
 func (f *fakeImageRegistry) ListImages(ctx kapi.Context, options *kapi.ListOptions) (*api.ImageList, error) {
@@ -594,6 +606,9 @@ func (f *fakeImageRegistry) DeleteImage(ctx kapi.Context, id string) error {
 }
 func (f *fakeImageRegistry) WatchImages(ctx kapi.Context, options *kapi.ListOptions) (watch.Interface, error) {
 	return f.watchImages(ctx, options)
+}
+func (f *fakeImageRegistry) UpdateImage(ctx kapi.Context, image *api.Image) (*api.Image, error) {
+	return f.updateImage(ctx, image)
 }
 
 type fakeImageStreamRegistry struct {

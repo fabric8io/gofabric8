@@ -27,7 +27,7 @@ func NewSimpleAllocationPlugin(suffix string) (*SimpleAllocationPlugin, error) {
 	glog.V(4).Infof("Route plugin initialized with suffix=%s", suffix)
 
 	// Check that the DNS suffix is valid.
-	if !kvalidation.IsDNS1123Subdomain(suffix) {
+	if len(kvalidation.IsDNS1123Subdomain(suffix)) != 0 {
 		return nil, fmt.Errorf("invalid DNS suffix: %s", suffix)
 	}
 
@@ -38,7 +38,7 @@ func NewSimpleAllocationPlugin(suffix string) (*SimpleAllocationPlugin, error) {
 // the "global" router shard.
 // TODO: replace with per router allocation
 func (p *SimpleAllocationPlugin) Allocate(route *routeapi.Route) (*routeapi.RouterShard, error) {
-	glog.V(4).Infof("Allocating global shard *.%s to Route: %s", p.DNSSuffix, route.Spec.To.Name)
+	glog.V(4).Infof("Allocating global shard *.%s to Route: %s", p.DNSSuffix, route.Name)
 
 	return &routeapi.RouterShard{ShardName: "global", DNSSuffix: p.DNSSuffix}, nil
 }

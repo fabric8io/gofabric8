@@ -34,6 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/types"
+	"k8s.io/kubernetes/pkg/util/metrics"
 	"k8s.io/kubernetes/pkg/util/runtime"
 )
 
@@ -91,6 +92,10 @@ func New(cloud cloudprovider.Interface, kubeClient clientset.Interface, clusterN
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&unversioned_core.EventSinkImpl{Interface: kubeClient.Core().Events("")})
 	recorder := broadcaster.NewRecorder(api.EventSource{Component: "service-controller"})
+
+	if kubeClient != nil && kubeClient.Core().GetRESTClient().GetRateLimiter() != nil {
+		metrics.RegisterMetricAndTrackRateLimiterUsage("service_controller", kubeClient.Core().GetRESTClient().GetRateLimiter())
+	}
 
 	return &ServiceController{
 		cloud:            cloud,
@@ -179,29 +184,32 @@ func (s *ServiceController) init() error {
 // Loop infinitely, processing all service updates provided by the queue.
 func (s *ServiceController) watchServices(serviceQueue *cache.DeltaFIFO) {
 	for {
-		newItem := serviceQueue.Pop()
-		deltas, ok := newItem.(cache.Deltas)
-		if !ok {
-			glog.Errorf("Received object from service watcher that wasn't Deltas: %+v", newItem)
-		}
-		delta := deltas.Newest()
-		if delta == nil {
-			glog.Errorf("Received nil delta from watcher queue.")
-			continue
-		}
-		err, retryDelay := s.processDelta(delta)
-		if retryDelay != 0 {
-			// Add the failed service back to the queue so we'll retry it.
-			glog.Errorf("Failed to process service delta. Retrying in %s: %v", retryDelay, err)
-			go func(deltas cache.Deltas, delay time.Duration) {
-				time.Sleep(delay)
-				if err := serviceQueue.AddIfNotPresent(deltas); err != nil {
-					glog.Errorf("Error requeuing service delta - will not retry: %v", err)
-				}
-			}(deltas, retryDelay)
-		} else if err != nil {
-			runtime.HandleError(fmt.Errorf("Failed to process service delta. Not retrying: %v", err))
-		}
+		serviceQueue.Pop(func(obj interface{}) error {
+			deltas, ok := obj.(cache.Deltas)
+			if !ok {
+				runtime.HandleError(fmt.Errorf("Received object from service watcher that wasn't Deltas: %+v", obj))
+				return nil
+			}
+			delta := deltas.Newest()
+			if delta == nil {
+				runtime.HandleError(fmt.Errorf("Received nil delta from watcher queue."))
+				return nil
+			}
+			err, retryDelay := s.processDelta(delta)
+			if retryDelay != 0 {
+				// Add the failed service back to the queue so we'll retry it.
+				runtime.HandleError(fmt.Errorf("Failed to process service delta. Retrying in %s: %v", retryDelay, err))
+				go func(deltas cache.Deltas, delay time.Duration) {
+					time.Sleep(delay)
+					if err := serviceQueue.AddIfNotPresent(deltas); err != nil {
+						runtime.HandleError(fmt.Errorf("Error requeuing service delta - will not retry: %v", err))
+					}
+				}(deltas, retryDelay)
+			} else if err != nil {
+				runtime.HandleError(fmt.Errorf("Failed to process service delta. Not retrying: %v", err))
+			}
+			return nil
+		})
 	}
 }
 
@@ -232,7 +240,7 @@ func (s *ServiceController) processDelta(delta *cache.Delta) (error, time.Durati
 		namespacedName.Name = deltaService.Name
 		cachedService = s.cache.getOrCreate(namespacedName.String())
 	}
-	glog.V(2).Infof("Got new %s delta for service: %+v", delta.Type, deltaService)
+	glog.V(2).Infof("Got new %s delta for service: %v", delta.Type, namespacedName)
 
 	// Ensure that no other goroutine will interfere with our processing of the
 	// service.
@@ -249,7 +257,7 @@ func (s *ServiceController) processDelta(delta *cache.Delta) (error, time.Durati
 		return err, cachedService.nextRetryDelay()
 	} else if errors.IsNotFound(err) {
 		glog.V(2).Infof("Service %v not found, ensuring load balancer is deleted", namespacedName)
-		s.eventRecorder.Event(service, api.EventTypeNormal, "DeletingLoadBalancer", "Deleting load balancer")
+		s.eventRecorder.Event(deltaService, api.EventTypeNormal, "DeletingLoadBalancer", "Deleting load balancer")
 		err := s.balancer.EnsureLoadBalancerDeleted(deltaService)
 		if err != nil {
 			message := "Error deleting load balancer (will retry): " + err.Error()
@@ -399,7 +407,7 @@ func (s *ServiceController) createLoadBalancer(service *api.Service) error {
 	// - Only one protocol supported per service
 	// - Not all cloud providers support all protocols and the next step is expected to return
 	//   an error for unsupported protocols
-	status, err := s.balancer.EnsureLoadBalancer(service, hostsFromNodeList(&nodes), service.ObjectMeta.Annotations)
+	status, err := s.balancer.EnsureLoadBalancer(service, hostsFromNodeList(&nodes))
 	if err != nil {
 		return err
 	} else {

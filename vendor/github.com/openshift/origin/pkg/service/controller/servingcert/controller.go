@@ -136,14 +136,14 @@ func (sc *ServiceServingCertController) enqueueService(obj interface{}) {
 // It enforces that the syncHandler is never invoked concurrently with the same key.
 func (sc *ServiceServingCertController) worker() {
 	for {
-		if !sc.worker_inner() {
+		if !sc.work() {
 			return
 		}
 	}
 }
 
-// worker_inner returns true if the worker thread should continue
-func (sc *ServiceServingCertController) worker_inner() bool {
+// work returns true if the worker thread should continue
+func (sc *ServiceServingCertController) work() bool {
 	key, quit := sc.queue.Get()
 	if quit {
 		return false
@@ -177,12 +177,16 @@ func (sc *ServiceServingCertController) syncService(key string) error {
 		return nil
 	}
 
-	// make a copy to avoid mutating cache state
-	t := *obj.(*kapi.Service)
-	service := &t
-	if !sc.requiresCertGeneration(service) {
+	if !sc.requiresCertGeneration(obj.(*kapi.Service)) {
 		return nil
 	}
+
+	// make a copy to avoid mutating cache state
+	t, err := kapi.Scheme.DeepCopy(obj)
+	if err != nil {
+		return err
+	}
+	service := t.(*kapi.Service)
 	if service.Annotations == nil {
 		service.Annotations = map[string]string{}
 	}

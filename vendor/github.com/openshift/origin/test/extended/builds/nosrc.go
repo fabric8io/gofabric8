@@ -12,9 +12,9 @@ import (
 var _ = g.Describe("[builds] build with empty source", func() {
 	defer g.GinkgoRecover()
 	var (
-		buildFixture = exutil.FixturePath("..", "extended", "fixtures", "test-nosrc-build.json")
+		buildFixture = exutil.FixturePath("testdata", "test-nosrc-build.json")
 		oc           = exutil.NewCLI("cli-build-nosrc", exutil.KubeConfigPath())
-		exampleBuild = exutil.FixturePath("..", "extended", "fixtures", "test-build-app")
+		exampleBuild = exutil.FixturePath("testdata", "test-build-app")
 	)
 
 	g.JustBeforeEach(func() {
@@ -26,15 +26,12 @@ var _ = g.Describe("[builds] build with empty source", func() {
 
 	g.Describe("started build", func() {
 		g.It("should build even with an empty source in build config", func() {
-			g.By("starting the build with --wait flag")
-			out, err := oc.Run("start-build").Args("nosrc-build", "--wait", fmt.Sprintf("--from-dir=%s", exampleBuild)).Output()
-			o.Expect(err).NotTo(o.HaveOccurred())
+			g.By("starting the empty source build")
+			br, err := exutil.StartBuildAndWait(oc, "nosrc-build", fmt.Sprintf("--from-dir=%s", exampleBuild))
+			br.AssertSuccess()
 
-			g.By("verifying build success")
-			err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), "nosrc-build-1", exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
-
-			g.By(fmt.Sprintf("verifying the build %q status", out))
-			build, err := oc.REST().Builds(oc.Namespace()).Get("nosrc-build-1")
+			g.By(fmt.Sprintf("verifying the status of %q", br.BuildPath))
+			build, err := oc.REST().Builds(oc.Namespace()).Get(br.Build.Name)
 			o.Expect(err).NotTo(o.HaveOccurred())
 			o.Expect(build.Spec.Source.Dockerfile).To(o.BeNil())
 			o.Expect(build.Spec.Source.Git).To(o.BeNil())

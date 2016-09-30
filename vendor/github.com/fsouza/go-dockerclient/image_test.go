@@ -1,4 +1,4 @@
-// Copyright 2015 go-dockerclient authors. All rights reserved.
+// Copyright 2013 go-dockerclient authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -243,7 +243,14 @@ func TestInspectImage(t *testing.T) {
      "Created":"2013-03-23T22:24:18.818426Z",
      "Container":"3d67245a8d72ecf13f33dffac9f79dcdf70f75acb84d308770391510e0c23ad0",
      "ContainerConfig":{"Memory":1},
-     "VirtualSize":12345
+     "VirtualSize":12345,
+     "RootFS": {
+       "Type": "layers",
+       "Layers": [
+         "sha256:05a0deb2e405eb3095ab646dc1695a26bffe8bd4071e3af90efcf16e9d3f6d93",
+         "sha256:4c5db681b9aa9ab1cf666ec969a810c8ff4410e70e06394670dc4f3bf595532f"
+       ]
+    }
 }`
 
 	created, err := time.Parse(time.RFC3339Nano, "2013-03-23T22:24:18.818426Z")
@@ -260,6 +267,13 @@ func TestInspectImage(t *testing.T) {
 			Memory: 1,
 		},
 		VirtualSize: 12345,
+		RootFS: &RootFS{
+			Type: "layers",
+			Layers: []string{
+				"sha256:05a0deb2e405eb3095ab646dc1695a26bffe8bd4071e3af90efcf16e9d3f6d93",
+				"sha256:4c5db681b9aa9ab1cf666ec969a810c8ff4410e70e06394670dc4f3bf595532f",
+			},
+		},
 	}
 	fakeRT := &FakeRoundTripper{message: body, status: http.StatusOK}
 	client := newTestClient(fakeRT)
@@ -685,6 +699,7 @@ func TestBuildImageParameters(t *testing.T) {
 		CPUPeriod:           100000,
 		CPUSetCPUs:          "0-3",
 		Ulimits:             []ULimit{{Name: "nofile", Soft: 100, Hard: 200}},
+		BuildArgs:           []BuildArg{{Name: "SOME_VAR", Value: "some_value"}},
 		InputStream:         &buf,
 		OutputStream:        &buf,
 	}
@@ -706,7 +721,8 @@ func TestBuildImageParameters(t *testing.T) {
 		"cpuquota":   {"7500"},
 		"cpuperiod":  {"100000"},
 		"cpusetcpus": {"0-3"},
-		"ulimits":    {"[{\"Name\":\"nofile\",\"Soft\":100,\"Hard\":200}]"},
+		"ulimits":    {`[{"Name":"nofile","Soft":100,"Hard":200}]`},
+		"buildargs":  {`{"SOME_VAR":"some_value"}`},
 	}
 	got := map[string][]string(req.URL.Query())
 	if !reflect.DeepEqual(got, expected) {

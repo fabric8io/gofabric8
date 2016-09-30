@@ -107,6 +107,23 @@ func TestMergePatchReturnsErrorOnBadJSON(t *testing.T) {
 	}
 }
 
+func TestMergePatchReturnsEmptyArrayOnEmptyArray(t *testing.T) {
+	doc := `{ "array": ["one", "two"] }`
+	pat := `{ "array": [] }`
+
+	exp := `{ "array": [] }`
+
+	res, err := MergePatch([]byte(doc), []byte(pat))
+
+	if err != nil {
+		t.Errorf("Unexpected error: %s, %s", err, string(res))
+	}
+
+	if !compareJSON(exp, string(res)) {
+		t.Fatalf("Emtpy array did not return not return as empty array")
+	}
+}
+
 var rfcTests = []struct {
 	target   string
 	patch    string
@@ -319,4 +336,58 @@ func TestMergeComplexRemoveAll(t *testing.T) {
 			t.Fatalf("Did not get everything as, it was:\n%s", string(res))
 		}
 	*/
+}
+
+func TestMergeObjectWithInnerArray(t *testing.T) {
+	stateString := `{
+	  "OuterArray": [
+	    {
+		  "InnerArray": [
+	        {
+	          "StringAttr": "abc123"
+	        }
+	      ],
+	      "StringAttr": "def456"
+	    }
+	  ]
+	}`
+
+	patch, err := CreateMergePatch([]byte(stateString), []byte(stateString))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(patch) != "{}" {
+		t.Fatalf("Patch should have been {} but was: %v", string(patch))
+	}
+}
+
+func TestMergeReplaceKeyRequiringEscape(t *testing.T) {
+	doc := `{ "title": "hello", "nested": {"title/escaped": 1, "two": 2} }`
+	pat := `{ "title": "goodbye", "nested": {"title/escaped": 2, "two": 2}  }`
+
+	exp := `{ "title": "goodbye", "nested": {"title~1escaped": 2}  }`
+
+	res, err := CreateMergePatch([]byte(doc), []byte(pat))
+
+	if err != nil {
+		t.Errorf("Unexpected error: %s, %s", err, string(res))
+	}
+
+	if !compareJSON(exp, string(res)) {
+		t.Log(string(res))
+		t.Fatalf("Key was not replaced")
+	}
+}
+
+func TestMergePatchReplaceKeyRequiringEscaping(t *testing.T) {
+	doc := `{ "obj": { "title/escaped": "hello" } }`
+	pat := `{ "obj": { "title~1escaped": "goodbye" } }`
+	exp := `{ "obj": { "title/escaped": "goodbye" } }`
+
+	res := mergePatch(doc, pat)
+
+	if !compareJSON(exp, res) {
+		t.Fatalf("Key was not replaced")
+	}
 }

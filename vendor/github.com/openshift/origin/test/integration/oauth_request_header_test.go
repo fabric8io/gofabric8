@@ -1,5 +1,3 @@
-// +build integration
-
 package integration
 
 import (
@@ -17,7 +15,7 @@ import (
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
 
 	"github.com/openshift/origin/pkg/client"
-	"github.com/openshift/origin/pkg/cmd/cli/cmd"
+	"github.com/openshift/origin/pkg/cmd/cli/cmd/login"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	testutil "github.com/openshift/origin/test/util"
 	testserver "github.com/openshift/origin/test/util/server"
@@ -46,6 +44,7 @@ func TestOAuthRequestHeader(t *testing.T) {
 
 	// Get master config
 	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
 	masterOptions, err := testserver.DefaultMasterOptions()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -295,7 +294,7 @@ func TestOAuthRequestHeader(t *testing.T) {
 
 	// Attempt a login using a redirecting auth proxy
 	loginOutput := &bytes.Buffer{}
-	loginOptions := &cmd.LoginOptions{
+	loginOptions := &login.LoginOptions{
 		Server:             anonConfig.Host,
 		CAFile:             masterCAFile,
 		StartingKubeConfig: &clientcmdapi.Config{},
@@ -427,7 +426,7 @@ Certificate:
         X509v3 extensions:
             X509v3 Key Usage: critical
                 Digital Signature, Key Encipherment
-            X509v3 Extended Key Usage: 
+            X509v3 Extended Key Usage:
                 TLS Web Client Authentication
             X509v3 Basic Constraints: critical
                 CA:FALSE
@@ -534,7 +533,7 @@ Certificate:
         X509v3 extensions:
             X509v3 Key Usage: critical
                 Digital Signature, Key Encipherment
-            X509v3 Extended Key Usage: 
+            X509v3 Extended Key Usage:
                 TLS Web Client Authentication
             X509v3 Basic Constraints: critical
                 CA:FALSE
@@ -643,7 +642,7 @@ Certificate:
         X509v3 extensions:
             X509v3 Key Usage: critical
                 Digital Signature, Key Encipherment
-            X509v3 Extended Key Usage: 
+            X509v3 Extended Key Usage:
                 TLS Web Client Authentication
             X509v3 Basic Constraints: critical
                 CA:FALSE

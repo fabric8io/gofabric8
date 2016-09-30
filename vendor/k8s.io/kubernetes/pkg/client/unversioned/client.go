@@ -44,9 +44,12 @@ type Interface interface {
 	PersistentVolumeClaimsNamespacer
 	ComponentStatusesInterface
 	ConfigMapsNamespacer
+	Apps() AppsInterface
 	Autoscaling() AutoscalingInterface
+	Authentication() AuthenticationInterface
 	Batch() BatchInterface
 	Extensions() ExtensionsInterface
+	Rbac() RbacInterface
 	Discovery() discovery.DiscoveryInterface
 
 	SecurityContextConstraintsInterface
@@ -123,8 +126,12 @@ func (c *Client) ConfigMaps(namespace string) ConfigMapsInterface {
 type Client struct {
 	*restclient.RESTClient
 	*AutoscalingClient
+	*AuthenticationClient
 	*BatchClient
 	*ExtensionsClient
+	*AppsClient
+	*PolicyClient
+	*RbacClient
 	*discovery.DiscoveryClient
 }
 
@@ -154,12 +161,24 @@ func (c *Client) Autoscaling() AutoscalingInterface {
 	return c.AutoscalingClient
 }
 
+func (c *Client) Authentication() AuthenticationInterface {
+	return c.AuthenticationClient
+}
+
 func (c *Client) Batch() BatchInterface {
 	return c.BatchClient
 }
 
 func (c *Client) Extensions() ExtensionsInterface {
 	return c.ExtensionsClient
+}
+
+func (c *Client) Apps() AppsInterface {
+	return c.AppsClient
+}
+
+func (c *Client) Rbac() RbacInterface {
+	return c.RbacClient
 }
 
 func (c *Client) Discovery() discovery.DiscoveryInterface {

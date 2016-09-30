@@ -27,19 +27,24 @@ type FakeCache struct {
 	AssumeFunc func(*api.Pod)
 }
 
-func (f *FakeCache) AssumePodIfBindSucceed(pod *api.Pod, bind func() bool) error {
-	if !bind() {
-		return nil
-	}
+func (f *FakeCache) AssumePod(pod *api.Pod) error {
 	f.AssumeFunc(pod)
 	return nil
 }
+
+func (f *FakeCache) ForgetPod(pod *api.Pod) error { return nil }
 
 func (f *FakeCache) AddPod(pod *api.Pod) error { return nil }
 
 func (f *FakeCache) UpdatePod(oldPod, newPod *api.Pod) error { return nil }
 
 func (f *FakeCache) RemovePod(pod *api.Pod) error { return nil }
+
+func (f *FakeCache) AddNode(node *api.Node) error { return nil }
+
+func (f *FakeCache) UpdateNode(oldNode, newNode *api.Node) error { return nil }
+
+func (f *FakeCache) RemoveNode(node *api.Node) error { return nil }
 
 func (f *FakeCache) GetNodeNameToInfoMap() (map[string]*schedulercache.NodeInfo, error) {
 	return nil, nil

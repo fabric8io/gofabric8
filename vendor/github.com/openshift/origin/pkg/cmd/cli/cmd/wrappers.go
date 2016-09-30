@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/config"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -19,13 +20,18 @@ import (
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
-func tab(original string) string {
-	lines := []string{}
-	scanner := bufio.NewScanner(strings.NewReader(original))
-	for scanner.Scan() {
-		lines = append(lines, "  "+scanner.Text())
+func adjustCmdExamples(cmd *cobra.Command, parentName string, name string) {
+	for _, subCmd := range cmd.Commands() {
+		adjustCmdExamples(subCmd, parentName, cmd.Name())
 	}
-	return strings.Join(lines, "\n")
+	cmd.Example = strings.Replace(cmd.Example, "kubectl", parentName, -1)
+	tabbing := "  "
+	examples := []string{}
+	scanner := bufio.NewScanner(strings.NewReader(cmd.Example))
+	for scanner.Scan() {
+		examples = append(examples, tabbing+strings.TrimSpace(scanner.Text()))
+	}
+	cmd.Example = strings.Join(examples, "\n")
 }
 
 const (
@@ -121,8 +127,8 @@ will be lost along with the rest of the resource.`
   # Delete pods and services with label name=myLabel.
   %[1]s delete pods,services -l name=myLabel
 
-  # Delete a pod with ID 1234-56-7890-234234-456456.
-  %[1]s delete pod 1234-56-7890-234234-456456
+  # Delete a pod with name node-1-vsjnm.
+  %[1]s delete pod node-1-vsjnm
 
   # Delete all resources associated with a running app, includes
   # buildconfig,deploymentconfig,service,imagestream,route and pod,
@@ -162,13 +168,15 @@ func NewCmdCreate(parentName string, f *clientcmd.Factory, out io.Writer) *cobra
 	cmd.Example = fmt.Sprintf(createExample, parentName)
 
 	// create subcommands
-	cmd.AddCommand(NewCmdCreateRoute(parentName, f, out))
+	cmd.AddCommand(create.NewCmdCreateRoute(parentName, f, out))
 	cmd.AddCommand(create.NewCmdCreatePolicyBinding(create.PolicyBindingRecommendedName, parentName+" create "+create.PolicyBindingRecommendedName, f, out))
 	cmd.AddCommand(create.NewCmdCreateDeploymentConfig(create.DeploymentConfigRecommendedName, parentName+" create "+create.DeploymentConfigRecommendedName, f, out))
+	cmd.AddCommand(create.NewCmdCreateClusterQuota(create.ClusterQuotaRecommendedName, parentName+" create "+create.ClusterQuotaRecommendedName, f, out))
 
 	cmd.AddCommand(create.NewCmdCreateUser(create.UserRecommendedName, parentName+" create "+create.UserRecommendedName, f, out))
 	cmd.AddCommand(create.NewCmdCreateIdentity(create.IdentityRecommendedName, parentName+" create "+create.IdentityRecommendedName, f, out))
 	cmd.AddCommand(create.NewCmdCreateUserIdentityMapping(create.UserIdentityMappingRecommendedName, parentName+" create "+create.UserIdentityMappingRecommendedName, f, out))
+	cmd.AddCommand(create.NewCmdCreateImageStream(create.ImageStreamRecommendedName, parentName+" create "+create.ImageStreamRecommendedName, f, out))
 
 	adjustCmdExamples(cmd, parentName, "create")
 
@@ -176,21 +184,57 @@ func NewCmdCreate(parentName string, f *clientcmd.Factory, out io.Writer) *cobra
 }
 
 const (
+	completionLong = `This command prints shell code which must be evaluated to provide interactive
+completion of %s commands.`
+
+	completionExample = `  # Generate the %s completion code for bash
+  %s completion bash > bash_completion.sh
+  source bash_completion.sh
+
+  # The above example depends on the bash-completion framework.
+  It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
+
+  brew install bash-completion
+  source $(brew --prefix)/etc/bash_completion
+  %s completion bash > bash_completion.sh
+  source bash_completion.sh
+
+  # In zsh*, the following will load openshift cli zsh completion:
+  source <(%s completion zsh)
+
+  * zsh completions are only supported in versions of zsh >= 5.2`
+)
+
+func NewCmdCompletion(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
+	cmdHelpName := fullName
+
+	if strings.HasSuffix(fullName, "completion") {
+		cmdHelpName = "openshift"
+	}
+
+	cmd := kcmd.NewCmdCompletion(f.Factory, out)
+	cmd.Long = fmt.Sprintf(completionLong, cmdHelpName)
+	cmd.Example = fmt.Sprintf(completionExample, cmdHelpName, cmdHelpName, cmdHelpName, cmdHelpName)
+	return cmd
+}
+
+const (
 	execLong = `Execute a command in a container`
 
-	execExample = `  # Get output from running 'date' in ruby-container from pod 123456-7890
-  %[1]s exec -p 123456-7890 -c ruby-container date
+	execExample = `  # Get output from running 'date' in ruby-container from pod 'mypod'
+  %[1]s exec mypod -c ruby-container date
 
-  # Switch to raw terminal mode, sends stdin to 'bash' in ruby-container from pod 123456-780 and sends stdout/stderr from 'bash' back to the client
-  %[1]s exec -p 123456-7890 -c ruby-container -i -t -- bash -il`
+  # Switch to raw terminal mode, sends stdin to 'bash' in ruby-container from pod 'mypod' and sends stdout/stderr from 'bash' back to the client
+  %[1]s exec mypod -c ruby-container -i -t -- bash -il`
 )
 
 // NewCmdExec is a wrapper for the Kubernetes cli exec command
 func NewCmdExec(fullName string, f *clientcmd.Factory, cmdIn io.Reader, cmdOut, cmdErr io.Writer) *cobra.Command {
-	cmd := kcmd.NewCmdExec(f.Factory, cmdIn, cmdOut, cmdErr)
+	cmd := kcmd.NewCmdExec(fullName, f.Factory, cmdIn, cmdOut, cmdErr)
 	cmd.Use = "exec [options] POD [-c CONTAINER] -- COMMAND [args...]"
 	cmd.Long = execLong
 	cmd.Example = fmt.Sprintf(execExample, fullName)
+	cmd.Flag("pod").Usage = cmd.Flag("pod").Usage + " (deprecated)"
 	return cmd
 }
 
@@ -198,23 +242,24 @@ const (
 	portForwardLong = `Forward 1 or more local ports to a pod`
 
 	portForwardExample = `  # Listens on ports 5000 and 6000 locally, forwarding data to/from ports 5000 and 6000 in the pod
-  %[1]s port-forward -p mypod 5000 6000
+  %[1]s port-forward mypod 5000 6000
 
   # Listens on port 8888 locally, forwarding to 5000 in the pod
-  %[1]s port-forward -p mypod 8888:5000
+  %[1]s port-forward mypod 8888:5000
 
   # Listens on a random port locally, forwarding to 5000 in the pod
-  %[1]s port-forward -p mypod :5000
+  %[1]s port-forward mypod :5000
 
   # Listens on a random port locally, forwarding to 5000 in the pod
-  %[1]s port-forward -p mypod 0:5000`
+  %[1]s port-forward mypod 0:5000`
 )
 
 // NewCmdPortForward is a wrapper for the Kubernetes cli port-forward command
-func NewCmdPortForward(fullName string, f *clientcmd.Factory) *cobra.Command {
-	cmd := kcmd.NewCmdPortForward(f.Factory)
+func NewCmdPortForward(fullName string, f *clientcmd.Factory, out, errout io.Writer) *cobra.Command {
+	cmd := kcmd.NewCmdPortForward(f.Factory, out, errout)
 	cmd.Long = portForwardLong
 	cmd.Example = fmt.Sprintf(portForwardExample, fullName)
+	cmd.Flag("pod").Usage = cmd.Flag("pod").Usage + " (deprecated)"
 	return cmd
 }
 
@@ -241,14 +286,18 @@ func NewCmdDescribe(fullName string, f *clientcmd.Factory, out io.Writer) *cobra
 }
 
 const (
-	proxyLong = `Run a proxy to the Kubernetes API server`
+	proxyLong = `Run a proxy to the API server`
 
-	proxyExample = `  # Run a proxy to kubernetes apiserver on port 8011, serving static content from ./local/www/
+	proxyExample = `  # Run a proxy to the api server on port 8011, serving static content from ./local/www/
   %[1]s proxy --port=8011 --www=./local/www/
 
-  # Run a proxy to kubernetes apiserver, changing the api prefix to k8s-api
-  # This makes e.g. the pods api available at localhost:8011/k8s-api/v1beta3/pods/
-  %[1]s proxy --api-prefix=k8s-api`
+  # Run a proxy to the api server on an arbitrary local port.
+  # The chosen port for the server will be output to stdout.
+  %[1]s proxy --port=0
+
+  # Run a proxy to the api server, changing the api prefix to my-api
+  # This makes e.g. the pods api available at localhost:8011/my-api/api/v1/pods/
+  %[1]s proxy --api-prefix=/my-api`
 )
 
 // NewCmdProxy is a wrapper for the Kubernetes cli proxy command
@@ -472,6 +521,7 @@ JSON and YAML formats are accepted.`
 cat pod.json | %[1]s apply -f -`
 )
 
+// NewCmdApply is a wrapper for the Kubernetes cli apply command
 func NewCmdApply(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
 	cmd := kcmd.NewCmdApply(f.Factory, out)
 	cmd.Long = applyLong
@@ -494,6 +544,7 @@ resourcequotas (quota), namespaces (ns) or endpoints (ep).`
 %[1]s explain pods.spec.containers`
 )
 
+// NewCmdExplain is a wrapper for the Kubernetes cli explain command
 func NewCmdExplain(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
 	cmd := kcmd.NewCmdExplain(f.Factory, out)
 	cmd.Long = explainLong
@@ -512,18 +563,19 @@ not supported, convert to latest version.
 The default output will be printed to stdout in YAML format. One can use -o option
 to change to output destination.
 `
-	convertExample = `# Convert 'pod.yaml' to latest version and print to stdout.
-%[1]s convert -f pod.yaml
+	convertExample = `  # Convert 'pod.yaml' to latest version and print to stdout.
+  %[1]s convert -f pod.yaml
 
-# Convert the live state of the resource specified by 'pod.yaml' to the latest version
-# and print to stdout in json format.
-%[1]s convert -f pod.yaml --local -o json
+  # Convert the live state of the resource specified by 'pod.yaml' to the latest version
+  # and print to stdout in json format.
+  %[1]s convert -f pod.yaml --local -o json
 
-# Convert all files under current directory to latest version and create them all.
-%[1]s convert -f . | kubectl create -f -
+  # Convert all files under current directory to latest version and create them all.
+  %[1]s convert -f . | %[1]s create -f -
 `
 )
 
+// NewCmdConvert is a wrapper for the Kubernetes cli convert command
 func NewCmdConvert(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
 	cmd := kcmd.NewCmdConvert(f.Factory, out)
 	cmd.Long = convertLong
@@ -562,10 +614,11 @@ saved copy to include the latest resource version.`
   # Use an alternative editor
   OC_EDITOR="nano" %[1]s edit dc/my-deployment
 
-  # Edit the service 'docker-registry' in JSON using the v1beta3 API format:
-  %[1]s edit svc/docker-registry --output-version=v1beta3 -o json`
+  # Edit the service 'docker-registry' in JSON using the v1 API format:
+  %[1]s edit svc/docker-registry --output-version=v1 -o json`
 )
 
+// NewCmdEdit is a wrapper for the Kubernetes cli edit command
 func NewCmdEdit(fullName string, f *clientcmd.Factory, out, errout io.Writer) *cobra.Command {
 	cmd := kcmd.NewCmdEdit(f.Factory, out, errout)
 	cmd.Long = editLong
@@ -590,8 +643,9 @@ Reference: https://github.com/kubernetes/kubernetes/blob/master/docs/user-guide/
   %[1]s %[2]s set preferences.some true`
 )
 
+// NewCmdConfig is a wrapper for the Kubernetes cli config command
 func NewCmdConfig(parentName, name string) *cobra.Command {
-	pathOptions := &config.PathOptions{
+	pathOptions := &kclientcmd.PathOptions{
 		GlobalFile:       cmdconfig.RecommendedHomeFile,
 		EnvVar:           cmdconfig.OpenShiftConfigPathEnvVar,
 		ExplicitFileFlag: cmdconfig.OpenShiftConfigFlagName,
@@ -608,18 +662,4 @@ func NewCmdConfig(parentName, name string) *cobra.Command {
 	cmd.Example = fmt.Sprintf(configExample, parentName, name)
 	adjustCmdExamples(cmd, parentName, name)
 	return cmd
-}
-
-func adjustCmdExamples(cmd *cobra.Command, parentName string, name string) {
-	for _, subCmd := range cmd.Commands() {
-		adjustCmdExamples(subCmd, parentName, cmd.Name())
-	}
-	cmd.Example = strings.Replace(cmd.Example, "kubectl", parentName, -1)
-	tabbing := "  "
-	examples := []string{}
-	scanner := bufio.NewScanner(strings.NewReader(cmd.Example))
-	for scanner.Scan() {
-		examples = append(examples, tabbing+strings.TrimSpace(scanner.Text()))
-	}
-	cmd.Example = strings.Join(examples, "\n")
 }

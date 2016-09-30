@@ -32,8 +32,12 @@ KUBE_NEW_API_VERSION=${KUBE_NEW_API_VERSION:-"v1"}
 KUBE_OLD_STORAGE_VERSIONS=${KUBE_OLD_STORAGE_VERSIONs:-""}
 KUBE_NEW_STORAGE_VERSIONS=${KUBE_NEW_STORAGE_VERSIONs:-""}
 
+KUBE_STORAGE_MEDIA_TYPE_JSON="application/json"
+KUBE_STORAGE_MEDIA_TYPE_PROTOBUF="application/vnd.kubernetes.protobuf"
+
 ETCD_HOST=${ETCD_HOST:-127.0.0.1}
 ETCD_PORT=${ETCD_PORT:-4001}
+ETCD_PREFIX=${ETCD_PREFIX:-randomPrefix}
 API_PORT=${API_PORT:-8080}
 API_HOST=${API_HOST:-127.0.0.1}
 KUBE_API_VERSIONS=""
@@ -44,7 +48,9 @@ UPDATE_ETCD_OBJECTS_SCRIPT="${KUBE_ROOT}/cluster/update-storage-objects.sh"
 
 function startApiServer() {
   local storage_versions=${1:-""}
+  local storage_media_type=${2:-""}
   kube::log::status "Starting kube-apiserver with KUBE_API_VERSIONS: ${KUBE_API_VERSIONS}"
+  kube::log::status "                        and storage-media-type: ${storage_media_type}"
   kube::log::status "                            and runtime-config: ${RUNTIME_CONFIG}"
   kube::log::status "                 and storage-version overrides: ${storage_versions}"
 
@@ -54,10 +60,12 @@ function startApiServer() {
     --bind-address="${API_HOST}" \
     --insecure-port="${API_PORT}" \
     --etcd-servers="http://${ETCD_HOST}:${ETCD_PORT}" \
+    --etcd-prefix="${ETCD_PREFIX}" \
     --runtime-config="${RUNTIME_CONFIG}" \
     --cert-dir="${TMPDIR:-/tmp/}" \
     --service-cluster-ip-range="10.0.0.0/24" \
-    --storage-versions="${storage_versions}" 1>&2 &
+    --storage-versions="${storage_versions}" \
+    --storage-media-type=${storage_media_type} 1>&2 &
   APISERVER_PID=$!
 
   # url, prefix, wait, times
@@ -105,14 +113,14 @@ KUBE_NEW_STORAGE_VERSIONS="batch/v1,autoscaling/v1"
 
 ### END TEST DEFINITION CUSTOMIZATION ###
 
-
 #######################################################
 # Step 1: Start a server which supports both the old and new api versions,
 # but KUBE_OLD_API_VERSION is the latest (storage) version.
+# Additionally use KUBE_STORAGE_MEDIA_TYPE_JSON for storage encoding.
 #######################################################
 KUBE_API_VERSIONS="${KUBE_OLD_API_VERSION},${KUBE_NEW_API_VERSION}"
 RUNTIME_CONFIG="api/all=false,api/${KUBE_OLD_API_VERSION}=true,api/${KUBE_NEW_API_VERSION}=true"
-startApiServer ${KUBE_OLD_STORAGE_VERSIONS}
+startApiServer ${KUBE_OLD_STORAGE_VERSIONS} ${KUBE_STORAGE_MEDIA_TYPE_JSON}
 
 
 # Create object(s)
@@ -130,7 +138,7 @@ for test in ${tests[@]}; do
   old_storage_version=${test_data[4]}
 
   kube::log::status "Verifying ${resource}/${namespace}/${name} has storage version ${old_storage_version} in etcd"
-  curl -s http://${ETCD_HOST}:${ETCD_PORT}/v2/keys/registry/${resource}/${namespace}/${name} | grep ${old_storage_version}
+  curl -s http://${ETCD_HOST}:${ETCD_PORT}/v2/keys/${ETCD_PREFIX}/${resource}/${namespace}/${name} | grep ${old_storage_version}
 done
 
 killApiServer
@@ -139,11 +147,12 @@ killApiServer
 #######################################################
 # Step 2: Start a server which supports both the old and new api versions,
 # but KUBE_NEW_API_VERSION is the latest (storage) version.
+# Still use KUBE_STORAGE_MEDIA_TYPE_JSON for storage encoding.
 #######################################################
 
 KUBE_API_VERSIONS="${KUBE_NEW_API_VERSION},${KUBE_OLD_API_VERSION}"
 RUNTIME_CONFIG="api/all=false,api/${KUBE_OLD_API_VERSION}=true,api/${KUBE_NEW_API_VERSION}=true"
-startApiServer ${KUBE_NEW_STORAGE_VERSIONS}
+startApiServer ${KUBE_NEW_STORAGE_VERSIONS} ${KUBE_STORAGE_MEDIA_TYPE_JSON}
 
 # Update etcd objects, so that will now be stored in the new api version.
 kube::log::status "Updating storage versions in etcd"
@@ -158,7 +167,7 @@ for test in ${tests[@]}; do
   new_storage_version=${test_data[5]}
 
   kube::log::status "Verifying ${resource}/${namespace}/${name} has updated storage version ${new_storage_version} in etcd"
-  curl -s http://${ETCD_HOST}:${ETCD_PORT}/v2/keys/registry/${resource}/${namespace}/${name} | grep ${new_storage_version}
+  curl -s http://${ETCD_HOST}:${ETCD_PORT}/v2/keys/${ETCD_PREFIX}/${resource}/${namespace}/${name} | grep ${new_storage_version}
 done
 
 killApiServer
@@ -166,6 +175,7 @@ killApiServer
 
 #######################################################
 # Step 3 : Start a server which supports only the new api version.
+# However, change storage encoding to KUBE_STORAGE_MEDIA_TYPE_PROTOBUF.
 #######################################################
 
 KUBE_API_VERSIONS="${KUBE_NEW_API_VERSION}"
@@ -173,7 +183,7 @@ RUNTIME_CONFIG="api/all=false,api/${KUBE_NEW_API_VERSION}=true"
 
 # This seems to reduce flakiness.
 sleep 1
-startApiServer ${KUBE_NEW_STORAGE_VERSIONS}
+startApiServer ${KUBE_NEW_STORAGE_VERSIONS} ${KUBE_STORAGE_MEDIA_TYPE_PROTOBUF}
 
 for test in ${tests[@]}; do
   IFS=',' read -ra test_data <<<"$test"

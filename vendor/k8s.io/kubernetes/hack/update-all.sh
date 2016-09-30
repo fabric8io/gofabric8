@@ -50,12 +50,14 @@ if ! $ALL ; then
 	echo "Running in short-circuit mode; run with -a to force all scripts to run."
 fi
 
-BASH_TARGETS="generated-conversions
+BASH_TARGETS="
+	generated-protobuf
+	codegen
+	codecgen
 	generated-docs
 	generated-swagger-docs
 	swagger-spec
-	api-reference-docs
-	codegen"
+	api-reference-docs"
 
 
 for t in $BASH_TARGETS
@@ -70,7 +72,7 @@ do
 		fi
 	else
 		if ! bash "$KUBE_ROOT/hack/update-$t.sh"; then
-			echo -e "${color_red}$Updating $t FAILED${color_norm}"
+			echo -e "${color_red}Updating $t FAILED${color_norm}"
 			if ! $ALL; then
 				exit 1
 			fi

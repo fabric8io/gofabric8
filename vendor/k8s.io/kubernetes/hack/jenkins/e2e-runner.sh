@@ -21,49 +21,34 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-function check_dirty_workspace() {
-    if [[ "${JENKINS_TOLERATE_DIRTY_WORKSPACE:-}" =~ ^[yY]$ ]]; then
-        echo "Tolerating dirty workspace (because JENKINS_TOLERATE_DIRTY_WORKSPACE)."
-    else
-        echo "Checking dirty workspace."
-        # .config and its children are created by the gcloud call that we use to
-        # get the GCE service account.
-        #
-        # console-log.txt is created by Jenkins, but is usually not flushed out
-        # this early in this script.
-        if [[ $(find . -not -path "./.config*" -not -name "console-log.txt" | wc -l) != 1 ]]; then
-            echo "${PWD} not empty, bailing!"
-            find .
-            exit 1
-        fi
-    fi
+: ${KUBE_GCS_RELEASE_BUCKET:="kubernetes-release"}
+
+function running_in_docker() {
+    grep -q docker /proc/self/cgroup
 }
 
 function fetch_output_tars() {
-    clean_binaries
     echo "Using binaries from _output."
     cp _output/release-tars/kubernetes*.tar.gz .
     unpack_binaries
 }
 
 function fetch_server_version_tars() {
-    clean_binaries
-    local -r msg=$(gcloud ${CMD_GROUP:-} container get-server-config --project=${PROJECT} --zone=${ZONE} | grep defaultClusterVersion)
-    # msg will look like "defaultClusterVersion: 1.0.1". Strip
-    # everything up to, including ": "
-    local -r build_version="v${msg##*: }"
-    fetch_tars_from_gcs "release" "${build_version}"
-    unpack_binaries
+    local -r server_version="$(gcloud ${CMD_GROUP:-} container get-server-config --project=${PROJECT} --zone=${ZONE}  --format='value(defaultClusterVersion)')"
+    # Use latest build of the server version's branch for test files.
+    fetch_published_version_tars "ci/latest-${server_version:0:3}"
+    # Unset cluster api version; we want to use server default for the cluster
+    # version.
+    unset CLUSTER_API_VERSION
 }
 
 # Use a published version like "ci/latest" (default), "release/latest",
 # "release/latest-1", or "release/stable"
 function fetch_published_version_tars() {
-    clean_binaries
     local -r published_version="${1}"
     IFS='/' read -a varr <<< "${published_version}"
     bucket="${varr[0]}"
-    build_version=$(gsutil cat gs://kubernetes-release/${published_version}.txt)
+    build_version=$(gsutil cat gs://${KUBE_GCS_RELEASE_BUCKET}/${published_version}.txt)
     echo "Using published version $bucket/$build_version (from ${published_version})"
     fetch_tars_from_gcs "${bucket}" "${build_version}"
     unpack_binaries
@@ -83,8 +68,8 @@ function fetch_tars_from_gcs() {
     local -r build_version="${2}"
     echo "Pulling binaries from GCS; using server version ${bucket}/${build_version}."
     gsutil -mq cp \
-        "gs://kubernetes-release/${bucket}/${build_version}/kubernetes.tar.gz" \
-        "gs://kubernetes-release/${bucket}/${build_version}/kubernetes-test.tar.gz" \
+        "gs://${KUBE_GCS_RELEASE_BUCKET}/${bucket}/${build_version}/kubernetes.tar.gz" \
+        "gs://${KUBE_GCS_RELEASE_BUCKET}/${bucket}/${build_version}/kubernetes-test.tar.gz" \
         .
 }
 
@@ -94,62 +79,103 @@ function unpack_binaries() {
     tar -xzf kubernetes-test.tar.gz
 }
 
-# GCP Project to fetch Trusty images.
-function get_trusty_image_project() {
-  local project=""
-  # Retry the gsutil command a couple times to mitigate the effect of
-  # transient server errors.
-  for n in $(seq 3); do
-    project="$(gsutil cat "gs://trusty-images/image-project.txt")" && break || sleep 1
-  done
-  if [[ -z "${project}" ]]; then
-    echo "Failed to find the image project for Trusty images."
-    exit 1
-  fi
-  echo "${project}"
-  # Clean up gsutil artifacts otherwise the later test stage will complain.
-  rm -rf .config &> /dev/null
-  rm -rf .gsutil &> /dev/null
+# Get the latest GCI image in a family.
+function get_latest_gci_image() {
+    local -r image_project="$1"
+    local -r image_family="$2"
+    echo "$(gcloud compute images describe-from-family ${image_family} --project=${image_project} --format='value(name)')"
 }
 
-# Get the latest Trusty image for a Jenkins job.
-function get_latest_trusty_image() {
-    local image_project="$1"
-    local image_type="$2"
-    local image_index=""
-    if [[ "${image_type}" == head ]]; then
-      image_index="trusty-head"
-    elif [[ "${image_type}" == dev ]]; then
-      image_index="trusty-dev"
-    elif [[ "${image_type}" == beta ]]; then
-      image_index="trusty-beta"
-    elif [[ "${image_type}" == stable ]]; then
-      image_index="trusty-stable"
+function get_latest_docker_release() {
+  # Typical Docker release versions are like v1.11.2-rc1, v1.11.2, and etc.
+  local -r version_re='.*\"tag_name\":[[:space:]]+\"v([0-9\.r|c-]+)\",.*'
+  local -r releases="$(curl -fsSL --retry 3 https://api.github.com/repos/docker/docker/releases)"
+  # The GitHub API returns releases in descending order of creation time so the
+  # first one is always the latest.
+  # TODO: if we can install `jq` on the Jenkins nodes, we won't have to craft
+  # regular expressions here.
+  while read -r line; do
+    if [[ "${line}" =~ ${version_re} ]]; then
+      echo "${BASH_REMATCH[1]}"
+      return
     fi
+  done <<< "${releases}"
+  echo "Failed to determine the latest Docker release."
+  exit 1
+}
 
-    local image=""
-    # Retry the gsutil command a couple times to mitigate the effect of
-    # transient server errors.
+function install_google_cloud_sdk_tarball() {
+    local -r tarball=$1
+    local -r install_dir=$2
+    mkdir -p "${install_dir}"
+    tar xzf "${tarball}" -C "${install_dir}"
+
+    export CLOUDSDK_CORE_DISABLE_PROMPTS=1
+    "${install_dir}/google-cloud-sdk/install.sh" --disable-installation-options --bash-completion=false --path-update=false --usage-reporting=false
+    export PATH=${install_dir}/google-cloud-sdk/bin:${PATH}
+}
+
+# Only call after attempting to bring the cluster up. Don't call after
+# bringing the cluster down.
+function dump_cluster_logs_and_exit() {
+    local -r exit_status=$?
+    dump_cluster_logs
+    if [[ "${E2E_DOWN,,}" == "true" ]]; then
+      # If we tried to bring the cluster up, make a courtesy attempt
+      # to bring the cluster down so we're not leaving resources
+      # around. Unlike later, don't sleep beforehand, though. (We're
+      # just trying to tear down as many resources as we can as fast
+      # as possible and don't even know if we brought the master up.)
+      go run ./hack/e2e.go ${E2E_OPT:-} -v --down || true
+    fi
+    exit ${exit_status}
+}
+
+# Only call after attempting to bring the cluster up. Don't call after
+# bringing the cluster down.
+function dump_cluster_logs() {
+    if [[ -x "cluster/log-dump.sh"  ]]; then
+        ./cluster/log-dump.sh "${ARTIFACTS}"
+    fi
+}
+
+### Pre Set Up ###
+if running_in_docker; then
+    curl -fsSL --retry 3 -o "${WORKSPACE}/google-cloud-sdk.tar.gz" 'https://dl.google.com/dl/cloudsdk/channels/rapid/google-cloud-sdk.tar.gz'
+    install_google_cloud_sdk_tarball "${WORKSPACE}/google-cloud-sdk.tar.gz" /
+fi
+
+# Install gcloud from a custom path if provided. Used to test GKE with gcloud
+# at HEAD, release candidate.
+# TODO: figure out how to avoid installing the cloud sdk twice if run inside Docker.
+if [[ -n "${CLOUDSDK_BUCKET:-}" ]]; then
+    # Retry the download a few times to mitigate transient server errors and
+    # race conditions where the bucket contents change under us as we download.
     for n in $(seq 3); do
-      image="$(gsutil cat "gs://${image_project}/image-indices/latest-test-image-${image_index}")" && break || sleep 1
+        gsutil -mq cp -r "${CLOUDSDK_BUCKET}" ~ && break || sleep 1
+        # Delete any temporary files from the download so that we start from
+        # scratch when we retry.
+        rm -rf ~/.gsutil
     done
-    if [[ -z "${image}" ]]; then
-      echo "Failed to find Trusty image for ${image_type}"
-      exit 1
-    fi
-    echo "${image}"
-    # Clean up gsutil artifacts otherwise the later test stage will complain.
-    rm -rf .config &> /dev/null
-    rm -rf .gsutil &> /dev/null
-}
+    rm -rf ~/repo ~/cloudsdk
+    mv ~/$(basename "${CLOUDSDK_BUCKET}") ~/repo
+    export CLOUDSDK_COMPONENT_MANAGER_SNAPSHOT_URL=file://${HOME}/repo/components-2.json
+    install_google_cloud_sdk_tarball ~/repo/google-cloud-sdk.tar.gz ~/cloudsdk
+    # TODO: is this necessary? this won't work inside Docker currently.
+    export CLOUDSDK_CONFIG=/var/lib/jenkins/.config/gcloud
+fi
 
-# We get the image project and name for Trusty dynamically.
-if [[ "${JENKINS_USE_TRUSTY_IMAGES:-}" =~ ^[yY]$ ]]; then
-  trusty_image_project="$(get_trusty_image_project)"
-  trusty_image="$(get_latest_trusty_image "${trusty_image_project}" "dev")"
-  export KUBE_GCE_MASTER_PROJECT="${trusty_image_project}"
-  export KUBE_GCE_MASTER_IMAGE="${trusty_image}"
-  export KUBE_OS_DISTRIBUTION="trusty"
+# We get the image project and name for GCI dynamically.
+if [[ -n "${JENKINS_GCI_IMAGE_FAMILY:-}" ]]; then
+  GCI_STAGING_PROJECT=container-vm-image-staging
+  export KUBE_GCE_MASTER_PROJECT="${GCI_STAGING_PROJECT}"
+  export KUBE_GCE_MASTER_IMAGE="$(get_latest_gci_image "${GCI_STAGING_PROJECT}" "${JENKINS_GCI_IMAGE_FAMILY}")"
+  export KUBE_OS_DISTRIBUTION="gci"
+  if [[ "${JENKINS_GCI_IMAGE_FAMILY}" == "gci-preview-test" ]]; then
+    # The family "gci-preview-test" is reserved for a special type of GCI images
+    # that are used to continuously validate Docker releases.
+    export KUBE_GCI_DOCKER_VERSION="$(get_latest_docker_release)"
+  fi
 fi
 
 function e2e_test() {
@@ -180,16 +206,17 @@ elif [[ "${KUBE_RUN_FROM_OUTPUT:-}" =~ ^[yY]$ ]]; then
     # TODO(spxtr) This should probably be JENKINS_USE_BINARIES_FROM_OUTPUT or
     # something, rather than being prepended with KUBE, since it's sort of a
     # meta-thing.
+    clean_binaries
     fetch_output_tars
 elif [[ "${JENKINS_USE_SERVER_VERSION:-}" =~ ^[yY]$ ]]; then
     # This is for test, staging, and prod jobs on GKE, where we want to
     # test what's running in GKE by default rather than some CI build.
-    check_dirty_workspace
+    clean_binaries
     fetch_server_version_tars
 else
     # use JENKINS_PUBLISHED_VERSION, default to 'ci/latest', since that's
     # usually what we're testing.
-    check_dirty_workspace
+    clean_binaries
     fetch_published_version_tars "${JENKINS_PUBLISHED_VERSION:-ci/latest}"
 fi
 
@@ -212,13 +239,30 @@ fi
 # # Move the permissions for the keys to Jenkins.
 # $ sudo chown -R jenkins /var/lib/jenkins/gce_keys/
 # $ sudo chgrp -R jenkins /var/lib/jenkins/gce_keys/
-if [[ "${KUBERNETES_PROVIDER}" == "aws" ]]; then
-    echo "Skipping SSH key copying for AWS"
-else
-    mkdir -p ${WORKSPACE}/.ssh/
-    cp /var/lib/jenkins/gce_keys/google_compute_engine ${WORKSPACE}/.ssh/
-    cp /var/lib/jenkins/gce_keys/google_compute_engine.pub ${WORKSPACE}/.ssh/
-fi
+case "${KUBERNETES_PROVIDER}" in
+    gce|gke|kubemark)
+        if ! running_in_docker; then
+            mkdir -p ${WORKSPACE}/.ssh/
+            cp /var/lib/jenkins/gce_keys/google_compute_engine ${WORKSPACE}/.ssh/
+            cp /var/lib/jenkins/gce_keys/google_compute_engine.pub ${WORKSPACE}/.ssh/
+        fi
+        echo 'Checking existence of private ssh key'
+        gce_key="${WORKSPACE}/.ssh/google_compute_engine"
+        if [[ ! -f "${gce_key}" || ! -f "${gce_key}.pub" ]]; then
+            echo 'google_compute_engine ssh key missing!'
+            exit 1
+        fi
+        echo "Checking presence of public key in ${PROJECT}"
+        if ! gcloud compute --project="${PROJECT}" project-info describe |
+             grep "$(cat "${gce_key}.pub")" >/dev/null; then
+            echo 'Uploading public ssh key to project metadata...'
+            gcloud compute --project="${PROJECT}" config-ssh
+        fi
+        ;;
+    default)
+        echo "Not copying ssh keys for ${KUBERNETES_PROVIDER}"
+        ;;
+esac
 
 cd kubernetes
 
@@ -231,40 +275,21 @@ fi
 # Have cmd/e2e run by goe2e.sh generate JUnit report in ${WORKSPACE}/junit*.xml
 ARTIFACTS=${WORKSPACE}/_artifacts
 mkdir -p ${ARTIFACTS}
+# When run inside Docker, we need to make sure all files are world-readable
+# (since they will be owned by root on the host).
+trap "chmod -R o+r '${ARTIFACTS}'" EXIT SIGINT SIGTERM
 export E2E_REPORT_DIR=${ARTIFACTS}
 declare -r gcp_list_resources_script="./cluster/gce/list-resources.sh"
 declare -r gcp_resources_before="${ARTIFACTS}/gcp-resources-before.txt"
 declare -r gcp_resources_cluster_up="${ARTIFACTS}/gcp-resources-cluster-up.txt"
 declare -r gcp_resources_after="${ARTIFACTS}/gcp-resources-after.txt"
-# TODO(15492): figure out some way to run this script even if it doesn't exist
-# in the Kubernetes tarball.
 if [[ ( ${KUBERNETES_PROVIDER} == "gce" || ${KUBERNETES_PROVIDER} == "gke" ) && -x "${gcp_list_resources_script}" ]]; then
   gcp_list_resources="true"
+  # Always pull the script from HEAD, overwriting the local one if it exists.
+  # We do this to pick up fixes if we are running tests from a branch or tag.
+  curl -fsS --retry 3 "https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/gce/list-resources.sh" > "${gcp_list_resources_script}"
 else
   gcp_list_resources="false"
-fi
-
-### Pre Set Up ###
-# Install gcloud from a custom path if provided. Used to test GKE with gcloud
-# at HEAD, release candidate.
-if [[ -n "${CLOUDSDK_BUCKET:-}" ]]; then
-    # Retry the download a few times to mitigate transient server errors and
-    # race conditions where the bucket contents change under us as we download.
-    for n in $(seq 3); do
-        gsutil -mq cp -r "${CLOUDSDK_BUCKET}" ~ && break || sleep 1
-        # Delete any temporary files from the download so that we start from
-        # scratch when we retry.
-        rm -rf ~/.gsutil
-    done
-    rm -rf ~/repo ~/cloudsdk
-    mv ~/$(basename "${CLOUDSDK_BUCKET}") ~/repo
-    mkdir ~/cloudsdk
-    tar zxf ~/repo/google-cloud-sdk.tar.gz -C ~/cloudsdk
-    export CLOUDSDK_CORE_DISABLE_PROMPTS=1
-    export CLOUDSDK_COMPONENT_MANAGER_SNAPSHOT_URL=file://${HOME}/repo/components-2.json
-    ~/cloudsdk/google-cloud-sdk/install.sh --disable-installation-options --bash-completion=false --path-update=false --usage-reporting=false
-    export PATH=${HOME}/cloudsdk/google-cloud-sdk/bin:${PATH}
-    export CLOUDSDK_CONFIG=/var/lib/jenkins/.config/gcloud
 fi
 
 ### Set up ###
@@ -277,13 +302,7 @@ fi
 if [[ "${E2E_UP,,}" == "true" ]]; then
     # We want to try to gather logs even if kube-up fails, so collect the
     # result here and fail after dumping logs if it's nonzero.
-    go run ./hack/e2e.go ${E2E_OPT:-} -v --up && up_result="$?" || up_result="$?"
-    if [[ "${up_result}" -ne 0 ]]; then
-        if [[ -x "cluster/log-dump.sh"  ]]; then
-            ./cluster/log-dump.sh "${ARTIFACTS}"
-        fi
-        exit "${up_result}"
-    fi
+    go run ./hack/e2e.go ${E2E_OPT:-} -v --up || dump_cluster_logs_and_exit
     go run ./hack/e2e.go -v --ctl="version --match-server-version=false"
     if [[ "${gcp_list_resources}" == "true" ]]; then
       ${gcp_list_resources_script} > "${gcp_resources_cluster_up}"
@@ -291,20 +310,36 @@ if [[ "${E2E_UP,,}" == "true" ]]; then
 fi
 
 # Allow download & unpack of alternate version of tests, for cross-version & upgrade testing.
-if [[ -n "${JENKINS_PUBLISHED_TEST_VERSION:-}" ]]; then
+#
+# JENKINS_PUBLISHED_SKEW_VERSION downloads an alternate version of Kubernetes
+# for testing, moving the old one to kubernetes_old.
+#
+# E2E_UPGRADE_TEST=true triggers a run of the e2e tests, to do something like
+# upgrade the cluster, before the main test run.  It uses
+# GINKGO_UPGRADE_TESTS_ARGS for the test run.
+#
+# JENKINS_USE_SKEW_TESTS=true will run tests from the skewed version rather
+# than the original version.
+if [[ -n "${JENKINS_PUBLISHED_SKEW_VERSION:-}" ]]; then
     cd ..
     mv kubernetes kubernetes_old
-    fetch_published_version_tars "${JENKINS_PUBLISHED_TEST_VERSION}"
+    fetch_published_version_tars "${JENKINS_PUBLISHED_SKEW_VERSION}"
     cd kubernetes
     # Upgrade the cluster before running other tests
     if [[ "${E2E_UPGRADE_TEST:-}" == "true" ]]; then
-	# Add a report prefix for the e2e tests so that the tests don't get overwritten when we run
-	# the rest of the e2es.
+        # Add a report prefix for the e2e tests so that the tests don't get overwritten when we run
+        # the rest of the e2es.
         E2E_REPORT_PREFIX='upgrade' e2e_test "${GINKGO_UPGRADE_TEST_ARGS:-}"
-	# If JENKINS_USE_OLD_TESTS is set, back out into the old tests now that we've upgraded.
-        if [[ "${JENKINS_USE_OLD_TESTS:-}" == "true" ]]; then
-            cd ../kubernetes_old
-        fi
+    fi
+    if [[ "${JENKINS_USE_SKEW_TESTS:-}" != "true" ]]; then
+        # Back out into the old tests now that we've downloaded & maybe upgraded.
+        cd ../kubernetes_old
+	# Append kubectl-path of skewed kubectl to test args, since we always
+	# want that to use the skewed kubectl version:
+	#
+	# - for upgrade jobs, we want kubectl to be at the same version as master.
+	# - for client skew tests, we want to use the skewed kubectl (that's what we're testing).
+        GINKGO_TEST_ARGS="${GINKGO_TEST_ARGS:-} --kubectl-path=$(pwd)/../kubernetes/cluster/kubectl.sh"
     fi
 fi
 
@@ -321,17 +356,13 @@ if [[ "${USE_KUBEMARK:-}" == "true" ]]; then
   NUM_NODES=${KUBEMARK_NUM_NODES:-$NUM_NODES}
   MASTER_SIZE=${KUBEMARK_MASTER_SIZE:-$MASTER_SIZE}
   # If start-kubemark fails, we trigger empty set of tests that would trigger storing logs from the base cluster.
-  ./test/kubemark/start-kubemark.sh && kubemark_started="$?" || kubemark_started="$?"
-  if [[ "${kubemark_started}" != "0" ]]; then
-    go run ./hack/e2e.go -v --test --test_args="--ginkgo.focus=DO\sNOT\sMATCH\sANYTHING"
-    exit 1
-  fi
+  ./test/kubemark/start-kubemark.sh || dump_cluster_logs_and_exit
   # Similarly, if tests fail, we trigger empty set of tests that would trigger storing logs from the base cluster.
-  ./test/kubemark/run-e2e-tests.sh --ginkgo.focus="${KUBEMARK_TESTS}" --gather-resource-usage="false" && kubemark_succeeded="$?" || kubemark_succeeded="$?"
-  if [[ "${kubemark_succeeded}" != "0" ]]; then
-    go run ./hack/e2e.go -v --test --test_args="--ginkgo.focus=DO\sNOT\sMATCH\sANYTHING"
-    exit 1
-  fi
+  # We intentionally overwrite the exit-code from `run-e2e-tests.sh` because we want jenkins to look at the
+  # junit.xml results for test failures and not process the exit code.  This is needed by jenkins to more gracefully
+  # handle blocking the merge queue as a result of test failure flakes.  Infrastructure failures should continue to
+  # exit non-0.
+  ./test/kubemark/run-e2e-tests.sh --ginkgo.focus="${KUBEMARK_TESTS:-starting\s30\spods}" "${KUBEMARK_TEST_ARGS:-}" || dump_cluster_logs
   ./test/kubemark/stop-kubemark.sh
   NUM_NODES=${NUM_NODES_BKP}
   MASTER_SIZE=${MASTER_SIZE_BKP}

@@ -6,7 +6,7 @@ import (
 
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
-	"k8s.io/kubernetes/test/e2e"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
 
 	exutil "github.com/openshift/origin/test/extended/util"
 )
@@ -20,8 +20,8 @@ var _ = g.Describe("[builds][Slow] incremental s2i build", func() {
 	)
 
 	var (
-		templateFixture      = exutil.FixturePath("fixtures", "incremental-auth-build.json")
-		podAndServiceFixture = exutil.FixturePath("fixtures", "test-build-podsvc.json")
+		templateFixture      = exutil.FixturePath("testdata", "incremental-auth-build.json")
+		podAndServiceFixture = exutil.FixturePath("testdata", "test-build-podsvc.json")
 		oc                   = exutil.NewCLI("build-sti-inc", exutil.KubeConfigPath())
 	)
 
@@ -40,23 +40,12 @@ var _ = g.Describe("[builds][Slow] incremental s2i build", func() {
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("starting a test build")
-			buildName, err := oc.Run("start-build").Args("initial-build").Output()
-			o.Expect(err).NotTo(o.HaveOccurred())
-
-			g.By("expecting the build is in Complete phase")
-			err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), buildName, exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
-			if err != nil {
-				exutil.DumpBuildLogs("initial-build", oc)
-			}
-			o.Expect(err).NotTo(o.HaveOccurred())
+			br, _ := exutil.StartBuildAndWait(oc, "initial-build")
+			br.AssertSuccess()
 
 			g.By("starting a test build using the image produced by the last build")
-			buildName, err = oc.Run("start-build").Args("internal-build").Output()
-			o.Expect(err).NotTo(o.HaveOccurred())
-
-			g.By("expecting the build is in Complete phase")
-			err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), buildName, exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
-			o.Expect(err).NotTo(o.HaveOccurred())
+			br2, _ := exutil.StartBuildAndWait(oc, "internal-build")
+			br2.AssertSuccess()
 
 			g.By("getting the Docker image reference from ImageStream")
 			imageName, err := exutil.GetDockerImageReference(oc.REST().ImageStreams(oc.Namespace()), "internal-image", "latest")

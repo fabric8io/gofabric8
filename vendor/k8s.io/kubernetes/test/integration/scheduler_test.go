@@ -41,6 +41,7 @@ import (
 	"k8s.io/kubernetes/plugin/pkg/scheduler"
 	_ "k8s.io/kubernetes/plugin/pkg/scheduler/algorithmprovider"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/factory"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/integration/framework"
 )
 
@@ -58,8 +59,7 @@ func TestUnschedulableNodes(t *testing.T) {
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		m.Handler.ServeHTTP(w, req)
 	}))
-	// TODO: Uncomment when fix #19254
-	// defer s.Close()
+	defer s.Close()
 
 	masterConfig := framework.NewIntegrationTestMasterConfig()
 	m, err := master.New(masterConfig)
@@ -69,7 +69,7 @@ func TestUnschedulableNodes(t *testing.T) {
 
 	restClient := client.NewOrDie(&restclient.Config{Host: s.URL, ContentConfig: restclient.ContentConfig{GroupVersion: testapi.Default.GroupVersion()}})
 
-	schedulerConfigFactory := factory.NewConfigFactory(restClient, api.DefaultSchedulerName)
+	schedulerConfigFactory := factory.NewConfigFactory(restClient, api.DefaultSchedulerName, api.DefaultHardPodAffinitySymmetricWeight, api.DefaultFailureDomains)
 	schedulerConfig, err := schedulerConfigFactory.Create()
 	if err != nil {
 		t.Fatalf("Couldn't create scheduler config: %v", err)
@@ -103,13 +103,31 @@ func podScheduled(c *client.Client, podNamespace, podName string) wait.Condition
 
 // Wait till the passFunc confirms that the object it expects to see is in the store.
 // Used to observe reflected events.
-func waitForReflection(s cache.Store, key string, passFunc func(n interface{}) bool) error {
-	return wait.Poll(time.Millisecond*10, time.Second*20, func() (bool, error) {
+func waitForReflection(t *testing.T, s cache.Store, key string, passFunc func(n interface{}) bool) error {
+	nodes := []*api.Node{}
+	err := wait.Poll(time.Millisecond*100, wait.ForeverTestTimeout, func() (bool, error) {
 		if n, _, err := s.GetByKey(key); err == nil && passFunc(n) {
 			return true, nil
+		} else {
+			if err != nil {
+				t.Errorf("Unexpected error: %v", err)
+			} else {
+				if n == nil {
+					nodes = append(nodes, nil)
+				} else {
+					nodes = append(nodes, n.(*api.Node))
+				}
+			}
+			return false, nil
 		}
-		return false, nil
 	})
+	if err != nil {
+		t.Logf("Logging consecutive node versions received from store:")
+		for i, n := range nodes {
+			t.Logf("%d: %#v", i, n)
+		}
+	}
+	return err
 }
 
 func DoTestUnschedulableNodes(t *testing.T, restClient *client.Client, nodeStore cache.Store) {
@@ -159,9 +177,12 @@ func DoTestUnschedulableNodes(t *testing.T, restClient *client.Client, nodeStore
 				if _, err := c.Nodes().Update(n); err != nil {
 					t.Fatalf("Failed to update node with unschedulable=true: %v", err)
 				}
-				err = waitForReflection(s, nodeKey, func(node interface{}) bool {
-					// An unschedulable node should get deleted from the store
-					return node == nil
+				err = waitForReflection(t, s, nodeKey, func(node interface{}) bool {
+					// An unschedulable node should still be present in the store
+					// Nodes that are unschedulable or that are not ready or
+					// have their disk full (Node.Spec.Conditions) are exluded
+					// based on NodeConditionPredicate, a separate check
+					return node != nil && node.(*api.Node).Spec.Unschedulable == true
 				})
 				if err != nil {
 					t.Fatalf("Failed to observe reflected update for setting unschedulable=true: %v", err)
@@ -172,7 +193,7 @@ func DoTestUnschedulableNodes(t *testing.T, restClient *client.Client, nodeStore
 				if _, err := c.Nodes().Update(n); err != nil {
 					t.Fatalf("Failed to update node with unschedulable=false: %v", err)
 				}
-				err = waitForReflection(s, nodeKey, func(node interface{}) bool {
+				err = waitForReflection(t, s, nodeKey, func(node interface{}) bool {
 					return node != nil && node.(*api.Node).Spec.Unschedulable == false
 				})
 				if err != nil {
@@ -192,7 +213,7 @@ func DoTestUnschedulableNodes(t *testing.T, restClient *client.Client, nodeStore
 				if _, err = c.Nodes().UpdateStatus(n); err != nil {
 					t.Fatalf("Failed to update node with bad status condition: %v", err)
 				}
-				err = waitForReflection(s, nodeKey, func(node interface{}) bool {
+				err = waitForReflection(t, s, nodeKey, func(node interface{}) bool {
 					return node != nil && node.(*api.Node).Status.Conditions[0].Status == api.ConditionUnknown
 				})
 				if err != nil {
@@ -209,7 +230,7 @@ func DoTestUnschedulableNodes(t *testing.T, restClient *client.Client, nodeStore
 				if _, err = c.Nodes().UpdateStatus(n); err != nil {
 					t.Fatalf("Failed to update node with healthy status condition: %v", err)
 				}
-				waitForReflection(s, nodeKey, func(node interface{}) bool {
+				err = waitForReflection(t, s, nodeKey, func(node interface{}) bool {
 					return node != nil && node.(*api.Node).Status.Conditions[0].Status == api.ConditionTrue
 				})
 				if err != nil {
@@ -233,7 +254,7 @@ func DoTestUnschedulableNodes(t *testing.T, restClient *client.Client, nodeStore
 		pod := &api.Pod{
 			ObjectMeta: api.ObjectMeta{Name: "node-scheduling-test-pod"},
 			Spec: api.PodSpec{
-				Containers: []api.Container{{Name: "container", Image: "kubernetes/pause:go"}},
+				Containers: []api.Container{{Name: "container", Image: e2e.GetPauseImageName(restClient)}},
 			},
 		}
 		myPod, err := restClient.Pods(api.NamespaceDefault).Create(pod)
@@ -316,7 +337,7 @@ func TestMultiScheduler(t *testing.T) {
 	// 1. create and start default-scheduler
 	restClient := client.NewOrDie(&restclient.Config{Host: s.URL, ContentConfig: restclient.ContentConfig{GroupVersion: testapi.Default.GroupVersion()}})
 
-	schedulerConfigFactory := factory.NewConfigFactory(restClient, api.DefaultSchedulerName)
+	schedulerConfigFactory := factory.NewConfigFactory(restClient, api.DefaultSchedulerName, api.DefaultHardPodAffinitySymmetricWeight, api.DefaultFailureDomains)
 	schedulerConfig, err := schedulerConfigFactory.Create()
 	if err != nil {
 		t.Fatalf("Couldn't create scheduler config: %v", err)
@@ -340,21 +361,21 @@ func TestMultiScheduler(t *testing.T) {
 	restClient.Nodes().Create(node)
 
 	// 3. create 3 pods for testing
-	podWithNoAnnotation := createPod("pod-with-no-annotation", nil)
+	podWithNoAnnotation := createPod(restClient, "pod-with-no-annotation", nil)
 	testPodNoAnnotation, err := restClient.Pods(api.NamespaceDefault).Create(podWithNoAnnotation)
 	if err != nil {
 		t.Fatalf("Failed to create pod: %v", err)
 	}
 
 	schedulerAnnotationFitsDefault := map[string]string{"scheduler.alpha.kubernetes.io/name": "default-scheduler"}
-	podWithAnnotationFitsDefault := createPod("pod-with-annotation-fits-default", schedulerAnnotationFitsDefault)
+	podWithAnnotationFitsDefault := createPod(restClient, "pod-with-annotation-fits-default", schedulerAnnotationFitsDefault)
 	testPodWithAnnotationFitsDefault, err := restClient.Pods(api.NamespaceDefault).Create(podWithAnnotationFitsDefault)
 	if err != nil {
 		t.Fatalf("Failed to create pod: %v", err)
 	}
 
 	schedulerAnnotationFitsFoo := map[string]string{"scheduler.alpha.kubernetes.io/name": "foo-scheduler"}
-	podWithAnnotationFitsFoo := createPod("pod-with-annotation-fits-foo", schedulerAnnotationFitsFoo)
+	podWithAnnotationFitsFoo := createPod(restClient, "pod-with-annotation-fits-foo", schedulerAnnotationFitsFoo)
 	testPodWithAnnotationFitsFoo, err := restClient.Pods(api.NamespaceDefault).Create(podWithAnnotationFitsFoo)
 	if err != nil {
 		t.Fatalf("Failed to create pod: %v", err)
@@ -387,7 +408,7 @@ func TestMultiScheduler(t *testing.T) {
 	// 5. create and start a scheduler with name "foo-scheduler"
 	restClient2 := client.NewOrDie(&restclient.Config{Host: s.URL, ContentConfig: restclient.ContentConfig{GroupVersion: testapi.Default.GroupVersion()}})
 
-	schedulerConfigFactory2 := factory.NewConfigFactory(restClient2, "foo-scheduler")
+	schedulerConfigFactory2 := factory.NewConfigFactory(restClient2, "foo-scheduler", api.DefaultHardPodAffinitySymmetricWeight, api.DefaultFailureDomains)
 	schedulerConfig2, err := schedulerConfigFactory2.Create()
 	if err != nil {
 		t.Errorf("Couldn't create scheduler config: %v", err)
@@ -457,11 +478,11 @@ func TestMultiScheduler(t *testing.T) {
 	*/
 }
 
-func createPod(name string, annotation map[string]string) *api.Pod {
+func createPod(client *client.Client, name string, annotation map[string]string) *api.Pod {
 	return &api.Pod{
 		ObjectMeta: api.ObjectMeta{Name: name, Annotations: annotation},
 		Spec: api.PodSpec{
-			Containers: []api.Container{{Name: "container", Image: "kubernetes/pause:go"}},
+			Containers: []api.Container{{Name: "container", Image: e2e.GetPauseImageName(client)}},
 		},
 	}
 }
@@ -485,7 +506,7 @@ func TestAllocatable(t *testing.T) {
 	// 1. create and start default-scheduler
 	restClient := client.NewOrDie(&restclient.Config{Host: s.URL, ContentConfig: restclient.ContentConfig{GroupVersion: testapi.Default.GroupVersion()}})
 
-	schedulerConfigFactory := factory.NewConfigFactory(restClient, api.DefaultSchedulerName)
+	schedulerConfigFactory := factory.NewConfigFactory(restClient, api.DefaultSchedulerName, api.DefaultHardPodAffinitySymmetricWeight, api.DefaultFailureDomains)
 	schedulerConfig, err := schedulerConfigFactory.Create()
 	if err != nil {
 		t.Fatalf("Couldn't create scheduler config: %v", err)
@@ -522,7 +543,7 @@ func TestAllocatable(t *testing.T) {
 			Containers: []api.Container{
 				{
 					Name:  "container",
-					Image: "kubernetes/pause:go",
+					Image: e2e.GetPauseImageName(restClient),
 					Resources: api.ResourceRequirements{
 						Requests: api.ResourceList{
 							api.ResourceCPU:    *resource.NewMilliQuantity(20, resource.DecimalSI),

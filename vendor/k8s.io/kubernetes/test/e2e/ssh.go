@@ -20,24 +20,28 @@ import (
 	"fmt"
 	"strings"
 
+	"k8s.io/kubernetes/test/e2e/framework"
+
 	. "github.com/onsi/ginkgo"
 )
 
-var _ = KubeDescribe("SSH", func() {
+const maxNodes = 100
 
-	f := NewDefaultFramework("ssh")
+var _ = framework.KubeDescribe("SSH", func() {
+
+	f := framework.NewDefaultFramework("ssh")
 
 	BeforeEach(func() {
-		// When adding more providers here, also implement their functionality in util.go's getSigner(...).
-		SkipUnlessProviderIs(providersWithSSH...)
+		// When adding more providers here, also implement their functionality in util.go's framework.GetSigner(...).
+		framework.SkipUnlessProviderIs(framework.ProvidersWithSSH...)
 	})
 
 	It("should SSH to all nodes and run commands", func() {
 		// Get all nodes' external IPs.
 		By("Getting all nodes' SSH-able IP addresses")
-		hosts, err := NodeSSHHosts(f.Client)
+		hosts, err := framework.NodeSSHHosts(f.Client)
 		if err != nil {
-			Failf("Error getting node hostnames: %v", err)
+			framework.Failf("Error getting node hostnames: %v", err)
 		}
 
 		testCases := []struct {
@@ -48,45 +52,55 @@ var _ = KubeDescribe("SSH", func() {
 			expectedCode   int
 			expectedError  error
 		}{
-			{`echo "Hello"`, true, "Hello", "", 0, nil},
-			// Same as previous, but useful for test output diagnostics.
+			// Keep this test first - this variant runs on all nodes.
 			{`echo "Hello from $(whoami)@$(hostname)"`, false, "", "", 0, nil},
 			{`echo "foo" | grep "bar"`, true, "", "", 1, nil},
 			{`echo "Out" && echo "Error" >&2 && exit 7`, true, "Out", "Error", 7, nil},
 		}
 
-		// Run commands on all nodes via SSH.
-		for _, testCase := range testCases {
-			By(fmt.Sprintf("SSH'ing to all nodes and running %s", testCase.cmd))
-			for _, host := range hosts {
-				result, err := SSH(testCase.cmd, host, testContext.Provider)
+		for i, testCase := range testCases {
+			// Only run the first testcase against max 100 nodes. Run
+			// the rest against the first node we find only, since
+			// they're basically testing SSH semantics (and we don't
+			// need to do that against each host in the cluster).
+			nodes := len(hosts)
+			if i > 0 {
+				nodes = 1
+			} else if nodes > maxNodes {
+				nodes = maxNodes
+			}
+			testhosts := hosts[:nodes]
+			By(fmt.Sprintf("SSH'ing to %d nodes and running %s", len(testhosts), testCase.cmd))
+
+			for _, host := range testhosts {
+				result, err := framework.SSH(testCase.cmd, host, framework.TestContext.Provider)
 				stdout, stderr := strings.TrimSpace(result.Stdout), strings.TrimSpace(result.Stderr)
 				if err != testCase.expectedError {
-					Failf("Ran %s on %s, got error %v, expected %v", testCase.cmd, host, err, testCase.expectedError)
+					framework.Failf("Ran %s on %s, got error %v, expected %v", testCase.cmd, host, err, testCase.expectedError)
 				}
 				if testCase.checkStdout && stdout != testCase.expectedStdout {
-					Failf("Ran %s on %s, got stdout '%s', expected '%s'", testCase.cmd, host, stdout, testCase.expectedStdout)
+					framework.Failf("Ran %s on %s, got stdout '%s', expected '%s'", testCase.cmd, host, stdout, testCase.expectedStdout)
 				}
 				if stderr != testCase.expectedStderr {
-					Failf("Ran %s on %s, got stderr '%s', expected '%s'", testCase.cmd, host, stderr, testCase.expectedStderr)
+					framework.Failf("Ran %s on %s, got stderr '%s', expected '%s'", testCase.cmd, host, stderr, testCase.expectedStderr)
 				}
 				if result.Code != testCase.expectedCode {
-					Failf("Ran %s on %s, got exit code %d, expected %d", testCase.cmd, host, result.Code, testCase.expectedCode)
+					framework.Failf("Ran %s on %s, got exit code %d, expected %d", testCase.cmd, host, result.Code, testCase.expectedCode)
 				}
 				// Show stdout, stderr for logging purposes.
 				if len(stdout) > 0 {
-					Logf("Got stdout from %s: %s", host, strings.TrimSpace(stdout))
+					framework.Logf("Got stdout from %s: %s", host, strings.TrimSpace(stdout))
 				}
 				if len(stderr) > 0 {
-					Logf("Got stderr from %s: %s", host, strings.TrimSpace(stderr))
+					framework.Logf("Got stderr from %s: %s", host, strings.TrimSpace(stderr))
 				}
 			}
 		}
 
 		// Quickly test that SSH itself errors correctly.
 		By("SSH'ing to a nonexistent host")
-		if _, err = SSH(`echo "hello"`, "i.do.not.exist", testContext.Provider); err == nil {
-			Failf("Expected error trying to SSH to nonexistent host.")
+		if _, err = framework.SSH(`echo "hello"`, "i.do.not.exist", framework.TestContext.Provider); err == nil {
+			framework.Failf("Expected error trying to SSH to nonexistent host.")
 		}
 	})
 })

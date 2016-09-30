@@ -6,6 +6,7 @@ import (
 )
 
 const GroupName = ""
+const FutureGroupName = "image.openshift.io"
 
 // SchemeGroupVersion is group version used to register these objects
 var SchemeGroupVersion = unversioned.GroupVersion{Group: GroupName, Version: runtime.APIVersionInternal}
@@ -31,6 +32,7 @@ func addKnownTypes(scheme *runtime.Scheme) {
 		&Image{},
 		&ImageList{},
 		&DockerImage{},
+		&ImageSignature{},
 		&ImageStream{},
 		&ImageStreamList{},
 		&ImageStreamMapping{},
@@ -44,6 +46,7 @@ func addKnownTypes(scheme *runtime.Scheme) {
 func (obj *Image) GetObjectKind() unversioned.ObjectKind              { return &obj.TypeMeta }
 func (obj *ImageList) GetObjectKind() unversioned.ObjectKind          { return &obj.TypeMeta }
 func (obj *DockerImage) GetObjectKind() unversioned.ObjectKind        { return &obj.TypeMeta }
+func (obj *ImageSignature) GetObjectKind() unversioned.ObjectKind     { return &obj.TypeMeta }
 func (obj *ImageStream) GetObjectKind() unversioned.ObjectKind        { return &obj.TypeMeta }
 func (obj *ImageStreamList) GetObjectKind() unversioned.ObjectKind    { return &obj.TypeMeta }
 func (obj *ImageStreamMapping) GetObjectKind() unversioned.ObjectKind { return &obj.TypeMeta }

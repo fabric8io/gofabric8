@@ -19,7 +19,6 @@ package scheduler
 import (
 	"errors"
 	"fmt"
-	"math/rand"
 	"reflect"
 	"sync"
 	"testing"
@@ -27,7 +26,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
-	"k8s.io/kubernetes/pkg/client/cache"
+	clientcache "k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/client/record"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/diff"
@@ -43,6 +42,12 @@ type fakeBinder struct {
 
 func (fb fakeBinder) Bind(binding *api.Binding) error { return fb.b(binding) }
 
+type fakePodConditionUpdater struct{}
+
+func (fc fakePodConditionUpdater) Update(pod *api.Pod, podCondition *api.PodCondition) error {
+	return nil
+}
+
 func podWithID(id, desiredHost string) *api.Pod {
 	return &api.Pod{
 		ObjectMeta: api.ObjectMeta{Name: id, SelfLink: testapi.Default.SelfLink("pods", id)},
@@ -55,7 +60,7 @@ func podWithID(id, desiredHost string) *api.Pod {
 func podWithPort(id, desiredHost string, port int) *api.Pod {
 	pod := podWithID(id, desiredHost)
 	pod.Spec.Containers = []api.Container{
-		{Name: "ctr", Ports: []api.ContainerPort{{HostPort: port}}},
+		{Name: "ctr", Ports: []api.ContainerPort{{HostPort: int32(port)}}},
 	}
 	return pod
 }
@@ -98,13 +103,14 @@ func TestScheduler(t *testing.T) {
 			expectErrorPod: podWithID("foo", ""),
 			eventReason:    "FailedScheduling",
 		}, {
-			sendPod:         podWithID("foo", ""),
-			algo:            mockScheduler{"machine1", nil},
-			expectBind:      &api.Binding{ObjectMeta: api.ObjectMeta{Name: "foo"}, Target: api.ObjectReference{Kind: "Node", Name: "machine1"}},
-			injectBindError: errB,
-			expectError:     errB,
-			expectErrorPod:  podWithID("foo", ""),
-			eventReason:     "FailedScheduling",
+			sendPod:          podWithID("foo", ""),
+			algo:             mockScheduler{"machine1", nil},
+			expectBind:       &api.Binding{ObjectMeta: api.ObjectMeta{Name: "foo"}, Target: api.ObjectReference{Kind: "Node", Name: "machine1"}},
+			expectAssumedPod: podWithID("foo", "machine1"),
+			injectBindError:  errB,
+			expectError:      errB,
+			expectErrorPod:   podWithID("foo", ""),
+			eventReason:      "FailedScheduling",
 		},
 	}
 
@@ -127,6 +133,7 @@ func TestScheduler(t *testing.T) {
 				gotBinding = b
 				return item.injectBindError
 			}},
+			PodConditionUpdater: fakePodConditionUpdater{},
 			Error: func(p *api.Pod, err error) {
 				gotPod = p
 				gotError = err
@@ -145,6 +152,7 @@ func TestScheduler(t *testing.T) {
 			close(called)
 		})
 		s.scheduleOne()
+		<-called
 		if e, a := item.expectAssumedPod, gotAssumedPod; !reflect.DeepEqual(e, a) {
 			t.Errorf("%v: assumed pod: wanted %v, got %v", i, e, a)
 		}
@@ -157,7 +165,6 @@ func TestScheduler(t *testing.T) {
 		if e, a := item.expectBind, gotBinding; !reflect.DeepEqual(e, a) {
 			t.Errorf("%v: error: %s", i, diff.ObjectDiff(e, a))
 		}
-		<-called
 		events.Stop()
 	}
 }
@@ -195,8 +202,8 @@ func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
 	// Setup stores to test pod's workflow:
 	// - queuedPodStore: pods queued before processing
 	// - scheduledPodStore: pods that has a scheduling decision
-	scheduledPodStore := cache.NewStore(cache.MetaNamespaceKeyFunc)
-	queuedPodStore := cache.NewFIFO(cache.MetaNamespaceKeyFunc)
+	scheduledPodStore := clientcache.NewStore(clientcache.MetaNamespaceKeyFunc)
+	queuedPodStore := clientcache.NewFIFO(clientcache.MetaNamespaceKeyFunc)
 
 	// Port is the easiest way to cause a fit predicate failure
 	podPort := 8080
@@ -210,8 +217,7 @@ func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
 		cache,
 		map[string]algorithm.FitPredicate{"PodFitsHostPorts": predicates.PodFitsHostPorts},
 		[]algorithm.PriorityConfig{},
-		[]algorithm.SchedulerExtender{},
-		rand.New(rand.NewSource(time.Now().UnixNano())))
+		[]algorithm.SchedulerExtender{})
 
 	var gotBinding *api.Binding
 	c := &Config{
@@ -226,7 +232,7 @@ func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
 			return nil
 		}},
 		NextPod: func() *api.Pod {
-			return queuedPodStore.Pop().(*api.Pod)
+			return clientcache.Pop(queuedPodStore).(*api.Pod)
 		},
 		Error: func(p *api.Pod, err error) {
 			t.Errorf("Unexpected error when scheduling pod %+v: %v", p, err)
@@ -250,6 +256,7 @@ func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
 	// assumedPods: []
 
 	s.scheduleOne()
+	<-called
 	// queuedPodStore: []
 	// scheduledPodStore: [foo:8080]
 	// assumedPods: [foo:8080]
@@ -271,7 +278,6 @@ func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
 		t.Errorf("Expected exact match on binding: %s", diff.ObjectDiff(ex, ac))
 	}
 
-	<-called
 	events.Stop()
 
 	scheduledPodStore.Delete(pod)
@@ -312,6 +318,7 @@ func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
 	})
 
 	s.scheduleOne()
+	<-called
 
 	expectBind = &api.Binding{
 		ObjectMeta: api.ObjectMeta{Name: "bar"},
@@ -320,6 +327,5 @@ func TestSchedulerForgetAssumedPodAfterDelete(t *testing.T) {
 	if ex, ac := expectBind, gotBinding; !reflect.DeepEqual(ex, ac) {
 		t.Errorf("Expected exact match on binding: %s", diff.ObjectDiff(ex, ac))
 	}
-	<-called
 	events.Stop()
 }

@@ -11,6 +11,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/runtime/serializer"
 	"k8s.io/kubernetes/pkg/types"
@@ -19,6 +20,7 @@ import (
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	configapiv1 "github.com/openshift/origin/pkg/cmd/server/api/v1"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	imagepolicyapi "github.com/openshift/origin/pkg/image/admission/imagepolicy/api"
 	podnodeapi "github.com/openshift/origin/pkg/scheduler/admission/podnodeconstraints/api"
 
 	// install all APIs
@@ -50,6 +52,35 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 				obj.RoutingConfig.Subdomain = "router.default.svc.cluster.local"
 			}
 
+			if obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides == nil {
+				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides = &configapi.ClientConnectionOverrides{
+					QPS:                2.0,
+					Burst:              2,
+					AcceptContentTypes: "test/second",
+					ContentType:        "test/first",
+				}
+			}
+			if len(obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.AcceptContentTypes) == 0 {
+				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.AcceptContentTypes = "test/fourth"
+			}
+			if len(obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.ContentType) == 0 {
+				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.ContentType = "test/fifth"
+			}
+			if obj.MasterClients.ExternalKubernetesClientConnectionOverrides == nil {
+				obj.MasterClients.ExternalKubernetesClientConnectionOverrides = &configapi.ClientConnectionOverrides{
+					QPS:                1.0,
+					Burst:              1,
+					AcceptContentTypes: "test/other",
+					ContentType:        "test/third",
+				}
+			}
+			if len(obj.MasterClients.ExternalKubernetesClientConnectionOverrides.AcceptContentTypes) == 0 {
+				obj.MasterClients.ExternalKubernetesClientConnectionOverrides.AcceptContentTypes = "test/fourth"
+			}
+			if len(obj.MasterClients.ExternalKubernetesClientConnectionOverrides.ContentType) == 0 {
+				obj.MasterClients.ExternalKubernetesClientConnectionOverrides.ContentType = "test/fifth"
+			}
+
 			// Populate the new NetworkConfig.ServiceNetworkCIDR field from the KubernetesMasterConfig.ServicesSubnet field if needed
 			if len(obj.NetworkConfig.ServiceNetworkCIDR) == 0 {
 				if obj.KubernetesMasterConfig != nil && len(obj.KubernetesMasterConfig.ServicesSubnet) > 0 {
@@ -61,12 +92,55 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 				}
 			}
 
+			// TODO stop duplicating the conversion in the test.
+			kubeConfig := obj.KubernetesMasterConfig
+			noCloudProvider := kubeConfig != nil && (len(kubeConfig.ControllerArguments["cloud-provider"]) == 0 || kubeConfig.ControllerArguments["cloud-provider"][0] == "")
+			if noCloudProvider && len(obj.NetworkConfig.IngressIPNetworkCIDR) == 0 {
+				cidr := "172.46.0.0/16"
+				if !(configapi.CIDRsOverlap(cidr, obj.NetworkConfig.ClusterNetworkCIDR) || configapi.CIDRsOverlap(cidr, obj.NetworkConfig.ServiceNetworkCIDR)) {
+					obj.NetworkConfig.IngressIPNetworkCIDR = cidr
+				}
+			}
+
 			// Historically, the clientCA was incorrectly used as the master's server cert CA bundle
 			// If missing from the config, migrate the ClientCA into that field
 			if obj.OAuthConfig != nil && obj.OAuthConfig.MasterCA == nil {
 				s := obj.ServingInfo.ClientCA
 				// The final value of OAuthConfig.MasterCA should never be nil
 				obj.OAuthConfig.MasterCA = &s
+			}
+
+			// test an admission plugin nested for round tripping
+			if c.RandBool() {
+				obj.AdmissionConfig.PluginConfig = map[string]configapi.AdmissionPluginConfig{
+					"abc": {
+						Location: "test",
+						Configuration: &configapi.LDAPSyncConfig{
+							URL: "ldap://some:other@server:8080/test",
+						},
+					},
+				}
+			}
+			// test a Kubernetes admission plugin nested for round tripping
+			if obj.KubernetesMasterConfig != nil && c.RandBool() {
+				obj.KubernetesMasterConfig.AdmissionConfig.PluginConfig = map[string]configapi.AdmissionPluginConfig{
+					"abc": {
+						Location: "test",
+						Configuration: &configapi.LDAPSyncConfig{
+							URL: "ldap://some:other@server:8080/test",
+						},
+					},
+				}
+			}
+			if obj.OAuthConfig != nil && c.RandBool() {
+				obj.OAuthConfig.IdentityProviders = []configapi.IdentityProvider{
+					{
+						MappingMethod: "claim",
+						Provider: &configapi.LDAPSyncConfig{
+							URL: "ldap://some:other@server:8080/test",
+						},
+					},
+				}
 			}
 		},
 		func(obj *configapi.KubernetesMasterConfig, c fuzz.Continue) {
@@ -83,9 +157,9 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 		},
 		func(obj *configapi.JenkinsPipelineConfig, c fuzz.Continue) {
 			c.FuzzNoCustom(obj)
-			if obj.Enabled == nil {
+			if obj.AutoProvisionEnabled == nil {
 				v := c.RandBool()
-				obj.Enabled = &v
+				obj.AutoProvisionEnabled = &v
 			}
 			if len(obj.TemplateNamespace) == 0 {
 				obj.TemplateNamespace = "value"
@@ -108,6 +182,21 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 			}
 			if len(obj.IPTablesSyncPeriod) == 0 {
 				obj.IPTablesSyncPeriod = "5s"
+			}
+
+			if obj.MasterClientConnectionOverrides == nil {
+				obj.MasterClientConnectionOverrides = &configapi.ClientConnectionOverrides{
+					QPS:                1.0,
+					Burst:              1,
+					AcceptContentTypes: "test/other",
+					ContentType:        "test/third",
+				}
+			}
+			if len(obj.MasterClientConnectionOverrides.AcceptContentTypes) == 0 {
+				obj.MasterClientConnectionOverrides.AcceptContentTypes = "test/fourth"
+			}
+			if len(obj.MasterClientConnectionOverrides.ContentType) == 0 {
+				obj.MasterClientConnectionOverrides.ContentType = "test/fifth"
 			}
 
 			// Auth cache defaults
@@ -203,6 +292,20 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 				obj.NodeSelectorLabelBlacklist = []string{"kubernetes.io/hostname"}
 			}
 		},
+		func(obj *labels.Selector, c fuzz.Continue) {
+		},
+		func(obj *imagepolicyapi.ImagePolicyConfig, c fuzz.Continue) {
+			c.FuzzNoCustom(obj)
+			for i := range obj.ExecutionRules {
+				if len(obj.ExecutionRules[i].OnResources) == 0 {
+					obj.ExecutionRules[i].OnResources = []unversioned.GroupResource{{Resource: "pods"}}
+				}
+				obj.ExecutionRules[i].MatchImageLabelSelectors = nil
+			}
+			if len(obj.ResolveImages) == 0 {
+				obj.ResolveImages = imagepolicyapi.Attempt
+			}
+		},
 		func(obj *configapi.GrantConfig, c fuzz.Continue) {
 			c.FuzzNoCustom(obj)
 			if len(obj.ServiceAccountMethod) == 0 {
@@ -238,6 +341,7 @@ func roundTrip(t *testing.T, codec runtime.Codec, originalItem runtime.Object) {
 	if err != nil {
 		if runtime.IsNotRegisteredError(err) {
 			t.Logf("%v is not registered", name)
+			return
 		}
 		t.Errorf("%v: %v (%#v)", name, err, item)
 		return
@@ -250,7 +354,7 @@ func roundTrip(t *testing.T, codec runtime.Codec, originalItem runtime.Object) {
 	}
 	if reflect.TypeOf(item) != reflect.TypeOf(obj2) {
 		obj2conv := reflect.New(reflect.TypeOf(item).Elem()).Interface().(runtime.Object)
-		if err := configapi.Scheme.Convert(obj2, obj2conv); err != nil {
+		if err := configapi.Scheme.Convert(obj2, obj2conv, nil); err != nil {
 			t.Errorf("0X: no conversion from %v to %v: %v", reflect.TypeOf(item), reflect.TypeOf(obj2), err)
 			return
 		}
@@ -258,7 +362,7 @@ func roundTrip(t *testing.T, codec runtime.Codec, originalItem runtime.Object) {
 	}
 
 	if !kapi.Semantic.DeepEqual(originalItem, obj2) {
-		t.Errorf("1: %v: diff: %v\nCodec: %v\nData: %s\nSource: %s", name, diff.ObjectDiff(originalItem, obj2), codec, string(data), diff.ObjectGoPrintSideBySide(originalItem, obj2))
+		t.Errorf("1: %v: diff: %v\nCodec: %v\nData: %s", name, diff.ObjectReflectDiff(originalItem, obj2), codec, string(data))
 		return
 	}
 
@@ -268,7 +372,7 @@ func roundTrip(t *testing.T, codec runtime.Codec, originalItem runtime.Object) {
 		return
 	}
 	if !kapi.Semantic.DeepEqual(originalItem, obj3) {
-		t.Errorf("3: %v: diff: %v\nCodec: %v", name, diff.ObjectDiff(originalItem, obj3), codec)
+		t.Errorf("3: %v: diff: %v\nCodec: %v", name, diff.ObjectReflectDiff(originalItem, obj3), codec)
 		return
 	}
 }
@@ -280,7 +384,7 @@ func TestSpecificKind(t *testing.T) {
 	configapi.Scheme.Log(t)
 	defer configapi.Scheme.Log(nil)
 
-	kind := "LDAPSyncConfig"
+	kind := "MasterConfig"
 	item, err := configapi.Scheme.New(configapi.SchemeGroupVersion.WithKind(kind))
 	if err != nil {
 		t.Errorf("Couldn't make a %v? %v", kind, err)
@@ -288,7 +392,6 @@ func TestSpecificKind(t *testing.T) {
 	}
 	seed := int64(2703387474910584091) //rand.Int63()
 	for i := 0; i < fuzzIters; i++ {
-		t.Logf(`About to test %v with "v1"`, kind)
 		fuzzInternalObject(t, configapiv1.SchemeGroupVersion, item, seed)
 		roundTrip(t, serializer.NewCodecFactory(configapi.Scheme).LegacyCodec(configapiv1.SchemeGroupVersion), item)
 	}
@@ -309,12 +412,81 @@ func TestTypes(t *testing.T) {
 			}
 			seed := rand.Int63()
 
-			t.Logf(`About to test %v with "v1"`, kind)
 			fuzzInternalObject(t, configapiv1.SchemeGroupVersion, item, seed)
 			roundTrip(t, serializer.NewCodecFactory(configapi.Scheme).LegacyCodec(configapiv1.SchemeGroupVersion), item)
 		}
 	}
+}
 
+func TestSpecificRoundTrips(t *testing.T) {
+	boolFalse := false
+	testCases := []struct {
+		mediaType string
+		in, out   runtime.Object
+		to, from  unversioned.GroupVersion
+	}{
+		{
+			in: &configapi.MasterConfig{
+				AdmissionConfig: configapi.AdmissionConfig{
+					PluginConfig: map[string]configapi.AdmissionPluginConfig{
+						"test1": {Configuration: &configapi.LDAPSyncConfig{BindDN: "first"}},
+						"test2": {Configuration: &runtime.Unknown{Raw: []byte(`{"kind":"LDAPSyncConfig","apiVersion":"v1","bindDN":"second"}`)}},
+						"test3": {Configuration: &runtime.Unknown{Raw: []byte(`{"kind":"Unknown","apiVersion":"some/version"}`)}},
+						"test4": {Configuration: nil},
+					},
+				},
+			},
+			to: configapiv1.SchemeGroupVersion,
+			out: &configapiv1.MasterConfig{
+				TypeMeta: unversioned.TypeMeta{Kind: "MasterConfig", APIVersion: "v1"},
+				AdmissionConfig: configapiv1.AdmissionConfig{
+					PluginConfig: map[string]configapiv1.AdmissionPluginConfig{
+						"test1": {Configuration: runtime.RawExtension{
+							Object: &configapiv1.LDAPSyncConfig{BindDN: "first"},
+							Raw:    []byte(`{"kind":"LDAPSyncConfig","apiVersion":"v1","url":"","bindDN":"first","bindPassword":"","insecure":false,"ca":"","groupUIDNameMapping":null}`),
+						}},
+						"test2": {Configuration: runtime.RawExtension{
+							Object: &configapiv1.LDAPSyncConfig{BindDN: "second"},
+							Raw:    []byte(`{"kind":"LDAPSyncConfig","apiVersion":"v1","bindDN":"second"}`),
+						}},
+						"test3": {Configuration: runtime.RawExtension{
+							Object: &runtime.Unknown{TypeMeta: runtime.TypeMeta{Kind: "Unknown", APIVersion: "some/version"}, ContentType: "application/json", Raw: []byte(`{"kind":"Unknown","apiVersion":"some/version"}`)},
+							Raw:    []byte(`{"kind":"Unknown","apiVersion":"some/version"}`),
+						}},
+						"test4": {},
+					},
+				},
+				VolumeConfig: configapiv1.MasterVolumeConfig{DynamicProvisioningEnabled: &boolFalse},
+			},
+			from: configapiv1.SchemeGroupVersion,
+		},
+	}
+
+	f := serializer.NewCodecFactory(configapi.Scheme)
+	for i, test := range testCases {
+		var s runtime.Serializer
+		if len(test.mediaType) != 0 {
+			info, _ := f.SerializerForMediaType(test.mediaType, nil)
+			s = info.Serializer
+		} else {
+			info, _ := f.SerializerForMediaType(f.SupportedMediaTypes()[0], nil)
+			s = info.Serializer
+		}
+		data, err := runtime.Encode(f.LegacyCodec(test.to), test.in)
+		if err != nil {
+			t.Errorf("%d: unable to encode: %v", i, err)
+			continue
+		}
+		result, err := runtime.Decode(f.DecoderToVersion(s, test.from), data)
+		if err != nil {
+			t.Errorf("%d: unable to decode: %v", i, err)
+			continue
+		}
+		if !reflect.DeepEqual(test.out, result) {
+			t.Errorf("%d: result did not match: %s", i, diff.ObjectReflectDiff(test.out, result))
+			continue
+		}
+	}
 }
 
 func fuzzerFor(t *testing.T, version unversioned.GroupVersion, src rand.Source) *fuzz.Fuzzer {
@@ -331,8 +503,12 @@ func fuzzerFor(t *testing.T, version unversioned.GroupVersion, src rand.Source) 
 		},
 		func(j *runtime.Object, c fuzz.Continue) {
 			*j = &runtime.Unknown{
-				// We do not set TypeMeta here because it is not carried through a round trip
-				Raw: []byte(`{"apiVersion":"unknown.group/unknown","kind":"Something","someKey":"someValue"}`),
+				TypeMeta: runtime.TypeMeta{
+					APIVersion: "unknown.group/unknown",
+					Kind:       "Something",
+				},
+				ContentType: "application/json",
+				Raw:         []byte(`{"apiVersion":"unknown.group/unknown","kind":"Something","someKey":"someValue"}`),
 			}
 		},
 		func(j *unversioned.TypeMeta, c fuzz.Continue) {

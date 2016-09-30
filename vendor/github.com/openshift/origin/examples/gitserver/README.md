@@ -65,7 +65,7 @@ a 'git clone' of the repository.
    In this case, the URL of your git server will be the host name used by the route; something like: 
    
    ```
-   http://git-myproject.infra.openshift.com
+   http://git-myproject.router.default.svc.cluster.local
    ```
   
    Alternatively, if your router is not functional, you can port-forward the git-server pod to your local machine.
@@ -91,7 +91,7 @@ a 'git clone' of the repository.
    provide credentials to the Git Server is by using a custom credential helper that will 
    send your OpenShift token by default to the server.
    ```sh
-   $ git config --global credential.http://gitserver-myproject.infra.openshift.com.helper \
+   $ git config --global credential.http://git-myproject.router.default.svc.cluster.local.helper \
          '!f() { echo "username=$(oc whoami)"; echo "password=$(oc whoami -t)"; }; f'
    ```
 
@@ -107,7 +107,7 @@ a 'git clone' of the repository.
 
    # add a remote for your git server
    $ cd ruby-hello-world
-   $ git remote add openshift http://git-myproject.infra.openshift.com/ruby-hello-world.git  
+   $ git remote add openshift http://git-myproject.router.default.svc.cluster.local/ruby-hello-world.git  
 
    # push the code to the git server
    $ git push openshift master
@@ -137,25 +137,25 @@ protocol to avoid transmission of source in plain text.
    apiVersion: v1
    kind: Route
    metadata:
-     name: gitserver
+     name: git
    spec:
-     host: gitserver-myproject.infra.openshift.com
+     host: git-myproject.router.default.svc.cluster.local
      tls:
        termination: edge
      to:
        kind: Service
-       name: gitserver
+       name: git
    ```
 
 2. If using a private certificate authority, configure your git client to use the private ca.crt file:
 
    ```sh
-   $ git config --global http.https://gitserver-myproject.infra.openshift.com.sslCAInfo /path/to/ca.crt
+   $ git config --global http.https://git-myproject.router.default.svc.cluster.local.sslCAInfo /path/to/ca.crt
    ```
 
    where the key is http.[git server URL].sslCAInfo
 
-3. Disable anonymous cloning. By default the gitserver will allow anonymous cloning to make it easier to 
+3. Disable anonymous cloning. By default the git server will allow anonymous cloning to make it easier to
    run builds without having to specify a secret. You can disable this by setting the `ALLOW_ANON_GIT_PULL`
    environment variable to `false`.
 
@@ -170,7 +170,7 @@ protocol to avoid transmission of source in plain text.
 Authentication
 --------------
 
-By default, the gitserver will authenticate using OpenShift user or service account credentials. For a user,
+By default, the git server will authenticate using OpenShift user or service account credentials. For a user,
 the credentials are the user name, and the user's token (from `oc whoami -t`). For a service account, the user
 name is the service account name and the password is the service account token. The token can
 be one of the 2 tokens created with the service account and stored in the service account secrets. These can 
@@ -199,7 +199,7 @@ The following command will add an environment variable to clone the openshift/ru
 it a name of `helloworld` inside the Git Server.
 
 ```sh
-$ oc set env dc/gitserver GIT_INITIAL_CLONE_1="https://github.com/openshift/ruby-hello-world.git;helloworld"
+$ oc set env dc/git GIT_INITIAL_CLONE_1="https://github.com/openshift/ruby-hello-world.git;helloworld"
 ```
 
 Automatically Starting Builds
@@ -221,3 +221,26 @@ metadata:
 **NOTE**: A build will be started for the BuildConfig matching the name of the repository and for any BuildConfig 
 that has an annotation pointing to the source repository. If there is a BuildConfig that has a matching name but
 has an annotation pointing to a different repository, a build will not be invoked for it.
+
+Build Strategy
+--------------
+
+When automatically starting a build, the git server will create a Docker type build if a Dockerfile is present
+in the repository. Otherwise, it will attempt a source type build. To force the git server to always use one
+strategy, set the BUILD_STRATEGY environment variable.
+
+Setting the BUILD_STRATEGY to `docker` will force new builds to be created with the Docker strategy:
+
+```sh
+oc set env dc/git BUILD_STRATEGY=docker
+```
+
+For OpenShift online which does not allow Docker type builds, you will need to set the strategy to `source` 
+if your repository contains a `Dockerfile`:
+
+```sh
+oc set env dc/git BUILD_STRATEGY=source
+```
+
+Valid values for BUILD_STRATEGY are "" (empty string), `source`, and `docker`.
+

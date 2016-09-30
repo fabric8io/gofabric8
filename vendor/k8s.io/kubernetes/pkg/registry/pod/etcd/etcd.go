@@ -32,7 +32,7 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/registry/cachesize"
 	"k8s.io/kubernetes/pkg/registry/generic"
-	etcdgeneric "k8s.io/kubernetes/pkg/registry/generic/etcd"
+	"k8s.io/kubernetes/pkg/registry/generic/registry"
 	"k8s.io/kubernetes/pkg/registry/pod"
 	podrest "k8s.io/kubernetes/pkg/registry/pod/rest"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -53,7 +53,7 @@ type PodStorage struct {
 
 // REST implements a RESTStorage for pods against etcd
 type REST struct {
-	*etcdgeneric.Etcd
+	*registry.Store
 	proxyTransport http.RoundTripper
 }
 
@@ -65,14 +65,14 @@ func NewStorage(opts generic.RESTOptions, k client.ConnectionInfoGetter, proxyTr
 	storageInterface := opts.Decorator(
 		opts.Storage, cachesize.GetWatchCacheSizeByResource(cachesize.Pods), &api.Pod{}, prefix, pod.Strategy, newListFunc)
 
-	store := &etcdgeneric.Etcd{
+	store := &registry.Store{
 		NewFunc:     func() runtime.Object { return &api.Pod{} },
 		NewListFunc: newListFunc,
 		KeyRootFunc: func(ctx api.Context) string {
-			return etcdgeneric.NamespaceKeyRootFunc(ctx, prefix)
+			return registry.NamespaceKeyRootFunc(ctx, prefix)
 		},
 		KeyFunc: func(ctx api.Context, name string) (string, error) {
-			return etcdgeneric.NamespaceKeyFunc(ctx, prefix, name)
+			return registry.NamespaceKeyFunc(ctx, prefix, name)
 		},
 		ObjectNameFunc: func(obj runtime.Object) (string, error) {
 			return obj.(*api.Pod).Name, nil
@@ -116,7 +116,7 @@ func (r *REST) ResourceLocation(ctx api.Context, name string) (*url.URL, http.Ro
 
 // BindingREST implements the REST endpoint for binding pods to nodes when etcd is in use.
 type BindingREST struct {
-	store *etcdgeneric.Etcd
+	store *registry.Store
 }
 
 // New creates a new binding resource
@@ -166,6 +166,10 @@ func (r *BindingREST) setPodHostAndAnnotations(ctx api.Context, podID, oldMachin
 		for k, v := range annotations {
 			pod.Annotations[k] = v
 		}
+		api.UpdatePodCondition(&pod.Status, &api.PodCondition{
+			Type:   api.PodScheduled,
+			Status: api.ConditionTrue,
+		})
 		finalPod = pod
 		return pod, nil
 	}))
@@ -186,7 +190,7 @@ func (r *BindingREST) assignPod(ctx api.Context, podID string, machine string, a
 
 // StatusREST implements the REST endpoint for changing the status of a pod.
 type StatusREST struct {
-	store *etcdgeneric.Etcd
+	store *registry.Store
 }
 
 // New creates a new pod resource
@@ -194,7 +198,12 @@ func (r *StatusREST) New() runtime.Object {
 	return &api.Pod{}
 }
 
+// Get retrieves the object from the storage. It is required to support Patch.
+func (r *StatusREST) Get(ctx api.Context, name string) (runtime.Object, error) {
+	return r.store.Get(ctx, name)
+}
+
 // Update alters the status subset of an object.
-func (r *StatusREST) Update(ctx api.Context, obj runtime.Object) (runtime.Object, bool, error) {
-	return r.store.Update(ctx, obj)
+func (r *StatusREST) Update(ctx api.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
+	return r.store.Update(ctx, name, objInfo)
 }

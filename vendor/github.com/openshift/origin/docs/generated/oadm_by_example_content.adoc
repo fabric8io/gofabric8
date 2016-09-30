@@ -57,6 +57,33 @@ Encrypt data with AES-256-CBC encryption
 ====
 
 
+== oadm completion
+Output shell completion code for the given shell (bash or zsh)
+
+====
+
+[options="nowrap"]
+----
+  # Generate the oadm completion code for bash
+  oadm completion bash > bash_completion.sh
+  source bash_completion.sh
+
+  # The above example depends on the bash-completion framework.
+  It must be sourced before sourcing the openshift cli completion, i.e. on the Mac:
+
+  brew install bash-completion
+  source $(brew --prefix)/etc/bash_completion
+  oadm completion bash > bash_completion.sh
+  source bash_completion.sh
+
+  # In zsh*, the following will load openshift cli zsh completion:
+  source <(oadm completion zsh)
+
+  * zsh completions are only supported in versions of zsh >= 5.2
+----
+====
+
+
 == oadm config
 Change configuration files for the client
 
@@ -150,6 +177,37 @@ Displays merged kubeconfig settings or a specified kubeconfig file.
   
   # Get the password for the e2e user
   oadm config view -o jsonpath='{.users[?(@.name == "e2e")].user.password}'
+----
+====
+
+
+== oadm cordon
+Mark node as unschedulable
+
+====
+
+[options="nowrap"]
+----
+# Mark node "foo" as unschedulable.
+oadm cordon foo
+
+----
+====
+
+
+== oadm drain
+Drain node in preparation for maintenance
+
+====
+
+[options="nowrap"]
+----
+# Drain node "foo", even if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet on it.
+$ oadm drain foo --force
+
+# As above, but abort if there are pods not managed by a ReplicationController, ReplicaSet, Job, or DaemonSet, and use a grace period of 15 minutes.
+$ oadm drain foo --grace-period=900
+
 ----
 ====
 
@@ -288,11 +346,81 @@ Manage nodes - list pods, evacuate, or mark ready
 	# Migrate selected pods
 	oadm manage-node <mynode> --evacuate --pod-selector="<service=myapp>"
 
+	# Migrate selected pods, use a grace period of 60 seconds
+	oadm manage-node <mynode> --evacuate --grace-period=60 --pod-selector="<service=myapp>"
+
+	# Migrate selected pods not backed by replication controller
+	oadm manage-node <mynode> --evacuate --force --pod-selector="<service=myapp>"
+
 	# Show pods that will be migrated
 	oadm manage-node <mynode> --evacuate --dry-run --pod-selector="<service=myapp>"
 
 	# List all pods on given nodes
 	oadm manage-node <mynode1> <mynode2> --list-pods
+----
+====
+
+
+== oadm migrate image-references
+Update embedded Docker image references
+
+====
+
+[options="nowrap"]
+----
+  # Perform a dry-run of migrating all "docker.io" references to "myregistry.com"
+  oadm migrate image-references docker.io/*=myregistry.com/*
+
+  # To actually perform the migration, the confirm flag must be appended
+  oadm migrate image-references docker.io/*=myregistry.com/* --confirm
+
+  # To see more details of what will be migrated, use the loglevel and output flags
+  oadm migrate image-references docker.io/*=myregistry.com/* --loglevel=2 -o yaml
+
+  # Migrate from a service IP to an internal service DNS name
+  oadm migrate image-references 172.30.1.54/*=registry.openshift.svc.cluster.local/*
+
+  # Migrate from a service IP to an internal service DNS name for all deployment configs and builds
+  oadm migrate image-references 172.30.1.54/*=registry.openshift.svc.cluster.local/* --include=buildconfigs,deploymentconfigs
+----
+====
+
+
+== oadm migrate storage
+Update the stored version of API objects
+
+====
+
+[options="nowrap"]
+----
+  # Perform a dry-run of updating all objects
+  oadm migrate storage
+
+  # To actually perform the update, the confirm flag must be appended
+  oadm migrate storage --confirm
+
+  # Only migrate pods
+  oadm migrate storage --include=pods --confirm
+
+  # Only pods that are in namespaces starting with "bar"
+  oadm migrate storage --include=pods --confirm --from-key=bar/ --to-key=bar/\xFF
+
+----
+====
+
+
+== oadm pod-network isolate-projects
+Isolate project network
+
+====
+
+[options="nowrap"]
+----
+	# Provide isolation for project p1
+	oadm pod-network isolate-projects <p1>
+
+	# Allow all projects with label name=top-secret to have their own isolated project network
+	oadm pod-network isolate-projects --selector='name=top-secret'
 ----
 ====
 
@@ -305,10 +433,10 @@ Join project network
 [options="nowrap"]
 ----
 	# Allow project p2 to use project p1 network
-	$ oadm pod-network join-projects --to=<p1> <p2>
+	oadm pod-network join-projects --to=<p1> <p2>
 
 	# Allow all projects with label name=top-secret to use project p1 network
-	$ oadm pod-network join-projects --to=<p1> --selector='name=top-secret'
+	oadm pod-network join-projects --to=<p1> --selector='name=top-secret'
 ----
 ====
 
@@ -321,25 +449,25 @@ Make project network global
 [options="nowrap"]
 ----
 	# Allow project p1 to access all pods in the cluster and vice versa
-	$ oadm pod-network make-projects-global <p1>
+	oadm pod-network make-projects-global <p1>
 
 	# Allow all projects with label name=share to access all pods in the cluster and vice versa
-	$ oadm pod-network make-projects-global --selector='name=share'
+	oadm pod-network make-projects-global --selector='name=share'
 ----
 ====
 
 
 == oadm policy add-role-to-user
-Add users or serviceaccounts to a role in the current project
+Add a role to users or serviceaccounts for the current project
 
 ====
 
 [options="nowrap"]
 ----
-  # Add the 'view' role to user1 in the current project
+  # Add the 'view' role to user1 for the current project
   oadm policy add-role-to-user view user1
 
-  # Add the 'edit' role to serviceaccount1 in the current project
+  # Add the 'edit' role to serviceaccount1 for the current project
   oadm policy add-role-to-user edit -z serviceaccount1
 ----
 ====
@@ -498,6 +626,13 @@ Remove unreferenced images
 
   # To actually perform the prune operation, the confirm flag must be appended
   oadm prune images --keep-tag-revisions=3 --keep-younger-than=60m --confirm
+
+  # See, what the prune command would delete if we're interested in removing images
+  # exceeding currently set LimitRanges ('openshift.io/Image')
+  oadm prune images --prune-over-size-limit
+
+  # To actually perform the prune operation, the confirm flag must be appended
+  oadm prune images --prune-over-size-limit --confirm
 ----
 ====
 
@@ -520,6 +655,9 @@ Install the integrated Docker registry
 
   # Use a different registry image
   oadm registry --images=myrepo/docker-registry:mytag
+
+  # Enforce quota and limits on images
+  oadm registry --enforce-quota
 ----
 ====
 
@@ -546,6 +684,62 @@ Install a router
   # Run the router with a hint to the underlying implementation to _not_ expose statistics.
   oadm router router-west --stats-port=0
   
+----
+====
+
+
+== oadm taint
+Update the taints on one or more nodes
+
+====
+
+[options="nowrap"]
+----
+# Update node 'foo' with a taint with key 'dedicated' and value 'special-user' and effect 'NoSchedule'.
+# If a taint with that key already exists, its value and effect are replaced as specified.
+oadm taint nodes foo dedicated=special-user:NoSchedule
+# Remove from node 'foo' the taint with key 'dedicated' if one exists.
+oadm taint nodes foo dedicated-
+----
+====
+
+
+== oadm top images
+Show usage statistics for Images
+
+====
+
+[options="nowrap"]
+----
+  # Show usage statistics for Images
+  oadm top images
+----
+====
+
+
+== oadm top imagestreams
+Show usage statistics for ImageStreams
+
+====
+
+[options="nowrap"]
+----
+  # Show usage statistics for ImageStreams
+  oadm top imagestreams
+----
+====
+
+
+== oadm uncordon
+Mark node as schedulable
+
+====
+
+[options="nowrap"]
+----
+# Mark node "foo" as schedulable.
+$ oadm uncordon foo
+
 ----
 ====
 

@@ -31,9 +31,7 @@ type gLogWriter struct {
 }
 
 func (w *gLogWriter) Write(p []byte) (n int, err error) {
-	// TODO FIXME - whats the glide magic?
-	// glog.V(w.level).InfoDepth(2, string(p))
-	glog.Info(string(p))
+	glog.V(w.level).InfoDepth(2, string(p))
 
 	return len(p), nil
 }

@@ -23,6 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	storeerr "k8s.io/kubernetes/pkg/api/errors/storage"
+	"k8s.io/kubernetes/pkg/api/rest"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/fields"
@@ -33,6 +34,7 @@ import (
 	"k8s.io/kubernetes/pkg/storage/etcd/etcdtest"
 	etcdtesting "k8s.io/kubernetes/pkg/storage/etcd/testing"
 	"k8s.io/kubernetes/pkg/util/diff"
+	"k8s.io/kubernetes/pkg/util/intstr"
 )
 
 const defaultReplicas = 100
@@ -55,6 +57,13 @@ func validNewDeployment() *extensions.Deployment {
 		},
 		Spec: extensions.DeploymentSpec{
 			Selector: &unversioned.LabelSelector{MatchLabels: map[string]string{"a": "b"}},
+			Strategy: extensions.DeploymentStrategy{
+				Type: extensions.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &extensions.RollingUpdateDeployment{
+					MaxSurge:       intstr.FromInt(1),
+					MaxUnavailable: intstr.FromInt(1),
+				},
+			},
 			Template: api.PodTemplateSpec{
 				ObjectMeta: api.ObjectMeta{
 					Labels: map[string]string{"a": "b"},
@@ -84,7 +93,7 @@ var validDeployment = *validNewDeployment()
 func TestCreate(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Deployment.Etcd)
+	test := registrytest.New(t, storage.Deployment.Store)
 	deployment := validNewDeployment()
 	deployment.ObjectMeta = api.ObjectMeta{}
 	test.TestCreate(
@@ -103,7 +112,7 @@ func TestCreate(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Deployment.Etcd)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestUpdate(
 		// valid
 		validNewDeployment(),
@@ -135,28 +144,28 @@ func TestUpdate(t *testing.T) {
 func TestDelete(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Deployment.Etcd)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestDelete(validNewDeployment())
 }
 
 func TestGet(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Deployment.Etcd)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestGet(validNewDeployment())
 }
 
 func TestList(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Deployment.Etcd)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestList(validNewDeployment())
 }
 
 func TestWatch(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Deployment.Etcd)
+	test := registrytest.New(t, storage.Deployment.Store)
 	test.TestWatch(
 		validNewDeployment(),
 		// matching labels
@@ -185,7 +194,7 @@ func TestScaleGet(t *testing.T) {
 	var deployment extensions.Deployment
 	ctx := api.WithNamespace(api.NewContext(), namespace)
 	key := etcdtest.AddPrefix("/deployments/" + namespace + "/" + name)
-	if err := storage.Deployment.Storage.Set(ctx, key, &validDeployment, &deployment, 0); err != nil {
+	if err := storage.Deployment.Storage.Create(ctx, key, &validDeployment, &deployment, 0); err != nil {
 		t.Fatalf("error setting new deployment (key: %s) %v: %v", key, validDeployment, err)
 	}
 
@@ -222,10 +231,10 @@ func TestScaleUpdate(t *testing.T) {
 	var deployment extensions.Deployment
 	ctx := api.WithNamespace(api.NewContext(), namespace)
 	key := etcdtest.AddPrefix("/deployments/" + namespace + "/" + name)
-	if err := storage.Deployment.Storage.Set(ctx, key, &validDeployment, &deployment, 0); err != nil {
+	if err := storage.Deployment.Storage.Create(ctx, key, &validDeployment, &deployment, 0); err != nil {
 		t.Fatalf("error setting new deployment (key: %s) %v: %v", key, validDeployment, err)
 	}
-	replicas := 12
+	replicas := int32(12)
 	update := extensions.Scale{
 		ObjectMeta: api.ObjectMeta{Name: name, Namespace: namespace},
 		Spec: extensions.ScaleSpec{
@@ -233,7 +242,7 @@ func TestScaleUpdate(t *testing.T) {
 		},
 	}
 
-	if _, _, err := storage.Scale.Update(ctx, &update); err != nil {
+	if _, _, err := storage.Scale.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update, api.Scheme)); err != nil {
 		t.Fatalf("error updating scale %v: %v", update, err)
 	}
 	obj, err := storage.Scale.Get(ctx, name)
@@ -248,7 +257,7 @@ func TestScaleUpdate(t *testing.T) {
 	update.ResourceVersion = deployment.ResourceVersion
 	update.Spec.Replicas = 15
 
-	if _, _, err = storage.Scale.Update(ctx, &update); err != nil && !errors.IsConflict(err) {
+	if _, _, err = storage.Scale.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update, api.Scheme)); err != nil && !errors.IsConflict(err) {
 		t.Fatalf("unexpected error, expecting an update conflict but got %v", err)
 	}
 }
@@ -259,7 +268,7 @@ func TestStatusUpdate(t *testing.T) {
 
 	ctx := api.WithNamespace(api.NewContext(), namespace)
 	key := etcdtest.AddPrefix("/deployments/" + namespace + "/" + name)
-	if err := storage.Deployment.Storage.Set(ctx, key, &validDeployment, nil, 0); err != nil {
+	if err := storage.Deployment.Storage.Create(ctx, key, &validDeployment, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	update := extensions.Deployment{
@@ -272,7 +281,7 @@ func TestStatusUpdate(t *testing.T) {
 		},
 	}
 
-	if _, _, err := storage.Status.Update(ctx, &update); err != nil {
+	if _, _, err := storage.Status.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update, api.Scheme)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	obj, err := storage.Deployment.Get(ctx, name)

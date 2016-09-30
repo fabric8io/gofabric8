@@ -51,11 +51,12 @@ CLUSTER_IP_RANGE="${CLUSTER_IP_RANGE:-10.246.0.0/16}"
 SERVICE_CLUSTER_IP_RANGE=10.247.0.0/16  # formerly PORTAL_NET
 
 # Since this isn't exposed on the network, default to a simple user/passwd
-MASTER_USER=vagrant
-MASTER_PASSWD=vagrant
+MASTER_USER="${MASTER_USER:-vagrant}"
+MASTER_PASSWD="${MASTER_PASSWD:-vagrant}"
 
 # Admission Controllers to invoke prior to persisting objects in cluster
-ADMISSION_CONTROL=NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota
+# If we included ResourceQuota, we should keep it at the end of the list to prevent incremeting quota usage prematurely.
+ADMISSION_CONTROL=NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuota
 
 # Optional: Enable node logging.
 ENABLE_NODE_LOGGING=false
@@ -76,7 +77,7 @@ ENABLE_CLUSTER_MONITORING="${KUBE_ENABLE_CLUSTER_MONITORING:-influxdb}"
 # TODO Enable selinux when Fedora 21 repositories get an updated docker package
 #   see https://bugzilla.redhat.com/show_bug.cgi?id=1216151
 #EXTRA_DOCKER_OPTS="${EXTRA_DOCKER_OPTS:-} -b=cbr0 --selinux-enabled --insecure-registry 10.0.0.0/8"
-EXTRA_DOCKER_OPTS="${EXTRA_DOCKER_OPTS:-} --insecure-registry 10.0.0.0/8"
+EXTRA_DOCKER_OPTS="${EXTRA_DOCKER_OPTS:-} --insecure-registry 10.0.0.0/8 -s overlay"
 
 # Flag to tell the kubelet to enable CFS quota support
 ENABLE_CPU_CFS_QUOTA="${KUBE_ENABLE_CPU_CFS_QUOTA:-true}"
@@ -110,3 +111,6 @@ OPENCONTRAIL_KUBERNETES_TAG="${OPENCONTRAIL_KUBERNETES_TAG:-master}"
 OPENCONTRAIL_PUBLIC_SUBNET="${OPENCONTRAIL_PUBLIC_SUBNET:-10.1.0.0/16}"
 # Optional: if set to true, kube-up will configure the cluster to run e2e tests.
 E2E_STORAGE_TEST_ENVIRONMENT=${KUBE_E2E_STORAGE_TEST_ENVIRONMENT:-false}
+
+# Default fallback NETWORK_IF_NAME, will be used in case when no 'VAGRANT-BEGIN' comments were defined in network-script
+export DEFAULT_NETWORK_IF_NAME="eth0"

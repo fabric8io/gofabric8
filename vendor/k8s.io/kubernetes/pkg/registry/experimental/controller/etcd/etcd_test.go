@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/rest"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/registry/generic"
@@ -54,7 +55,7 @@ var validPodTemplate = api.PodTemplate{
 	},
 }
 
-var validReplicas = 8
+var validReplicas = int32(8)
 
 var validControllerSpec = api.ReplicationControllerSpec{
 	Replicas: validReplicas,
@@ -86,7 +87,7 @@ func TestGet(t *testing.T) {
 
 	ctx := api.WithNamespace(api.NewContext(), "test")
 	key := etcdtest.AddPrefix("/controllers/test/foo")
-	if err := si.Set(ctx, key, &validController, nil, 0); err != nil {
+	if err := si.Create(ctx, key, &validController, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	obj, err := storage.Get(ctx, "foo")
@@ -105,10 +106,10 @@ func TestUpdate(t *testing.T) {
 
 	ctx := api.WithNamespace(api.NewContext(), "test")
 	key := etcdtest.AddPrefix("/controllers/test/foo")
-	if err := si.Set(ctx, key, &validController, nil, 0); err != nil {
+	if err := si.Create(ctx, key, &validController, nil, 0); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	replicas := 12
+	replicas := int32(12)
 	update := extensions.Scale{
 		ObjectMeta: api.ObjectMeta{Name: "foo", Namespace: "test"},
 		Spec: extensions.ScaleSpec{
@@ -116,7 +117,7 @@ func TestUpdate(t *testing.T) {
 		},
 	}
 
-	if _, _, err := storage.Update(ctx, &update); err != nil {
+	if _, _, err := storage.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update, api.Scheme)); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	obj, err := storage.Get(ctx, "foo")

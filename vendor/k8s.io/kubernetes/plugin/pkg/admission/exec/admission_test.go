@@ -24,7 +24,6 @@ import (
 	"k8s.io/kubernetes/pkg/api/rest"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
 	"k8s.io/kubernetes/pkg/client/testing/core"
-	"k8s.io/kubernetes/pkg/client/unversioned/testclient"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -86,12 +85,35 @@ func TestAdmission(t *testing.T) {
 	for _, tc := range testCases {
 		testAdmission(t, tc.pod, handler, true)
 	}
+
+	// run against an init container
+	handler = &denyExec{
+		Handler:    admission.NewHandler(admission.Connect),
+		hostIPC:    true,
+		hostPID:    true,
+		privileged: true,
+	}
+
+	for _, tc := range testCases {
+		tc.pod.Spec.InitContainers = tc.pod.Spec.Containers
+		tc.pod.Spec.Containers = nil
+		testAdmission(t, tc.pod, handler, tc.shouldAccept)
+	}
+
+	// run with a permissive config and all cases should pass
+	handler.privileged = false
+	handler.hostPID = false
+	handler.hostIPC = false
+
+	for _, tc := range testCases {
+		testAdmission(t, tc.pod, handler, true)
+	}
 }
 
 func testAdmission(t *testing.T, pod *api.Pod, handler *denyExec, shouldAccept bool) {
 	mockClient := &fake.Clientset{}
 	mockClient.AddReactor("get", "pods", func(action core.Action) (bool, runtime.Object, error) {
-		if action.(testclient.GetAction).GetName() == pod.Name {
+		if action.(core.GetAction).GetName() == pod.Name {
 			return true, pod, nil
 		}
 		t.Errorf("Unexpected API call: %#v", action)
@@ -103,7 +125,7 @@ func testAdmission(t *testing.T, pod *api.Pod, handler *denyExec, shouldAccept b
 	// pods/exec
 	{
 		req := &rest.ConnectRequest{Name: pod.Name, ResourcePath: "pods/exec"}
-		err := handler.Admit(admission.NewAttributesRecord(req, api.Kind("Pod").WithVersion("version"), "test", "name", api.Resource("pods").WithVersion("version"), "exec", admission.Connect, nil))
+		err := handler.Admit(admission.NewAttributesRecord(req, nil, api.Kind("Pod").WithVersion("version"), "test", "name", api.Resource("pods").WithVersion("version"), "exec", admission.Connect, nil))
 		if shouldAccept && err != nil {
 			t.Errorf("Unexpected error returned from admission handler: %v", err)
 		}
@@ -115,7 +137,7 @@ func testAdmission(t *testing.T, pod *api.Pod, handler *denyExec, shouldAccept b
 	// pods/attach
 	{
 		req := &rest.ConnectRequest{Name: pod.Name, ResourcePath: "pods/attach"}
-		err := handler.Admit(admission.NewAttributesRecord(req, api.Kind("Pod").WithVersion("version"), "test", "name", api.Resource("pods").WithVersion("version"), "attach", admission.Connect, nil))
+		err := handler.Admit(admission.NewAttributesRecord(req, nil, api.Kind("Pod").WithVersion("version"), "test", "name", api.Resource("pods").WithVersion("version"), "attach", admission.Connect, nil))
 		if shouldAccept && err != nil {
 			t.Errorf("Unexpected error returned from admission handler: %v", err)
 		}
@@ -172,6 +194,13 @@ func TestDenyExecOnPrivileged(t *testing.T) {
 		privileged: true,
 	}
 	for _, tc := range testCases {
+		testAdmission(t, tc.pod, handler, tc.shouldAccept)
+	}
+
+	// test init containers
+	for _, tc := range testCases {
+		tc.pod.Spec.InitContainers = tc.pod.Spec.Containers
+		tc.pod.Spec.Containers = nil
 		testAdmission(t, tc.pod, handler, tc.shouldAccept)
 	}
 }

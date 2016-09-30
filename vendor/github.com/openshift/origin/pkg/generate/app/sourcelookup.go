@@ -259,7 +259,7 @@ func (r *SourceRepository) RemoteURL() (*url.URL, bool, error) {
 	case "file":
 		gitRepo := git.NewRepository()
 		remote, ok, err := gitRepo.GetOriginURL(r.url.Path)
-		if err != nil {
+		if err != nil && err != git.ErrGitNotAvailable {
 			return nil, false, err
 		}
 		if !ok {
@@ -269,7 +269,8 @@ func (r *SourceRepository) RemoteURL() (*url.URL, bool, error) {
 		if len(ref) > 0 {
 			remote = fmt.Sprintf("%s#%s", remote, ref)
 		}
-		if r.remoteURL, err = url.Parse(remote); err != nil {
+
+		if r.remoteURL, err = git.ParseRepository(remote); err != nil {
 			return nil, false, err
 		}
 	default:
@@ -344,7 +345,7 @@ func (r *SourceRepository) AddBuildSecrets(secrets []string, isDockerBuild bool)
 		if isDockerBuild && filepath.IsAbs(in.Destination) {
 			return fmt.Errorf("for the docker strategy, the secret destination directory %q must be a relative path", in.Destination)
 		}
-		if ok, _ := validation.ValidateSecretName(in.Source, false); !ok {
+		if len(validation.ValidateSecretName(in.Source, false)) != 0 {
 			return fmt.Errorf("the %q must be valid secret name", in.Source)
 		}
 		if secretExists(in.Source) {

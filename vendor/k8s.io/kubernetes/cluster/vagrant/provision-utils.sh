@@ -14,15 +14,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+function enable-accounting() {
+  mkdir -p /etc/systemd/system.conf.d/
+  cat <<EOF >/etc/systemd/system.conf.d/kubernetes-accounting.conf
+[Manager]
+DefaultCPUAccounting=yes
+DefaultMemoryAccounting=yes  
+EOF
+  systemctl daemon-reload
+}
+
 function prepare-package-manager() {
   echo "Prepare package manager"
 
   # Useful if a mirror is broken or slow
   echo "fastestmirror=True" >> /etc/dnf/dnf.conf
+}
 
-  # In Fedora 23, installed version does not work with Salt
-  # Cf. https://github.com/saltstack/salt/issues/31001
-  dnf update -y dnf dnf-plugins-core
+
+function add-volume-support() {
+  echo "Adding nfs volume support"
+
+  # we need nfs-utils to support volumes
+  dnf install -y nfs-utils
 }
 
 function write-salt-config() {
@@ -45,6 +59,7 @@ enable_cluster_dns: '$(echo "$ENABLE_CLUSTER_DNS" | sed -e "s/'/''/g")'
 dns_replicas: '$(echo "$DNS_REPLICAS" | sed -e "s/'/''/g")'
 dns_server: '$(echo "$DNS_SERVER_IP" | sed -e "s/'/''/g")'
 dns_domain: '$(echo "$DNS_DOMAIN" | sed -e "s/'/''/g")'
+federations_domain_map: ''
 instance_prefix: '$(echo "$INSTANCE_PREFIX" | sed -e "s/'/''/g")'
 admission_control: '$(echo "$ADMISSION_CONTROL" | sed -e "s/'/''/g")'
 enable_cpu_cfs_quota: '$(echo "$ENABLE_CPU_CFS_QUOTA" | sed -e "s/'/''/g")'
@@ -105,8 +120,10 @@ function install-salt() {
   popd
 
   if ! which salt-call >/dev/null 2>&1; then
-    # Install salt binaries
-    curl -sS -L --connect-timeout 20 --retry 6 --retry-delay 10 https://bootstrap.saltstack.com | sh -s
+    # Install salt from official repositories.
+    # Need to enable testing-repos to get version of salt with fix for dnf-core-plugins
+    dnf config-manager --set-enabled updates-testing
+    dnf install -y salt-minion
 
     # Fedora >= 23 includes salt packages but the bootstrap is
     # creating configuration for a (non-existent) salt repo anyway.

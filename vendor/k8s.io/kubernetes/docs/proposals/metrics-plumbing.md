@@ -1,34 +1,5 @@
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-
-<h2>PLEASE NOTE: This document applies to the HEAD of the source tree</h2>
-
-If you are using a released version of Kubernetes, you should
-refer to the docs that go with that version.
-
-<!-- TAG RELEASE_LINK, added by the munger automatically -->
-<strong>
-The latest release of this document can be found
-[here](http://releases.k8s.io/release-1.2/docs/proposals/metrics-plumbing.md).
-
-Documentation for other releases can be found at
-[releases.k8s.io](http://releases.k8s.io).
-</strong>
---
-
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
@@ -94,7 +65,7 @@ Heapster stores a days worth of historical metrics. Heapster will fetch data fro
 
 To make heapster APIs compatible with Kubernetes API requirements, heapster will have to incorporate the API server library. Until that is possible, we will run a secondary API server binary that supports the metrics APIs being consumed by other components. The initial plan is to use etcd to store the most recent metrics. Eventually, we would like to get rid of etcd for metrics and make heapster act as a backend to the api-server.
 
-This is the current plan for supporting node and pod metrics API as described in this [proposal](compute-resource-metrics-api.md).
+This is the current plan for supporting node and pod metrics API as described in this [proposal](resource-metrics-api.md).
 
 There will be proposals in the future for adding more heapster metrics APIs in Kubernetes.
 
@@ -128,6 +99,13 @@ Some of the specific work items include,
 ### How can you contribute?
 
 We are tracking heapster work items using [milestones](https://github.com/kubernetes/heapster/milestones) in the heapster repo.
+
+
+
+
+<!-- BEGIN MUNGE: IS_VERSIONED -->
+<!-- TAG IS_VERSIONED -->
+<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

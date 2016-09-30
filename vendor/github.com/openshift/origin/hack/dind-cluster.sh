@@ -121,7 +121,7 @@ function build-images() {
   # separation of image build from cluster creation.
   if [[ "${BUILD_IMAGES}" = "1" ]]; then
     echo "Building container images"
-    build-image "${ORIGIN_ROOT}/images/dind" "${DIND_IMAGE}"
+    build-image "${OS_ROOT}/images/dind" "${DIND_IMAGE}"
   fi
 }
 
@@ -149,6 +149,8 @@ function start() {
   sudo modprobe openvswitch
   sudo modprobe br_netfilter 2> /dev/null || true
   sudo sysctl -w net.bridge.bridge-nf-call-iptables=0 > /dev/null
+  # overlayfs, if available, will be faster than vfs
+  sudo modprobe overlay 2> /dev/null || true
   mkdir -p "${CONFIG_ROOT}"
 
   if [[ "${SKIP_BUILD}" = "true" ]]; then
@@ -159,9 +161,12 @@ function start() {
 
   ## Create containers
   echo "Launching containers"
-  local root_volume="-v ${ORIGIN_ROOT}:${DEPLOYED_ROOT}"
+  local root_volume="-v ${OS_ROOT}:${DEPLOYED_ROOT}"
   local config_volume="-v ${CONFIG_ROOT}:${DEPLOYED_CONFIG_ROOT}"
-  local base_run_cmd="${DOCKER_CMD} run -dt ${root_volume} ${config_volume}"
+  local volumes="${root_volume} ${config_volume}"
+  # systemd requires RTMIN+3 to shutdown properly
+  local stop="--stop-signal=$(kill -l RTMIN+3)"
+  local base_run_cmd="${DOCKER_CMD} run -dt ${stop} ${volumes}"
 
   local master_cid="$(${base_run_cmd} --privileged --name="${MASTER_NAME}" \
       --hostname="${MASTER_NAME}" "${DIND_IMAGE}")"
@@ -224,7 +229,7 @@ ${DEPLOYED_CONFIG_ROOT}"
 
   local rc_file="dind-${INSTANCE_PREFIX}.rc"
   local admin_config="$(os::provision::get-admin-config ${CONFIG_ROOT})"
-  local bin_path="$(os::build::get-bin-output-path "${ORIGIN_ROOT}")"
+  local bin_path="$(os::build::get-bin-output-path "${OS_ROOT}")"
   cat >"${rc_file}" <<EOF
 export KUBECONFIG=${admin_config}
 export PATH=\$PATH:${bin_path}
@@ -233,7 +238,7 @@ EOF
   # Disable the sdn node as late as possible to allow time for the
   # node to register itself.
   if [[ "${SDN_NODE}" = "true" ]]; then
-    os::provision::disable-node "${ORIGIN_ROOT}" "${CONFIG_ROOT}" \
+    os::provision::disable-node "${OS_ROOT}" "${CONFIG_ROOT}" \
         "${SDN_NODE_NAME}"
   fi
 
@@ -269,17 +274,15 @@ function stop() {
   # The container will have created configuration as root
   sudo rm -rf ${CONFIG_ROOT}/openshift.local.*
 
-  # Volume cleanup is not compatible with SELinux
-  check-selinux
-
   # Cleanup orphaned volumes
   #
   # See: https://github.com/jpetazzo/dind#important-warning-about-disk-usage
   #
   echo "Cleaning up volumes used by docker-in-docker daemons"
-  ${DOCKER_CMD} run -v /var/run/docker.sock:/var/run/docker.sock \
-    -v /var/lib/docker:/var/lib/docker --rm martin/docker-cleanup-volumes
-
+  local volume_ids=$(${DOCKER_CMD} volume ls -qf dangling=true)
+  if [[ "${volume_ids}" ]]; then
+    ${DOCKER_CMD} volume rm ${volume_ids}
+  fi
 }
 
 # Build and deploy openshift binaries to an existing cluster
@@ -368,7 +371,7 @@ case "${1:-""}" in
     build-images
     ;;
   config-host)
-    os::provision::set-os-env "${ORIGIN_ROOT}" "${CONFIG_ROOT}"
+    os::provision::set-os-env "${OS_ROOT}" "${CONFIG_ROOT}"
     ;;
   *)
     echo "Usage: $0 {start|stop|restart|redeploy|wait-for-cluster|build-images|config-host}"

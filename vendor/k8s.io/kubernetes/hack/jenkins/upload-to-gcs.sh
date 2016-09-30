@@ -85,7 +85,8 @@ function upload_version() {
     gsutil -q -h "Content-Type:application/json" cp -a "${gcs_acl}" <(
       echo "{"
       echo "    \"version\": \"${version}\","
-      echo "    \"timestamp\": ${timestamp}"
+      echo "    \"timestamp\": ${timestamp},"
+      echo "    \"jenkins-node\": \"${NODE_NAME:-}\""
       echo "}"
     ) "${json_file}" || continue
     break
@@ -109,6 +110,10 @@ function upload_artifacts_and_build_result() {
       echo "Uploading artifacts"
       gsutil -m -q -o "GSUtil:use_magicfile=True" cp -a "${gcs_acl}" -r -c \
         -z log,txt,xml "${artifacts_path}" "${gcs_build_path}/artifacts" || continue
+    fi
+    if [[ -e "${WORKSPACE}/build-log.txt" ]]; then
+      echo "Uploading build log"
+      gsutil -q cp -Z -a "${gcs_acl}" "${WORKSPACE}/build-log.txt" "${gcs_build_path}"
     fi
     # Mark this build as the latest completed.
     echo "Marking build ${BUILD_NUMBER} as the latest completed build"

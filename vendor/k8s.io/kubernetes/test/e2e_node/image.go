@@ -18,7 +18,6 @@ package e2e_node
 
 import (
 	"fmt"
-	"time"
 
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/dockertools"
@@ -41,32 +40,25 @@ func NewConformanceImage(containerRuntime string, image string) (ci ConformanceI
 
 //TODO: do not expose kubelet implementation details after we refactor the runtime API.
 func dockerRuntime() kubecontainer.Runtime {
-	dockerClient := dockertools.ConnectToDockerOrDie("")
+	dockerClient := dockertools.ConnectToDockerOrDie("", 0)
 	pm := kubepod.NewBasicPodManager(nil)
 	dm := dockertools.NewDockerManager(
 		dockerClient,
 		nil, nil, nil, pm, nil,
 		"", 0, 0, "",
 		nil, nil, nil, nil, nil, nil, nil,
-		false, nil, true, false, false,
+		false, nil, true, false, false, "",
 	)
 
 	return dm
 }
 
 func (ci *ConformanceImage) Pull() error {
-	err := ci.Runtime.PullImage(ci.Image, nil)
-	if err != nil {
-		return err
-	}
+	return ci.Runtime.PullImage(ci.Image, nil)
+}
 
-	if present, err := ci.Runtime.IsImagePresent(ci.Image); err != nil {
-		return err
-	} else if !present {
-		return fmt.Errorf("Failed to detect the pulled image :%s.", ci.Image.Image)
-	}
-
-	return nil
+func (ci *ConformanceImage) Present() (bool, error) {
+	return ci.Runtime.IsImagePresent(ci.Image)
 }
 
 func (ci *ConformanceImage) List() ([]string, error) {
@@ -82,23 +74,9 @@ func (ci *ConformanceImage) List() ([]string, error) {
 }
 
 func (ci *ConformanceImage) Remove() error {
-	ci.Runtime.GarbageCollect(kubecontainer.ContainerGCPolicy{MinAge: time.Second * 30, MaxPerPodContainer: 1, MaxContainers: 0})
+	return ci.Runtime.RemoveImage(ci.Image)
+}
 
-	var err error
-	for start := time.Now(); time.Since(start) < time.Minute*2; time.Sleep(time.Second * 30) {
-		if err = ci.Runtime.RemoveImage(ci.Image); err == nil {
-			break
-		}
-	}
-	if err != nil {
-		return err
-	}
-
-	if present, err := ci.Runtime.IsImagePresent(ci.Image); err != nil {
-		return err
-	} else if present {
-		return fmt.Errorf("Failed to remove the pulled image %s.", ci.Image.Image)
-	}
-
-	return nil
+func (ci *ConformanceImage) GetTag() string {
+	return ci.Image.Image
 }

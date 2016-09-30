@@ -13,12 +13,14 @@ type ServiceUnit struct {
 	// EndpointTable are endpoints that back the service, this translates into a final backend
 	// implementation for routers.
 	EndpointTable []Endpoint
-	// ServiceAliasConfigs is a collection of unique routes that support this service, keyed by host + path
-	ServiceAliasConfigs map[string]ServiceAliasConfig
 }
 
 // ServiceAliasConfig is a route for a service.  Uniquely identified by host + path.
 type ServiceAliasConfig struct {
+	// Name is the user-specified name of the route.
+	Name string
+	// Namespace is the namespace of the route.
+	Namespace string
 	// Host is a required host name ie. www.example.com
 	Host string
 	// Path is an optional path ie. www.example.com/myservice where "myservice" is the path
@@ -37,8 +39,16 @@ type ServiceAliasConfig struct {
 	// insecure connections to an edge-terminated route:
 	//   none (or disable), allow or redirect
 	InsecureEdgeTerminationPolicy routeapi.InsecureEdgeTerminationPolicyType
+
 	// Hash of the route name - used to obscure cookieId
 	RoutingKeyName string
+
+	// Annotations attached to this route
+	Annotations map[string]string
+
+	// ServiceUnitNames is a collection of services that support this route, keyed by service name
+	// and valued on the weight attached to it with respect to other entries in the map
+	ServiceUnitNames map[string]int32
 }
 
 type ServiceAliasConfigStatus string
@@ -59,12 +69,13 @@ type Certificate struct {
 
 // Endpoint is an internal representation of a k8s endpoint.
 type Endpoint struct {
-	ID         string
-	IP         string
-	Port       string
-	TargetName string
-	PortName   string
-	IdHash     string
+	ID            string
+	IP            string
+	Port          string
+	TargetName    string
+	PortName      string
+	IdHash        string
+	NoHealthCheck bool
 }
 
 // certificateManager provides the ability to write certificates for a ServiceAliasConfig

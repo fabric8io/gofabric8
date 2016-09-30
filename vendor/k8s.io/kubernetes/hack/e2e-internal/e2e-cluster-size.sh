@@ -29,4 +29,5 @@ source "${KUBE_ROOT}/cluster/kube-util.sh"
 
 prepare-e2e
 
+#TODO(colhom): spec and implement federated version of this
 ${KUBECTL} get nodes --no-headers | wc -l

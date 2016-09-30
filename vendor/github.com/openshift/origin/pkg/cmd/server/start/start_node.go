@@ -22,6 +22,7 @@ import (
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/docker"
 	utilflags "github.com/openshift/origin/pkg/cmd/util/flags"
+	sdnplugin "github.com/openshift/origin/pkg/sdn/plugin"
 	"github.com/openshift/origin/pkg/version"
 )
 
@@ -115,9 +116,9 @@ func (options *NodeOptions) Run(c *cobra.Command, args []string) {
 	if err := options.StartNode(); err != nil {
 		if kerrors.IsInvalid(err) {
 			if details := err.(*kerrors.StatusError).ErrStatus.Details; details != nil {
-				fmt.Fprintf(c.Out(), "Invalid %s %s\n", details.Kind, details.Name)
+				fmt.Fprintf(c.OutOrStderr(), "Invalid %s %s\n", details.Kind, details.Name)
 				for _, cause := range details.Causes {
-					fmt.Fprintf(c.Out(), "  %s: %s\n", cause.Field, cause.Message)
+					fmt.Fprintf(c.OutOrStderr(), "  %s: %s\n", cause.Field, cause.Message)
 				}
 				os.Exit(255)
 			}
@@ -198,7 +199,7 @@ func (o NodeOptions) RunNode() error {
 	validationResults := validation.ValidateNodeConfig(nodeConfig, nil)
 	if len(validationResults.Warnings) != 0 {
 		for _, warning := range validationResults.Warnings {
-			glog.Warningf("%v", warning)
+			glog.Warningf("Warning: %v, node start will continue.", warning)
 		}
 	}
 	if len(validationResults.Errors) != 0 {
@@ -280,9 +281,17 @@ func (o NodeOptions) IsRunFromConfig() bool {
 }
 
 func StartNode(nodeConfig configapi.NodeConfig, components *utilflags.ComponentFlag) error {
-	config, err := kubernetes.BuildKubernetesNodeConfig(nodeConfig)
+	config, err := kubernetes.BuildKubernetesNodeConfig(nodeConfig, components.Enabled(ComponentProxy), components.Enabled(ComponentDNS))
 	if err != nil {
 		return err
+	}
+
+	if sdnplugin.IsOpenShiftNetworkPlugin(config.KubeletServer.NetworkPluginName) {
+		// TODO: SDN plugin depends on the Kubelet registering as a Node and doesn't retry cleanly,
+		// and Kubelet also can't start the PodSync loop until the SDN plugin has loaded.
+		if components.Enabled(ComponentKubelet) != components.Enabled(ComponentPlugins) {
+			return fmt.Errorf("the SDN plugin must be run in the same process as the kubelet")
+		}
 	}
 
 	if components.Enabled(ComponentKubelet) {
@@ -291,7 +300,7 @@ func StartNode(nodeConfig configapi.NodeConfig, components *utilflags.ComponentF
 		glog.Infof("Starting node networking %s (%s)", config.KubeletServer.HostnameOverride, version.Get().String())
 	}
 
-	_, kubeClientConfig, err := configapi.GetKubeClient(nodeConfig.MasterKubeConfig)
+	_, kubeClientConfig, err := configapi.GetKubeClient(nodeConfig.MasterKubeConfig, nodeConfig.MasterClientConnectionOverrides)
 	if err != nil {
 		return err
 	}
@@ -305,8 +314,6 @@ func StartNode(nodeConfig configapi.NodeConfig, components *utilflags.ComponentF
 		config.EnsureLocalQuota(nodeConfig) // must be performed after EnsureVolumeDir
 	}
 
-	// TODO: SDN plugin depends on the Kubelet registering as a Node and doesn't retry cleanly,
-	// and Kubelet also can't start the PodSync loop until the SDN plugin has loaded.
 	if components.Enabled(ComponentKubelet) {
 		config.RunKubelet()
 	}
@@ -316,6 +323,11 @@ func StartNode(nodeConfig configapi.NodeConfig, components *utilflags.ComponentF
 	if components.Enabled(ComponentProxy) {
 		config.RunProxy()
 	}
+	if components.Enabled(ComponentDNS) {
+		config.RunDNS()
+	}
+
+	config.RunServiceStores(components.Enabled(ComponentProxy), components.Enabled(ComponentDNS))
 
 	return nil
 }

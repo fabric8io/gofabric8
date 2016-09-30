@@ -12,7 +12,7 @@ import (
 var _ = g.Describe("[builds] build have source revision metadata", func() {
 	defer g.GinkgoRecover()
 	var (
-		buildFixture = exutil.FixturePath("..", "extended", "fixtures", "test-build-revision.json")
+		buildFixture = exutil.FixturePath("testdata", "test-build-revision.json")
 		oc           = exutil.NewCLI("cli-build-revision", exutil.KubeConfigPath())
 	)
 
@@ -25,12 +25,12 @@ var _ = g.Describe("[builds] build have source revision metadata", func() {
 
 	g.Describe("started build", func() {
 		g.It("should contain source revision information", func() {
-			g.By("starting the build with --wait flag")
-			err := oc.Run("start-build").Args("sample-build", "--wait").Execute()
-			o.Expect(err).NotTo(o.HaveOccurred())
+			g.By("starting the build")
+			br, _ := exutil.StartBuildAndWait(oc, "sample-build")
+			br.AssertSuccess()
 
-			g.By(fmt.Sprintf("verifying the build %q status", "sample-build-1"))
-			build, err := oc.REST().Builds(oc.Namespace()).Get("sample-build-1")
+			g.By(fmt.Sprintf("verifying the status of %q", br.BuildPath))
+			build, err := oc.REST().Builds(oc.Namespace()).Get(br.Build.Name)
 			o.Expect(err).NotTo(o.HaveOccurred())
 			o.Expect(build.Spec.Revision).NotTo(o.BeNil())
 			o.Expect(build.Spec.Revision.Git).NotTo(o.BeNil())

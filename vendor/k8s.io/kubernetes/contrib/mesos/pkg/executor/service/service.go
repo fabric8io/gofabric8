@@ -107,7 +107,7 @@ func (s *KubeletExecutorServer) runExecutor(
 	exec := executor.New(executor.Config{
 		Registry:        registry,
 		APIClient:       apiclient,
-		Docker:          dockertools.ConnectToDockerOrDie(s.DockerEndpoint),
+		Docker:          dockertools.ConnectToDockerOrDie(s.DockerEndpoint, 0),
 		SuicideTimeout:  s.SuicideTimeout,
 		KubeletFinished: kubeletFinished,
 		ExitFunc:        os.Exit,
@@ -191,7 +191,7 @@ func (s *KubeletExecutorServer) runKubelet(
 
 	// make a separate client for events
 	eventClientConfig.QPS = s.EventRecordQPS
-	eventClientConfig.Burst = s.EventBurst
+	eventClientConfig.Burst = int(s.EventBurst)
 	kcfg.EventClient, err = clientset.NewForConfig(eventClientConfig)
 	if err != nil {
 		return err
@@ -209,7 +209,7 @@ func (s *KubeletExecutorServer) runKubelet(
 
 	// create custom cAdvisor interface which return the resource values that Mesos reports
 	ni := <-nodeInfos
-	cAdvisorInterface, err := NewMesosCadvisor(ni.Cores, ni.Mem, s.CAdvisorPort)
+	cAdvisorInterface, err := NewMesosCadvisor(ni.Cores, ni.Mem, s.CAdvisorPort, kcfg.ContainerRuntime)
 	if err != nil {
 		return err
 	}

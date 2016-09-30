@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 
 	u "github.com/openshift/origin/pkg/build/admission/testutil"
@@ -45,7 +46,7 @@ func TestIsBuildPod(t *testing.T) {
 
 func TestGetBuild(t *testing.T) {
 	build := u.Build().WithDockerStrategy()
-	for _, version := range []string{"v1", "v1beta3"} {
+	for _, version := range []string{"v1"} {
 		pod := u.Pod().WithBuild(t, build.AsBuild(), version)
 		resultBuild, resultVersion, err := GetBuild(pod.ToAttributes())
 		if err != nil {
@@ -62,7 +63,7 @@ func TestGetBuild(t *testing.T) {
 
 func TestSetBuild(t *testing.T) {
 	build := u.Build().WithSourceStrategy()
-	for _, version := range []string{"v1", "v1beta3"} {
+	for _, version := range []string{"v1"} {
 		pod := u.Pod().WithEnvVar("BUILD", "foo")
 		groupVersion, err := unversioned.ParseGroupVersion(version)
 		if err != nil {
@@ -77,4 +78,28 @@ func TestSetBuild(t *testing.T) {
 			t.Errorf("%s: did not get expected build: %#v", version, resultBuild)
 		}
 	}
+}
+
+func TestSetBuildLogLevel(t *testing.T) {
+	build := u.Build().WithSourceStrategy()
+	pod := u.Pod().WithEnvVar("BUILD", "foo")
+	SetBuildLogLevel(pod.ToAttributes(), build.AsBuild())
+
+	if len(pod.Spec.Containers[0].Args) == 0 {
+		t.Errorf("Builds pod loglevel was not set")
+	}
+
+	if pod.Spec.Containers[0].Args[0] != "--loglevel=0" {
+		t.Errorf("Default build pod loglevel was not set to 0")
+	}
+
+	build = u.Build().WithSourceStrategy()
+	pod = u.Pod().WithEnvVar("BUILD", "foo")
+	build.Spec.Strategy.SourceStrategy.Env = []kapi.EnvVar{{Name: "BUILD_LOGLEVEL", Value: "7", ValueFrom: nil}}
+	SetBuildLogLevel(pod.ToAttributes(), build.AsBuild())
+
+	if pod.Spec.Containers[0].Args[0] != "--loglevel=7" {
+		t.Errorf("Build pod loglevel was not transferred from BUILD_LOGLEVEL environment variable: %#v", pod)
+	}
+
 }

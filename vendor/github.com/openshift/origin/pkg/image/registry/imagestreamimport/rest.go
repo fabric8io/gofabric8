@@ -22,6 +22,7 @@ import (
 	"github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/image/importer"
 	"github.com/openshift/origin/pkg/image/registry/imagestream"
+	quotautil "github.com/openshift/origin/pkg/quota/util"
 )
 
 // ImporterFunc returns an instance of the importer that should be used per invocation.
@@ -247,18 +248,39 @@ func (r *REST) Create(ctx kapi.Context, obj runtime.Object) (runtime.Object, err
 			obj, err = original.(*api.ImageStream), nil
 		} else {
 			if glog.V(4) {
-				glog.V(4).Infof("updated stream %s", diff.ObjectDiff(original, stream))
+				glog.V(4).Infof("updating stream %s", diff.ObjectDiff(original, stream))
 			}
 			stream.Annotations[api.DockerImageRepositoryCheckAnnotation] = now.UTC().Format(time.RFC3339)
-			obj, _, err = r.internalStreams.Update(ctx, stream)
+			obj, _, err = r.internalStreams.Update(ctx, stream.Name, rest.DefaultUpdatedObjectInfo(stream, kapi.Scheme))
 		}
 	}
 
 	if err != nil {
+		// if we have am admission limit error then record the conditions on the original stream.  Quota errors
+		// will be recorded by the importer.
+		if quotautil.IsErrorLimitExceeded(err) {
+			originalStream := original.(*api.ImageStream)
+			recordLimitExceededStatus(originalStream, stream, err, now, nextGeneration)
+			var limitErr error
+			obj, _, limitErr = r.internalStreams.Update(ctx, stream.Name, rest.DefaultUpdatedObjectInfo(originalStream, kapi.Scheme))
+			if limitErr != nil {
+				utilruntime.HandleError(fmt.Errorf("failed to record limit exceeded status in image stream %s/%s: %v", stream.Namespace, stream.Name, limitErr))
+			}
+		}
+
 		return nil, err
 	}
 	isi.Status.Import = obj.(*api.ImageStream)
 	return isi, nil
+}
+
+// recordLimitExceededStatus adds the limit err to any new tag.
+func recordLimitExceededStatus(originalStream *api.ImageStream, newStream *api.ImageStream, err error, now unversioned.Time, nextGeneration int64) {
+	for tag := range newStream.Status.Tags {
+		if _, ok := originalStream.Status.Tags[tag]; !ok {
+			api.SetTagConditions(originalStream, tag, newImportFailedCondition(err, nextGeneration, now))
+		}
+	}
 }
 
 func checkImportFailure(status api.ImageImportStatus, stream *api.ImageStream, tag string, nextGeneration int64, now unversioned.Time) bool {
@@ -331,6 +353,7 @@ func (r *REST) importSuccessful(
 	image *api.Image, stream *api.ImageStream, tag string, from string, nextGeneration int64, now unversioned.Time, importPolicy api.TagImportPolicy,
 	importedImages map[string]error, updatedImages map[string]*api.Image,
 ) (*api.Image, bool) {
+	Strategy.PrepareImageForCreate(image)
 
 	pullSpec, _ := api.MostAccuratePullSpec(image.DockerImageReference, image.Name, "")
 	tagEvent := api.TagEvent{
@@ -345,7 +368,7 @@ func (r *REST) importSuccessful(
 	}
 
 	// ensure the spec and status tag match the imported image
-	changed := api.DifferentTagEvent(stream, tag, tagEvent)
+	changed := api.DifferentTagEvent(stream, tag, tagEvent) || api.DifferentTagGeneration(stream, tag)
 	specTag, ok := stream.Spec.Tags[tag]
 	if changed || !ok {
 		specTag = ensureSpecTag(stream, tag, from, importPolicy, true)
@@ -426,5 +449,5 @@ func newImportFailedCondition(err error, gen int64, now unversioned.Time) api.Ta
 }
 
 func invalidStatus(kind, position string, errs ...*field.Error) unversioned.Status {
-	return kapierrors.NewInvalid(api.Kind(kind), position, errs).(kapierrors.APIStatus).Status()
+	return kapierrors.NewInvalid(api.Kind(kind), position, errs).ErrStatus
 }

@@ -9,19 +9,21 @@ Minikube is a tool that makes it easy to run Kubernetes locally. Minikube runs a
 
 ### Features
 
-* Minikube packages and configures a Linux VM, Docker and all Kubernetes components, optimized for local development.
+* Minikube packages and configures a Linux VM, the container runtime, and all Kubernetes components, optimized for local development.
 * Minikube supports Kubernetes features such as:
   * DNS
   * NodePorts
   * ConfigMaps and Secrets
   * Dashboards
+  * Container Runtime: Docker, and [rkt](https://github.com/coreos/rkt)
+  * Enabling CNI (Container Network Interface)
 
 ## Installation
 
 ### Requirements
 
 * OS X
-    * [xhyve driver](DRIVERS.md#xhyve-driver), [VirtualBox](https://www.virtualbox.org/wiki/Downloads) or [VMware Fusion](https://www.vmware.com/products/fusion) installation
+    * [xhyve driver](./DRIVERS.md#xhyve-driver), [VirtualBox](https://www.virtualbox.org/wiki/Downloads) or [VMware Fusion](https://www.vmware.com/products/fusion) installation
 * Linux
     * [VirtualBox](https://www.virtualbox.org/wiki/Downloads) or [KVM](http://www.linux-kvm.org/) installation,
 * VT-x/AMD-v virtualization must be enabled in BIOS
@@ -41,8 +43,8 @@ the following drivers:
 
 * virtualbox
 * vmwarefusion
-* kvm ([driver installation](DRIVERS.md#kvm-driver))
-* xhyve ([driver installation](DRIVERS.md#xhyve-driver))
+* kvm ([driver installation](./DRIVERS.md#kvm-driver))
+* xhyve ([driver installation](./DRIVERS.md#xhyve-driver))
 
 Note that the IP below is dynamic and can change. It can be retrieved with `minikube ip`.
 
@@ -52,7 +54,6 @@ Starting local Kubernetes cluster...
 Running pre-create checks...
 Creating machine...
 Starting local Kubernetes cluster...
-Kubernetes is available at https://192.168.99.100:8443.
 
 $ kubectl run hello-minikube --image=gcr.io/google_containers/echoserver:1.4 --port=8080
 deployment "hello-minikube" created
@@ -81,16 +82,27 @@ Stopping local Kubernetes cluster...
 Stopping "minikube"...
 ```
 
+To use [rkt](https://github.com/coreos/rkt) as the container runtime, execute:
+
+```shell
+$ minikube start \
+    --network-plugin=cni \
+    --container-runtime=rkt \
+    --iso-url=https://github.com/coreos/minikube-iso/releases/download/v0.0.3/minikube-v0.0.3.iso
+```
+
+This will use an alternative minikube ISO image containing both rkt, and Docker, and enable CNI networking.
+
 ### Driver plugins
 
-See [DRIVERS](DRIVERS.md) for details on supported drivers and how to install
+See [DRIVERS](./DRIVERS.md) for details on supported drivers and how to install
 plugins, if required.
 
 ### Reusing the Docker daemon
 
 When using a single VM of kubernetes its really handy to reuse the Docker daemon inside the VM; as this means you don't have to build on your host machine and push the image into a docker registry - you can just build inside the same docker daemon as minikube which speeds up local experiments.
 
-To be able to work with the docker daemon on your mac/linux host use the [docker-env command](https://github.com/kubernetes/minikube/blob/master/docs/minikube_docker-env.md) in your shell:
+To be able to work with the docker daemon on your mac/linux host use the [docker-env command](./docs/minikube_docker-env.md) in your shell:
 
 ```
 eval $(minikube docker-env)
@@ -156,7 +168,6 @@ To determine the NodePort for your service, you can use a `kubectl` command like
 `kubectl get service $SERVICE --output='jsonpath="{.spec.ports[0].NodePort}"'`
 
 ## Persistent Volumes
-
 Minikube supports [PersistentVolumes](http://kubernetes.io/docs/user-guide/persistent-volumes/) of type `hostPath`.
 These PersistentVolumes are mapped to a directory inside the minikube VM.
 
@@ -195,7 +206,7 @@ In order to have minikube properly start/restart custom addons, place the addon(
 
 ## Documentation
 
-For a list of minikube's available commands see the [full CLI docs](https://github.com/kubernetes/minikube/blob/master/docs/minikube.md).
+For a list of minikube's available commands see the [full CLI docs](./docs/minikube.md).
 
 ## Using Minikube with an HTTP Proxy
 
@@ -229,13 +240,13 @@ Minikube uses [libmachine](https://github.com/docker/machine/tree/master/libmach
 For more information about minikube, see the [proposal](https://github.com/kubernetes/kubernetes/blob/master/docs/proposals/local-cluster-ux.md).
 
 ## Additional Links:
-* **Goals and Non-Goals**: For the goals and non-goals of the minikube project, please see our [roadmap](ROADMAP.md).
-* **Development Guide**: See [CONTRIBUTING.md](CONTRIBUTING.md) for an overview of how to send pull requests.
-* **Building Minikube**: For instructions on how to build/test minikube from source, see the [build guide](BUILD_GUIDE.md)
-* **Adding a New Dependency**: For instructions on how to add a new dependency to minikube see the [adding dependencies guide](ADD_DEPENDENCY.md)
-* **Updating Kubernetes**: For instructions on how to add a new dependency to minikube see the [updating kubernetes guide](UPDATE_KUBERNETES.md)
-* **Steps to Release Minikube**: For instructions on how to release a new version of minikube see the [release guide](https://github.com/kubernetes/minikube/blob/master/RELEASING.md)
-* **Steps to Release Localkube**: For instructions on how to release a new version of localkube see the [localkube release guide](https://github.com/kubernetes/minikube/blob/master/LOCALKUBE_RELEASING.md)
+* **Goals and Non-Goals**: For the goals and non-goals of the minikube project, please see our [roadmap](./ROADMAP.md).
+* **Development Guide**: See [CONTRIBUTING.md](./CONTRIBUTING.md) for an overview of how to send pull requests.
+* **Building Minikube**: For instructions on how to build/test minikube from source, see the [build guide](./BUILD_GUIDE.md)
+* **Adding a New Dependency**: For instructions on how to add a new dependency to minikube see the [adding dependencies guide](./ADD_DEPENDENCY.md)
+* **Updating Kubernetes**: For instructions on how to add a new dependency to minikube see the [updating kubernetes guide](./UPDATE_KUBERNETES.md)
+* **Steps to Release Minikube**: For instructions on how to release a new version of minikube see the [release guide](./RELEASING.md)
+* **Steps to Release Localkube**: For instructions on how to release a new version of localkube see the [localkube release guide](./LOCALKUBE_RELEASING.md)
 
 ## Community
 

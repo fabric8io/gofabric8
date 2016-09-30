@@ -26,6 +26,8 @@ kube::test::clear_all() {
   kubectl delete "${kube_flags[@]}" rc,pods --all --grace-period=0
 }
 
+# Force exact match of a returned result for a object query.  Wrap this with || to support multiple
+# valid return types.
 kube::test::get_object_assert() {
   local object=$1
   local request=$2
@@ -106,6 +108,44 @@ kube::test::describe_object_assert() {
   return 0
 }
 
+kube::test::describe_object_events_assert() {
+    local resource=$1
+    local object=$2
+    local showevents=${3:-"true"}
+
+    if [[ -z "${3:-}" ]]; then
+        result=$(eval kubectl describe "${kube_flags[@]}" $resource $object)
+    else
+        result=$(eval kubectl describe "${kube_flags[@]}" "--show-events=$showevents" $resource $object)
+    fi
+
+    if [[ -n $(echo "$result" | grep "No events.\|Events:") ]]; then
+        local has_events="true"
+    else
+        local has_events="false"
+    fi
+    if [[ $showevents == $has_events ]]; then
+        echo -n ${green}
+        echo "Successful describe"
+        echo "$result"
+        echo ${reset}
+        return 0
+    else
+        echo ${bold}${red}
+        echo "FAIL"
+        if [[ $showevents == "false" ]]; then
+            echo "  Events information should not be described in:"
+        else
+            echo "  Events information not found in:"
+        fi
+        echo $result
+        echo ${reset}${red}
+        caller
+        echo ${reset}
+        return 1
+    fi
+}
+
 kube::test::describe_resource_assert() {
   local resource=$1
   local matches=${@:2}
@@ -132,6 +172,38 @@ kube::test::describe_resource_assert() {
   echo "$result"
   echo -n ${reset}
   return 0
+}
+
+kube::test::describe_resource_events_assert() {
+    local resource=$1
+    local showevents=${2:-"true"}
+
+    result=$(eval kubectl describe "${kube_flags[@]}" "--show-events=$showevents" $resource)
+
+    if [[ $(echo "$result" | grep "No events.\|Events:") ]]; then
+        local has_events="true"
+    else
+        local has_events="false"
+    fi
+    if [[ $showevents == $has_events ]]; then
+        echo -n ${green}
+        echo "Successful describe"
+        echo "$result"
+        echo -n ${reset}
+        return 0
+    else
+        echo ${bold}${red}
+        echo "FAIL"
+        if [[ $showevents == "false" ]]; then
+            echo "  Events information should not be described in:"
+        else
+            echo "  Events information not found in:"
+        fi
+        echo $result
+        caller
+        echo ${reset}
+        return 1
+    fi
 }
 
 kube::test::if_has_string() {

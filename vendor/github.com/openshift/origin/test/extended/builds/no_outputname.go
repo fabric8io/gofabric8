@@ -12,8 +12,8 @@ import (
 var _ = g.Describe("[builds][Conformance] build without output image", func() {
 	defer g.GinkgoRecover()
 	var (
-		dockerImageFixture = exutil.FixturePath("fixtures", "test-docker-no-outputname.json")
-		s2iImageFixture    = exutil.FixturePath("fixtures", "test-s2i-no-outputname.json")
+		dockerImageFixture = exutil.FixturePath("testdata", "test-docker-no-outputname.json")
+		s2iImageFixture    = exutil.FixturePath("testdata", "test-s2i-no-outputname.json")
 		oc                 = exutil.NewCLI("build-no-outputname", exutil.KubeConfigPath())
 	)
 
@@ -25,12 +25,14 @@ var _ = g.Describe("[builds][Conformance] build without output image", func() {
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("expecting build to pass without an output image reference specified")
-			out, err := oc.Run("start-build").Args("test-docker", "--follow", "--wait").Output()
-			if err != nil {
-				fmt.Fprintln(g.GinkgoWriter, out)
-			}
+			br, err := exutil.StartBuildAndWait(oc, "test-docker")
+			br.AssertSuccess()
+
+			g.By("verifying the build test-docker-1 output")
+			buildLog, err := br.Logs()
+			fmt.Fprintf(g.GinkgoWriter, "\nBuild log:\n%s\n", buildLog)
 			o.Expect(err).NotTo(o.HaveOccurred())
-			o.Expect(out).Should(o.ContainSubstring(`Build complete, no image push requested`))
+			o.Expect(buildLog).Should(o.ContainSubstring(`Build complete, no image push requested`))
 		})
 
 		g.It(fmt.Sprintf("should create an image from %q S2i template without an output image reference defined", s2iImageFixture), func() {
@@ -38,12 +40,15 @@ var _ = g.Describe("[builds][Conformance] build without output image", func() {
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("expecting build to pass without an output image reference specified")
-			out, err := oc.Run("start-build").Args("test-sti", "--follow", "--wait").Output()
-			if err != nil {
-				fmt.Fprintln(g.GinkgoWriter, out)
-			}
+			br, err := exutil.StartBuildAndWait(oc, "test-sti")
+			br.AssertSuccess()
+
+			g.By("verifying the build test-sti-1 output")
+			buildLog, err := br.Logs()
+			fmt.Fprintf(g.GinkgoWriter, "\nBuild log:\n%s\n", buildLog)
 			o.Expect(err).NotTo(o.HaveOccurred())
-			o.Expect(out).Should(o.ContainSubstring(`Build complete, no image push requested`))
+
+			o.Expect(buildLog).Should(o.ContainSubstring(`Build complete, no image push requested`))
 		})
 	})
 })

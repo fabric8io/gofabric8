@@ -29,6 +29,8 @@ import (
 	"syscall"
 	"time"
 
+	pb "gopkg.in/cheggaaa/pb.v1"
+
 	"golang.org/x/oauth2"
 
 	"github.com/blang/semver"
@@ -163,48 +165,83 @@ func updateBinary(v semver.Version, downloadBinary, updateLinkPrefix, downloadLi
 		glog.Errorf("Cannot download checksum: %s", err)
 		os.Exit(1)
 	}
-	binary, err := http.Get(fmt.Sprintf(downloadLinkFormat, v, downloadBinary))
-	if err != nil {
-		glog.Errorf("Cannot download binary: %s", err)
-		os.Exit(1)
-	}
-	defer binary.Body.Close()
-	err = update.Apply(binary.Body, update.Options{
-		Hash:     crypto.SHA256,
-		Checksum: checksum,
-	})
-	if err != nil {
-		glog.Errorf("Cannot apply binary update: %s", err)
-		os.Exit(1)
-	}
 
-	env := os.Environ()
-	args := os.Args
 	currentBinary, err := osext.Executable()
 	if err != nil {
 		glog.Errorf("Cannot find current binary to exec: %s", err)
 		os.Exit(1)
 	}
+
+	url := fmt.Sprintf(downloadLinkFormat, v, downloadBinary)
+	updateBinaryFile(url, checksum)
+
+	env := os.Environ()
+	args := os.Args
 	err = syscall.Exec(currentBinary, args, env)
 	if err != nil {
-		glog.Errorf("Failed to exec updated binary: %s", err)
+		glog.Errorf("Failed to exec updated binary %s: %s", currentBinary, err)
+		os.Exit(1)
+	}
+}
+
+func updateBinaryFile(url string, checksum []byte) {
+	fmt.Println("Downloading updated binary")
+	httpResp, err := http.Get(url)
+	if err != nil {
+		glog.Errorf("Cannot download binary: %s", err)
+		os.Exit(1)
+	}
+	defer httpResp.Body.Close()
+
+	binary := httpResp.Body
+	if httpResp.ContentLength > 0 {
+		bar := pb.New64(httpResp.ContentLength).SetUnits(pb.U_BYTES)
+		bar.Start()
+		binary = bar.NewProxyReader(binary)
+		defer func() {
+			<-time.After(bar.RefreshRate)
+			fmt.Println()
+		}()
+	}
+	err = update.Apply(binary, update.Options{
+		Hash:     crypto.SHA256,
+		Checksum: checksum,
+	})
+	if err != nil {
+		glog.Errorf("Cannot apply binary update: %s", err)
+		err := update.RollbackError(err)
+		if err != nil {
+			glog.Errorf("Failed to rollback update: %s", err)
+		}
 		os.Exit(1)
 	}
 }
 
 func downloadChecksum(v semver.Version, downloadBinary, downloadLinkFormat string) ([]byte, error) {
+	fmt.Println("Downloading updated binary checksum to validate updated binary")
 	u := fmt.Sprintf(downloadLinkFormat, v, downloadBinary+".sha256")
 	checksumResp, err := http.Get(u)
 	if err != nil {
 		return nil, err
 	}
 	defer checksumResp.Body.Close()
-	if checksumResp.StatusCode != 200 {
-		return nil, fmt.Errorf("received %d", checksumResp.StatusCode)
+
+	checksum := checksumResp.Body
+	if checksumResp.ContentLength > 0 {
+		bar := pb.New64(checksumResp.ContentLength).SetUnits(pb.U_BYTES)
+		bar.Start()
+		checksum = bar.NewProxyReader(checksum)
+		defer func() {
+			<-time.After(2 * bar.RefreshRate)
+			fmt.Println()
+		}()
 	}
-	b, err := ioutil.ReadAll(checksumResp.Body)
+	b, err := ioutil.ReadAll(checksum)
 	if err != nil {
 		return nil, err
+	}
+	if checksumResp.StatusCode != 200 {
+		return nil, fmt.Errorf("received %d", checksumResp.StatusCode)
 	}
 
 	return hex.DecodeString(strings.TrimSpace(string(b)))

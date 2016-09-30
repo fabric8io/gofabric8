@@ -5,22 +5,21 @@
 # Set OS_PUSH_BASE_IMAGES=true to push base images
 # Set OS_PUSH_BASE_REGISTRY to prefix the destination images
 #
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
 STARTTIME=$(date +%s)
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
-
-# Go to the top of the tree.
-cd "${OS_ROOT}"
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 # Allow a release to be repushed with a tag
 tag="${OS_PUSH_TAG:-}"
 if [[ -n "${tag}" ]]; then
-  tag=":${tag}"
+  if [[ "${tag}" == "HEAD" ]]; then
+    if [[ "$( git tag --points-at HEAD | wc -l )" -ne 1 ]]; then
+      echo "error: There must be exactly one tag pointing to HEAD to use OS_PUSH_TAG=HEAD"
+      exit 1
+    fi
+    tag=":$( git tag --points-at HEAD)"
+  else
+    tag=":${tag}"
+  fi
 else
   tag=":latest"
 fi
@@ -77,24 +76,22 @@ fi
 # Pull latest in preparation for tagging
 if [[ "${tag}" != ":latest" ]]; then
   if [[ -z "${OS_PUSH_LOCAL-}" ]]; then
-    set -e
     for image in "${images[@]}"; do
       docker pull "${OS_PUSH_BASE_REGISTRY-}${image}:${source_tag}"
     done
-    set +e
   else
     echo "WARNING: Pushing local :${source_tag} images to ${OS_PUSH_BASE_REGISTRY-}*${tag}"
-    echo "  CTRL+C to cancel, or any other key to continue"
-    read
+    if [[ -z "${OS_PUSH_ALWAYS:-}" ]]; then
+      echo "  CTRL+C to cancel, or any other key to continue"
+      read
+    fi
   fi
 fi
 
 if [[ "${OS_PUSH_BASE_REGISTRY-}" != "" || "${tag}" != "" ]]; then
-  set -e
   for image in "${images[@]}"; do
     docker tag -f "${image}:${source_tag}" "${OS_PUSH_BASE_REGISTRY-}${image}${tag}"
   done
-  set +e
 fi
 
 for image in "${images[@]}"; do

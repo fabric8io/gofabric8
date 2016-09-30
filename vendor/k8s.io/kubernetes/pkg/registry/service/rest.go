@@ -115,7 +115,7 @@ func (rs *REST) Create(ctx api.Context, obj runtime.Object) (runtime.Object, err
 	for i := range service.Spec.Ports {
 		servicePort := &service.Spec.Ports[i]
 		if servicePort.NodePort != 0 {
-			err := nodePortOp.Allocate(servicePort.NodePort)
+			err := nodePortOp.Allocate(int(servicePort.NodePort))
 			if err != nil {
 				// TODO: when validation becomes versioned, this gets more complicated.
 				el := field.ErrorList{field.Invalid(field.NewPath("spec", "ports").Index(i).Child("nodePort"), servicePort.NodePort, err.Error())}
@@ -129,7 +129,7 @@ func (rs *REST) Create(ctx api.Context, obj runtime.Object) (runtime.Object, err
 				// not really an internal error.
 				return nil, errors.NewInternalError(fmt.Errorf("failed to allocate a nodePort: %v", err))
 			}
-			servicePort.NodePort = nodePort
+			servicePort.NodePort = int32(nodePort)
 		}
 	}
 
@@ -212,15 +212,20 @@ func (*REST) NewList() runtime.Object {
 	return &api.ServiceList{}
 }
 
-func (rs *REST) Update(ctx api.Context, obj runtime.Object) (runtime.Object, bool, error) {
+func (rs *REST) Update(ctx api.Context, name string, objInfo rest.UpdatedObjectInfo) (runtime.Object, bool, error) {
+	oldService, err := rs.registry.GetService(ctx, name)
+	if err != nil {
+		return nil, false, err
+	}
+
+	obj, err := objInfo.UpdatedObject(ctx, oldService)
+	if err != nil {
+		return nil, false, err
+	}
+
 	service := obj.(*api.Service)
 	if !api.ValidNamespace(ctx, &service.ObjectMeta) {
 		return nil, false, errors.NewConflict(api.Resource("services"), service.Namespace, fmt.Errorf("Service.Namespace does not match the provided context"))
-	}
-
-	oldService, err := rs.registry.GetService(ctx, service.Name)
-	if err != nil {
-		return nil, false, err
 	}
 
 	// Copy over non-user fields
@@ -240,7 +245,7 @@ func (rs *REST) Update(ctx api.Context, obj runtime.Object) (runtime.Object, boo
 	if assignNodePorts {
 		for i := range service.Spec.Ports {
 			servicePort := &service.Spec.Ports[i]
-			nodePort := servicePort.NodePort
+			nodePort := int(servicePort.NodePort)
 			if nodePort != 0 {
 				if !contains(oldNodePorts, nodePort) {
 					err := nodePortOp.Allocate(nodePort)
@@ -257,7 +262,7 @@ func (rs *REST) Update(ctx api.Context, obj runtime.Object) (runtime.Object, boo
 					// not really an internal error.
 					return nil, false, errors.NewInternalError(fmt.Errorf("failed to allocate a nodePort: %v", err))
 				}
-				servicePort.NodePort = nodePort
+				servicePort.NodePort = int32(nodePort)
 			}
 			// Detect duplicate node ports; this should have been caught by validation, so we panic
 			if contains(newNodePorts, nodePort) {
@@ -316,7 +321,7 @@ func (rs *REST) ResourceLocation(ctx api.Context, id string) (*url.URL, http.Rou
 		}
 		found := false
 		for _, svcPort := range svc.Spec.Ports {
-			if svcPort.Port == int(portNum) {
+			if int64(svcPort.Port) == portNum {
 				// use the declared port's name
 				portStr = svcPort.Name
 				found = true
@@ -347,7 +352,7 @@ func (rs *REST) ResourceLocation(ctx api.Context, id string) (*url.URL, http.Rou
 			if ss.Ports[i].Name == portStr {
 				// Pick a random address.
 				ip := ss.Addresses[rand.Intn(len(ss.Addresses))].IP
-				port := ss.Ports[i].Port
+				port := int(ss.Ports[i].Port)
 				return &url.URL{
 					Scheme: svcScheme,
 					Host:   net.JoinHostPort(ip, strconv.Itoa(port)),
@@ -374,7 +379,7 @@ func CollectServiceNodePorts(service *api.Service) []int {
 	for i := range service.Spec.Ports {
 		servicePort := &service.Spec.Ports[i]
 		if servicePort.NodePort != 0 {
-			servicePorts = append(servicePorts, servicePort.NodePort)
+			servicePorts = append(servicePorts, int(servicePort.NodePort))
 		}
 	}
 	return servicePorts

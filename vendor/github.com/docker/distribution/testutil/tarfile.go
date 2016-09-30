@@ -3,20 +3,20 @@ package testutil
 import (
 	"archive/tar"
 	"bytes"
-	"crypto/rand"
 	"fmt"
 	"io"
-	"io/ioutil"
 	mrand "math/rand"
 	"time"
 
-	"github.com/docker/docker/pkg/tarsum"
+	"github.com/docker/distribution"
+	"github.com/docker/distribution/context"
+	"github.com/docker/distribution/digest"
 )
 
 // CreateRandomTarFile creates a random tarfile, returning it as an
-// io.ReadSeeker along with its tarsum. An error is returned if there is a
+// io.ReadSeeker along with its digest. An error is returned if there is a
 // problem generating valid content.
-func CreateRandomTarFile() (rs io.ReadSeeker, tarSum string, err error) {
+func CreateRandomTarFile() (rs io.ReadSeeker, dgst digest.Digest, err error) {
 	nFiles := mrand.Intn(10) + 10
 	target := &bytes.Buffer{}
 	wr := tar.NewWriter(target)
@@ -45,7 +45,7 @@ func CreateRandomTarFile() (rs io.ReadSeeker, tarSum string, err error) {
 		randomData := make([]byte, fileSize)
 
 		// Fill up the buffer with some random data.
-		n, err := rand.Read(randomData)
+		n, err := mrand.Read(randomData)
 
 		if n != len(randomData) {
 			return nil, "", fmt.Errorf("short read creating random reader: %v bytes != %v bytes", n, len(randomData))
@@ -73,23 +73,43 @@ func CreateRandomTarFile() (rs io.ReadSeeker, tarSum string, err error) {
 		return nil, "", err
 	}
 
-	reader := bytes.NewReader(target.Bytes())
+	dgst = digest.FromBytes(target.Bytes())
 
-	// A tar builder that supports tarsum inline calculation would be awesome
-	// here.
-	ts, err := tarsum.NewTarSum(reader, true, tarsum.Version1)
-	if err != nil {
-		return nil, "", err
+	return bytes.NewReader(target.Bytes()), dgst, nil
+}
+
+// CreateRandomLayers returns a map of n digests. We don't particularly care
+// about the order of said digests (since they're all random anyway).
+func CreateRandomLayers(n int) (map[digest.Digest]io.ReadSeeker, error) {
+	digestMap := map[digest.Digest]io.ReadSeeker{}
+	for i := 0; i < n; i++ {
+		rs, ds, err := CreateRandomTarFile()
+		if err != nil {
+			return nil, fmt.Errorf("unexpected error generating test layer file: %v", err)
+		}
+
+		dgst := digest.Digest(ds)
+		digestMap[dgst] = rs
 	}
+	return digestMap, nil
+}
 
-	nn, err := io.Copy(ioutil.Discard, ts)
-	if nn != int64(len(target.Bytes())) {
-		return nil, "", fmt.Errorf("short copy when getting tarsum of random layer: %v != %v", nn, len(target.Bytes()))
+// UploadBlobs lets you upload blobs to a repository
+func UploadBlobs(repository distribution.Repository, layers map[digest.Digest]io.ReadSeeker) error {
+	ctx := context.Background()
+	for digest, rs := range layers {
+		wr, err := repository.Blobs(ctx).Create(ctx)
+		if err != nil {
+			return fmt.Errorf("unexpected error creating upload: %v", err)
+		}
+
+		if _, err := io.Copy(wr, rs); err != nil {
+			return fmt.Errorf("unexpected error copying to upload: %v", err)
+		}
+
+		if _, err := wr.Commit(ctx, distribution.Descriptor{Digest: digest}); err != nil {
+			return fmt.Errorf("unexpected error committinng upload: %v", err)
+		}
 	}
-
-	if err != nil {
-		return nil, "", err
-	}
-
-	return bytes.NewReader(target.Bytes()), ts.Sum(nil), nil
+	return nil
 }

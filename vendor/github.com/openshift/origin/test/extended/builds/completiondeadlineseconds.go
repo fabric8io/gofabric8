@@ -13,8 +13,8 @@ import (
 var _ = g.Describe("[builds][Slow] builds should have deadlines", func() {
 	defer g.GinkgoRecover()
 	var (
-		sourceFixture = exutil.FixturePath("..", "extended", "fixtures", "test-cds-sourcebuild.json")
-		dockerFixture = exutil.FixturePath("..", "extended", "fixtures", "test-cds-dockerbuild.json")
+		sourceFixture = exutil.FixturePath("testdata", "test-cds-sourcebuild.json")
+		dockerFixture = exutil.FixturePath("testdata", "test-cds-dockerbuild.json")
 		oc            = exutil.NewCLI("cli-start-build", exutil.KubeConfigPath())
 	)
 
@@ -31,23 +31,20 @@ var _ = g.Describe("[builds][Slow] builds should have deadlines", func() {
 			err := oc.Run("create").Args("-f", sourceFixture).Execute()
 			o.Expect(err).NotTo(o.HaveOccurred())
 
-			g.By("starting the build with --wait flag")
-			_, err = oc.Run("start-build").Args("source-build", "--wait").Output()
-			o.Expect(err).To(o.HaveOccurred())
+			g.By("starting the source build with --wait flag and short timeout")
+			br, err := exutil.StartBuildAndWait(oc, "source-build", "--wait")
+			o.Expect(br.StartBuildErr).To(o.HaveOccurred()) // start-build should detect the build error
 
 			g.By("verifying the build status")
-			builds, err := oc.REST().Builds(oc.Namespace()).List(kapi.ListOptions{})
-			o.Expect(err).NotTo(o.HaveOccurred())
-			o.Expect(builds.Items).To(o.HaveLen(1))
-
-			build := builds.Items[0]
-			o.Expect(build.Status.Phase).Should(o.BeEquivalentTo(buildapi.BuildPhaseFailed))
+			o.Expect(br.BuildAttempt).To(o.BeTrue())                                            // the build should have been attempted
+			o.Expect(br.Build.Status.Phase).Should(o.BeEquivalentTo(buildapi.BuildPhaseFailed)) // the build should have failed
 
 			g.By("verifying the build pod status")
-			pod, err := oc.KubeREST().Pods(oc.Namespace()).Get(buildapi.GetBuildPodName(&build))
+			pod, err := oc.KubeREST().Pods(oc.Namespace()).Get(buildapi.GetBuildPodName(br.Build))
 			o.Expect(err).NotTo(o.HaveOccurred())
 			o.Expect(pod.Status.Phase).Should(o.BeEquivalentTo(kapi.PodFailed))
 			o.Expect(pod.Status.Reason).Should(o.ContainSubstring("DeadlineExceeded"))
+
 		})
 	})
 
@@ -58,23 +55,20 @@ var _ = g.Describe("[builds][Slow] builds should have deadlines", func() {
 			err := oc.Run("create").Args("-f", dockerFixture).Execute()
 			o.Expect(err).NotTo(o.HaveOccurred())
 
-			g.By("starting the build with --wait flag")
-			_, err = oc.Run("start-build").Args("docker-build", "--wait").Output()
-			o.Expect(err).To(o.HaveOccurred())
+			g.By("starting the docker build with --wait flag and short timeout")
+			br, err := exutil.StartBuildAndWait(oc, "docker-build", "--wait")
+			o.Expect(br.StartBuildErr).To(o.HaveOccurred()) // start-build should detect the build error
 
 			g.By("verifying the build status")
-			builds, err := oc.REST().Builds(oc.Namespace()).List(kapi.ListOptions{})
-			o.Expect(err).NotTo(o.HaveOccurred())
-			o.Expect(builds.Items).To(o.HaveLen(1))
-
-			build := builds.Items[0]
-			o.Expect(build.Status.Phase).Should(o.BeEquivalentTo(buildapi.BuildPhaseFailed))
+			o.Expect(br.BuildAttempt).To(o.BeTrue())                                            // the build should have been attempted
+			o.Expect(br.Build.Status.Phase).Should(o.BeEquivalentTo(buildapi.BuildPhaseFailed)) // the build should have failed
 
 			g.By("verifying the build pod status")
-			pod, err := oc.KubeREST().Pods(oc.Namespace()).Get(buildapi.GetBuildPodName(&build))
+			pod, err := oc.KubeREST().Pods(oc.Namespace()).Get(buildapi.GetBuildPodName(br.Build))
 			o.Expect(err).NotTo(o.HaveOccurred())
 			o.Expect(pod.Status.Phase).Should(o.BeEquivalentTo(kapi.PodFailed))
 			o.Expect(pod.Status.Reason).Should(o.ContainSubstring("DeadlineExceeded"))
+
 		})
 	})
 

@@ -16,7 +16,7 @@ import (
 	projectcache "github.com/openshift/origin/pkg/project/cache"
 )
 
-func newTestWatcher(user string, groups []string, namespaces ...*kapi.Namespace) (*userProjectWatcher, *fakeAuthCache) {
+func newTestWatcher(username string, groups []string, namespaces ...*kapi.Namespace) (*userProjectWatcher, *fakeAuthCache) {
 	objects := []runtime.Object{}
 	for i := range namespaces {
 		objects = append(objects, namespaces[i])
@@ -27,7 +27,7 @@ func newTestWatcher(user string, groups []string, namespaces ...*kapi.Namespace)
 	projectCache.Run()
 	fakeAuthCache := &fakeAuthCache{}
 
-	return NewUserProjectWatcher(user, groups, projectCache, fakeAuthCache, false), fakeAuthCache
+	return NewUserProjectWatcher(&user.DefaultInfo{Name: username, Groups: groups}, sets.NewString("*"), projectCache, fakeAuthCache, false), fakeAuthCache
 }
 
 type fakeAuthCache struct {
@@ -59,7 +59,7 @@ func TestFullIncoming(t *testing.T) {
 	watcher.cacheIncoming <- watch.Event{Type: watch.Added}
 
 	// this call should not block and we should see a failure
-	watcher.GroupMembershipChanged("ns-01", sets.NewString("bob"), sets.String{}, sets.String{}, sets.String{}, sets.NewString("bob"), sets.String{})
+	watcher.GroupMembershipChanged("ns-01", sets.NewString("bob"), sets.String{})
 	if len(fakeAuthCache.removed) != 1 {
 		t.Errorf("should have removed self")
 	}
@@ -103,7 +103,7 @@ func TestAddModifyDeleteEventsByUser(t *testing.T) {
 	watcher, _ := newTestWatcher("bob", nil, newNamespaces("ns-01")...)
 	go watcher.Watch()
 
-	watcher.GroupMembershipChanged("ns-01", sets.NewString("bob"), sets.String{}, sets.String{}, sets.String{}, sets.NewString("bob"), sets.String{})
+	watcher.GroupMembershipChanged("ns-01", sets.NewString("bob"), sets.String{})
 	select {
 	case event := <-watcher.ResultChan():
 		if event.Type != watch.Added {
@@ -117,14 +117,14 @@ func TestAddModifyDeleteEventsByUser(t *testing.T) {
 	}
 
 	// the object didn't change, we shouldn't observe it
-	watcher.GroupMembershipChanged("ns-01", sets.NewString("bob"), sets.String{}, sets.String{}, sets.String{}, sets.String{}, sets.String{})
+	watcher.GroupMembershipChanged("ns-01", sets.NewString("bob"), sets.String{})
 	select {
 	case event := <-watcher.ResultChan():
 		t.Fatalf("unexpected event %v", event)
 	case <-time.After(3 * time.Second):
 	}
 
-	watcher.GroupMembershipChanged("ns-01", sets.NewString("alice"), sets.String{}, sets.NewString("bob"), sets.String{}, sets.String{}, sets.String{})
+	watcher.GroupMembershipChanged("ns-01", sets.NewString("alice"), sets.String{})
 	select {
 	case event := <-watcher.ResultChan():
 		if event.Type != watch.Deleted {
@@ -142,7 +142,7 @@ func TestAddModifyDeleteEventsByGroup(t *testing.T) {
 	watcher, _ := newTestWatcher("bob", []string{"group-one"}, newNamespaces("ns-01")...)
 	go watcher.Watch()
 
-	watcher.GroupMembershipChanged("ns-01", sets.String{}, sets.NewString("group-one"), sets.String{}, sets.String{}, sets.String{}, sets.NewString("group-one"))
+	watcher.GroupMembershipChanged("ns-01", sets.String{}, sets.NewString("group-one"))
 	select {
 	case event := <-watcher.ResultChan():
 		if event.Type != watch.Added {
@@ -156,14 +156,14 @@ func TestAddModifyDeleteEventsByGroup(t *testing.T) {
 	}
 
 	// the object didn't change, we shouldn't observe it
-	watcher.GroupMembershipChanged("ns-01", sets.String{}, sets.NewString("group-one"), sets.String{}, sets.String{}, sets.String{}, sets.String{})
+	watcher.GroupMembershipChanged("ns-01", sets.String{}, sets.NewString("group-one"))
 	select {
 	case event := <-watcher.ResultChan():
 		t.Fatalf("unexpected event %v", event)
 	case <-time.After(3 * time.Second):
 	}
 
-	watcher.GroupMembershipChanged("ns-01", sets.String{}, sets.NewString("group-two"), sets.String{}, sets.NewString("group-one"), sets.String{}, sets.String{})
+	watcher.GroupMembershipChanged("ns-01", sets.String{}, sets.NewString("group-two"))
 	select {
 	case event := <-watcher.ResultChan():
 		if event.Type != watch.Deleted {

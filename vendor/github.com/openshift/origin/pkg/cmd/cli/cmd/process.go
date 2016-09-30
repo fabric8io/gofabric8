@@ -51,10 +51,7 @@ output to the create command over STDIN (using the '-f -' option) or redirect it
   %[1]s process openshift//foo
 
   # Convert template.json into resource list
-  cat template.json | %[1]s process -f -
-
-  # Combine multiple templates into single resource list
-  cat template.json second_template.json | %[1]s process -f -`
+  cat template.json | %[1]s process -f -`
 )
 
 // NewCmdProcess implements the OpenShift cli process command
@@ -305,16 +302,17 @@ func RunProcess(f *clientcmd.Factory, out io.Writer, cmd *cobra.Command, args []
 func injectUserVars(values []string, t *templateapi.Template) []error {
 	var errors []error
 	for _, keypair := range values {
-		p := strings.Split(keypair, "=")
+		p := strings.SplitN(keypair, "=", 2)
 		if len(p) != 2 {
 			errors = append(errors, fmt.Errorf("invalid parameter assignment in %q: %q\n", t.Name, keypair))
-		}
-		if v := template.GetParameterByName(t, p[0]); v != nil {
-			v.Value = p[1]
-			v.Generate = ""
-			template.AddParameter(t, *v)
 		} else {
-			errors = append(errors, fmt.Errorf("unknown parameter name %q\n", p[0]))
+			if v := template.GetParameterByName(t, p[0]); v != nil {
+				v.Value = p[1]
+				v.Generate = ""
+				template.AddParameter(t, *v)
+			} else {
+				errors = append(errors, fmt.Errorf("unknown parameter name %q\n", p[0]))
+			}
 		}
 	}
 	return errors

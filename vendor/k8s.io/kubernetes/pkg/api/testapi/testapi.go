@@ -19,25 +19,35 @@ package testapi
 
 import (
 	"fmt"
+	"mime"
 	"os"
 	"reflect"
 	"strings"
 
+	"k8s.io/kubernetes/federation/apis/federation"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apimachinery/registered"
+	"k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/apis/policy"
+	"k8s.io/kubernetes/pkg/apis/rbac"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/runtime/serializer/recognizer"
 
+	_ "k8s.io/kubernetes/federation/apis/federation/install"
 	_ "k8s.io/kubernetes/pkg/api/install"
+	_ "k8s.io/kubernetes/pkg/apis/apps/install"
+	_ "k8s.io/kubernetes/pkg/apis/authentication/install"
 	_ "k8s.io/kubernetes/pkg/apis/autoscaling/install"
 	_ "k8s.io/kubernetes/pkg/apis/batch/install"
 	_ "k8s.io/kubernetes/pkg/apis/componentconfig/install"
 	_ "k8s.io/kubernetes/pkg/apis/extensions/install"
-	_ "k8s.io/kubernetes/pkg/apis/metrics/install"
+	_ "k8s.io/kubernetes/pkg/apis/policy/install"
+	_ "k8s.io/kubernetes/pkg/apis/rbac/install"
 )
 
 var (
@@ -46,6 +56,13 @@ var (
 	Autoscaling TestGroup
 	Batch       TestGroup
 	Extensions  TestGroup
+	Apps        TestGroup
+	Policy      TestGroup
+	Federation  TestGroup
+	Rbac        TestGroup
+
+	serializer        runtime.SerializerInfo
+	storageSerializer runtime.SerializerInfo
 )
 
 type TestGroup struct {
@@ -55,6 +72,30 @@ type TestGroup struct {
 }
 
 func init() {
+	if apiMediaType := os.Getenv("KUBE_TEST_API_TYPE"); len(apiMediaType) > 0 {
+		var ok bool
+		mediaType, options, err := mime.ParseMediaType(apiMediaType)
+		if err != nil {
+			panic(err)
+		}
+		serializer, ok = api.Codecs.SerializerForMediaType(mediaType, options)
+		if !ok {
+			panic(fmt.Sprintf("no serializer for %s", apiMediaType))
+		}
+	}
+
+	if storageMediaType := StorageMediaType(); len(storageMediaType) > 0 {
+		var ok bool
+		mediaType, options, err := mime.ParseMediaType(storageMediaType)
+		if err != nil {
+			panic(err)
+		}
+		storageSerializer, ok = api.Codecs.SerializerForMediaType(mediaType, options)
+		if !ok {
+			panic(fmt.Sprintf("no serializer for %s", storageMediaType))
+		}
+	}
+
 	kubeTestAPI := os.Getenv("KUBE_TEST_API")
 	if len(kubeTestAPI) != 0 {
 		testGroupVersions := strings.Split(kubeTestAPI, ",")
@@ -118,15 +159,47 @@ func init() {
 	if _, ok := Groups[batch.GroupName]; !ok {
 		Groups[batch.GroupName] = TestGroup{
 			externalGroupVersion: unversioned.GroupVersion{Group: batch.GroupName, Version: registered.GroupOrDie(batch.GroupName).GroupVersion.Version},
+			internalGroupVersion: batch.SchemeGroupVersion,
+			internalTypes:        api.Scheme.KnownTypes(batch.SchemeGroupVersion),
+		}
+	}
+	if _, ok := Groups[apps.GroupName]; !ok {
+		Groups[apps.GroupName] = TestGroup{
+			externalGroupVersion: unversioned.GroupVersion{Group: apps.GroupName, Version: registered.GroupOrDie(apps.GroupName).GroupVersion.Version},
 			internalGroupVersion: extensions.SchemeGroupVersion,
 			internalTypes:        api.Scheme.KnownTypes(extensions.SchemeGroupVersion),
+		}
+	}
+	if _, ok := Groups[policy.GroupName]; !ok {
+		Groups[policy.GroupName] = TestGroup{
+			externalGroupVersion: unversioned.GroupVersion{Group: policy.GroupName, Version: registered.GroupOrDie(policy.GroupName).GroupVersion.Version},
+			internalGroupVersion: policy.SchemeGroupVersion,
+			internalTypes:        api.Scheme.KnownTypes(policy.SchemeGroupVersion),
+		}
+	}
+	if _, ok := Groups[federation.GroupName]; !ok {
+		Groups[federation.GroupName] = TestGroup{
+			externalGroupVersion: unversioned.GroupVersion{Group: federation.GroupName, Version: registered.GroupOrDie(federation.GroupName).GroupVersion.Version},
+			internalGroupVersion: federation.SchemeGroupVersion,
+			internalTypes:        api.Scheme.KnownTypes(federation.SchemeGroupVersion),
+		}
+	}
+	if _, ok := Groups[rbac.GroupName]; !ok {
+		Groups[rbac.GroupName] = TestGroup{
+			externalGroupVersion: unversioned.GroupVersion{Group: rbac.GroupName, Version: registered.GroupOrDie(rbac.GroupName).GroupVersion.Version},
+			internalGroupVersion: rbac.SchemeGroupVersion,
+			internalTypes:        api.Scheme.KnownTypes(rbac.SchemeGroupVersion),
 		}
 	}
 
 	Default = Groups[api.GroupName]
 	Autoscaling = Groups[autoscaling.GroupName]
 	Batch = Groups[batch.GroupName]
+	Apps = Groups[apps.GroupName]
+	Policy = Groups[policy.GroupName]
 	Extensions = Groups[extensions.GroupName]
+	Federation = Groups[federation.GroupName]
+	Rbac = Groups[rbac.GroupName]
 }
 
 func (g TestGroup) ContentConfig() (string, *unversioned.GroupVersion, runtime.Codec) {
@@ -150,9 +223,40 @@ func (g TestGroup) InternalTypes() map[string]reflect.Type {
 }
 
 // Codec returns the codec for the API version to test against, as set by the
-// KUBE_TEST_API env var.
+// KUBE_TEST_API_TYPE env var.
 func (g TestGroup) Codec() runtime.Codec {
-	return api.Codecs.LegacyCodec(g.externalGroupVersion)
+	if serializer.Serializer == nil {
+		return api.Codecs.LegacyCodec(g.externalGroupVersion)
+	}
+	return api.Codecs.CodecForVersions(serializer, api.Codecs.UniversalDeserializer(), unversioned.GroupVersions{g.externalGroupVersion}, nil)
+}
+
+// NegotiatedSerializer returns the negotiated serializer for the server.
+func (g TestGroup) NegotiatedSerializer() runtime.NegotiatedSerializer {
+	return api.Codecs
+}
+
+func StorageMediaType() string {
+	return os.Getenv("KUBE_TEST_API_STORAGE_TYPE")
+}
+
+// StorageCodec returns the codec for the API version to store in etcd, as set by the
+// KUBE_TEST_API_STORAGE_TYPE env var.
+func (g TestGroup) StorageCodec() runtime.Codec {
+	s := storageSerializer.Serializer
+
+	if s == nil {
+		return api.Codecs.LegacyCodec(g.externalGroupVersion)
+	}
+
+	// etcd2 only supports string data - we must wrap any result before returning
+	// TODO: remove for etcd3 / make parameterizable
+	if !storageSerializer.EncodesAsText {
+		s = runtime.NewBase64Serializer(s)
+	}
+	ds := recognizer.NewDecoder(s, api.Codecs.UniversalDeserializer())
+
+	return api.Codecs.CodecForVersions(s, ds, unversioned.GroupVersions{g.externalGroupVersion}, nil)
 }
 
 // Converter returns the api.Scheme for the API version to test against, as set by the
@@ -236,7 +340,7 @@ func (g TestGroup) RESTMapper() meta.RESTMapper {
 }
 
 // ExternalGroupVersions returns all external group versions allowed for the server.
-func ExternalGroupVersions() []unversioned.GroupVersion {
+func ExternalGroupVersions() unversioned.GroupVersions {
 	versions := []unversioned.GroupVersion{}
 	for _, g := range Groups {
 		gv := g.GroupVersion()
@@ -247,10 +351,11 @@ func ExternalGroupVersions() []unversioned.GroupVersion {
 
 // Get codec based on runtime.Object
 func GetCodecForObject(obj runtime.Object) (runtime.Codec, error) {
-	kind, err := api.Scheme.ObjectKind(obj)
+	kinds, _, err := api.Scheme.ObjectKinds(obj)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected encoding error: %v", err)
 	}
+	kind := kinds[0]
 
 	for _, group := range Groups {
 		if group.GroupVersion().Group != kind.Group {

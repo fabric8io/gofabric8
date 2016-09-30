@@ -1,29 +1,5 @@
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-<img src="http://kubernetes.io/img/warning.png" alt="WARNING"
-     width="25" height="25">
-
-<h2>PLEASE NOTE: This document applies to the HEAD of the source tree</h2>
-
-If you are using a released version of Kubernetes, you should
-refer to the docs that go with that version.
-
-Documentation for other releases can be found at
-[releases.k8s.io](http://releases.k8s.io).
-</strong>
---
-
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 
@@ -50,12 +26,13 @@ Updated: 11/3/2015
     - [Unversioned Warning](#unversioned-warning)
     - [Is Versioned](#is-versioned)
     - [Generate Analytics](#generate-analytics)
+- [Generated documentation](#generated-documentation)
 
 <!-- END MUNGE: GENERATED_TOC -->
 
 ## General Concepts
 
-Each document needs to be munged to ensure its format is correct, links are valid, etc. To munge a document, simply run `hack/update-generated-docs.sh`. We verify that all documents have been munged using `hack/verify-generated-docs.sh`. The scripts for munging documents are called mungers, see the [mungers section](#what-are-mungers) below if you're curious about how mungers are implemented or if you want to write one.
+Each document needs to be munged to ensure its format is correct, links are valid, etc. To munge a document, simply run `hack/update-munge-docs.sh`. We verify that all documents have been munged using `hack/verify-munge-docs.sh`. The scripts for munging documents are called mungers, see the [mungers section](#what-are-mungers) below if you're curious about how mungers are implemented or if you want to write one.
 
 ## How to Get a Table of Contents
 
@@ -66,13 +43,13 @@ Instead of writing table of contents by hand, insert the following code in your 
 <!-- END MUNGE: GENERATED_TOC -->
 ```
 
-After running `hack/update-generated-docs.sh`, you'll see a table of contents generated for you, layered based on the headings.
+After running `hack/update-munge-docs.sh`, you'll see a table of contents generated for you, layered based on the headings.
 
 ## How to Write Links
 
 It's important to follow the rules when writing links. It helps us correctly versionize documents for each release.
 
-Use inline links instead of urls at all times. When you add internal links to `docs/` or `examples/`, use relative links; otherwise, use `http://releases.k8s.io/HEAD/<path/to/link>`. For example, avoid using:
+Use inline links instead of urls at all times. When you add internal links to `docs/` or `examples/`, use relative links; otherwise, use `http://releases.k8s.io/release-1.3/<path/to/link>`. For example, avoid using:
 
 ```
 [GCE](https://github.com/kubernetes/kubernetes/blob/master/docs/getting-started-guides/gce.md)  # note that it's under docs/
@@ -84,11 +61,11 @@ Instead, use:
 
 ```
 [GCE](../getting-started-guides/gce.md)                 # note that it's under docs/
-[Kubernetes package](http://releases.k8s.io/HEAD/pkg/)  # note that it's under pkg/
+[Kubernetes package](http://releases.k8s.io/release-1.3/pkg/)  # note that it's under pkg/
 [Kubernetes](http://kubernetes.io/)                     # external link
 ```
 
-The above example generates the following links: [GCE](../getting-started-guides/gce.md), [Kubernetes package](http://releases.k8s.io/HEAD/pkg/), and [Kubernetes](http://kubernetes.io/).
+The above example generates the following links: [GCE](../getting-started-guides/gce.md), [Kubernetes package](http://releases.k8s.io/release-1.3/pkg/), and [Kubernetes](http://kubernetes.io/).
 
 ## How to Include an Example
 
@@ -99,7 +76,7 @@ While writing examples, you may want to show the content of certain example file
 <!-- END MUNGE: EXAMPLE path/to/file -->
 ```
 
-Note that you should replace `path/to/file` with the relative path to the example file. Then `hack/update-generated-docs.sh` will generate a code block with the content of the specified file, and a link to download it. This way, you save the time to do the copy-and-paste; what's better, the content won't become out-of-date every time you update the example file.
+Note that you should replace `path/to/file` with the relative path to the example file. Then `hack/update-munge-docs.sh` will generate a code block with the content of the specified file, and a link to download it. This way, you save the time to do the copy-and-paste; what's better, the content won't become out-of-date every time you update the example file.
 
 For example, the following:
 
@@ -108,7 +85,7 @@ For example, the following:
 <!-- END MUNGE: EXAMPLE ../user-guide/pod.yaml -->
 ```
 
-generates the following after `hack/update-generated-docs.sh`:
+generates the following after `hack/update-munge-docs.sh`:
 
 <!-- BEGIN MUNGE: EXAMPLE ../user-guide/pod.yaml -->
 
@@ -169,11 +146,11 @@ Mungers are like gofmt for md docs which we use to format documents. To use it, 
 <!-- END MUNGE: xxxx -->
 ```
 
-in your md files. Note that xxxx is the placeholder for a specific munger. Appropriate content will be generated and inserted between two brackets after you run `hack/update-generated-docs.sh`. See [munger document](http://releases.k8s.io/HEAD/cmd/mungedocs/) for more details.
+in your md files. Note that xxxx is the placeholder for a specific munger. Appropriate content will be generated and inserted between two brackets after you run `hack/update-munge-docs.sh`. See [munger document](http://releases.k8s.io/release-1.3/cmd/mungedocs/) for more details.
 
 ## Auto-added Mungers
 
-After running `hack/update-generated-docs.sh`, you may see some code / mungers in your md file that are auto-added. You don't have to add them manually. It's recommended to just read this section as a reference instead of messing up with the following mungers.
+After running `hack/update-munge-docs.sh`, you may see some code / mungers in your md file that are auto-added. You don't have to add them manually. It's recommended to just read this section as a reference instead of messing up with the following mungers.
 
 ### Unversioned Warning
 
@@ -182,8 +159,6 @@ UNVERSIONED_WARNING munger inserts unversioned warning which warns the users whe
 ```
 <!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
 
-<!-- BEGIN STRIP_FOR_RELEASE -->
-<!-- END STRIP_FOR_RELEASE -->
 
 <!-- END MUNGE: UNVERSIONED_WARNING -->
 ```
@@ -206,6 +181,17 @@ ANALYTICS munger inserts a Google Anaylytics link for this page.
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 <!-- END MUNGE: GENERATED_ANALYTICS -->
 ```
+
+# Generated documentation
+
+Some documents can be generated automatically. Run `hack/generate-docs.sh` to
+populate your repository with these generated documents, and a list of the files
+it generates is placed in `.generated_docs`. To reduce merge conflicts, we do
+not want to check these documents in; however, to make the link checker in the
+munger happy, we check in a placeholder. `hack/update-generated-docs.sh` puts a
+placeholder in the location where each generated document would go, and
+`hack/verify-generated-docs.sh` verifies that the placeholder is in place.
+
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/devel/how-to-doc.md?pixel)]()

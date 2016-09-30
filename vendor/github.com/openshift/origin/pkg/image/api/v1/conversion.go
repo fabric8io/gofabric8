@@ -6,7 +6,6 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	v1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/conversion"
 	"k8s.io/kubernetes/pkg/runtime"
 
@@ -22,6 +21,8 @@ func Convert_api_Image_To_v1_Image(in *newer.Image, out *Image, s conversion.Sco
 
 	out.DockerImageReference = in.DockerImageReference
 	out.DockerImageManifest = in.DockerImageManifest
+	out.DockerImageManifestMediaType = in.DockerImageManifestMediaType
+	out.DockerImageConfig = in.DockerImageConfig
 
 	gvString := in.DockerImageMetadataVersion
 	if len(gvString) == 0 {
@@ -35,7 +36,7 @@ func Convert_api_Image_To_v1_Image(in *newer.Image, out *Image, s conversion.Sco
 	if err != nil {
 		return err
 	}
-	data, err := runtime.Encode(api.Codecs.LegacyCodec(version), &in.DockerImageMetadata, version)
+	data, err := runtime.Encode(api.Codecs.LegacyCodec(version), &in.DockerImageMetadata)
 	if err != nil {
 		return err
 	}
@@ -45,11 +46,32 @@ func Convert_api_Image_To_v1_Image(in *newer.Image, out *Image, s conversion.Sco
 	if in.DockerImageLayers != nil {
 		out.DockerImageLayers = make([]ImageLayer, len(in.DockerImageLayers))
 		for i := range in.DockerImageLayers {
+			out.DockerImageLayers[i].MediaType = in.DockerImageLayers[i].MediaType
 			out.DockerImageLayers[i].Name = in.DockerImageLayers[i].Name
-			out.DockerImageLayers[i].Size = in.DockerImageLayers[i].Size
+			out.DockerImageLayers[i].LayerSize = in.DockerImageLayers[i].LayerSize
 		}
 	} else {
 		out.DockerImageLayers = nil
+	}
+
+	if in.Signatures != nil {
+		out.Signatures = make([]ImageSignature, len(in.Signatures))
+		for i := range in.Signatures {
+			if err := s.Convert(&in.Signatures[i], &out.Signatures[i], 0); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Signatures = nil
+	}
+
+	if in.DockerImageSignatures != nil {
+		out.DockerImageSignatures = nil
+		for _, v := range in.DockerImageSignatures {
+			out.DockerImageSignatures = append(out.DockerImageSignatures, v)
+		}
+	} else {
+		out.DockerImageSignatures = nil
 	}
 
 	return nil
@@ -62,6 +84,8 @@ func Convert_v1_Image_To_api_Image(in *Image, out *newer.Image, s conversion.Sco
 
 	out.DockerImageReference = in.DockerImageReference
 	out.DockerImageManifest = in.DockerImageManifest
+	out.DockerImageManifestMediaType = in.DockerImageManifestMediaType
+	out.DockerImageConfig = in.DockerImageConfig
 
 	version := in.DockerImageMetadataVersion
 	if len(version) == 0 {
@@ -85,11 +109,32 @@ func Convert_v1_Image_To_api_Image(in *Image, out *newer.Image, s conversion.Sco
 	if in.DockerImageLayers != nil {
 		out.DockerImageLayers = make([]newer.ImageLayer, len(in.DockerImageLayers))
 		for i := range in.DockerImageLayers {
+			out.DockerImageLayers[i].MediaType = in.DockerImageLayers[i].MediaType
 			out.DockerImageLayers[i].Name = in.DockerImageLayers[i].Name
-			out.DockerImageLayers[i].Size = in.DockerImageLayers[i].Size
+			out.DockerImageLayers[i].LayerSize = in.DockerImageLayers[i].LayerSize
 		}
 	} else {
 		out.DockerImageLayers = nil
+	}
+
+	if in.Signatures != nil {
+		out.Signatures = make([]newer.ImageSignature, len(in.Signatures))
+		for i := range in.Signatures {
+			if err := s.Convert(&in.Signatures[i], &out.Signatures[i], 0); err != nil {
+				return err
+			}
+		}
+	} else {
+		out.Signatures = nil
+	}
+
+	if in.DockerImageSignatures != nil {
+		out.DockerImageSignatures = nil
+		for _, v := range in.DockerImageSignatures {
+			out.DockerImageSignatures = append(out.DockerImageSignatures, v)
+		}
+	} else {
+		out.DockerImageSignatures = nil
 	}
 
 	return nil
@@ -164,7 +209,7 @@ func Convert_api_TagEventListArray_to_v1_NamedTagEventListArray(in *map[string]n
 	for key := range *in {
 		allKeys = append(allKeys, key)
 	}
-	sort.Strings(allKeys)
+	newer.PrioritizeTags(allKeys)
 
 	for _, key := range allKeys {
 		newTagEventList := (*in)[key]
@@ -211,21 +256,7 @@ func Convert_api_TagReferenceMap_to_v1_TagReferenceArray(in *map[string]newer.Ta
 }
 
 func addConversionFuncs(scheme *runtime.Scheme) {
-	err := scheme.AddDefaultingFuncs(
-		func(obj *ImageImportSpec) {
-			if obj.To == nil {
-				if ref, err := newer.ParseDockerImageReference(obj.From.Name); err == nil {
-					if len(ref.Tag) > 0 {
-						obj.To = &v1.LocalObjectReference{Name: ref.Tag}
-					}
-				}
-			}
-		})
-	if err != nil {
-		// If one of the default functions is malformed, detect it immediately.
-		panic(err)
-	}
-	err = scheme.AddConversionFuncs(
+	err := scheme.AddConversionFuncs(
 		Convert_v1_NamedTagEventListArray_to_api_TagEventListArray,
 		Convert_api_TagEventListArray_to_v1_NamedTagEventListArray,
 		Convert_v1_TagReferenceArray_to_api_TagReferenceMap,

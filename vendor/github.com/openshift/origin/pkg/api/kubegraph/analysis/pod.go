@@ -39,6 +39,10 @@ func FindRestartingPods(g osgraph.Graph, f osgraph.Namer, logsCommandName, secur
 		}
 
 		for _, containerStatus := range pod.Status.ContainerStatuses {
+			containerString := ""
+			if len(pod.Spec.Containers) > 1 {
+				containerString = fmt.Sprintf("container %q in ", containerStatus.Name)
+			}
 			switch {
 			case containerCrashLoopBackOff(containerStatus):
 				var suggestion string
@@ -69,17 +73,17 @@ func FindRestartingPods(g osgraph.Graph, f osgraph.Namer, logsCommandName, secur
 
 					Severity: osgraph.ErrorSeverity,
 					Key:      CrashLoopingPodError,
-					Message: fmt.Sprintf("container %q in %s is crash-looping", containerStatus.Name,
+					Message: fmt.Sprintf("%s%s is crash-looping", containerString,
 						f.ResourceName(podNode)),
 					Suggestion: osgraph.Suggestion(suggestion),
 				})
-			case containerRestartedRecently(containerStatus, nowFn()):
+			case ContainerRestartedRecently(containerStatus, nowFn()):
 				markers = append(markers, osgraph.Marker{
 					Node: podNode,
 
 					Severity: osgraph.WarningSeverity,
 					Key:      RestartingPodWarning,
-					Message: fmt.Sprintf("container %q in %s has restarted within the last 10 minutes", containerStatus.Name,
+					Message: fmt.Sprintf("%s%s has restarted within the last 10 minutes", containerString,
 						f.ResourceName(podNode)),
 				})
 			case containerRestartedFrequently(containerStatus):
@@ -88,7 +92,7 @@ func FindRestartingPods(g osgraph.Graph, f osgraph.Namer, logsCommandName, secur
 
 					Severity: osgraph.WarningSeverity,
 					Key:      RestartingPodWarning,
-					Message: fmt.Sprintf("container %q in %s has restarted %d times", containerStatus.Name,
+					Message: fmt.Sprintf("%s%s has restarted %d times", containerString,
 						f.ResourceName(podNode), containerStatus.RestartCount),
 				})
 			}
@@ -116,7 +120,7 @@ func containerCrashLoopBackOff(status kapi.ContainerStatus) bool {
 	return status.State.Waiting != nil && status.State.Waiting.Reason == "CrashLoopBackOff"
 }
 
-func containerRestartedRecently(status kapi.ContainerStatus, now unversioned.Time) bool {
+func ContainerRestartedRecently(status kapi.ContainerStatus, now unversioned.Time) bool {
 	if status.RestartCount == 0 {
 		return false
 	}

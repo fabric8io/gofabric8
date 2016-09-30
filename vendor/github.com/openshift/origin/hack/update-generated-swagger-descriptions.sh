@@ -2,21 +2,12 @@
 #
 # This script generates methods to allow our API objects to describe themsleves for the Swagger tool
 # by reading the current version of the Godoc for the objects. This script can either generate new
-# documentation or verify that the documentation currently in the repository remains valid. 
+# documentation or verify that the documentation currently in the repository remains valid.
 #
 # This script accepts the following parameters as environment variables:
 #  - VERIFY:  run the script to verify current documentation
 #  - DRY_RUN: print which files would be generated and exit
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-cd "${OS_ROOT}"
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/common.sh"
-os::log::install_errexit
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 # read in envar options
 verify="${VERIFY:-}"
@@ -24,7 +15,7 @@ dryrun="${DRY_RUN:-}"
 
 mkdir -p /tmp/openshift/generate/swaggerdoc
 
-hack/build-go.sh tools/genswaggerdoc
+"${OS_ROOT}/hack/build-go.sh" tools/genswaggerdoc
 genswaggerdoc="$( os::build::find-binary genswaggerdoc )"
 
 if [[ -z "${genswaggerdoc}" ]]; then
@@ -65,7 +56,7 @@ for file in ${source_files}; do
 " >> "${tmp_output_file}"
 		${genswaggerdoc} --input="${file}" --output="${tmp_output_file}"
 		gofmt -s -w "${tmp_output_file}"
-		
+
 		if [[ -n "${verify}" ]]; then
 			if ! diff --new-file --unified=3 --text "${tmp_output_file}" "${swagger_file}"; then
 				echo "[ERROR] Generated Swagger documentation at \"${swagger_file}\" is out of date."

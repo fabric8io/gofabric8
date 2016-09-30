@@ -12,11 +12,15 @@ import (
 	"github.com/openshift/origin/pkg/build/api"
 	_ "github.com/openshift/origin/pkg/build/api/install"
 	"github.com/openshift/origin/pkg/build/registry/buildconfig"
+	"github.com/openshift/origin/pkg/util/restoptions"
 )
 
 func newStorage(t *testing.T) (*REST, *etcdtesting.EtcdTestServer) {
 	etcdStorage, server := registrytest.NewEtcdStorage(t, "")
-	storage := NewREST(etcdStorage)
+	storage, err := NewREST(restoptions.NewSimpleGetter(etcdStorage))
+	if err != nil {
+		t.Fatal(err)
+	}
 	return storage, server
 }
 
@@ -30,7 +34,7 @@ func validBuildConfig() *api.BuildConfig {
 		ObjectMeta: kapi.ObjectMeta{Name: "configid"},
 		Spec: api.BuildConfigSpec{
 			RunPolicy: api.BuildRunPolicySerial,
-			BuildSpec: api.BuildSpec{
+			CommonSpec: api.CommonSpec{
 				Source: api.BuildSource{
 					Git: &api.GitBuildSource{
 						URI: "http://github.com/my/repository",
@@ -53,7 +57,7 @@ func validBuildConfig() *api.BuildConfig {
 func TestCreate(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd)
+	test := registrytest.New(t, storage.Store)
 	valid := validBuildConfig()
 	valid.Name = ""
 	valid.GenerateName = "test-"
@@ -67,7 +71,7 @@ func TestCreate(t *testing.T) {
 func TestList(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd)
+	test := registrytest.New(t, storage.Store)
 	test.TestList(
 		validBuildConfig(),
 	)
@@ -76,7 +80,7 @@ func TestList(t *testing.T) {
 func TestGet(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd)
+	test := registrytest.New(t, storage.Store)
 	test.TestGet(
 		validBuildConfig(),
 	)
@@ -85,7 +89,7 @@ func TestGet(t *testing.T) {
 func TestDelete(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd)
+	test := registrytest.New(t, storage.Store)
 	test.TestDelete(
 		validBuildConfig(),
 	)
@@ -94,7 +98,7 @@ func TestDelete(t *testing.T) {
 func TestWatch(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)
-	test := registrytest.New(t, storage.Etcd)
+	test := registrytest.New(t, storage.Store)
 
 	valid := validBuildConfig()
 	valid.Name = "foo"

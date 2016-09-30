@@ -7,22 +7,28 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/golang/glog"
+
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/validation"
+	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util/strategicpatch"
 	kvalidation "k8s.io/kubernetes/pkg/util/validation"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
 	oapi "github.com/openshift/origin/pkg/api"
 	buildapi "github.com/openshift/origin/pkg/build/api"
+	"github.com/openshift/origin/pkg/build/api/v1"
 	buildutil "github.com/openshift/origin/pkg/build/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
+	imageapivalidation "github.com/openshift/origin/pkg/image/api/validation"
 )
 
 // ValidateBuild tests required fields for a Build.
 func ValidateBuild(build *buildapi.Build) field.ErrorList {
 	allErrs := field.ErrorList{}
 	allErrs = append(allErrs, validation.ValidateObjectMeta(&build.ObjectMeta, true, validation.NameIsDNSSubdomain, field.NewPath("metadata"))...)
-	allErrs = append(allErrs, validateBuildSpec(&build.Spec, field.NewPath("spec"))...)
+	allErrs = append(allErrs, validateCommonSpec(&build.Spec.CommonSpec, field.NewPath("spec"))...)
 	return allErrs
 }
 
@@ -36,10 +42,36 @@ func ValidateBuildUpdate(build *buildapi.Build, older *buildapi.Build) field.Err
 		allErrs = append(allErrs, field.Invalid(field.NewPath("status", "phase"), build.Status.Phase, "phase cannot be updated from a terminal state"))
 	}
 	if !kapi.Semantic.DeepEqual(build.Spec, older.Spec) {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("spec"), "content of spec is not printed out, please refer to the \"details\"", "spec is immutable"))
+		diff, err := diffBuildSpec(build.Spec, older.Spec)
+		if err != nil {
+			glog.V(2).Infof("Error calculating build spec patch: %v", err)
+			diff = "[unknown]"
+		}
+		detail := fmt.Sprintf("spec is immutable, diff: %s", diff)
+		allErrs = append(allErrs, field.Invalid(field.NewPath("spec"), "content of spec is not printed out, please refer to the details", detail))
 	}
 
 	return allErrs
+}
+
+func diffBuildSpec(newer buildapi.BuildSpec, older buildapi.BuildSpec) (string, error) {
+	codec := kapi.Codecs.LegacyCodec(v1.SchemeGroupVersion)
+	newerObj := &buildapi.Build{Spec: newer}
+	olderObj := &buildapi.Build{Spec: older}
+
+	newerJSON, err := runtime.Encode(codec, newerObj)
+	if err != nil {
+		return "", fmt.Errorf("error encoding newer: %v", err)
+	}
+	olderJSON, err := runtime.Encode(codec, olderObj)
+	if err != nil {
+		return "", fmt.Errorf("error encoding older: %v", err)
+	}
+	patch, err := strategicpatch.CreateTwoWayMergePatch(olderJSON, newerJSON, &v1.Build{})
+	if err != nil {
+		return "", fmt.Errorf("error creating a strategic patch: %v", err)
+	}
+	return string(patch), nil
 }
 
 // refKey returns a key for the given ObjectReference. If the ObjectReference
@@ -89,7 +121,7 @@ func ValidateBuildConfig(config *buildapi.BuildConfig) field.ErrorList {
 			"run policy must Parallel, Serial, or SerialLatestOnly"))
 	}
 
-	allErrs = append(allErrs, validateBuildSpec(&config.Spec.BuildSpec, specPath)...)
+	allErrs = append(allErrs, validateCommonSpec(&config.Spec.CommonSpec, specPath)...)
 
 	return allErrs
 }
@@ -106,12 +138,12 @@ func ValidateBuildRequest(request *buildapi.BuildRequest) field.ErrorList {
 	return validation.ValidateObjectMeta(&request.ObjectMeta, true, oapi.MinimalNameRequirements, field.NewPath("metadata"))
 }
 
-func validateBuildSpec(spec *buildapi.BuildSpec, fldPath *field.Path) field.ErrorList {
+func validateCommonSpec(spec *buildapi.CommonSpec, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	s := spec.Strategy
 
 	if s.DockerStrategy != nil && s.JenkinsPipelineStrategy == nil && spec.Source.Git == nil && spec.Source.Binary == nil && spec.Source.Dockerfile == nil && spec.Source.Images == nil {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("source"), spec.Source, "must provide a value for at least one of source, binary, images, or dockerfile"))
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("source"), "", "must provide a value for at least one source input(git, binary, dockerfile, images)."))
 	}
 
 	allErrs = append(allErrs,
@@ -171,7 +203,6 @@ func validateSource(input *buildapi.BuildSource, isCustomStrategy, isDockerStrat
 			allErrs = append(allErrs, validateImageSource(image, fldPath.Child("images").Index(i))...)
 		}
 	}
-
 	if isJenkinsPipelineStrategyFromRepo && input.Git == nil {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("git"), "", "must be set when using Jenkins Pipeline strategy with Jenkinsfile from a git repo"))
 	}
@@ -247,7 +278,7 @@ func validateSecrets(secrets []buildapi.SecretBuildSource, isDockerStrategy bool
 		if len(s.Secret.Name) == 0 {
 			allErrs = append(allErrs, field.Required(fldPath.Index(i).Child("secret"), ""))
 		}
-		if ok, _ := validation.ValidateSecretName(s.Secret.Name, false); !ok {
+		if reasons := validation.ValidateSecretName(s.Secret.Name, false); len(reasons) != 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath.Index(i).Child("secret"), s, "must be valid secret name"))
 		}
 		if strings.HasPrefix(path.Clean(s.DestinationDir), "..") {
@@ -317,8 +348,10 @@ func validateToImageReference(reference *kapi.ObjectReference, fldPath *field.Pa
 			allErrs = append(allErrs, field.Required(fldPath.Child("name"), ""))
 		} else if _, _, ok := imageapi.SplitImageStreamTag(name); !ok {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), name, "ImageStreamTag object references must be in the form <name>:<tag>"))
+		} else if name, _, _ := imageapi.SplitImageStreamTag(name); len(imageapivalidation.ValidateImageStreamName(name, false)) != 0 {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), name, "ImageStreamTag name contains invalid syntax"))
 		}
-		if len(namespace) != 0 && !kvalidation.IsDNS1123Subdomain(namespace) {
+		if len(namespace) != 0 && len(kvalidation.IsDNS1123Subdomain(namespace)) != 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("namespace"), namespace, "namespace must be a valid subdomain"))
 		}
 
@@ -347,9 +380,11 @@ func validateFromImageReference(reference *kapi.ObjectReference, fldPath *field.
 			allErrs = append(allErrs, field.Required(fldPath.Child("name"), ""))
 		} else if _, _, ok := imageapi.SplitImageStreamTag(name); !ok {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), name, "ImageStreamTag object references must be in the form <name>:<tag>"))
+		} else if name, _, _ := imageapi.SplitImageStreamTag(name); len(imageapivalidation.ValidateImageStreamName(name, false)) != 0 {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), name, "ImageStreamTag name contains invalid syntax"))
 		}
 
-		if len(namespace) != 0 && !kvalidation.IsDNS1123Subdomain(namespace) {
+		if len(namespace) != 0 && len(kvalidation.IsDNS1123Subdomain(namespace)) != 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("namespace"), namespace, "namespace must be a valid subdomain"))
 		}
 
@@ -366,7 +401,7 @@ func validateFromImageReference(reference *kapi.ObjectReference, fldPath *field.
 		if len(name) == 0 {
 			allErrs = append(allErrs, field.Required(fldPath.Child("name"), ""))
 		}
-		if len(namespace) != 0 && !kvalidation.IsDNS1123Subdomain(namespace) {
+		if len(namespace) != 0 && len(kvalidation.IsDNS1123Subdomain(namespace)) != 0 {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("namespace"), namespace, "namespace must be a valid subdomain"))
 		}
 	case "":
@@ -468,6 +503,7 @@ func validateSourceStrategy(strategy *buildapi.SourceBuildStrategy, fldPath *fie
 	allErrs = append(allErrs, validateFromImageReference(&strategy.From, fldPath.Child("from"))...)
 	allErrs = append(allErrs, validateSecretRef(strategy.PullSecret, fldPath.Child("pullSecret"))...)
 	allErrs = append(allErrs, ValidateStrategyEnv(strategy.Env, fldPath.Child("env"))...)
+	allErrs = append(allErrs, validateRuntimeImage(strategy, fldPath.Child("runtimeImage"))...)
 	return allErrs
 }
 
@@ -615,4 +651,22 @@ func validatePostCommit(spec buildapi.BuildPostCommitSpec, fldPath *field.Path) 
 		allErrs = append(allErrs, field.Invalid(fldPath, spec, "cannot use command and script together"))
 	}
 	return allErrs
+}
+
+// validateRuntimeImage verifies that the runtimeImage field in
+// SourceBuildStrategy is not empty if it was specified and also checks to see
+// if the incremental build flag was specified, which is incompatible since we
+// can't have extended incremental builds.
+func validateRuntimeImage(sourceStrategy *buildapi.SourceBuildStrategy, fldPath *field.Path) (allErrs field.ErrorList) {
+	if sourceStrategy.RuntimeImage == nil {
+		return
+	}
+	if sourceStrategy.RuntimeImage.Name == "" {
+		return append(allErrs, field.Required(fldPath, "name"))
+	}
+
+	if sourceStrategy.Incremental != nil && *sourceStrategy.Incremental {
+		return append(allErrs, field.Invalid(fldPath, sourceStrategy.Incremental, "incremental cannot be set to true with extended builds"))
+	}
+	return
 }

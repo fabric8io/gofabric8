@@ -92,7 +92,7 @@ func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oc
 					},
 					Spec: rapi.RouteSpec{
 						Host: hostName,
-						To:   kapi.ObjectReference{Name: name},
+						To:   rapi.RouteTargetReference{Name: name},
 					},
 				}
 				// lets create the route

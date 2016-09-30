@@ -5,13 +5,21 @@ import (
 	"k8s.io/kubernetes/pkg/api/unversioned"
 )
 
+const (
+	ClusterNetworkDefault       = "default"
+	EgressNetworkPolicyMaxRules = 50
+)
+
+// +genclient=true
+
 type ClusterNetwork struct {
 	unversioned.TypeMeta
 	kapi.ObjectMeta
 
 	Network          string
-	HostSubnetLength int
+	HostSubnetLength uint32
 	ServiceNetwork   string
+	PluginName       string
 }
 
 type ClusterNetworkList struct {
@@ -44,7 +52,7 @@ type NetNamespace struct {
 	kapi.ObjectMeta
 
 	NetName string
-	NetID   uint
+	NetID   uint32
 }
 
 // NetNamespaceList is a collection of NetNamespaces
@@ -52,4 +60,43 @@ type NetNamespaceList struct {
 	unversioned.TypeMeta
 	unversioned.ListMeta
 	Items []NetNamespace
+}
+
+// EgressNetworkPolicyRuleType gives the type of an EgressNetworkPolicyRule
+type EgressNetworkPolicyRuleType string
+
+const (
+	EgressNetworkPolicyRuleAllow EgressNetworkPolicyRuleType = "Allow"
+	EgressNetworkPolicyRuleDeny  EgressNetworkPolicyRuleType = "Deny"
+)
+
+// EgressNetworkPolicyPeer specifies a target to apply egress policy to
+type EgressNetworkPolicyPeer struct {
+	CIDRSelector string
+}
+
+// EgressNetworkPolicyRule contains a single egress network policy rule
+type EgressNetworkPolicyRule struct {
+	Type EgressNetworkPolicyRuleType
+	To   EgressNetworkPolicyPeer
+}
+
+// EgressNetworkPolicySpec provides a list of policies on outgoing traffic
+type EgressNetworkPolicySpec struct {
+	Egress []EgressNetworkPolicyRule
+}
+
+// EgressNetworkPolicy describes the current egress network policy
+type EgressNetworkPolicy struct {
+	unversioned.TypeMeta
+	kapi.ObjectMeta
+
+	Spec EgressNetworkPolicySpec
+}
+
+// EgressNetworkPolicyList is a collection of EgressNetworkPolicy
+type EgressNetworkPolicyList struct {
+	unversioned.TypeMeta
+	unversioned.ListMeta
+	Items []EgressNetworkPolicy
 }

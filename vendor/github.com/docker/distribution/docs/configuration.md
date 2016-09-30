@@ -55,6 +55,8 @@ information about each option that appears later in this page.
 
     version: 0.1
     log:
+      accesslog:
+        disabled: true
       level: debug
       formatter: text
       fields:
@@ -78,6 +80,7 @@ information about each option that appears later in this page.
     storage:
       filesystem:
         rootdirectory: /var/lib/registry
+		maxthreads: 100
       azure:
         accountname: accountname
         accountkey: base64encodedaccountkey
@@ -86,20 +89,22 @@ information about each option that appears later in this page.
         bucket: bucketname
         keyfile: /path/to/keyfile
         rootdirectory: /gcs/object/name/prefix
+        chunksize: 5242880
       s3:
         accesskey: awsaccesskey
         secretkey: awssecretkey
         region: us-west-1
+        regionendpoint: http://myobjects.local
         bucket: bucketname
         encrypt: true
+        keyid: mykeyid
         secure: true
         v4auth: true
         chunksize: 5242880
+        multipartcopychunksize: 33554432
+        multipartcopymaxconcurrency: 100
+        multipartcopythresholdsize: 33554432
         rootdirectory: /s3/object/name/prefix
-      rados:
-        poolname: radospool
-        username: radosuser
-        chunksize: 4194304
       swift:
         username: username
         password: password
@@ -112,6 +117,18 @@ information about each option that appears later in this page.
         region: fr
         container: containername
         rootdirectory: /swift/object/name/prefix
+      oss:
+        accesskeyid: accesskeyid
+        accesskeysecret: accesskeysecret
+        region: OSS region name
+        endpoint: optional endpoints
+        internal: optional internal endpoint
+        bucket: OSS bucket
+        encrypt: optional data encryption setting
+        secure: optional ssl setting
+        chunksize: optional size valye
+        rootdirectory: optional root directory
+      inmemory:  # This driver takes no parameters
       delete:
         enabled: false
       redirect:
@@ -153,7 +170,11 @@ information about each option that appears later in this page.
             baseurl: https://my.cloudfronted.domain.com/
             privatekey: /path/to/pem
             keypairid: cloudfrontkeypairid
-            duration: 3000
+            duration: 3000s
+      storage:
+        - name: redirect
+          options:
+            baseurl: https://example.com/
     reporting:
       bugsnag:
         apikey: bugsnagapikey
@@ -168,16 +189,22 @@ information about each option that appears later in this page.
       prefix: /my/nested/registry/
       host: https://myregistryaddress.org:5000
       secret: asecretforlocaldevelopment
+      relativeurls: false
       tls:
         certificate: /path/to/x509/public
         key: /path/to/x509/private
         clientcas:
           - /path/to/ca.pem
           - /path/to/another/ca.pem
+        letsencrypt:
+          cachefile: /path/to/cache-file
+          email: emailused@letsencrypt.com
       debug:
         addr: localhost:5001
       headers:
         X-Content-Type-Options: [nosniff]
+      http2:
+        disabled: false
     notifications:
       endpoints:
         - name: alistener
@@ -223,6 +250,17 @@ information about each option that appears later in this page.
       remoteurl: https://registry-1.docker.io
       username: [username]
       password: [password]
+    compatibility:
+      schema1:
+        signingkeyfile: /etc/registry/key.json
+    validation:
+      enabled: true
+      manifests:
+        urls:
+          allow:
+            - ^https?://([^/]+\.)*example\.com/
+          deny:
+            - ^https?://www\.example\.com/
 
 In some instances a configuration option is **optional** but it contains child
 options marked as **required**. This indicates that you can omit the parent with
@@ -244,6 +282,8 @@ system outputs everything to stdout. You can adjust the granularity and format
 with this configuration section.
 
     log:
+      accesslog:
+        disabled: true
       level: debug
       formatter: text
       fields:
@@ -282,7 +322,7 @@ with this configuration section.
       <code>logstash</code>. The default is <code>text</code>.
     </td>
   </tr>
-    <tr>
+  <tr>
     <td>
       <code>fields</code>
     </td>
@@ -294,7 +334,18 @@ with this configuration section.
       the context. This is useful for identifying log messages source after
       being mixed in other systems.
     </td>
+  </tr>
 </table>
+
+### accesslog
+
+    accesslog:
+      disabled: true
+
+Within `log`, `accesslog` configures the behavior of the access logging
+system. By default, the access logging system outputs to stdout in
+[Combined Log Format](https://httpd.apache.org/docs/2.4/logs.html#combined).
+Access logging can be disabled by setting the boolean flag `disabled` to `true`.
 
 ## hooks
 
@@ -342,20 +393,21 @@ Permitted values are `error`, `warn`, `info` and `debug`. The default is
         accesskey: awsaccesskey
         secretkey: awssecretkey
         region: us-west-1
+        regionendpoint: http://myobjects.local
         bucket: bucketname
         encrypt: true
+        keyid: mykeyid
         secure: true
         v4auth: true
         chunksize: 5242880
+        multipartcopychunksize: 33554432
+        multipartcopymaxconcurrency: 100
+        multipartcopythresholdsize: 33554432
         rootdirectory: /s3/object/name/prefix
-      rados:
-        poolname: radospool
-        username: radosuser
-        chunksize: 4194304
       swift:
         username: username
         password: password
-        authurl: https://storage.myprovider.com/v2.0 or https://storage.myprovider.com/v3/auth
+        authurl: https://storage.myprovider.com/auth/v1.0 or https://storage.myprovider.com/v2.0 or https://storage.myprovider.com/v3/auth
         tenant: tenantname
         tenantid: tenantid
         domain: domain name for Openstack Identity v3 API
@@ -364,6 +416,18 @@ Permitted values are `error`, `warn`, `info` and `debug`. The default is
         region: fr
         container: containername
         rootdirectory: /swift/object/name/prefix
+      oss:
+        accesskeyid: accesskeyid
+        accesskeysecret: accesskeysecret
+        region: OSS region name
+        endpoint: optional endpoints
+        internal: optional internal endpoint
+        bucket: OSS bucket
+        encrypt: optional data encryption setting
+        secure: optional ssl setting
+        chunksize: optional size valye
+        rootdirectory: optional root directory
+      inmemory:
       delete:
         enabled: false
       cache:
@@ -378,325 +442,29 @@ Permitted values are `error`, `warn`, `info` and `debug`. The default is
         disable: false
 
 The storage option is **required** and defines which storage backend is in use.
-You must configure one backend; if you configure more, the registry returns an error.
+You must configure one backend; if you configure more, the registry returns an error. You can choose any of these backend storage drivers:
 
-If you are deploying a registry on Windows, be aware that a Windows volume mounted from the host is not recommended. Instead, you can use a S3, or Azure, backing data-store. If you do use a Windows volume, you must ensure that the `PATH` to the mount point is within Windows' `MAX_PATH` limits (typically 255 characters). Failure to do so can result in the following error message:
+| Storage&nbsp;driver | Description
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `filesystem`        | Uses the local disk to store registry files. It is ideal for development and may be appropriate for some small-scale production applications. See the [driver's reference documentation](storage-drivers/filesystem.md). |
+| `azure`             | Uses Microsoft's Azure Blob Storage. See the [driver's reference documentation](storage-drivers/azure.md).                                                                                                               |
+| `gcs`               | Uses Google Cloud Storage. See the [driver's reference documentation](storage-drivers/gcs.md).                                                                                                                           |
+| `s3`                | Uses Amazon's Simple Storage Service (S3) and compatible Storage Services. See the [driver's reference documentation](storage-drivers/s3.md).                                                                            |
+| `swift`             | Uses Openstack Swift object storage. See the [driver's reference documentation](storage-drivers/swift.md).                                                                                                               |
+| `oss`               | Uses Aliyun OSS for object storage. See the [driver's reference documentation](storage-drivers/oss.md).                                                                                                                  |
+
+For purely tests purposes, you can use the [`inmemory` storage
+driver](storage-drivers/inmemory.md). If you would like to run a registry from
+volatile memory, use the [`filesystem` driver](storage-drivers/filesystem.md) on
+a ramdisk.
+
+If you are deploying a registry on Windows, be aware that a Windows volume
+mounted from the host is not recommended. Instead, you can use a S3, or Azure,
+backing data-store. If you do use a Windows volume, you must ensure that the
+`PATH` to the mount point is within Windows' `MAX_PATH` limits (typically 255
+characters). Failure to do so can result in the following error message:
 
     mkdir /XXX protocol error and your registry will not function properly.
-
-### delete
-
-Use the `delete` subsection to enable the deletion of image blobs and manifests
-by digest. It defaults to false, but it can be enabled by writing the following
-on the configuration file:
-
-    delete:
-      enabled: true
-
-### cache
-
-Use the `cache` subsection to enable caching of data accessed in the storage
-backend. Currently, the only available cache provides fast access to layer
-metadata. This, if configured, uses the `blobdescriptor` field.
-
-You can set `blobdescriptor` field to `redis` or `inmemory`.  The `redis` value uses
-a Redis pool to cache layer metadata.  The `inmemory` value uses an in memory
-map.
-
->**NOTE**: Formerly, `blobdescriptor` was known as `layerinfo`. While these
->are equivalent, `layerinfo` has been deprecated, in favor or
->`blobdescriptor`.
-
-### redirect
-
-The `redirect` subsection provides configuration for managing redirects from
-content backends. For backends that support it, redirecting is enabled by
-default. Certain deployment scenarios may prefer to route all data through the
-Registry, rather than redirecting to the backend. This may be more efficient
-when using a backend that is not colocated or when a registry instance is
-doing aggressive caching.
-
-Redirects can be disabled by adding a single flag `disable`, set to `true`
-under the `redirect` section:
-
-    redirect:
-      disable: true
-
-### filesystem
-
-The `filesystem` storage backend uses the local disk to store registry files. It
-is ideal for development and may be appropriate for some small-scale production
-applications.
-
-This backend has a single, required `rootdirectory` parameter. The parameter
-specifies the absolute path to a directory. The registry stores all its data
-here so make sure there is adequate space available.
-
-### azure
-
-This storage backend uses Microsoft's Azure Blob Storage.
-
-<table>
-  <tr>
-    <th>Parameter</th>
-    <th>Required</th>
-    <th>Description</th>
-  </tr>
-  <tr>
-    <td>
-      <code>accountname</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      Azure account name.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>accountkey</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      Azure account key.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>container</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      Name of the Azure container into which to store data.
-    </td>
-  </tr>
-   <tr>
-    <td>
-      <code>realm</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Domain name suffix for the Storage Service API endpoint. By default, this
-      is <code>core.windows.net</code>.
-    </td>
-  </tr>
-
-</table>
-
-### gcs
-
-This storage backend uses Google Cloud Storage.
-
-<table>
-  <tr>
-    <th>Parameter</th>
-    <th>Required</th>
-    <th>Description</th>
-  </tr>
-  <tr>
-    <td>
-      <code>bucket</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      Storage bucket name.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>keyfile</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      A private service account key file in JSON format. Instead of a key file <a href="https://developers.google.com/identity/protocols/application-default-credentials">Google Application Default Credentials</a> can be used.
-    </td>
-  </tr>
-   <tr>
-    <td>
-      <code>rootdirectory</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      This is a prefix that will be applied to all Google Cloud Storage keys to allow you to segment data in your bucket if necessary.
-  </tr>
-
-</table>
-
-### rados
-
-This storage backend uses [Ceph Object Storage](http://ceph.com/docs/master/rados/).
-
-<table>
-  <tr>
-    <th>Parameter</th>
-    <th>Required</th>
-    <th>Description</th>
-  </tr>
-  <tr>
-    <td>
-      <code>poolname</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      Ceph pool name.
-    </td>
-  </tr>
-   <tr>
-    <td>
-      <code>username</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Ceph cluster user to connect as (i.e. admin, not client.admin).
-    </td>
-  </tr>
-   <tr>
-    <td>
-      <code>chunksize</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Size of the written RADOS objects. Default value is 4MB (4194304).
-    </td>
-  </tr>
-</table>
-
-
-### S3
-
-This storage backend uses Amazon's Simple Storage Service (S3).
-
-<table>
-  <tr>
-    <th>Parameter</th>
-    <th>Required</th>
-    <th>Description</th>
-  </tr>
-  <tr>
-    <td>
-      <code>accesskey</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      Your AWS Access Key.
-    </td>
-  </tr>
-    <tr>
-    <td>
-      <code>secretkey</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      Your AWS Secret Key.
-    </td>
-  </tr>
-    <tr>
-    <td>
-      <code>region</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      The AWS region in which your bucket exists. For the moment, the Go AWS
-      library in use does not use the newer DNS based bucket routing.
-    </td>
-  </tr>
-    <tr>
-    <td>
-      <code>bucket</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      The bucket name in which you want to store the registry's data.
-    </td>
-  </tr>
-    <tr>
-    <td>
-      <code>encrypt</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-       Specifies whether the registry stores the image in encrypted format or
-       not. A boolean value. The default is false.
-    </td>
-  </tr>
-    <tr>
-    <td>
-      <code>secure</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Indicates whether to use HTTPS instead of HTTP. A boolean value. The
-      default is <code>true</code>.
-    </td>
-  </tr>
-    <tr>
-    <td>
-      <code>v4auth</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Indicates whether the registry uses Version 4 of AWS's authentication.
-      Generally, you should set this to <code>true</code>. By default, this is
-      <code>false</code>.
-    </td>
-  </tr>
-    <tr>
-    <td>
-      <code>chunksize</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      The S3 API requires multipart upload chunks to be at least 5MB. This value
-      should be a number that is larger than 5*1024*1024.
-    </td>
-  </tr>
-   <tr>
-    <td>
-      <code>rootdirectory</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      This is a prefix that will be applied to all S3 keys to allow you to segment data in your bucket if necessary.
-    </td>
-  </tr>
-</table>
 
 ### Maintenance
 
@@ -731,160 +499,43 @@ restarted with readonly's `enabled` set to true. After the garbage collection
 pass finishes, the registry may be restarted again, this time with `readonly`
 removed from the configuration (or set to false).
 
-### Openstack Swift
+### delete
 
-This storage backend uses Openstack Swift object storage.
+Use the `delete` subsection to enable the deletion of image blobs and manifests
+by digest. It defaults to false, but it can be enabled by writing the following
+on the configuration file:
 
-<table>
-  <tr>
-    <th>Parameter</th>
-    <th>Required</th>
-    <th>Description</th>
-  </tr>
-  <tr>
-    <td>
-      <code>authurl</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      URL for obtaining an auth token. https://storage.myprovider.com/v2.0 or https://storage.myprovider.com/v3/auth
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>username</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      Your Openstack user name.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>password</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      Your Openstack password.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>region</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      The Openstack region in which your container exists.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>container</code>
-    </td>
-    <td>
-      yes
-    </td>
-    <td>
-      The container name in which you want to store the registry's data.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>tenant</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Your Openstack tenant name.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>tenantid</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Your Openstack tenant id.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>domain</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Your Openstack domain name for Identity v3 API.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>domainid</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Your Openstack domain id for Identity v3 API.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>trustid</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Your Openstack trust id for Identity v3 API.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>insecureskipverify</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      true to skip TLS verification, false by default.
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>chunksize</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      Size of the data segments for the Swift Dynamic Large Objects. This value should be a number (defaults to 5M).
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <code>rootdirectory</code>
-    </td>
-    <td>
-      no
-    </td>
-    <td>
-      This is a prefix that will be applied to all Swift keys to allow you to segment data in your container if necessary.
-    </td>
-  </tr>
-</table>
+    delete:
+      enabled: true
+
+### cache
+
+Use the `cache` subsection to enable caching of data accessed in the storage
+backend. Currently, the only available cache provides fast access to layer
+metadata. This, if configured, uses the `blobdescriptor` field.
+
+You can set `blobdescriptor` field to `redis` or `inmemory`.  The `redis` value uses
+a Redis pool to cache layer metadata.  The `inmemory` value uses an in memory
+map.
+
+>**NOTE**: Formerly, `blobdescriptor` was known as `layerinfo`. While these
+>are equivalent, `layerinfo` has been deprecated, in favor or
+>`blobdescriptor`.
+
+### redirect
+
+The `redirect` subsection provides configuration for managing redirects from
+content backends. For backends that support it, redirecting is enabled by
+default. Certain deployment scenarios may prefer to route all data through the
+Registry, rather than redirecting to the backend. This may be more efficient
+when using a backend that is not co-located or when a registry instance is
+doing aggressive caching.
+
+Redirects can be disabled by adding a single flag `disable`, set to `true`
+under the `redirect` section:
+
+    redirect:
+      disable: true
 
 
 ## auth
@@ -1013,11 +664,12 @@ For more information about Token based authentication configuration, see the [sp
 ### htpasswd
 
 The _htpasswd_ authentication backed allows one to configure basic auth using an
-[Apache HTPasswd File](https://httpd.apache.org/docs/2.4/programs/htpasswd.html).
-Only [`bcrypt`](http://en.wikipedia.org/wiki/Bcrypt) format passwords are
-supported. Entries with other hash types will be ignored. The htpasswd file is
-loaded once, at startup. If the file is invalid, the registry will display and
-error and will not start.
+[Apache htpasswd
+file](https://httpd.apache.org/docs/2.4/programs/htpasswd.html). Only
+[`bcrypt`](http://en.wikipedia.org/wiki/Bcrypt) format passwords are supported.
+Entries with other hash types will be ignored. The htpasswd file is loaded once,
+at startup. If the file is invalid, the registry will display an error and will
+not start.
 
 > __WARNING:__ This authentication scheme should only be used with TLS
 > configured, since basic authentication sends passwords as part of the http
@@ -1056,14 +708,13 @@ error and will not start.
 ## middleware
 
 The `middleware` option is **optional**. Use this option to inject middleware at
-named hook points. All middlewares must implement the same interface as the
+named hook points. All middleware must implement the same interface as the
 object they're wrapping. This means a registry middleware must implement the
 `distribution.Namespace` interface, repository middleware must implement
 `distribution.Repository`, and storage middleware must implement
 `driver.StorageDriver`.
 
-Currently only one middleware, `cloudfront`, a storage middleware, is supported
-in the registry implementation.
+An example configuration of the `cloudfront`  middleware, a storage middleware:
 
     middleware:
       registry:
@@ -1080,7 +731,7 @@ in the registry implementation.
             baseurl: https://my.cloudfronted.domain.com/
             privatekey: /path/to/pem
             keypairid: cloudfrontkeypairid
-            duration: 3000
+            duration: 3000s
 
 Each middleware entry has `name` and `options` entries. The `name` must
 correspond to the name under which the middleware registers itself. The
@@ -1139,11 +790,20 @@ interpretation of the options.
       no
     </td>
     <td>
-      Duration for which a signed URL should be valid.
+      Specify a `duration` by providing an integer and a unit. Valid time units are `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`. For example, `3000s` is a valid duration; there should be no space between the integer and unit. If you do not specify a `duration` or specify an integer without a time unit, this defaults to 20 minutes.
     </td>
   </tr>
 </table>
 
+### redirect
+
+In place of the `cloudfront` storage middleware, the `redirect`
+storage middleware can be used to specify a custom URL to a location
+of a proxy for the layer stored by the S3 storage driver.
+
+| Parameter | Required | Description |
+| --- | --- | --- |
+| baseurl   | yes      | `SCHEME://HOST` at which layers are served. Can also contain port. For example, `https://example.com:5443`. |
 
 ## reporting
 
@@ -1259,16 +919,22 @@ configuration may contain both.
       prefix: /my/nested/registry/
       host: https://myregistryaddress.org:5000
       secret: asecretforlocaldevelopment
+      relativeurls: false
       tls:
         certificate: /path/to/x509/public
         key: /path/to/x509/private
         clientcas:
           - /path/to/ca.pem
           - /path/to/another/ca.pem
+        letsencrypt:
+          cachefile: /path/to/cache-file
+          email: emailused@letsencrypt.com
       debug:
         addr: localhost:5001
       headers:
         X-Content-Type-Options: [nosniff]
+      http2:
+        disabled: false
 
 The `http` option details the configuration for the HTTP server that hosts the registry.
 
@@ -1346,6 +1012,19 @@ generate a secret at launch.
 ensure the secret is the same for all registries.</b>
     </td>
   </tr>
+  <tr>
+    <td>
+      <code>relativeurls</code>
+    </td>
+    <td>
+      no
+    </td>
+    <td>
+       Specifies that the registry should return relative URLs in Location headers.
+       The client is responsible for resolving the correct URL.  This option is not
+       compatible with Docker 1.7 and earlier.
+    </td>
+  </tr>
 </table>
 
 
@@ -1392,11 +1071,50 @@ and proxy connections to the registry server.
       no
     </td>
     <td>
-      An array of absolute paths to a x509 CA file
+      An array of absolute paths to an x509 CA file
     </td>
   </tr>
 </table>
 
+### letsencrypt
+
+The `letsencrypt` struct within `tls` is **optional**. Use this to configure TLS
+certificates provided by [Let's Encrypt](https://letsencrypt.org/how-it-works/).
+
+>**NOTE**: When using Let's Encrypt ensure that the outward facing address is
+> accessible on port `443`. The registry defaults to listening on `5000`, if
+> run as a container consider adding the flag `-p 443:5000` to the `docker run`
+> command or similar setting in cloud configuration.
+
+<table>
+  <tr>
+    <th>Parameter</th>
+    <th>Required</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>
+      <code>cachefile</code>
+    </td>
+    <td>
+      yes
+    </td>
+    <td>
+       Absolute path to a file for the Let's Encrypt agent to cache data
+    </td>
+  </tr>
+    <tr>
+    <td>
+      <code>email</code>
+    </td>
+    <td>
+      yes
+    </td>
+    <td>
+      Email used to register with Let's Encrypt.
+    </td>
+  </tr>
+</table>
 
 ### debug
 
@@ -1424,6 +1142,29 @@ Including `X-Content-Type-Options: [nosniff]` is recommended, so that browsers
 will not interpret content as HTML if they are directed to load a page from the
 registry. This header is included in the example configuration files.
 
+### http2
+
+The `http2` struct within `http` is **optional**. Use this to control http2
+settings for the registry.
+
+<table>
+  <tr>
+    <th>Parameter</th>
+    <th>Required</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>
+      <code>disabled</code>
+    </td>
+    <td>
+      no
+    </td>
+    <td>
+       A boolean that determines if http2 support should be disabled
+    </td>
+  </tr>
+</table>
 
 ## notifications
 
@@ -2039,7 +1780,7 @@ The TCP address to connect to, including a port number.
       username: [username]
       password: [password]
 
-Proxy enables a registry to be configured as a pull through cache to the official Docker Hub.  See [mirror](mirror.md) for more information. Pushing to a registry configured as a pull through cache is currently unsupported.
+Proxy enables a registry to be configured as a pull through cache to the official Docker Hub.  See [mirror](recipes/mirror.md) for more information. Pushing to a registry configured as a pull through cache is currently unsupported.
 
 <table>
   <tr>
@@ -2084,6 +1825,70 @@ Proxy enables a registry to be configured as a pull through cache to the officia
 
 To enable pulling private repositories (e.g. `batman/robin`) a username and password for user `batman` must be specified.  Note: These private repositories will be stored in the proxy cache's storage and relevant measures should be taken to protect access to this.
 
+## Compatibility
+
+    compatibility:
+      schema1:
+        signingkeyfile: /etc/registry/key.json
+
+Configure handling of older and deprecated features. Each subsection
+defines such a feature with configurable behavior.
+
+### Schema1
+
+<table>
+  <tr>
+    <th>Parameter</th>
+    <th>Required</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td>
+      <code>signingkeyfile</code>
+    </td>
+    <td>
+      no
+    </td>
+    <td>
+     The signing private key used for adding signatures to schema1 manifests.
+     If no signing key is provided, a new ECDSA key will be generated on
+     startup.
+    </td>
+  </tr>
+</table>
+
+## Validation
+
+    validation:
+      enabled: true
+      manifests:
+        urls:
+          allow:
+            - ^https?://([^/]+\.)*example\.com/
+          deny:
+            - ^https?://www\.example\.com/
+
+### Enabled
+
+Use the `enabled` flag to enable the other options in the `validation`
+section. They are disabled by default.
+
+### Manifests
+
+Use the `manifest` subsection to configure manifest validation.
+
+#### URLs
+
+The `allow` and `deny` options are both lists of
+[regular expressions](https://godoc.org/regexp/syntax) that restrict the URLs in
+pushed manifests.
+
+If `allow` is unset, pushing a manifest containing URLs will fail.
+
+If `allow` is set, pushing a manifest will succeed only if all URLs within match
+one of the `allow` regular expressions and one of the following holds:
+1. `deny` is unset.
+2. `deny` is set but no URLs within the manifest match any of the `deny` regular expressions.
 
 ## Example: Development configuration
 
@@ -2117,7 +1922,7 @@ This example illustrates how to configure storage middleware in a registry.
 Middleware allows the registry to serve layers via a content delivery network
 (CDN). This is useful for reducing requests to the storage layer.
 
-Currently, the registry supports [Amazon
+The registry supports [Amazon
 Cloudfront](http://aws.amazon.com/cloudfront/). You can only use Cloudfront in
 conjunction with the S3 storage driver.
 

@@ -35,6 +35,7 @@ import (
 	configcmd "github.com/openshift/origin/pkg/config/cmd"
 	newapp "github.com/openshift/origin/pkg/generate/app"
 	newcmd "github.com/openshift/origin/pkg/generate/app/cmd"
+	"github.com/openshift/origin/pkg/generate/git"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/util"
 )
@@ -65,9 +66,6 @@ You can use '%[1]s status' to check the progress.`
   # List all local templates and image streams that can be used to create an app
   %[1]s new-app --list
 
-  # Search all templates, image streams, and Docker images for the ones that match "ruby"
-  %[1]s new-app --search ruby
-
   # Create an application based on the source code in the current git repository (with a public remote)
   # and a Docker image
   %[1]s new-app . --docker-image=repo/langimage
@@ -93,10 +91,10 @@ You can use '%[1]s status' to check the progress.`
   # Create an application based on a template file, explicitly setting a parameter value
   %[1]s new-app --file=./example/myapp/template.json --param=MYSQL_USER=admin
 
-  # Search for "mysql" in all image repositories and stored templates
-  %[1]s new-app --search mysql
+  # Search all templates, image streams, and Docker images for the ones that match "ruby"
+  %[1]s new-app --search ruby
 
-  # Search for "ruby", but only in stored templates (--template, --image and --docker-image
+  # Search for "ruby", but only in stored templates (--template, --image-stream and --docker-image
   # can be used to filter search results)
   %[1]s new-app --search --template=ruby
 
@@ -113,7 +111,8 @@ To search templates, image streams, and Docker images that match the arguments p
 
   %[1]s new-app -S php
   %[1]s new-app -S --template=ruby
-  %[1]s new-app -S --image=mysql
+  %[1]s new-app -S --image-stream=mysql
+  %[1]s new-app -S --docker-image=python
 `
 )
 
@@ -164,7 +163,7 @@ func NewCmdNewApplication(commandName string, f *clientcmd.Factory, out io.Write
 	cmd.MarkFlagFilename("file", "yaml", "yml", "json")
 	cmd.Flags().StringSliceVarP(&config.TemplateParameters, "param", "p", config.TemplateParameters, "Specify a list of key value pairs (e.g., -p FOO=BAR,BAR=FOO) to set/override parameter values in the template.")
 	cmd.Flags().StringSliceVar(&config.Groups, "group", config.Groups, "Indicate components that should be grouped together as <comp1>+<comp2>.")
-	cmd.Flags().StringSliceVarP(&config.Environment, "env", "e", config.Environment, "Specify key value pairs of environment variables to set into each container.")
+	cmd.Flags().StringSliceVarP(&config.Environment, "env", "e", config.Environment, "Specify key-value pairs of environment variables to set into each container. This doesn't apply to objects created from a template, use parameters instead.")
 	cmd.Flags().StringVar(&config.Name, "name", "", "Set name to use for generated application artifacts")
 	cmd.Flags().StringVar(&config.Strategy, "strategy", "", "Specify the build strategy to use if you don't want to detect (docker|source).")
 	cmd.Flags().StringP("labels", "l", "", "Label to set in all resources for this application.")
@@ -185,7 +184,7 @@ func NewCmdNewApplication(commandName string, f *clientcmd.Factory, out io.Write
 // Complete sets any default behavior for the command
 func (o *NewAppOptions) Complete(commandName string, f *clientcmd.Factory, c *cobra.Command, args []string, out io.Writer) error {
 	o.Out = out
-	o.ErrOut = c.Out()
+	o.ErrOut = c.OutOrStderr()
 	o.Output = kcmdutil.GetFlagString(c, "output")
 	// Only output="" should print descriptions of intermediate steps. Everything
 	// else should print only some specific output (json, yaml, go-template, ...)
@@ -236,6 +235,8 @@ func (o *NewAppOptions) Run() error {
 
 		return printHumanReadableQueryResult(result, out, o.CommandName)
 	}
+
+	checkGitInstalled(out)
 
 	result, err := config.Run()
 	if err := handleRunError(err, o.CommandName, o.CommandPath); err != nil {
@@ -293,9 +294,9 @@ func (o *NewAppOptions) Run() error {
 				}
 			}
 			if triggered {
-				fmt.Fprintf(out, "%sBuild scheduled, use 'oc logs -f bc/%s' to track its progress.\n", indent, t.Name)
+				fmt.Fprintf(out, "%[1]sBuild scheduled, use '%[3]s logs -f bc/%[2]s' to track its progress.\n", indent, t.Name, o.CommandName)
 			} else {
-				fmt.Fprintf(out, "%sUse 'oc start-build %s' to start a build.\n", indent, t.Name)
+				fmt.Fprintf(out, "%[1]sUse '%[3]s start-build %[2]s' to start a build.\n", indent, t.Name, o.CommandName)
 			}
 		case *imageapi.ImageStream:
 			if len(t.Status.DockerImageRepository) == 0 {
@@ -639,10 +640,29 @@ func transformError(err error, commandName, commandPath string, groups errorGrou
 		return
 	case newapp.ErrMultipleMatches:
 		buf := &bytes.Buffer{}
-		for _, match := range t.Matches {
+		for i, match := range t.Matches {
+
+			// If we have more than 5 matches, stop output and recommend searching
+			// after the fifth
+			if i >= 5 {
+				groups.Add(
+					"multiple-matches",
+					heredoc.Docf(`
+						The argument %[1]q could apply to the following Docker images, OpenShift image streams, or templates:
+
+						%[2]sTo view a full list of matches, use '%[3]s new-app -S %[1]s'`, t.Value, buf.String(), commandName,
+					),
+					t,
+					t.Errs...,
+				)
+
+				return
+			}
+
 			fmt.Fprintf(buf, "* %s\n", match.Description)
 			fmt.Fprintf(buf, "  Use %[1]s to specify this image or template\n\n", match.Argument)
 		}
+
 		groups.Add(
 			"multiple-matches",
 			heredoc.Docf(`
@@ -727,7 +747,7 @@ func printHumanReadableQueryResult(r *newcmd.QueryResult, out io.Writer, command
 	sort.Sort(newapp.ScoredComponentMatches(dockerImages))
 
 	if len(templates) > 0 {
-		fmt.Fprintln(out, "Templates (oc new-app --template=<template>)")
+		fmt.Fprintf(out, "Templates (%s new-app --template=<template>)\n", commandName)
 		fmt.Fprintln(out, "-----")
 		for _, match := range templates {
 			template := match.Template
@@ -743,7 +763,7 @@ func printHumanReadableQueryResult(r *newcmd.QueryResult, out io.Writer, command
 	}
 
 	if len(imageStreams) > 0 {
-		fmt.Fprintln(out, "Image streams (oc new-app --image-stream=<image-stream> [--code=<source>])")
+		fmt.Fprintf(out, "Image streams (%s new-app --image-stream=<image-stream> [--code=<source>])\n", commandName)
 		fmt.Fprintln(out, "-----")
 		for _, match := range imageStreams {
 			imageStream := match.ImageStream
@@ -771,7 +791,7 @@ func printHumanReadableQueryResult(r *newcmd.QueryResult, out io.Writer, command
 	}
 
 	if len(dockerImages) > 0 {
-		fmt.Fprintln(out, "Docker images (oc new-app --docker-image=<docker-image> [--code=<source>])")
+		fmt.Fprintf(out, "Docker images (%s new-app --docker-image=<docker-image> [--code=<source>])\n", commandName)
 		fmt.Fprintln(out, "-----")
 		for _, match := range dockerImages {
 			image := match.Image
@@ -825,4 +845,10 @@ func (r *configSecretRetriever) CACert() (string, error) {
 		return string(data), nil
 	}
 	return "", nil
+}
+
+func checkGitInstalled(w io.Writer) {
+	if !git.IsGitInstalled() {
+		fmt.Fprintf(w, "warning: Cannot find git. Ensure that it is installed and in your path. Git is required to work with git repositories.\n")
+	}
 }

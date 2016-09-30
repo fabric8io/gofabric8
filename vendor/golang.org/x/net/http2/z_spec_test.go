@@ -1,7 +1,6 @@
-// Copyright 2014 The Go Authors.
-// See https://code.google.com/p/go/source/browse/CONTRIBUTORS
-// Licensed under the same terms as Go itself:
-// https://code.google.com/p/go/source/browse/LICENSE
+// Copyright 2014 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 package http2
 
@@ -38,7 +37,7 @@ func loadSpec() {
 }
 
 // covers marks all sentences for section sec in defaultSpecCoverage. Sentences not
-// "covered" will be included in report outputed by TestSpecCoverage.
+// "covered" will be included in report outputted by TestSpecCoverage.
 func covers(sec, sentences string) {
 	loadSpecOnce.Do(loadSpec)
 	defaultSpecCoverage.cover(sec, sentences)
@@ -312,7 +311,7 @@ func TestSpecCoverage(t *testing.T) {
 		t.Errorf("\tSECTION %s: %s", p.section, p.sentence)
 	}
 
-	t.Logf("%d/%d (%d%%) sentances covered", complete, total, (complete/total)*100)
+	t.Logf("%d/%d (%d%%) sentences covered", complete, total, (complete/total)*100)
 }
 
 func attrSig(se xml.StartElement) string {

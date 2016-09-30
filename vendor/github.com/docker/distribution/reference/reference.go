@@ -3,10 +3,10 @@
 //
 // Grammar
 //
-// 	reference                       := repository [ ":" tag ] [ "@" digest ]
+// 	reference                       := name [ ":" tag ] [ "@" digest ]
 //	name                            := [hostname '/'] component ['/' component]*
 //	hostname                        := hostcomponent ['.' hostcomponent]* [':' port-number]
-//	hostcomponent                   := /([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])/
+//	hostcomponent                   := /([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9])/
 //	port-number                     := /[0-9]+/
 //	component                       := alpha-numeric [separator alpha-numeric]*
 // 	alpha-numeric                   := /[a-z0-9]+/
@@ -24,6 +24,7 @@ package reference
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/docker/distribution/digest"
 )
@@ -43,11 +44,13 @@ var (
 	// ErrDigestInvalidFormat represents an error while trying to parse a string as a tag.
 	ErrDigestInvalidFormat = errors.New("invalid digest format")
 
+	// ErrNameContainsUppercase is returned for invalid repository names that contain uppercase characters.
+	ErrNameContainsUppercase = errors.New("repository name must be lowercase")
+
 	// ErrNameEmpty is returned for empty, invalid repository names.
 	ErrNameEmpty = errors.New("repository name must have at least one component")
 
-	// ErrNameTooLong is returned when a repository name is longer than
-	// RepositoryNameTotalLengthMax
+	// ErrNameTooLong is returned when a repository name is longer than NameTotalLengthMax.
 	ErrNameTooLong = fmt.Errorf("repository name must not be more than %v characters", NameTotalLengthMax)
 )
 
@@ -150,7 +153,9 @@ func Parse(s string) (Reference, error) {
 		if s == "" {
 			return nil, ErrNameEmpty
 		}
-		// TODO(dmcgowan): Provide more specific and helpful error
+		if ReferenceRegexp.FindStringSubmatch(strings.ToLower(s)) != nil {
+			return nil, ErrNameContainsUppercase
+		}
 		return nil, ErrReferenceInvalidFormat
 	}
 

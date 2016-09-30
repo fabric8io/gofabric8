@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/client/typed/dynamic"
+	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
@@ -163,7 +164,7 @@ func testSyncNamespaceThatIsTerminating(t *testing.T, versions *unversioned.APIV
 		// validate traffic from kube client
 		actionSet := sets.NewString()
 		for _, action := range mockClient.Actions() {
-			actionSet.Insert(strings.Join([]string{action.GetVerb(), action.GetResource(), action.GetSubresource()}, "-"))
+			actionSet.Insert(strings.Join([]string{action.GetVerb(), action.GetResource().Resource, action.GetSubresource()}, "-"))
 		}
 		if !actionSet.Equal(testInput.kubeClientActionSet) {
 			t.Errorf("scenario %s - mock client expected actions:\n%v\n but got:\n%v\nDifference:\n%v", scenario,
@@ -268,6 +269,7 @@ func (f *fakeActionHandler) ServeHTTP(response http.ResponseWriter, request *htt
 	defer f.lock.Unlock()
 
 	f.actions = append(f.actions, fakeAction{method: request.Method, path: request.URL.Path})
+	response.Header().Set("Content-Type", runtime.ContentTypeJSON)
 	response.WriteHeader(f.statusCode)
 	response.Write([]byte("{\"kind\": \"List\"}"))
 }

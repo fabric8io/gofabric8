@@ -25,16 +25,18 @@ import (
 	"time"
 
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/testapi"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/net"
+	"k8s.io/kubernetes/test/e2e/framework"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
-var _ = KubeDescribe("Proxy", func() {
+var _ = framework.KubeDescribe("Proxy", func() {
 	version := testapi.Default.GroupVersion().Version
 	Context("version "+version, func() { proxyContext(version) })
 })
@@ -51,7 +53,7 @@ const (
 )
 
 func proxyContext(version string) {
-	f := NewDefaultFramework("proxy")
+	f := framework.NewDefaultFramework("proxy")
 	prefix := "/api/" + version
 
 	// Port here has to be kept in sync with default kubelet port.
@@ -99,13 +101,13 @@ func proxyContext(version string) {
 		defer func(name string) {
 			err := f.Client.Services(f.Namespace.Name).Delete(name)
 			if err != nil {
-				Logf("Failed deleting service %v: %v", name, err)
+				framework.Logf("Failed deleting service %v: %v", name, err)
 			}
 		}(service.Name)
 
 		// Make an RC with a single pod.
 		pods := []*api.Pod{}
-		cfg := RCConfig{
+		cfg := framework.RCConfig{
 			Client:       f.Client,
 			Image:        "gcr.io/google_containers/porter:cd5cb5791ebaa8641955f0e8c2a9bed669b1eaab",
 			Name:         service.Name,
@@ -113,9 +115,10 @@ func proxyContext(version string) {
 			Replicas:     1,
 			PollInterval: time.Second,
 			Env: map[string]string{
-				"SERVE_PORT_80":  `<a href="/rewriteme">test</a>`,
-				"SERVE_PORT_160": "foo",
-				"SERVE_PORT_162": "bar",
+				"SERVE_PORT_80":   `<a href="/rewriteme">test</a>`,
+				"SERVE_PORT_1080": `<a href="/rewriteme">test</a>`,
+				"SERVE_PORT_160":  "foo",
+				"SERVE_PORT_162":  "bar",
 
 				"SERVE_TLS_PORT_443": `<a href="/tlsrewriteme">test</a>`,
 				"SERVE_TLS_PORT_460": `tls baz`,
@@ -141,8 +144,8 @@ func proxyContext(version string) {
 			Labels:      labels,
 			CreatedPods: &pods,
 		}
-		Expect(RunRC(cfg)).NotTo(HaveOccurred())
-		defer DeleteRC(f.Client, f.Namespace.Name, cfg.Name)
+		Expect(framework.RunRC(cfg)).NotTo(HaveOccurred())
+		defer framework.DeleteRC(f.Client, f.Namespace.Name, cfg.Name)
 
 		Expect(f.WaitForAnEndpoint(service.Name)).NotTo(HaveOccurred())
 
@@ -182,21 +185,21 @@ func proxyContext(version string) {
 			subresourceServiceProxyURL("https", "tlsportname1") + "/": "tls baz",
 			subresourceServiceProxyURL("https", "tlsportname2") + "/": "tls qux",
 
-			podProxyURL("", "80") + "/":  `<a href="` + podProxyURL("", "80") + `/rewriteme">test</a>`,
-			podProxyURL("", "160") + "/": "foo",
-			podProxyURL("", "162") + "/": "bar",
+			podProxyURL("", "1080") + "/": `<a href="` + podProxyURL("", "1080") + `/rewriteme">test</a>`,
+			podProxyURL("", "160") + "/":  "foo",
+			podProxyURL("", "162") + "/":  "bar",
 
-			podProxyURL("http", "80") + "/":  `<a href="` + podProxyURL("http", "80") + `/rewriteme">test</a>`,
-			podProxyURL("http", "160") + "/": "foo",
-			podProxyURL("http", "162") + "/": "bar",
+			podProxyURL("http", "1080") + "/": `<a href="` + podProxyURL("http", "1080") + `/rewriteme">test</a>`,
+			podProxyURL("http", "160") + "/":  "foo",
+			podProxyURL("http", "162") + "/":  "bar",
 
-			subresourcePodProxyURL("", "") + "/":        `<a href="` + subresourcePodProxyURL("", "") + `/rewriteme">test</a>`,
-			subresourcePodProxyURL("", "80") + "/":      `<a href="` + subresourcePodProxyURL("", "80") + `/rewriteme">test</a>`,
-			subresourcePodProxyURL("http", "80") + "/":  `<a href="` + subresourcePodProxyURL("http", "80") + `/rewriteme">test</a>`,
-			subresourcePodProxyURL("", "160") + "/":     "foo",
-			subresourcePodProxyURL("http", "160") + "/": "foo",
-			subresourcePodProxyURL("", "162") + "/":     "bar",
-			subresourcePodProxyURL("http", "162") + "/": "bar",
+			subresourcePodProxyURL("", "") + "/":         `<a href="` + subresourcePodProxyURL("", "") + `/rewriteme">test</a>`,
+			subresourcePodProxyURL("", "1080") + "/":     `<a href="` + subresourcePodProxyURL("", "1080") + `/rewriteme">test</a>`,
+			subresourcePodProxyURL("http", "1080") + "/": `<a href="` + subresourcePodProxyURL("http", "1080") + `/rewriteme">test</a>`,
+			subresourcePodProxyURL("", "160") + "/":      "foo",
+			subresourcePodProxyURL("http", "160") + "/":  "foo",
+			subresourcePodProxyURL("", "162") + "/":      "bar",
+			subresourcePodProxyURL("http", "162") + "/":  "bar",
 
 			subresourcePodProxyURL("https", "443") + "/": `<a href="` + subresourcePodProxyURL("https", "443") + `/tlsrewriteme">test</a>`,
 			subresourcePodProxyURL("https", "460") + "/": "tls baz",
@@ -208,12 +211,12 @@ func proxyContext(version string) {
 		}
 
 		wg := sync.WaitGroup{}
-		errors := []string{}
+		errs := []string{}
 		errLock := sync.Mutex{}
 		recordError := func(s string) {
 			errLock.Lock()
 			defer errLock.Unlock()
-			errors = append(errors, s)
+			errs = append(errs, s)
 		}
 		for i := 0; i < proxyAttempts; i++ {
 			for path, val := range expectations {
@@ -222,7 +225,11 @@ func proxyContext(version string) {
 					defer wg.Done()
 					body, status, d, err := doProxy(f, path)
 					if err != nil {
-						recordError(fmt.Sprintf("%v: path %v gave error: %v", i, path, err))
+						if serr, ok := err.(*errors.StatusError); ok {
+							recordError(fmt.Sprintf("%v: path %v gave status error: %+v", i, path, serr.Status()))
+						} else {
+							recordError(fmt.Sprintf("%v: path %v gave error: %v", i, path, err))
+						}
 						return
 					}
 					if status != http.StatusOK {
@@ -241,13 +248,20 @@ func proxyContext(version string) {
 		}
 		wg.Wait()
 
-		if len(errors) != 0 {
-			Fail(strings.Join(errors, "\n"))
+		if len(errs) != 0 {
+			body, err := f.Client.Pods(f.Namespace.Name).GetLogs(pods[0].Name, &api.PodLogOptions{}).Do().Raw()
+			if err != nil {
+				framework.Logf("Error getting logs for pod %s: %v", pods[0].Name, err)
+			} else {
+				framework.Logf("Pod %s has the following error logs: %s", pods[0].Name, body)
+			}
+
+			Fail(strings.Join(errs, "\n"))
 		}
 	})
 }
 
-func doProxy(f *Framework, path string) (body []byte, statusCode int, d time.Duration, err error) {
+func doProxy(f *framework.Framework, path string) (body []byte, statusCode int, d time.Duration, err error) {
 	// About all of the proxy accesses in this file:
 	// * AbsPath is used because it preserves the trailing '/'.
 	// * Do().Raw() is used (instead of DoRaw()) because it will turn an
@@ -258,9 +272,9 @@ func doProxy(f *Framework, path string) (body []byte, statusCode int, d time.Dur
 	body, err = f.Client.Get().AbsPath(path).Do().StatusCode(&statusCode).Raw()
 	d = time.Since(start)
 	if len(body) > 0 {
-		Logf("%v: %s (%v; %v)", path, truncate(body, maxDisplayBodyLen), statusCode, d)
+		framework.Logf("%v: %s (%v; %v)", path, truncate(body, maxDisplayBodyLen), statusCode, d)
 	} else {
-		Logf("%v: %s (%v; %v)", path, "no body", statusCode, d)
+		framework.Logf("%v: %s (%v; %v)", path, "no body", statusCode, d)
 	}
 	return
 }
@@ -276,14 +290,14 @@ func truncate(b []byte, maxLen int) []byte {
 
 func pickNode(c *client.Client) (string, error) {
 	// TODO: investigate why it doesn't work on master Node.
-	nodes := ListSchedulableNodesOrDie(c)
+	nodes := framework.GetReadySchedulableNodesOrDie(c)
 	if len(nodes.Items) == 0 {
 		return "", fmt.Errorf("no nodes exist, can't test node proxy")
 	}
 	return nodes.Items[0].Name, nil
 }
 
-func nodeProxyTest(f *Framework, prefix, nodeDest string) {
+func nodeProxyTest(f *framework.Framework, prefix, nodeDest string) {
 	node, err := pickNode(f.Client)
 	Expect(err).NotTo(HaveOccurred())
 	// TODO: Change it to test whether all requests succeeded when requests
@@ -292,7 +306,7 @@ func nodeProxyTest(f *Framework, prefix, nodeDest string) {
 	for i := 0; i < proxyAttempts; i++ {
 		_, status, d, err := doProxy(f, prefix+node+nodeDest)
 		if status == http.StatusServiceUnavailable {
-			Logf("Failed proxying node logs due to service unavailable: %v", err)
+			framework.Logf("Failed proxying node logs due to service unavailable: %v", err)
 			time.Sleep(time.Second)
 			serviceUnavailableErrors++
 		} else {
@@ -302,7 +316,7 @@ func nodeProxyTest(f *Framework, prefix, nodeDest string) {
 		}
 	}
 	if serviceUnavailableErrors > 0 {
-		Logf("error: %d requests to proxy node logs failed", serviceUnavailableErrors)
+		framework.Logf("error: %d requests to proxy node logs failed", serviceUnavailableErrors)
 	}
 	maxFailures := int(math.Floor(0.1 * float64(proxyAttempts)))
 	Expect(serviceUnavailableErrors).To(BeNumerically("<", maxFailures))

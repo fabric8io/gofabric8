@@ -11,7 +11,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	rcutils "k8s.io/kubernetes/pkg/controller/replication"
 	kctl "k8s.io/kubernetes/pkg/kubectl"
@@ -25,6 +25,18 @@ import (
 	deploygraph "github.com/openshift/origin/pkg/deploy/graph/nodes"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 	imageapi "github.com/openshift/origin/pkg/image/api"
+)
+
+const (
+	// maxDisplayDeployments is the number of deployments to show when describing
+	// deployment configuration.
+	maxDisplayDeployments = 3
+
+	// maxDisplayDeploymentsEvents is the number of events to display when
+	// describing the deployment configuration.
+	// TODO: Make the estimation of this number more sophisticated and make this
+	// number configurable via DescriberSettings
+	maxDisplayDeploymentsEvents = 8
 )
 
 // DeploymentConfigDescriber generates information about a DeploymentConfig
@@ -45,7 +57,7 @@ func NewDeploymentConfigDescriber(client client.Interface, kclient kclient.Inter
 }
 
 // Describe returns the description of a DeploymentConfig
-func (d *DeploymentConfigDescriber) Describe(namespace, name string) (string, error) {
+func (d *DeploymentConfigDescriber) Describe(namespace, name string, settings kctl.DescriberSettings) (string, error) {
 	var deploymentConfig *deployapi.DeploymentConfig
 	if d.config != nil {
 		// If a deployment config is already provided use that.
@@ -61,51 +73,75 @@ func (d *DeploymentConfigDescriber) Describe(namespace, name string) (string, er
 
 	return tabbedString(func(out *tabwriter.Writer) error {
 		formatMeta(out, deploymentConfig.ObjectMeta)
+		var (
+			deploymentsHistory   []kapi.ReplicationController
+			activeDeploymentName string
+		)
+
+		if d.config == nil {
+			if rcs, err := d.kubeClient.ReplicationControllers(namespace).List(kapi.ListOptions{LabelSelector: deployutil.ConfigSelector(deploymentConfig.Name)}); err == nil {
+				deploymentsHistory = rcs.Items
+			}
+		}
 
 		if deploymentConfig.Status.LatestVersion == 0 {
 			formatString(out, "Latest Version", "Not deployed")
 		} else {
-			formatString(out, "Latest Version", strconv.Itoa(deploymentConfig.Status.LatestVersion))
+			formatString(out, "Latest Version", strconv.FormatInt(deploymentConfig.Status.LatestVersion, 10))
 		}
 
 		printDeploymentConfigSpec(d.kubeClient, *deploymentConfig, out)
 		fmt.Fprintln(out)
 
-		if deploymentConfig.Status.Details != nil && len(deploymentConfig.Status.Details.Message) > 0 {
-			fmt.Fprintf(out, "Warning:\t%s\n", deploymentConfig.Status.Details.Message)
+		latestDeploymentName := deployutil.LatestDeploymentNameForConfig(deploymentConfig)
+		if activeDeployment := deployutil.ActiveDeployment(deploymentConfig, deploymentsHistory); activeDeployment != nil {
+			activeDeploymentName = activeDeployment.Name
 		}
 
-		deploymentName := deployutil.LatestDeploymentNameForConfig(deploymentConfig)
-		deployment, err := d.kubeClient.ReplicationControllers(namespace).Get(deploymentName)
-		if err != nil {
-			if kerrors.IsNotFound(err) {
-				formatString(out, "Latest Deployment", "<none>")
-			} else {
-				formatString(out, "Latest Deployment", fmt.Sprintf("error: %v", err))
+		var deployment *kapi.ReplicationController
+		isNotDeployed := len(deploymentsHistory) == 0
+		for _, item := range deploymentsHistory {
+			if item.Name == latestDeploymentName {
+				deployment = &item
 			}
+		}
+
+		if isNotDeployed {
+			formatString(out, "Latest Deployment", "<none>")
 		} else {
 			header := fmt.Sprintf("Deployment #%d (latest)", deployutil.DeploymentVersionFor(deployment))
-			printDeploymentRc(deployment, d.kubeClient, out, header, true)
+			// Show details if the current deployment is the active one or it is the
+			// initial deployment.
+			printDeploymentRc(deployment, d.kubeClient, out, header, (deployment.Name == activeDeploymentName) || len(deploymentsHistory) == 1)
 		}
+
 		// We don't show the deployment history when running `oc rollback --dry-run`.
-		if d.config == nil {
-			deploymentsHistory, err := d.kubeClient.ReplicationControllers(namespace).List(kapi.ListOptions{LabelSelector: labels.Everything()})
-			if err == nil {
-				sorted := deploymentsHistory.Items
-				sort.Sort(sort.Reverse(rcutils.OverlappingControllers(sorted)))
-				for _, item := range sorted {
-					if item.Name != deploymentName && deploymentConfig.Name == deployutil.DeploymentConfigNameFor(&item) {
-						header := fmt.Sprintf("Deployment #%d", deployutil.DeploymentVersionFor(&item))
-						printDeploymentRc(&item, d.kubeClient, out, header, false)
-					}
+		if d.config == nil && !isNotDeployed {
+			sorted := deploymentsHistory
+			sort.Sort(sort.Reverse(rcutils.OverlappingControllers(sorted)))
+			counter := 1
+			for _, item := range sorted {
+				if item.Name != latestDeploymentName && deploymentConfig.Name == deployutil.DeploymentConfigNameFor(&item) {
+					header := fmt.Sprintf("Deployment #%d", deployutil.DeploymentVersionFor(&item))
+					printDeploymentRc(&item, d.kubeClient, out, header, item.Name == activeDeploymentName)
+					counter++
+				}
+				if counter == maxDisplayDeployments {
+					break
 				}
 			}
 		}
 
-		// Events
-		if events, err := d.kubeClient.Events(deploymentConfig.Namespace).Search(deploymentConfig); err == nil && events != nil {
-			fmt.Fprintln(out)
-			kctl.DescribeEvents(events, out)
+		if settings.ShowEvents {
+			// Events
+			if events, err := d.kubeClient.Events(deploymentConfig.Namespace).Search(deploymentConfig); err == nil && events != nil {
+				latestDeploymentEvents := &kapi.EventList{Items: []kapi.Event{}}
+				for i := len(events.Items); i != 0 && i > len(events.Items)-maxDisplayDeploymentsEvents; i-- {
+					latestDeploymentEvents.Items = append(latestDeploymentEvents.Items, events.Items[i-1])
+				}
+				fmt.Fprintln(out)
+				kctl.DescribeEvents(latestDeploymentEvents, out)
+			}
 		}
 		return nil
 	})
@@ -222,6 +258,10 @@ func printDeploymentConfigSpec(kc kclient.Interface, dc deployapi.DeploymentConf
 	}
 	formatString(w, "Replicas", fmt.Sprintf("%d%s", spec.Replicas, test))
 
+	if spec.Paused {
+		formatString(w, "Paused", "yes")
+	}
+
 	// Autoscaling info
 	printAutoscalingInfo(deployapi.Resource("DeploymentConfig"), dc.Namespace, dc.Name, kc, w)
 
@@ -232,6 +272,10 @@ func printDeploymentConfigSpec(kc kclient.Interface, dc deployapi.DeploymentConf
 	formatString(w, "Strategy", spec.Strategy.Type)
 	printStrategy(spec.Strategy, "  ", w)
 
+	if dc.Spec.MinReadySeconds > 0 {
+		formatString(w, "MinReadySeconds", fmt.Sprintf("%d", spec.MinReadySeconds))
+	}
+
 	// Pod template
 	fmt.Fprintf(w, "Template:\n")
 	kctl.DescribePodTemplate(spec.Template, w)
@@ -241,22 +285,22 @@ func printDeploymentConfigSpec(kc kclient.Interface, dc deployapi.DeploymentConf
 
 // TODO: Move this upstream
 func printAutoscalingInfo(res unversioned.GroupResource, namespace, name string, kclient kclient.Interface, w *tabwriter.Writer) {
-	hpaList, err := kclient.Extensions().HorizontalPodAutoscalers(namespace).List(kapi.ListOptions{LabelSelector: labels.Everything()})
+	hpaList, err := kclient.Autoscaling().HorizontalPodAutoscalers(namespace).List(kapi.ListOptions{LabelSelector: labels.Everything()})
 	if err != nil {
 		return
 	}
 
-	scaledBy := []extensions.HorizontalPodAutoscaler{}
+	scaledBy := []autoscaling.HorizontalPodAutoscaler{}
 	for _, hpa := range hpaList.Items {
-		if hpa.Spec.ScaleRef.Name == name && hpa.Spec.ScaleRef.Kind == res.String() {
+		if hpa.Spec.ScaleTargetRef.Name == name && hpa.Spec.ScaleTargetRef.Kind == res.String() {
 			scaledBy = append(scaledBy, hpa)
 		}
 	}
 
 	for _, hpa := range scaledBy {
 		cpuUtil := ""
-		if hpa.Spec.CPUUtilization != nil {
-			cpuUtil = fmt.Sprintf(", triggered at %d%% CPU usage", hpa.Spec.CPUUtilization.TargetPercentage)
+		if hpa.Spec.TargetCPUUtilizationPercentage != nil {
+			cpuUtil = fmt.Sprintf(", triggered at %d%% CPU usage", *hpa.Spec.TargetCPUUtilizationPercentage)
 		}
 		fmt.Fprintf(w, "Autoscaling:\tbetween %d and %d replicas%s\n", *hpa.Spec.MinReplicas, hpa.Spec.MaxReplicas, cpuUtil)
 		// TODO: Print a warning in case of multiple hpas.
@@ -337,7 +381,7 @@ func (d *LatestDeploymentsDescriber) Describe(namespace, name string) (string, e
 
 	var deployments []kapi.ReplicationController
 	if d.count == -1 || d.count > 1 {
-		list, err := d.kubeClient.ReplicationControllers(namespace).List(kapi.ListOptions{LabelSelector: labels.Set(config.Spec.Selector).AsSelector()})
+		list, err := d.kubeClient.ReplicationControllers(namespace).List(kapi.ListOptions{LabelSelector: deployutil.ConfigSelector(name)})
 		if err != nil && !kerrors.IsNotFound(err) {
 			return "", err
 		}
@@ -363,7 +407,7 @@ func (d *LatestDeploymentsDescriber) Describe(namespace, name string) (string, e
 	activeDeployment, inactiveDeployments := deployedges.RelevantDeployments(g, dcNode)
 
 	return tabbedString(func(out *tabwriter.Writer) error {
-		descriptions := describeDeployments(f, dcNode, activeDeployment, inactiveDeployments, d.count)
+		descriptions := describeDeployments(f, dcNode, activeDeployment, inactiveDeployments, nil, d.count)
 		for i, description := range descriptions {
 			descriptions[i] = fmt.Sprintf("%v %v", name, description)
 		}

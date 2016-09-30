@@ -1,18 +1,7 @@
 #!/bin/bash
 
 # See HACKING.md for usage
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
-source "${OS_ROOT}/hack/util.sh"
-os::log::install_errexit
-
-# Go to the top of the tree.
-cd "${OS_ROOT}"
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 repo="${UPSTREAM_REPO:-k8s.io/kubernetes}"
 package="${UPSTREAM_PACKAGE:-pkg/api}"
@@ -64,14 +53,14 @@ if [[ -z "${NO_REBASE-}" ]]; then
   # stage any new files
   git add . > /dev/null
   # construct a new patch
-  git diff --cached -p --raw --binary --{src,dst}-prefix=a/Godeps/_workspace/src/${repo}/ > "${patch}"
+  git diff --cached -p --raw --binary --{src,dst}-prefix=a/vendor/${repo}/ > "${patch}"
   # cleanup the current state
   git reset HEAD --hard > /dev/null
   git checkout master > /dev/null
   git branch -D last_upstream_branch > /dev/null
 else
   echo "++ Generating patch for ${selector} without rebasing ..." 2>&1
-  git diff -p --raw --binary --{src,dst}-prefix=a/Godeps/_workspace/src/${repo}/ "${selector}" > "${patch}"
+  git diff -p --raw --binary --{src,dst}-prefix=a/vendor/${repo}/ "${selector}" > "${patch}"
 fi
 
 popd > /dev/null

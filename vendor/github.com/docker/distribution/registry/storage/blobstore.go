@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"path"
+
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/digest"
@@ -56,18 +58,13 @@ func (bs *blobStore) Open(ctx context.Context, dgst digest.Digest) (distribution
 // content is already present, only the digest will be returned. This should
 // only be used for small objects, such as manifests. This implemented as a convenience for other Put implementations
 func (bs *blobStore) Put(ctx context.Context, mediaType string, p []byte) (distribution.Descriptor, error) {
-	dgst, err := digest.FromBytes(p)
-	if err != nil {
-		context.GetLogger(ctx).Errorf("blobStore: error digesting content: %v, %s", err, string(p))
-		return distribution.Descriptor{}, err
-	}
-
+	dgst := digest.FromBytes(p)
 	desc, err := bs.statter.Stat(ctx, dgst)
 	if err == nil {
 		// content already present
 		return desc, nil
 	} else if err != distribution.ErrBlobUnknown {
-		context.GetLogger(ctx).Errorf("blobStore: error stating content (%v): %#v", dgst, err)
+		context.GetLogger(ctx).Errorf("blobStore: error stating content (%v): %v", dgst, err)
 		// real error, return it
 		return distribution.Descriptor{}, err
 	}
@@ -78,7 +75,6 @@ func (bs *blobStore) Put(ctx context.Context, mediaType string, p []byte) (distr
 	}
 
 	// TODO(stevvooe): Write out mediatype here, as well.
-
 	return distribution.Descriptor{
 		Size: int64(len(p)),
 
@@ -88,6 +84,36 @@ func (bs *blobStore) Put(ctx context.Context, mediaType string, p []byte) (distr
 		MediaType: "application/octet-stream",
 		Digest:    dgst,
 	}, bs.driver.PutContent(ctx, bp, p)
+}
+
+func (bs *blobStore) Enumerate(ctx context.Context, ingester func(dgst digest.Digest) error) error {
+
+	specPath, err := pathFor(blobsPathSpec{})
+	if err != nil {
+		return err
+	}
+
+	err = Walk(ctx, bs.driver, specPath, func(fileInfo driver.FileInfo) error {
+		// skip directories
+		if fileInfo.IsDir() {
+			return nil
+		}
+
+		currentPath := fileInfo.Path()
+		// we only want to parse paths that end with /data
+		_, fileName := path.Split(currentPath)
+		if fileName != "data" {
+			return nil
+		}
+
+		digest, err := digestFromPath(currentPath)
+		if err != nil {
+			return err
+		}
+
+		return ingester(digest)
+	})
+	return err
 }
 
 // path returns the canonical path for the blob identified by digest. The blob

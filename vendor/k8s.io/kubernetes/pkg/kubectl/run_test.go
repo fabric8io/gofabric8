@@ -23,6 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 )
 
@@ -377,10 +378,12 @@ func TestGenerate(t *testing.T) {
 		},
 	}
 	generator := BasicReplicationController{}
-	for _, test := range tests {
+	for i, test := range tests {
 		obj, err := generator.Generate(test.params)
+		t.Logf("%d: %#v", i, obj)
 		if !test.expectErr && err != nil {
 			t.Errorf("unexpected error: %v", err)
+			continue
 		}
 		if test.expectErr && err != nil {
 			continue
@@ -721,7 +724,7 @@ func TestGenerateDeployment(t *testing.T) {
 func TestGenerateJob(t *testing.T) {
 	tests := []struct {
 		params    map[string]interface{}
-		expected  *extensions.Job
+		expected  *batch.Job
 		expectErr bool
 	}{
 		{
@@ -740,12 +743,12 @@ func TestGenerateJob(t *testing.T) {
 				"limits":           "cpu=400m,memory=200Mi",
 				"restart":          "OnFailure",
 			},
-			expected: &extensions.Job{
+			expected: &batch.Job{
 				ObjectMeta: api.ObjectMeta{
 					Name:   "foo",
 					Labels: map[string]string{"foo": "bar", "baz": "blah"},
 				},
-				Spec: extensions.JobSpec{
+				Spec: batch.JobSpec{
 					Selector: &unversioned.LabelSelector{
 						MatchLabels: map[string]string{"foo": "bar", "baz": "blah"},
 					},
@@ -807,8 +810,8 @@ func TestGenerateJob(t *testing.T) {
 		if test.expectErr && err != nil {
 			continue
 		}
-		if !reflect.DeepEqual(obj.(*extensions.Job), test.expected) {
-			t.Errorf("\nexpected:\n%#v\nsaw:\n%#v", test.expected, obj.(*extensions.Job))
+		if !reflect.DeepEqual(obj.(*batch.Job), test.expected) {
+			t.Errorf("\nexpected:\n%#v\nsaw:\n%#v", test.expected, obj.(*batch.Job))
 		}
 	}
 }

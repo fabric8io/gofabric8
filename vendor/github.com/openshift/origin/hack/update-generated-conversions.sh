@@ -1,18 +1,9 @@
 #!/bin/bash
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
-
-# Go to the top of the tree.
-cd "${OS_ROOT}"
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 
 os::build::setup_env
 
-hack/build-go.sh tools/genconversion
+"${OS_ROOT}/hack/build-go.sh" tools/genconversion
 genconversion="$( os::build::find-binary genconversion )"
 
 if [[ -z "${genconversion}" ]]; then
@@ -23,4 +14,4 @@ if [[ -z "${genconversion}" ]]; then
 	exit 1
 fi
 
-${genconversion} --output-base="${OS_GOPATH}/src" "$@"
+${genconversion} --output-base="${GOPATH}/src" "$@"

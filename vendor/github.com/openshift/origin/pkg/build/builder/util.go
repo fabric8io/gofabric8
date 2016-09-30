@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	docker "github.com/fsouza/go-dockerclient"
+
 	s2iapi "github.com/openshift/source-to-image/pkg/api"
 )
 
@@ -51,7 +53,7 @@ func readNetClsCGroup(reader io.Reader) string {
 }
 
 // getDockerNetworkMode determines whether the builder is running as a container
-// by examining /proc/self/cgroup. This contenxt is then passed to source-to-image.
+// by examining /proc/self/cgroup. This context is then passed to source-to-image.
 func getDockerNetworkMode() s2iapi.DockerNetworkMode {
 	file, err := os.Open("/proc/self/cgroup")
 	if err != nil {
@@ -174,4 +176,19 @@ func MergeEnv(oldEnv, newEnv []string) []string {
 		result = append(result, e)
 	}
 	return result
+}
+
+func reportPushFailure(err error, authPresent bool, pushAuthConfig docker.AuthConfiguration) error {
+	// write extended error message to assist in problem resolution
+	if authPresent {
+		glog.V(0).Infof("Registry server Address: %s", pushAuthConfig.ServerAddress)
+		glog.V(0).Infof("Registry server User Name: %s", pushAuthConfig.Username)
+		glog.V(0).Infof("Registry server Email: %s", pushAuthConfig.Email)
+		passwordPresent := "<<empty>>"
+		if len(pushAuthConfig.Password) > 0 {
+			passwordPresent = "<<non-empty>>"
+		}
+		glog.V(0).Infof("Registry server Password: %s", passwordPresent)
+	}
+	return fmt.Errorf("Failed to push image: %v", err)
 }

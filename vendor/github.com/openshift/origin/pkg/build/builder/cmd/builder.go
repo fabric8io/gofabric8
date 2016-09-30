@@ -63,7 +63,7 @@ func newBuilderConfigFromEnvironment(out io.Writer) (*builderConfig, error) {
 	masterVersion := os.Getenv(api.OriginVersion)
 	thisVersion := version.Get().String()
 	if len(masterVersion) != 0 && masterVersion != thisVersion {
-		fmt.Fprintf(cfg.out, "warning: OpenShift server version %q differs from this image %q\n", masterVersion, thisVersion)
+		glog.V(3).Infof("warning: OpenShift server version %q differs from this image %q\n", masterVersion, thisVersion)
 	} else {
 		glog.V(4).Infof("Master version %q, Builder version %q", masterVersion, thisVersion)
 	}
@@ -215,7 +215,7 @@ func RunDockerBuild(out io.Writer) error {
 	return runBuild(out, dockerBuilder{})
 }
 
-// RunSTIBuild creates a STI builder and runs its build
-func RunSTIBuild(out io.Writer) error {
+// RunS2IBuild creates a S2I builder and runs its build
+func RunS2IBuild(out io.Writer) error {
 	return runBuild(out, s2iBuilder{})
 }

@@ -6,7 +6,7 @@ Building Kubernetes is easy if you take advantage of the containerized build env
 
 1. Docker, using one of the two following configurations:
   1. **Mac OS X** You can either use docker-machine or boot2docker. See installation instructions [here](https://docs.docker.com/installation/mac/).  
-  * **Note**: You will want to set the boot2docker vm to have at least 3GB of initial memory or building will likely fail. (See: [#11852]( http://issue.k8s.io/11852)) and do not `make quick-release` from `/tmp/` (See: [#14773]( https://github.com/kubernetes/kubernetes/issues/14773))
+     **Note**: You will want to set the boot2docker vm to have at least 3GB of initial memory or building will likely fail. (See: [#11852]( http://issue.k8s.io/11852)) and do not `make quick-release` from `/tmp/` (See: [#14773]( https://github.com/kubernetes/kubernetes/issues/14773))
   2. **Linux with local Docker**  Install Docker according to the [instructions](https://docs.docker.com/installation/#installation) for your OS.  The scripts here assume that they are using a local Docker server and that they can "reach around" docker and grab results directly from the file system.
 2. [Python](https://www.python.org)
 3. **Optional** [Google Cloud SDK](https://developers.google.com/cloud/sdk/)
@@ -21,6 +21,8 @@ There is also early support for building Docker "run" containers
 
 ## Key scripts
 
+The following scripts are found in the `build/` directory:
+
 * `run.sh`: Run a command in a build docker container.  Common invocations:
   *  `run.sh hack/build-go.sh`: Build just linux binaries in the container.  Pass options and packages as necessary.
   *  `run.sh hack/build-cross.sh`: Build all binaries for all platforms
@@ -33,7 +35,7 @@ There is also early support for building Docker "run" containers
 
 ## Releasing
 
-The `release.sh` script will build a release.  It will build binaries, run tests, (optionally) build runtime Docker images and then (optionally) upload all build artifacts to a GCS bucket.
+The `build/release.sh` script will build a release.  It will build binaries, run tests, (optionally) build runtime Docker images and then (optionally) upload all build artifacts to a GCS bucket.
 
 The main output is a tar file: `kubernetes.tar.gz`.  This includes:
 * Cross compiled client utilities.

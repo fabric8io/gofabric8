@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/kubernetes/test/e2e"
+	e2e "k8s.io/kubernetes/test/e2e/framework"
 
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
@@ -20,9 +20,9 @@ var _ = g.Describe("[builds][Slow] s2i build with environment file in sources", 
 	)
 
 	var (
-		imageStreamFixture   = exutil.FixturePath("..", "integration", "fixtures", "test-image-stream.json")
-		stiEnvBuildFixture   = exutil.FixturePath("fixtures", "test-env-build.json")
-		podAndServiceFixture = exutil.FixturePath("fixtures", "test-build-podsvc.json")
+		imageStreamFixture   = exutil.FixturePath("..", "integration", "testdata", "test-image-stream.json")
+		stiEnvBuildFixture   = exutil.FixturePath("testdata", "test-env-build.json")
+		podAndServiceFixture = exutil.FixturePath("testdata", "test-build-podsvc.json")
 		oc                   = exutil.NewCLI("build-sti-env", exutil.KubeConfigPath())
 	)
 
@@ -45,15 +45,8 @@ var _ = g.Describe("[builds][Slow] s2i build with environment file in sources", 
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("starting a test build")
-			buildName, err := oc.Run("start-build").Args("test").Output()
-			o.Expect(err).NotTo(o.HaveOccurred())
-
-			g.By("expecting the build is in Complete phase")
-			err = exutil.WaitForABuild(oc.REST().Builds(oc.Namespace()), buildName, exutil.CheckBuildSuccessFn, exutil.CheckBuildFailedFn)
-			if err != nil {
-				exutil.DumpBuildLogs("test", oc)
-			}
-			o.Expect(err).NotTo(o.HaveOccurred())
+			br, _ := exutil.StartBuildAndWait(oc, "test")
+			br.AssertSuccess()
 
 			g.By("getting the Docker image reference from ImageStream")
 			imageName, err := exutil.GetDockerImageReference(oc.REST().ImageStreams(oc.Namespace()), "test", "latest")

@@ -22,7 +22,13 @@ func TestDefaults(t *testing.T) {
 	}{
 		{
 			External: &v1.Build{
-				Spec: v1.BuildSpec{Strategy: v1.BuildStrategy{Type: v1.DockerBuildStrategyType}},
+				Spec: v1.BuildSpec{
+					CommonSpec: v1.CommonSpec{
+						Strategy: v1.BuildStrategy{
+							Type: v1.DockerBuildStrategyType,
+						},
+					},
+				},
 			},
 			Internal: &api.Build{},
 			Ok: func(out runtime.Object) bool {
@@ -32,7 +38,13 @@ func TestDefaults(t *testing.T) {
 		},
 		{
 			External: &v1.Build{
-				Spec: v1.BuildSpec{Strategy: v1.BuildStrategy{SourceStrategy: &v1.SourceBuildStrategy{}}},
+				Spec: v1.BuildSpec{
+					CommonSpec: v1.CommonSpec{
+						Strategy: v1.BuildStrategy{
+							SourceStrategy: &v1.SourceBuildStrategy{},
+						},
+					},
+				},
 			},
 			Internal: &api.Build{},
 			Ok: func(out runtime.Object) bool {
@@ -42,7 +54,15 @@ func TestDefaults(t *testing.T) {
 		},
 		{
 			External: &v1.Build{
-				Spec: v1.BuildSpec{Strategy: v1.BuildStrategy{DockerStrategy: &v1.DockerBuildStrategy{From: &kapiv1.ObjectReference{}}}},
+				Spec: v1.BuildSpec{
+					CommonSpec: v1.CommonSpec{
+						Strategy: v1.BuildStrategy{
+							DockerStrategy: &v1.DockerBuildStrategy{
+								From: &kapiv1.ObjectReference{},
+							},
+						},
+					},
+				},
 			},
 			Internal: &api.Build{},
 			Ok: func(out runtime.Object) bool {
@@ -52,7 +72,13 @@ func TestDefaults(t *testing.T) {
 		},
 		{
 			External: &v1.Build{
-				Spec: v1.BuildSpec{Strategy: v1.BuildStrategy{CustomStrategy: &v1.CustomBuildStrategy{}}},
+				Spec: v1.BuildSpec{
+					CommonSpec: v1.CommonSpec{
+						Strategy: v1.BuildStrategy{
+							CustomStrategy: &v1.CustomBuildStrategy{},
+						},
+					},
+				},
 			},
 			Internal: &api.Build{},
 			Ok: func(out runtime.Object) bool {
@@ -68,13 +94,13 @@ func TestDefaults(t *testing.T) {
 			Ok: func(out runtime.Object) bool {
 				obj := out.(*api.BuildConfig)
 				// conversion drops this trigger because it has no type
-				return len(obj.Spec.Triggers) == 0
+				return (len(obj.Spec.Triggers) == 0) && (obj.Spec.RunPolicy == api.BuildRunPolicySerial)
 			},
 		},
 	}
 
 	for i, test := range testCases {
-		if err := kapi.Scheme.Convert(test.External, test.Internal); err != nil {
+		if err := kapi.Scheme.Convert(test.External, test.Internal, nil); err != nil {
 			t.Fatal(err)
 		}
 		if !test.Ok(test.Internal) {

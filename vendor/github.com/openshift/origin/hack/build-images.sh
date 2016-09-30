@@ -6,20 +6,9 @@
 # NOTE:  you only need to run this script if your code changes are part of
 # any images OpenShift runs internally such as origin-sti-builder, origin-docker-builder,
 # origin-deployer, etc.
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
 STARTTIME=$(date +%s)
-OS_ROOT=$(dirname "${BASH_SOURCE}")/..
-source "${OS_ROOT}/hack/common.sh"
-source "${OS_ROOT}/hack/util.sh"
+source "$(dirname "${BASH_SOURCE}")/lib/init.sh"
 source "${OS_ROOT}/contrib/node/install-sdn.sh"
-os::log::install_errexit
-
-# Go to the top of the tree.
-cd "${OS_ROOT}"
 
 if [[ "${OS_RELEASE:-}" == "n" ]]; then
   # Use local binaries
@@ -30,8 +19,8 @@ if [[ "${OS_RELEASE:-}" == "n" ]]; then
   OS_BUILD_PLATFORMS=("${OS_IMAGE_COMPILE_PLATFORMS[@]-}")
 
   echo "Building images from source ${OS_RELEASE_COMMIT}:"
-	echo
-  os::build::build_static_binaries "${OS_IMAGE_COMPILE_TARGETS[@]-}" "${OS_SCRATCH_IMAGE_COMPILE_TARGETS[@]-}"
+  echo
+  OS_GOFLAGS="${OS_GOFLAGS:-} ${OS_IMAGE_COMPILE_GOFLAGS}" os::build::build_static_binaries "${OS_IMAGE_COMPILE_TARGETS[@]-}" "${OS_SCRATCH_IMAGE_COMPILE_TARGETS[@]-}"
 	os::build::place_bins "${OS_IMAGE_COMPILE_BINARIES[@]}"
   echo
 else
@@ -62,7 +51,7 @@ if [[ -z "${oc}" ]]; then
 fi
 
 function build() {
-  "${oc}" ex dockerbuild $2 $1
+  eval "'${oc}' ex dockerbuild $2 $1 ${OS_BUILD_IMAGE_ARGS:-}"
 }
 
 # Create link to file if the FS supports hardlinks, otherwise copy the file
@@ -98,7 +87,7 @@ function image {
   echo "--- $1 ---"
   build $1:latest $2
   #docker build -t $1:latest $2
-  docker tag -f $1:latest $1:${OS_RELEASE_COMMIT}
+  docker tag $1:latest $1:${OS_RELEASE_COMMIT}
   git clean -fdx $2
   local ENDTIME=$(date +%s); echo "--- $1 took $(($ENDTIME - $STARTTIME)) seconds ---"
   echo

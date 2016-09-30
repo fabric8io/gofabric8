@@ -1,14 +1,5 @@
 #!/bin/bash
-
-set -o errexit
-set -o nounset
-set -o pipefail
-
-OS_ROOT=$(dirname "${BASH_SOURCE}")/../..
-source "${OS_ROOT}/hack/util.sh"
-source "${OS_ROOT}/hack/cmd_util.sh"
-source "${OS_ROOT}/hack/lib/test/junit.sh"
-os::log::install_errexit
+source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 trap os::test::junit::reconcile_output EXIT
 
 # Cleanup cluster resources created by this test
@@ -57,6 +48,11 @@ os::cmd::expect_success 'oc delete all -l app=php'
 os::cmd::expect_failure 'oc get dc/mysql'
 os::cmd::expect_failure 'oc get dc/php'
 
+# ensure non-duplicate invalid label errors show up
+os::cmd::expect_failure_and_text 'oc new-app nginx -l qwer1345%$$#=self' 'error: ImageStream "nginx" is invalid'
+os::cmd::expect_failure_and_text 'oc new-app nginx -l qwer1345%$$#=self' 'DeploymentConfig "nginx" is invalid'
+os::cmd::expect_failure_and_text 'oc new-app nginx -l qwer1345%$$#=self' 'Service "nginx" is invalid'
+
 # check if we can create from a stored template
 os::cmd::expect_success 'oc create -f examples/sample-app/application-template-stibuild.json'
 os::cmd::expect_success 'oc get template ruby-helloworld-sample'
@@ -68,8 +64,12 @@ os::cmd::expect_success_and_text 'oc new-app ruby-helloworld-sample --param MYSQ
 
 # verify we can create from a template when some objects in the template declare an app label
 # the app label should still be applied to the other objects in the template.
-os::cmd::expect_success_and_text 'oc new-app -f test/fixtures/template-with-app-label.json -o yaml' 'app: ruby-sample-build'
-os::cmd::expect_success_and_text 'oc new-app -f test/fixtures/template-with-app-label.json -o yaml' 'app: myapp'
+os::cmd::expect_success_and_text 'oc new-app -f test/testdata/template-with-app-label.json -o yaml' 'app: ruby-helloworld-sample'
+# verify the existing app label on an object is overridden by new-app
+os::cmd::expect_success_and_not_text 'oc new-app -f test/testdata/template-with-app-label.json -o yaml' 'app: myapp'
+
+# verify that a template can be passed in stdin
+os::cmd::expect_success 'cat examples/sample-app/application-template-stibuild.json | oc new-app -o yaml -f -'
 
 # check search
 os::cmd::expect_success_and_text 'oc new-app --search mysql' "Tags:\s+5.5, 5.6, latest"
@@ -78,8 +78,8 @@ os::cmd::expect_success_and_text 'oc new-app --search ruby-helloworld-sample' 'r
 os::cmd::expect_success_and_text 'oc new-app --search ruby-hellow' 'ruby-helloworld-sample'
 os::cmd::expect_success_and_text 'oc new-app --search --template=ruby-hel' 'ruby-helloworld-sample'
 os::cmd::expect_success_and_text 'oc new-app --search --template=ruby-helloworld-sam -o yaml' 'ruby-helloworld-sample'
-os::cmd::expect_success_and_text 'oc new-app --search rub' "Tags:\s+2.0, 2.2, latest"
-os::cmd::expect_success_and_text 'oc new-app --search --image-stream=rub' "Tags:\s+2.0, 2.2, latest"
+os::cmd::expect_success_and_text 'oc new-app --search rub' "Tags:\s+2.0, 2.2, 2.3, latest"
+os::cmd::expect_success_and_text 'oc new-app --search --image-stream=rub' "Tags:\s+2.0, 2.2, 2.3, latest"
 # check search - check correct usage of filters
 os::cmd::expect_failure_and_not_text 'oc new-app --search --image-stream=ruby-heloworld-sample' 'application-template-stibuild'
 os::cmd::expect_failure 'oc new-app --search --template=php'
@@ -90,11 +90,13 @@ os::cmd::expect_failure 'oc new-app -S --template=perl'
 os::cmd::try_until_success 'oc get imagestreamtags mongodb:latest'
 os::cmd::try_until_success 'oc get imagestreamtags mongodb:2.4'
 os::cmd::try_until_success 'oc get imagestreamtags mongodb:2.6'
+os::cmd::try_until_success 'oc get imagestreamtags mongodb:3.2'
 os::cmd::try_until_success 'oc get imagestreamtags mysql:latest'
 os::cmd::try_until_success 'oc get imagestreamtags mysql:5.5'
 os::cmd::try_until_success 'oc get imagestreamtags mysql:5.6'
 os::cmd::try_until_success 'oc get imagestreamtags nodejs:latest'
 os::cmd::try_until_success 'oc get imagestreamtags nodejs:0.10'
+os::cmd::try_until_success 'oc get imagestreamtags nodejs:4'
 os::cmd::try_until_success 'oc get imagestreamtags perl:latest'
 os::cmd::try_until_success 'oc get imagestreamtags perl:5.16'
 os::cmd::try_until_success 'oc get imagestreamtags perl:5.20'
@@ -104,24 +106,27 @@ os::cmd::try_until_success 'oc get imagestreamtags php:5.6'
 os::cmd::try_until_success 'oc get imagestreamtags postgresql:latest'
 os::cmd::try_until_success 'oc get imagestreamtags postgresql:9.2'
 os::cmd::try_until_success 'oc get imagestreamtags postgresql:9.4'
+os::cmd::try_until_success 'oc get imagestreamtags postgresql:9.5'
 os::cmd::try_until_success 'oc get imagestreamtags python:latest'
 os::cmd::try_until_success 'oc get imagestreamtags python:2.7'
 os::cmd::try_until_success 'oc get imagestreamtags python:3.3'
 os::cmd::try_until_success 'oc get imagestreamtags python:3.4'
+os::cmd::try_until_success 'oc get imagestreamtags python:3.5'
 os::cmd::try_until_success 'oc get imagestreamtags ruby:latest'
 os::cmd::try_until_success 'oc get imagestreamtags ruby:2.0'
 os::cmd::try_until_success 'oc get imagestreamtags ruby:2.2'
+os::cmd::try_until_success 'oc get imagestreamtags ruby:2.3'
 os::cmd::try_until_success 'oc get imagestreamtags wildfly:latest'
 os::cmd::try_until_success 'oc get imagestreamtags wildfly:10.0'
 
-os::cmd::expect_success_and_text 'oc new-app --search --image-stream=mongodb' "Tags:\s+2.4, 2.6, latest"
+os::cmd::expect_success_and_text 'oc new-app --search --image-stream=mongodb' "Tags:\s+2.4, 2.6, 3.2, latest"
 os::cmd::expect_success_and_text 'oc new-app --search --image-stream=mysql' "Tags:\s+5.5, 5.6, latest"
-os::cmd::expect_success_and_text 'oc new-app --search --image-stream=nodejs' "Tags:\s+0.10, latest"
+os::cmd::expect_success_and_text 'oc new-app --search --image-stream=nodejs' "Tags:\s+0.10, 4, latest"
 os::cmd::expect_success_and_text 'oc new-app --search --image-stream=perl' "Tags:\s+5.16, 5.20, latest"
 os::cmd::expect_success_and_text 'oc new-app --search --image-stream=php' "Tags:\s+5.5, 5.6, latest"
-os::cmd::expect_success_and_text 'oc new-app --search --image-stream=postgresql' "Tags:\s+9.2, 9.4, latest"
-os::cmd::expect_success_and_text 'oc new-app -S --image-stream=python' "Tags:\s+2.7, 3.3, 3.4, latest"
-os::cmd::expect_success_and_text 'oc new-app -S --image-stream=ruby' "Tags:\s+2.0, 2.2, latest"
+os::cmd::expect_success_and_text 'oc new-app --search --image-stream=postgresql' "Tags:\s+9.2, 9.4, 9.5, latest"
+os::cmd::expect_success_and_text 'oc new-app -S --image-stream=python' "Tags:\s+2.7, 3.3, 3.4, 3.5, latest"
+os::cmd::expect_success_and_text 'oc new-app -S --image-stream=ruby' "Tags:\s+2.0, 2.2, 2.3, latest"
 os::cmd::expect_success_and_text 'oc new-app -S --image-stream=wildfly' "Tags:\s+10.0, 8.1, 9.0, latest"
 os::cmd::expect_success_and_text 'oc new-app --search --template=ruby-helloworld-sample' 'ruby-helloworld-sample'
 # check search - no matches
@@ -196,18 +201,19 @@ os::cmd::expect_success_and_text 'oc new-app mysql --name=db' 'db'
 os::cmd::expect_success 'oc new-app https://github.com/openshift/ruby-hello-world -l app=ruby'
 os::cmd::expect_success 'oc delete all -l app=ruby'
 # check for error when template JSON file has errors
-jsonfile="${OS_ROOT}/test/fixtures/invalid.json"
-os::cmd::expect_failure_and_text "oc new-app '${jsonfile}'" "error: unable to load template file \"${jsonfile}\": at offset 8: invalid character '}' after object key"
+jsonfile="${OS_ROOT}/test/testdata/invalid.json"
+os::cmd::expect_failure_and_text "oc new-app '${jsonfile}'" "error: unable to load template file \"${jsonfile}\": json: line 0: invalid character '}' after object key"
 
 # a docker compose file should be transformed into an application by the import command
-os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml --dry-run' 'warning: not all docker-compose fields were honored'
-os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml --dry-run' 'db: cpuset is not supported'
-os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml -o name --dry-run' 'service/redis'
-os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml -o name --as-template=other --dry-run' 'template/other'
-os::cmd::expect_failure 'diff --suppress-common-lines -y <(oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/complex/docker-compose.yml -o yaml) test/fixtures/app-scenarios/docker-compose/complex/docker-compose.imported.yaml | grep -v secret'
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/testdata/app-scenarios/docker-compose/complex/docker-compose.yml --dry-run' 'warning: not all docker-compose fields were honored'
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/testdata/app-scenarios/docker-compose/complex/docker-compose.yml --dry-run' 'db: cpuset is not supported'
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/testdata/app-scenarios/docker-compose/complex/docker-compose.yml --dry-run' 'no-ports: no ports defined to send traffic to - no OpenShift service was created'
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/testdata/app-scenarios/docker-compose/complex/docker-compose.yml -o name --dry-run' 'service/redis'
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/testdata/app-scenarios/docker-compose/complex/docker-compose.yml -o name --as-template=other --dry-run' 'template/other'
+os::cmd::expect_success '[[ $(diff --suppress-common-lines -y <(oc import docker-compose -f test/testdata/app-scenarios/docker-compose/complex/docker-compose.yml -o yaml) test/testdata/app-scenarios/docker-compose/complex/docker-compose.imported.yaml | grep -vE "ref\:|secret|uri\:" | wc -l) -eq 0 ]]'
 
 # verify a docker-compose.yml schema 2 resource can be transformed, and that it sets env vars correctly.
-os::cmd::expect_success_and_text 'oc import docker-compose -f test/fixtures/app-scenarios/docker-compose/wordpress/docker-compose.yml -o yaml --as-template=other --dry-run' 'value: wordpress'
+os::cmd::expect_success_and_text 'oc import docker-compose -f test/testdata/app-scenarios/docker-compose/wordpress/docker-compose.yml -o yaml --as-template=other --dry-run' 'value: wordpress'
 
 # check new-build
 os::cmd::expect_failure_and_text 'oc new-build mysql -o yaml' 'you must specify at least one source repository URL'
@@ -223,7 +229,7 @@ os::cmd::expect_failure_and_text 'oc new-app  openshift/bogusImage https://githu
 # allow use of non-existent image (should succeed)
 os::cmd::expect_success 'oc new-app openshift/bogusImage https://github.com/openshift/ruby-hello-world.git -o yaml --allow-missing-images'
 
-os::cmd::expect_success 'oc create -f test/fixtures/installable-stream.yaml'
+os::cmd::expect_success 'oc create -f test/testdata/installable-stream.yaml'
 
 project=$(oc project -q)
 os::cmd::expect_success 'oc policy add-role-to-user edit test-user'

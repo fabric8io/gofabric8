@@ -57,8 +57,10 @@ func (DeploymentConfigList) SwaggerDoc() map[string]string {
 }
 
 var map_DeploymentConfigRollback = map[string]string{
-	"":     "DeploymentConfigRollback provides the input to rollback generation.",
-	"spec": "Spec defines the options to rollback generation.",
+	"":                   "DeploymentConfigRollback provides the input to rollback generation.",
+	"name":               "Name of the deployment config that will be rolled back.",
+	"updatedAnnotations": "UpdatedAnnotations is a set of new annotations that will be added in the deployment config.",
+	"spec":               "Spec defines the options to rollback generation.",
 }
 
 func (DeploymentConfigRollback) SwaggerDoc() map[string]string {
@@ -68,6 +70,7 @@ func (DeploymentConfigRollback) SwaggerDoc() map[string]string {
 var map_DeploymentConfigRollbackSpec = map[string]string{
 	"":                       "DeploymentConfigRollbackSpec represents the options for rollback generation.",
 	"from":                   "From points to a ReplicationController which is a deployment.",
+	"revision":               "Revision to rollback to. If set to 0, rollback to the last revision.",
 	"includeTriggers":        "IncludeTriggers specifies whether to include config Triggers.",
 	"includeTemplate":        "IncludeTemplate specifies whether to include the PodTemplateSpec.",
 	"includeReplicationMeta": "IncludeReplicationMeta specifies whether to include the replica count and selector.",
@@ -79,13 +82,16 @@ func (DeploymentConfigRollbackSpec) SwaggerDoc() map[string]string {
 }
 
 var map_DeploymentConfigSpec = map[string]string{
-	"":         "DeploymentConfigSpec represents the desired state of the deployment.",
-	"strategy": "Strategy describes how a deployment is executed.",
-	"triggers": "Triggers determine how updates to a DeploymentConfig result in new deployments. If no triggers are defined, a new deployment can only occur as a result of an explicit client update to the DeploymentConfig with a new LatestVersion.",
-	"replicas": "Replicas is the number of desired replicas.",
-	"test":     "Test ensures that this deployment config will have zero replicas except while a deployment is running. This allows the deployment config to be used as a continuous deployment test - triggering on images, running the deployment, and then succeeding or failing. Post strategy hooks and After actions can be used to integrate successful deployment with an action.",
-	"selector": "Selector is a label query over pods that should match the Replicas count.",
-	"template": "Template is the object that describes the pod that will be created if insufficient replicas are detected.",
+	"":                     "DeploymentConfigSpec represents the desired state of the deployment.",
+	"strategy":             "Strategy describes how a deployment is executed.",
+	"minReadySeconds":      "MinReadySeconds is the minimum number of seconds for which a newly created pod should be ready without any of its container crashing, for it to be considered available. Defaults to 0 (pod will be considered available as soon as it is ready)",
+	"triggers":             "Triggers determine how updates to a DeploymentConfig result in new deployments. If no triggers are defined, a new deployment can only occur as a result of an explicit client update to the DeploymentConfig with a new LatestVersion. If null, defaults to having a config change trigger.",
+	"replicas":             "Replicas is the number of desired replicas.",
+	"revisionHistoryLimit": "RevisionHistoryLimit is the number of old ReplicationControllers to retain to allow for rollbacks. This field is a pointer to allow for differentiation between an explicit zero and not specified.",
+	"test":                 "Test ensures that this deployment config will have zero replicas except while a deployment is running. This allows the deployment config to be used as a continuous deployment test - triggering on images, running the deployment, and then succeeding or failing. Post strategy hooks and After actions can be used to integrate successful deployment with an action.",
+	"paused":               "Paused indicates that the deployment config is paused resulting in no new deployments on template changes or changes in the template caused by other triggers.",
+	"selector":             "Selector is a label query over pods that should match the Replicas count.",
+	"template":             "Template is the object that describes the pod that will be created if insufficient replicas are detected.",
 }
 
 func (DeploymentConfigSpec) SwaggerDoc() map[string]string {
@@ -93,10 +99,14 @@ func (DeploymentConfigSpec) SwaggerDoc() map[string]string {
 }
 
 var map_DeploymentConfigStatus = map[string]string{
-	"":                   "DeploymentConfigStatus represents the current deployment state.",
-	"latestVersion":      "LatestVersion is used to determine whether the current deployment associated with a DeploymentConfig is out of sync.",
-	"details":            "Details are the reasons for the update to this deployment config. This could be based on a change made by the user or caused by an automatic trigger",
-	"observedGeneration": "ObservedGeneration is the most recent generation observed by the controller.",
+	"":                    "DeploymentConfigStatus represents the current deployment state.",
+	"latestVersion":       "LatestVersion is used to determine whether the current deployment associated with a deployment config is out of sync.",
+	"observedGeneration":  "ObservedGeneration is the most recent generation observed by the deployment config controller.",
+	"replicas":            "Replicas is the total number of pods targeted by this deployment config.",
+	"updatedReplicas":     "UpdatedReplicas is the total number of non-terminated pods targeted by this deployment config that have the desired template spec.",
+	"availableReplicas":   "AvailableReplicas is the total number of available pods targeted by this deployment config.",
+	"unavailableReplicas": "UnavailableReplicas is the total number of unavailable pods targeted by this deployment config.",
+	"details":             "Details are the reasons for the update to this deployment config. This could be based on a change made by the user or caused by an automatic trigger",
 }
 
 func (DeploymentConfigStatus) SwaggerDoc() map[string]string {
@@ -127,7 +137,7 @@ var map_DeploymentLogOptions = map[string]string{
 	"follow":       "Follow if true indicates that the build log should be streamed until the build terminates.",
 	"previous":     "Return previous deployment logs. Defaults to false.",
 	"sinceSeconds": "A relative time in seconds before the current time from which to show logs. If this value precedes the time a pod was started, only logs since the pod start will be returned. If this value is in the future, no logs will be returned. Only one of sinceSeconds or sinceTime may be specified.",
-	"sinceTime":    "An RFC3339 timestamp from which to show logs. If this value preceeds the time a pod was started, only logs since the pod start will be returned. If this value is in the future, no logs will be returned. Only one of sinceSeconds or sinceTime may be specified.",
+	"sinceTime":    "An RFC3339 timestamp from which to show logs. If this value precedes the time a pod was started, only logs since the pod start will be returned. If this value is in the future, no logs will be returned. Only one of sinceSeconds or sinceTime may be specified.",
 	"timestamps":   "If true, add an RFC3339 or RFC3339Nano timestamp at the beginning of every line of log output. Defaults to false.",
 	"tailLines":    "If set, the number of lines from the end of the logs to show. If not specified, logs are shown from the creation of the container or sinceSeconds or sinceTime",
 	"limitBytes":   "If set, the number of bytes to read from the server before terminating the log output. This may not display a complete final line of logging, and may return slightly more or slightly less than the specified limit.",

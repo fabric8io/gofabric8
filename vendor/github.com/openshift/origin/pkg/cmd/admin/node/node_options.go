@@ -28,11 +28,12 @@ type NodeOptions struct {
 	DefaultNamespace string
 	Kclient          *client.Client
 	Writer           io.Writer
+	ErrWriter        io.Writer
 
 	Mapper            meta.RESTMapper
 	Typer             runtime.ObjectTyper
 	RESTClientFactory func(mapping *meta.RESTMapping) (resource.RESTClient, error)
-	Printer           func(mapping *meta.RESTMapping, noHeaders, withNamespace, wide bool, showAll bool, showLabels bool, absoluteTimestamps bool, columnLabels []string) (kubectl.ResourcePrinter, error)
+	Printer           func(mapping *meta.RESTMapping, printOptions *kubectl.PrintOptions) (kubectl.ResourcePrinter, error)
 
 	CmdPrinter       kubectl.ResourcePrinter
 	CmdPrinterOutput bool
@@ -44,7 +45,7 @@ type NodeOptions struct {
 	PodSelector string
 }
 
-func (n *NodeOptions) Complete(f *clientcmd.Factory, c *cobra.Command, args []string, out io.Writer) error {
+func (n *NodeOptions) Complete(f *clientcmd.Factory, c *cobra.Command, args []string, out, errout io.Writer) error {
 	defaultNamespace, _, err := f.DefaultNamespace()
 	if err != nil {
 		return err
@@ -62,6 +63,7 @@ func (n *NodeOptions) Complete(f *clientcmd.Factory, c *cobra.Command, args []st
 	n.DefaultNamespace = defaultNamespace
 	n.Kclient = kc
 	n.Writer = out
+	n.ErrWriter = errout
 	n.Mapper = mapper
 	n.Typer = typer
 	n.RESTClientFactory = f.Factory.ClientForMapping
@@ -156,11 +158,11 @@ func (n *NodeOptions) GetNodes() ([]*kapi.Node, error) {
 }
 
 func (n *NodeOptions) GetPrintersByObject(obj runtime.Object) (kubectl.ResourcePrinter, kubectl.ResourcePrinter, error) {
-	gvk, err := kapi.Scheme.ObjectKind(obj)
+	gvk, _, err := kapi.Scheme.ObjectKinds(obj)
 	if err != nil {
 		return nil, nil, err
 	}
-	return n.GetPrinters(gvk)
+	return n.GetPrinters(gvk[0])
 }
 
 func (n *NodeOptions) GetPrintersByResource(resource unversioned.GroupVersionResource) (kubectl.ResourcePrinter, kubectl.ResourcePrinter, error) {
@@ -177,11 +179,11 @@ func (n *NodeOptions) GetPrinters(gvk unversioned.GroupVersionKind) (kubectl.Res
 		return nil, nil, err
 	}
 
-	printerWithHeaders, err := n.Printer(mapping, false, false, false, false, false, false, []string{})
+	printerWithHeaders, err := n.Printer(mapping, nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	printerNoHeaders, err := n.Printer(mapping, true, false, false, false, false, false, []string{})
+	printerNoHeaders, err := n.Printer(mapping, &kubectl.PrintOptions{NoHeaders: true})
 	if err != nil {
 		return nil, nil, err
 	}

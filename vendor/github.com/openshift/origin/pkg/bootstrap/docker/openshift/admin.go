@@ -35,33 +35,45 @@ func (h *Helper) InstallRegistry(kubeClient kclient.Interface, f *clientcmd.Fact
 		return nil
 	}
 	if !apierrors.IsNotFound(err) {
-		return errors.NewError("error retrieving docker registry service").WithCause(err)
+		return errors.NewError("error retrieving docker registry service").WithCause(err).WithDetails(h.OriginLog())
 	}
 	imageTemplate := variable.NewDefaultImageTemplate()
 	imageTemplate.Format = images
-	cfg := &registry.RegistryConfig{
-		Name:           "registry",
-		Type:           "docker-registry",
-		ImageTemplate:  imageTemplate,
-		Ports:          "5000",
-		Replicas:       1,
-		Labels:         "docker-registry=default",
-		Volume:         "/registry",
-		ServiceAccount: "registry",
+	opts := &registry.RegistryOptions{
+		Config: &registry.RegistryConfig{
+			Name:           "registry",
+			Type:           "docker-registry",
+			ImageTemplate:  imageTemplate,
+			Ports:          "5000",
+			Replicas:       1,
+			Labels:         "docker-registry=default",
+			Volume:         "/registry",
+			ServiceAccount: "registry",
+		},
 	}
 	cmd := registry.NewCmdRegistry(f, "", "registry", out)
 	output := &bytes.Buffer{}
-	err = registry.RunCmdRegistry(f, cmd, output, cfg, []string{})
+	err = opts.Complete(f, cmd, output, []string{})
+	if err != nil {
+		return errors.NewError("error completing the registry configuration").WithCause(err)
+	}
+	err = opts.RunCmdRegistry()
 	glog.V(4).Infof("Registry command output:\n%s", output.String())
-	return err
+	if err != nil {
+		return errors.NewError("cannot install registry").WithCause(err).WithDetails(h.OriginLog())
+	}
+	return nil
 }
 
 // InstallRouter installs a default router on the OpenShift server
-func (h *Helper) InstallRouter(kubeClient kclient.Interface, f *clientcmd.Factory, configDir, images, hostIP string, out io.Writer) error {
-	_, err := kubeClient.Services("default").Get("router")
+func (h *Helper) InstallRouter(kubeClient kclient.Interface, f *clientcmd.Factory, configDir, images, hostIP string, portForwarding bool, out io.Writer) error {
+	_, err := kubeClient.Services("default").Get(svcRouter)
 	if err == nil {
 		// Router service already exists, nothing to do
 		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return errors.NewError("error retrieving router service").WithCause(err).WithDetails(h.OriginLog())
 	}
 
 	masterDir := filepath.Join(configDir, "master")
@@ -71,18 +83,18 @@ func (h *Helper) InstallRouter(kubeClient kclient.Interface, f *clientcmd.Factor
 	routerSA.Name = "router"
 	_, err = kubeClient.ServiceAccounts("default").Create(routerSA)
 	if err != nil {
-		return errors.NewError("cannot create router service account").WithCause(err)
+		return errors.NewError("cannot create router service account").WithCause(err).WithDetails(h.OriginLog())
 	}
 
 	// Add router SA to privileged SCC
 	privilegedSCC, err := kubeClient.SecurityContextConstraints().Get("privileged")
 	if err != nil {
-		return errors.NewError("cannot retrieve privileged SCC").WithCause(err)
+		return errors.NewError("cannot retrieve privileged SCC").WithCause(err).WithDetails(h.OriginLog())
 	}
 	privilegedSCC.Users = append(privilegedSCC.Users, serviceaccount.MakeUsername("default", "router"))
 	_, err = kubeClient.SecurityContextConstraints().Update(privilegedSCC)
 	if err != nil {
-		return errors.NewError("cannot update privileged SCC").WithCause(err)
+		return errors.NewError("cannot update privileged SCC").WithCause(err).WithDetails(h.OriginLog())
 	}
 
 	// Create router cert
@@ -125,7 +137,7 @@ func (h *Helper) InstallRouter(kubeClient kclient.Interface, f *clientcmd.Factor
 		DefaultCertificate: filepath.Join(masterDir, "router.pem"),
 		StatsPort:          1936,
 		StatsUsername:      "admin",
-		HostNetwork:        true,
+		HostNetwork:        !portForwarding,
 		HostPorts:          true,
 		ServiceAccount:     "router",
 	}
@@ -134,7 +146,10 @@ func (h *Helper) InstallRouter(kubeClient kclient.Interface, f *clientcmd.Factor
 	cmd.SetOutput(output)
 	err = router.RunCmdRouter(f, cmd, output, cfg, []string{})
 	glog.V(4).Infof("Router command output:\n%s", output.String())
-	return err
+	if err != nil {
+		return errors.NewError("cannot install router").WithCause(err).WithDetails(h.OriginLog())
+	}
+	return nil
 }
 
 // catFiles concatenates multiple source files into a single destination file

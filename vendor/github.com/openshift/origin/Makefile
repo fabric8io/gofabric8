@@ -9,18 +9,22 @@
 #   clean: Clean up.
 
 OUT_DIR = _output
-OUT_PKG_DIR = Godeps/_workspace/pkg
 OS_OUTPUT_GOPATH ?= 1
 
 export GOFLAGS
 export TESTFLAGS
+# If set to 1, create an isolated GOPATH inside _output using symlinks to avoid
+# other packages being accidentally included. Defaults to on.
 export OS_OUTPUT_GOPATH
+# May be used to set additional arguments passed to the image build commands for
+# mounting secrets specific to a build environment.
+export OS_BUILD_IMAGE_ARGS
 
 # Build code.
 #
 # Args:
 #   WHAT: Directory names to build.  If any of these directories has a 'main'
-#     package, the build will produce executable files under $(OUT_DIR)/go/bin.
+#     package, the build will produce executable files under $(OUT_DIR)/local/bin.
 #     If not specified, "everything" will be built.
 #   GOFLAGS: Extra flags to pass to 'go' when building.
 #   TESTFLAGS: Extra flags that should only be passed to hack/test-go.sh
@@ -28,10 +32,19 @@ export OS_OUTPUT_GOPATH
 # Example:
 #   make
 #   make all
-#   make all WHAT=cmd/kubelet GOFLAGS=-v
+#   make all WHAT=cmd/oc GOFLAGS=-v
 all build:
-	hack/build-go.sh $(WHAT)
+	hack/build-go.sh $(WHAT) $(GOFLAGS)
 .PHONY: all build
+
+# Build the test binaries.
+#
+# Example:
+#   make build-tests
+build-tests:
+	hack/build-go.sh test/extended/extended.test
+	hack/build-go.sh test/integration/integration.test -tags='integration docker'
+.PHONY: build-tests
 
 # Run core verification and all self contained tests.
 #
@@ -47,17 +60,18 @@ check: | build verify
 # Example:
 #   make verify
 verify: build
-	hack/build-go.sh test/extended/extended.test test/extended/networking/extended.test test/integration/integration.test -tags='integration docker'
+	# build-tests is disabled until we can determine why memory usage is so high
 	hack/verify-upstream-commits.sh
 	hack/verify-gofmt.sh
 	hack/verify-govet.sh
+	hack/verify-generated-bootstrap-bindata.sh
 	hack/verify-generated-deep-copies.sh
 	hack/verify-generated-conversions.sh
+	hack/verify-generated-clientsets.sh
 	hack/verify-generated-completions.sh
 	hack/verify-generated-docs.sh
-	hack/verify-generated-swagger-spec.sh
-	hack/verify-bootstrap-bindata.sh
 	hack/verify-generated-swagger-descriptions.sh
+	hack/verify-generated-swagger-spec.sh
 .PHONY: verify
 
 # Update all generated artifacts.
@@ -65,13 +79,15 @@ verify: build
 # Example:
 #   make update
 update: build
-	hack/update-generated-completions.sh
-	hack/update-generated-conversions.sh
+	hack/update-generated-bootstrap-bindata.sh
 	hack/update-generated-deep-copies.sh
+	hack/update-generated-conversions.sh
+	hack/update-generated-clientsets.sh
+	hack/update-generated-completions.sh
 	hack/update-generated-docs.sh
 	hack/update-generated-swagger-descriptions.sh
 	hack/update-generated-swagger-spec.sh
-.PHONE: update
+.PHONY: update
 
 # Run unit tests.
 #
@@ -84,7 +100,7 @@ update: build
 #
 # Example:
 #   make test-unit
-#   make test-unit WHAT=pkg/build GOFLAGS=-v
+#   make test-unit WHAT=pkg/build TESTFLAGS=-v
 test-unit:
 	TEST_KUBE=true GOTEST_FLAGS="$(TESTFLAGS)" hack/test-go.sh $(WHAT) $(TESTS)
 .PHONY: test-unit
@@ -109,19 +125,24 @@ test-cmd: build
 # Run end to end tests. Uses whatever binaries are currently built.
 #
 # Example:
-#   make test-cmd
+#   make test-end-to-end
 test-end-to-end: build
+	hack/env hack/verify-generated-protobuf.sh # Test the protobuf serializations when we know Docker is available
 	hack/test-end-to-end.sh
 .PHONY: test-end-to-end
 
 # Run tools tests.
 #
 # Example:
-#   make test-cmd
+#   make test-tools
 test-tools:
 	hack/test-tools.sh
 .PHONY: test-tools
 
+# Run assets tests.
+#
+# Example:
+#   make test-assets
 test-assets:
 ifeq ($(TEST_ASSETS),true)
 	hack/test-assets.sh
@@ -152,10 +173,10 @@ run: build
 # Example:
 #   make clean
 clean:
-	rm -rf $(OUT_DIR) $(OUT_PKG_DIR)
+	rm -rf $(OUT_DIR)
 .PHONY: clean
 
-# Build an official release of OpenShift, including the official images.
+# Build a release of OpenShift for linux/amd64 and the images that depend on it.
 #
 # Example:
 #   make release
@@ -174,6 +195,27 @@ release-binaries: clean
 	hack/extract-release.sh
 .PHONY: release-binaries
 
+# Release the integrated components for OpenShift, origin, logging, and metrics.
+# The current tag in the Origin release (the tag that points to HEAD) is used to
+# clone and build each component. Components must have a hack/release.sh script
+# which must accept env var OS_TAG as the tag to build. Each component should push
+# its own images. See hack/release.sh and hack/push-release.sh for an example of
+# the appropriate behavior.
+#
+# Prerequisites:
+# * you must be logged into the remote registry with the appropriate
+#   credentials to push.
+# * all repositories must have a Git tag equal to the current repositories tag of
+#   HEAD
+#
+# TODO: consider making hack/release.sh be a make target (make official-release).
+#
+# Example:
+#   make release-components
+release-components: clean
+	hack/release-components.sh
+.PHONY: release-components
+
 # Build the cross compiled release binaries
 #
 # Example:
@@ -184,6 +226,8 @@ build-cross: clean
 
 # Install travis dependencies
 #
+# Example:
+#   make install-travis
 install-travis:
 	hack/install-tools.sh
 .PHONY: install-travis

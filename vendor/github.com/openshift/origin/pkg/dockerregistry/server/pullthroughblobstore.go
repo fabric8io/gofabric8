@@ -1,9 +1,9 @@
 package server
 
 import (
-	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/context"
@@ -20,8 +20,9 @@ import (
 type pullthroughBlobStore struct {
 	distribution.BlobStore
 
-	repo          *repository
-	digestToStore map[string]distribution.BlobStore
+	repo                       *repository
+	digestToStore              map[string]distribution.BlobStore
+	pullFromInsecureRegistries bool
 }
 
 var _ distribution.BlobStore = &pullthroughBlobStore{}
@@ -36,12 +37,18 @@ func (r *pullthroughBlobStore) Stat(ctx context.Context, dgst digest.Digest) (di
 		// continue on to the code below and look up the blob in a remote store since it is not in
 		// the local store
 	case err != nil:
-		context.GetLogger(r.repo.ctx).Errorf("Failed to find blob %q: %#v", dgst.String(), err)
+		context.GetLogger(ctx).Errorf("Failed to find blob %q: %#v", dgst.String(), err)
 		fallthrough
 	default:
 		return desc, err
 	}
 
+	return r.remoteStat(ctx, dgst)
+}
+
+// remoteStat attempts to find requested blob in candidate remote repositories and if found, it updates
+// digestToRepository store. ErrBlobUnknown will be returned if not found.
+func (r *pullthroughBlobStore) remoteStat(ctx context.Context, dgst digest.Digest) (distribution.Descriptor, error) {
 	// look up the potential remote repositories that this blob could be part of (at this time,
 	// we don't know which image in the image stream surfaced the content).
 	is, err := r.repo.getImageStream()
@@ -49,7 +56,7 @@ func (r *pullthroughBlobStore) Stat(ctx context.Context, dgst digest.Digest) (di
 		if errors.IsNotFound(err) || errors.IsForbidden(err) {
 			return distribution.Descriptor{}, distribution.ErrBlobUnknown
 		}
-		context.GetLogger(r.repo.ctx).Errorf("Error retrieving image stream for blob: %s", err)
+		context.GetLogger(ctx).Errorf("Error retrieving image stream for blob: %v", err)
 		return distribution.Descriptor{}, err
 	}
 
@@ -83,17 +90,17 @@ func (r *pullthroughBlobStore) Stat(ctx context.Context, dgst digest.Digest) (di
 // proxyStat attempts to locate the digest in the provided remote repository or returns an error. If the digest is found,
 // r.digestToStore saves the store.
 func (r *pullthroughBlobStore) proxyStat(ctx context.Context, retriever importer.RepositoryRetriever, ref imageapi.DockerImageReference, dgst digest.Digest) (distribution.Descriptor, error) {
-	context.GetLogger(r.repo.ctx).Infof("Trying to stat %q from %q", dgst, ref.Exact())
-	repo, err := retriever.Repository(ctx, ref.RegistryURL(), ref.RepositoryName(), false)
+	context.GetLogger(ctx).Infof("Trying to stat %q from %q", dgst, ref.Exact())
+	repo, err := retriever.Repository(ctx, ref.RegistryURL(), ref.RepositoryName(), r.pullFromInsecureRegistries)
 	if err != nil {
-		context.GetLogger(r.repo.ctx).Errorf("Error getting remote repository for image %q: %v", ref.Exact(), err)
+		context.GetLogger(ctx).Errorf("Error getting remote repository for image %q: %v", ref.Exact(), err)
 		return distribution.Descriptor{}, err
 	}
 	pullthroughBlobStore := repo.Blobs(ctx)
 	desc, err := pullthroughBlobStore.Stat(ctx, dgst)
 	if err != nil {
 		if err != distribution.ErrBlobUnknown {
-			context.GetLogger(r.repo.ctx).Errorf("Error getting pullthroughBlobStore for image %q: %v", ref.Exact(), err)
+			context.GetLogger(ctx).Errorf("Error getting pullthroughBlobStore for image %q: %v", ref.Exact(), err)
 		}
 		return distribution.Descriptor{}, err
 	}
@@ -111,24 +118,46 @@ func (r *pullthroughBlobStore) ServeBlob(ctx context.Context, w http.ResponseWri
 
 	desc, err := store.Stat(ctx, dgst)
 	if err != nil {
-		context.GetLogger(r.repo.ctx).Errorf("Failed to stat digest %q: %v", dgst.String(), err)
+		context.GetLogger(ctx).Errorf("failed to stat digest %q: %v", dgst.String(), err)
 		return err
 	}
 
 	remoteReader, err := store.Open(ctx, dgst)
 	if err != nil {
-		context.GetLogger(r.repo.ctx).Errorf("Failure to open remote store %q: %v", dgst.String(), err)
+		context.GetLogger(ctx).Errorf("failure to open remote store for digest %q: %v", dgst.String(), err)
 		return err
 	}
+	defer remoteReader.Close()
 
 	setResponseHeaders(w, desc.Size, desc.MediaType, dgst)
 
-	context.GetLogger(r.repo.ctx).Infof("Copying %d bytes of type %q for %q", desc.Size, desc.MediaType, dgst.String())
-	if _, err := io.CopyN(w, remoteReader, desc.Size); err != nil {
-		context.GetLogger(r.repo.ctx).Errorf("Failed copying content from remote store %q: %v", dgst.String(), err)
-		return err
-	}
+	context.GetLogger(ctx).Infof("serving blob %s of type %s %d bytes long", dgst.String(), desc.MediaType, desc.Size)
+	http.ServeContent(w, req, desc.Digest.String(), time.Time{}, remoteReader)
 	return nil
+}
+
+// Get attempts to fetch the requested blob by digest using a remote proxy store if necessary.
+func (r *pullthroughBlobStore) Get(ctx context.Context, dgst digest.Digest) ([]byte, error) {
+	store, ok := r.digestToStore[dgst.String()]
+	if ok {
+		return store.Get(ctx, dgst)
+	}
+
+	data, originalErr := r.BlobStore.Get(ctx, dgst)
+	if originalErr == nil {
+		return data, nil
+	}
+
+	desc, err := r.remoteStat(ctx, dgst)
+	if err != nil {
+		context.GetLogger(ctx).Errorf("failed to stat blob %q in remote repositories: %v", dgst.String(), err)
+		return nil, originalErr
+	}
+	store, ok = r.digestToStore[desc.Digest.String()]
+	if !ok {
+		return nil, originalErr
+	}
+	return store.Get(ctx, desc.Digest)
 }
 
 // findCandidateRepository looks in search for a particular blob, referring to previously cached items
@@ -150,7 +179,7 @@ func (r *pullthroughBlobStore) findCandidateRepository(ctx context.Context, sear
 			delete(search, repo)
 			continue
 		}
-		context.GetLogger(r.repo.ctx).Infof("Found digest location from cache %q in %q: %v", dgst, repo, err)
+		context.GetLogger(ctx).Infof("Found digest location from cache %q in %q", dgst, repo)
 		return desc, nil
 	}
 
@@ -160,8 +189,8 @@ func (r *pullthroughBlobStore) findCandidateRepository(ctx context.Context, sear
 		if err != nil {
 			continue
 		}
-		r.repo.cachedLayers.RememberDigest(dgst, repo)
-		context.GetLogger(r.repo.ctx).Infof("Found digest location by search %q in %q: %v", dgst, repo, err)
+		r.repo.cachedLayers.RememberDigest(dgst, r.repo.blobrepositorycachettl, repo)
+		context.GetLogger(ctx).Infof("Found digest location by search %q in %q", dgst, repo)
 		return desc, nil
 	}
 

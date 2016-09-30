@@ -20,7 +20,7 @@ func closeResources(handler http.Handler, closers ...io.Closer) http.Handler {
 	})
 }
 
-// copyFullPayload copies the payload of a HTTP request to destWriter. If it
+// copyFullPayload copies the payload of an HTTP request to destWriter. If it
 // receives less content than expected, and the client disconnected during the
 // upload, it avoids sending a 400 error to keep the logs cleaner.
 func copyFullPayload(responseWriter http.ResponseWriter, r *http.Request, destWriter io.Writer, context ctxu.Context, action string, errSlice *errcode.Errors) error {
@@ -35,7 +35,7 @@ func copyFullPayload(responseWriter http.ResponseWriter, r *http.Request, destWr
 	// Read in the data, if any.
 	copied, err := io.Copy(destWriter, r.Body)
 	if clientClosed != nil && (err != nil || (r.ContentLength > 0 && copied < r.ContentLength)) {
-		// Didn't recieve as much content as expected. Did the client
+		// Didn't receive as much content as expected. Did the client
 		// disconnect during the request? If so, avoid returning a 400
 		// error to keep the logs cleaner.
 		select {
@@ -46,7 +46,11 @@ func copyFullPayload(responseWriter http.ResponseWriter, r *http.Request, destWr
 			// instead of showing 0 for the HTTP status.
 			responseWriter.WriteHeader(499)
 
-			ctxu.GetLogger(context).Error("client disconnected during " + action)
+			ctxu.GetLoggerWithFields(context, map[interface{}]interface{}{
+				"error":         err,
+				"copied":        copied,
+				"contentLength": r.ContentLength,
+			}, "error", "copied", "contentLength").Error("client disconnected during " + action)
 			return errors.New("client disconnected")
 		default:
 		}

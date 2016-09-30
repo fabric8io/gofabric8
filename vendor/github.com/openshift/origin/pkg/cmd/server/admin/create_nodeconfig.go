@@ -403,6 +403,8 @@ func (o CreateNodeConfigOptions) MakeNodeConfig(serverCertFile, serverKeyFile, n
 		NetworkConfig: configapi.NodeNetworkConfig{
 			NetworkPluginName: o.NetworkPluginName,
 		},
+
+		EnableUnidling: true,
 	}
 
 	if o.UseTLS() {
@@ -432,14 +434,18 @@ func (o CreateNodeConfigOptions) MakeNodeConfig(serverCertFile, serverKeyFile, n
 	}
 
 	// Roundtrip the config to v1 and back to ensure proper defaults are set.
-	ext, err := configapi.Scheme.ConvertToVersion(config, latestconfigapi.Version.String())
+	ext, err := configapi.Scheme.ConvertToVersion(config, latestconfigapi.Version)
 	if err != nil {
 		return err
 	}
-	internal, err := configapi.Scheme.ConvertToVersion(ext, configapi.SchemeGroupVersion.String())
+	internal, err := configapi.Scheme.ConvertToVersion(ext, configapi.SchemeGroupVersion)
 	if err != nil {
 		return err
 	}
+	config = internal.(*configapi.NodeConfig)
+
+	// For new configurations, use protobuf.
+	configapi.SetProtobufClientDefaults(config.MasterClientConnectionOverrides)
 
 	content, err := latestconfigapi.WriteYAML(internal)
 	if err != nil {

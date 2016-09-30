@@ -18,6 +18,7 @@ type Dlanger interface {
 }
 
 func DlangeTest(t *testing.T, impl Dlanger) {
+	rnd := rand.New(rand.NewSource(1))
 	for _, test := range []struct {
 		m, n, lda int
 	}{
@@ -34,11 +35,11 @@ func DlangeTest(t *testing.T, impl Dlanger) {
 		}
 		a := make([]float64, m*lda)
 		for i := range a {
-			a[i] = (rand.Float64() - 0.5)
+			a[i] = rnd.Float64() - 0.5
 		}
 		work := make([]float64, n)
 		for i := range work {
-			work[i] = rand.Float64()
+			work[i] = rnd.Float64()
 		}
 		aCopy := make([]float64, len(a))
 		copy(aCopy, a)
@@ -47,7 +48,7 @@ func DlangeTest(t *testing.T, impl Dlanger) {
 		norm := impl.Dlange(lapack.MaxAbs, m, n, a, lda, work)
 		var ans float64
 		for i := 0; i < m; i++ {
-			idx := blas64.Iamax(n, blas64.Vector{1, aCopy[i*lda:]})
+			idx := blas64.Iamax(n, blas64.Vector{Inc: 1, Data: aCopy[i*lda:]})
 			ans = math.Max(ans, math.Abs(a[i*lda+idx]))
 		}
 		// Should be strictly equal because there is no floating point summation error.
@@ -59,7 +60,7 @@ func DlangeTest(t *testing.T, impl Dlanger) {
 		norm = impl.Dlange(lapack.MaxColumnSum, m, n, a, lda, work)
 		ans = 0
 		for i := 0; i < n; i++ {
-			sum := blas64.Asum(m, blas64.Vector{lda, aCopy[i:]})
+			sum := blas64.Asum(m, blas64.Vector{Inc: lda, Data: aCopy[i:]})
 			ans = math.Max(ans, sum)
 		}
 		if math.Abs(norm-ans) > 1e-14 {
@@ -70,7 +71,7 @@ func DlangeTest(t *testing.T, impl Dlanger) {
 		norm = impl.Dlange(lapack.MaxRowSum, m, n, a, lda, work)
 		ans = 0
 		for i := 0; i < m; i++ {
-			sum := blas64.Asum(n, blas64.Vector{1, aCopy[i*lda:]})
+			sum := blas64.Asum(n, blas64.Vector{Inc: 1, Data: aCopy[i*lda:]})
 			ans = math.Max(ans, sum)
 		}
 		if math.Abs(norm-ans) > 1e-14 {
@@ -81,7 +82,7 @@ func DlangeTest(t *testing.T, impl Dlanger) {
 		norm = impl.Dlange(lapack.NormFrob, m, n, a, lda, work)
 		ans = 0
 		for i := 0; i < m; i++ {
-			sum := blas64.Nrm2(n, blas64.Vector{1, aCopy[i*lda:]})
+			sum := blas64.Nrm2(n, blas64.Vector{Inc: 1, Data: aCopy[i*lda:]})
 			ans += sum * sum
 		}
 		ans = math.Sqrt(ans)

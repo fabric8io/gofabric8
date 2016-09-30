@@ -73,6 +73,10 @@ func (e ShortcutExpander) RESTMapping(gk unversioned.GroupKind, versions ...stri
 	return e.RESTMapper.RESTMapping(gk, versions...)
 }
 
+func (e ShortcutExpander) RESTMappings(gk unversioned.GroupKind) ([]*meta.RESTMapping, error) {
+	return e.RESTMapper.RESTMappings(gk)
+}
+
 // userResources are the resource names that apply to the primary, user facing resources used by
 // client tools. They are in deletion-first order - dependent resources should be last.
 var userResources = []string{
@@ -100,14 +104,15 @@ func (e ShortcutExpander) AliasesForResource(resource string) ([]string, bool) {
 
 // shortForms is the list of short names to their expanded names
 var shortForms = map[string]string{
-	"dc":      "deploymentconfigs",
-	"bc":      "buildconfigs",
-	"is":      "imagestreams",
-	"istag":   "imagestreamtags",
-	"isimage": "imagestreamimages",
-	"sa":      "serviceaccounts",
-	"pv":      "persistentvolumes",
-	"pvc":     "persistentvolumeclaims",
+	"dc":           "deploymentconfigs",
+	"bc":           "buildconfigs",
+	"is":           "imagestreams",
+	"istag":        "imagestreamtags",
+	"isimage":      "imagestreamimages",
+	"sa":           "serviceaccounts",
+	"pv":           "persistentvolumes",
+	"pvc":          "persistentvolumeclaims",
+	"clusterquota": "clusterresourcequota",
 }
 
 // expandResourceShortcut will return the expanded version of resource
@@ -119,4 +124,18 @@ func expandResourceShortcut(resource unversioned.GroupVersionResource) unversion
 		return resource
 	}
 	return resource
+}
+
+// resourceShortFormFor looks up for a short form of resource names.
+func resourceShortFormFor(resource string) (string, bool) {
+	var alias string
+	exists := false
+	for k, val := range shortForms {
+		if val == resource {
+			alias = k
+			exists = true
+			break
+		}
+	}
+	return alias, exists
 }
