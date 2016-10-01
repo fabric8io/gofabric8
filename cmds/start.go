@@ -24,9 +24,11 @@ import (
 	"time"
 
 	"github.com/fabric8io/gofabric8/util"
+	"github.com/kardianos/osext"
 	"github.com/spf13/cobra"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"path/filepath"
 )
 
 const (
@@ -57,6 +59,8 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			if isOpenshift {
 				kubeBinary = minishift
 			}
+
+			kubeBinary = resolveBinaryLocation(kubeBinary)
 
 			// check if already running
 			out, err := exec.Command(kubeBinary, "status").Output()
@@ -145,6 +149,48 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().StringP(memory, "", "4096", "amount of RAM allocated to the VM")
 	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
 	return cmd
+}
+
+// lets find the executable on the PATH or in the fabric8 directory
+func resolveBinaryLocation(executable string) string {
+	path, err := exec.LookPath(executable)
+	if err != nil || fileNotExist(path) {
+		home := os.Getenv("HOME")
+		if home == "" {
+			util.Error("No $HOME environment variable found")
+		}
+		writeFileLocation = home + binLocation
+
+		// lets try in the fabric8 folder
+		path = filepath.Join(writeFileLocation, executable)
+		if fileNotExist(path) {
+			// lets try in the folder where we found the gofabric8 executable
+			folder, err := osext.ExecutableFolder()
+			if err != nil {
+				path = filepath.Join(folder, executable)
+				if fileNotExist(path) {
+					path = executable
+				}
+			}
+		}
+	}
+	util.Infof("using the executable %s\n", path)
+	return path
+}
+
+func findExecutable(file string) error {
+	d, err := os.Stat(file)
+	if err != nil {
+		return err
+	}
+	if m := d.Mode(); !m.IsDir() && m&0111 != 0 {
+		return nil
+	}
+	return os.ErrPermission
+}
+
+func fileNotExist(path string) bool {
+	return findExecutable(path) != nil
 }
 
 func keepTryingToGetClient(f *cmdutil.Factory) (*client.Client, error) {
