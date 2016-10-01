@@ -164,6 +164,7 @@ func resolveBinaryLocation(executable string) string {
 		// lets try in the fabric8 folder
 		path = filepath.Join(writeFileLocation, executable)
 		if fileNotExist(path) {
+			path = executable
 			// lets try in the folder where we found the gofabric8 executable
 			folder, err := osext.ExecutableFolder()
 			if err != nil {
