@@ -59,6 +59,7 @@ release: test
 		CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
 	done
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-windows-amd64.exe $(NAME).go
+	zip --junk-paths release/$(NAME)-windows-amd64.zip build/$(NAME)-windows-amd64.exe README.md LICENSE
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-arm $(NAME).go
 	cp build/$(NAME)-*-amd64* release
 	cp build/$(NAME)-*-arm* release
