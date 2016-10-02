@@ -805,7 +805,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 			}
 		}
 	} else {
-		util.Infof("Creating "+templateName+" template resources from %d objects\n", objectCount)
+		util.Infof("Creating "+templateName+" template resources in namespace %s from %d objects\n", ns, objectCount)
 		for _, o := range tmpl.Objects {
 			err = processItem(c, oc, &o, ns, pv)
 		}
@@ -975,7 +975,7 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 	switch o := o.(type) {
 	case *runtime.Unstructured:
 		var (
-			ns, name, kind string
+			name, kind string
 		)
 		data := o.Object
 		metadata := data["metadata"]
@@ -1067,7 +1067,7 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 }
 
 func processResource(c *k8sclient.Client, b []byte, ns string, kind string) error {
-	util.Infof("Processing resource kind: %s\n", kind)
+	util.Infof("Processing resource kind: %s in namespace %s\n", kind, ns)
 	req := c.Post().Body(b)
 	if kind == "Deployment" {
 		req.AbsPath("apis", "extensions/v1beta1", "namespaces", ns, strings.ToLower(kind+"s"))
