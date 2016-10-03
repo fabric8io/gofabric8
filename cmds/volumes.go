@@ -19,9 +19,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"syscall"
-
-	"path/filepath"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -120,7 +119,7 @@ func findPendingPVs(c *k8sclient.Client, ns string) (bool, *api.PersistentVolume
 func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand string) (Result, error) {
 
 	for _, pvcName := range pvcNames {
-		hostPath := filepath.Join("/data", ns, pvcName)
+		hostPath := path.Join("/data", ns, pvcName)
 		nsPvcName := ns + "-" + pvcName
 		pvs := c.PersistentVolumes()
 		rc, err := pvs.List(api.ListOptions{})
