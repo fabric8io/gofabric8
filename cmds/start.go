@@ -60,10 +60,10 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				kubeBinary = minishift
 			}
 
-			kubeBinary = resolveBinaryLocation(kubeBinary)
+			binaryFile := resolveBinaryLocation(kubeBinary)
 
 			// check if already running
-			out, err := exec.Command(kubeBinary, "status").Output()
+			out, err := exec.Command(binaryFile, "status").Output()
 			if err != nil {
 				util.Fatalf("Unable to get status %v", err)
 			}
@@ -72,8 +72,10 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				// already running
 				util.Successf("%s already running\n", kubeBinary)
 
+				kubectlBinaryFile := resolveBinaryLocation(kubectl)
+
 				// setting context
-				e := exec.Command(kubectl, "config", "use-context", kubeBinary)
+				e := exec.Command(kubectlBinaryFile, "config", "use-context", kubeBinary)
 				e.Stdout = os.Stdout
 				e.Stderr = os.Stderr
 				err = e.Run()
@@ -98,7 +100,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				args = append(args, "--cpus="+cpusValue)
 
 				// start the local VM
-				e := exec.Command(kubeBinary, args...)
+				e := exec.Command(binaryFile, args...)
 				e.Stdout = os.Stdout
 				e.Stderr = os.Stderr
 				err = e.Run()
