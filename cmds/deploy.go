@@ -107,7 +107,7 @@ const (
 	teamTypeLabelValue = "team"
 
 	fabric8Environments = "fabric8-environments"
-	exposecontrollerCM  = "exposecontroller-cm"
+	exposecontrollerCM  = "exposecontroller"
 
 	ingress      = "Ingress"
 	loadBalancer = "LoadBalancer"
