@@ -116,10 +116,9 @@ const (
 
 	boot2docker                   = "boot2docker"
 	exposeRule                    = "exposer"
-	externalIPNodeLabel           = "kubernetes.io/externalIP"
 	externalAPIServerAddressLabel = "fabric8.io/externalApiServerAddress"
 
-	externalIPLabel = "externalIP"
+	externalIPLabel = "fabric8.io/externalIP"
 
 	gogsDefaultUsername = "gogsadmin"
 	gogsDefaultPassword = "RedHat$1"
@@ -565,7 +564,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 		for _, node := range nodes.Items {
 			// if running on a single node then we can use node ports to access kubernetes services
 			if len(nodes.Items) == 1 {
-				changed = addAnnotationIfNotExist(&node.ObjectMeta, externalIPNodeLabel, ip)
+				changed = addAnnotationIfNotExist(&node.ObjectMeta, externalIPLabel, ip)
 			}
 			changed = addAnnotationIfNotExist(&node.ObjectMeta, externalAPIServerAddressLabel, cfg.Host)
 			if changed {

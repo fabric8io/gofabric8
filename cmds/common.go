@@ -38,7 +38,7 @@ const (
 	apiServerFlag = "api-server"
 	consoleFlag   = "console"
 	templatesFlag = "templates"
-	DefaultDomain = "vagrant.f8"
+	DefaultDomain = ""
 )
 
 func defaultDomain() string {
