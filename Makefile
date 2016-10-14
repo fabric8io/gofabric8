@@ -49,6 +49,9 @@ fmt:
 arm:
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-arm $(NAME).go
 
+win:
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME).exe $(NAME).go
+
 bootstrap:
 	$(GO) get -u github.com/Masterminds/glide
 	GO15VENDOREXPERIMENT=1 glide update --strip-vendor --strip-vcs --update-vendored
