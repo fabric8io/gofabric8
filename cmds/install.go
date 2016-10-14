@@ -78,10 +78,6 @@ func NewCmdInstall(f *cmdutil.Factory) *cobra.Command {
 }
 
 func install(isMinishift bool) {
-	if runtime.GOOS == "windows" {
-		util.Fatalf("%s is not yet supported by gofabric8 install", runtime.GOOS)
-	}
-
 	home := homedir.HomeDir()
 	if home == "" {
 		util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
@@ -106,6 +102,10 @@ func install(isMinishift bool) {
 	err = downloadClient(isMinishift)
 	if err != nil {
 		util.Warnf("Unable to download client %v\n", err)
+	}
+
+	if runtime.GOOS == "windows" {
+		util.Fatalf("%s is not yet supported by gofabric8 install", runtime.GOOS)
 	}
 }
 func downloadDriver() (err error) {
