@@ -133,9 +133,13 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand stri
 			}
 		}
 
-		err = configureHostPathVolume(c, ns, hostPath, sshCommand)
-		if err != nil {
-			util.Errorf("Failed to configure the host path %s with error %v\n", hostPath, err)
+		// we no longer need to do chmod on kubernetes as we have init containers now
+		typeOfMaster := util.TypeOfMaster(c)
+		if typeOfMaster != util.Kubernetes || len(sshCommand) > 0 {
+			err = configureHostPathVolume(c, ns, hostPath, sshCommand)
+			if err != nil {
+				util.Errorf("Failed to configure the host path %s with error %v\n", hostPath, err)
+			}
 		}
 
 		// lets create a new PV
