@@ -103,10 +103,6 @@ func install(isMinishift bool) {
 	if err != nil {
 		util.Warnf("Unable to download client %v\n", err)
 	}
-
-	if runtime.GOOS == "windows" {
-		util.Fatalf("%s is not yet supported by gofabric8 install", runtime.GOOS)
-	}
 }
 func downloadDriver() (err error) {
 
@@ -168,6 +164,10 @@ func downloadKubernetes(isMinishift bool) (err error) {
 		downloadPath = "download/"
 		kubeBinary = minishift
 	}
+	if runtime.GOOS == "windows" {
+		kubeBinary += ".exe"
+		clientBinary += ".exe"
+	}
 
 	_, err = exec.LookPath(kubeBinary)
 	if err != nil {
@@ -178,6 +178,9 @@ func downloadKubernetes(isMinishift bool) (err error) {
 		}
 
 		kubeURL := fmt.Sprintf(kubeDownloadURL+kubeDistroRepo+"/releases/"+downloadPath+"v%s/%s-%s-%s", latestVersion, kubeDistroRepo, os, arch)
+		if runtime.GOOS == "windows" {
+			kubeURL += ".exe"
+		}
 		util.Infof("Downloading %s...", kubeURL)
 
 		err = downloadFile(writeFileLocation+kubeBinary, kubeURL)
@@ -206,6 +209,9 @@ func downloadClient(isMinishift bool) (err error) {
 		}
 
 		clientURL := fmt.Sprintf("https://storage.googleapis.com/kubernetes-release/release/v%s/bin/%s/%s/%s", latestVersion, os, arch, kubectl)
+		if runtime.GOOS == "windows" {
+			clientURL += ".exe"
+		}
 		util.Infof("Downloading %s...", clientURL)
 
 		err = downloadFile(writeFileLocation+clientBinary, clientURL)
