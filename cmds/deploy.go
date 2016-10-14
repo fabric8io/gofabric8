@@ -1524,8 +1524,8 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 	}
 	_, err = c.SecurityContextConstraints().Create(&scc)
 	if err != nil {
-		util.Fatalf("Cannot create SecurityContextConstraints: %v\n", err)
-		util.Fatalf("Failed to create SecurityContextConstraints %v in namespace %s: %v\n", scc, ns, err)
+		util.Errorf("Cannot create SecurityContextConstraints: %v\n", err)
+		util.Errorf("Failed to create SecurityContextConstraints %v in namespace %s: %v\n", scc, ns, err)
 		return Failure, err
 	}
 	util.Infof("SecurityContextConstraints %s is setup correctly\n", name)
@@ -1556,8 +1556,8 @@ func deployFabric8SASSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.
 	}
 	_, err = c.SecurityContextConstraints().Create(&scc)
 	if err != nil {
-		util.Fatalf("Cannot create SecurityContextConstraints: %v\n", err)
-		util.Fatalf("Failed to create SecurityContextConstraints %v in namespace %s: %v\n", scc, ns, err)
+		util.Errorf("Cannot create SecurityContextConstraints: %v\n", err)
+		util.Errorf("Failed to create SecurityContextConstraints %v in namespace %s: %v\n", scc, ns, err)
 		return Failure, err
 	}
 	util.Infof("SecurityContextConstraints %s is setup correctly\n", name)
@@ -1604,7 +1604,7 @@ func verifyRestrictedSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.
 		rc.RunAsUser.Type = kapi.RunAsUserStrategyRunAsAny
 		_, err = c.SecurityContextConstraints().Update(rc)
 		if err != nil {
-			util.Fatalf("Failed to update SecurityContextConstraints %v in namespace %s: %v\n", rc, ns, err)
+			util.Errorf("Failed to update SecurityContextConstraints %v in namespace %s: %v\n", rc, ns, err)
 			return Failure, err
 		}
 		util.Infof("SecurityContextConstraints %s is updated to enable fabric8\n", name)
