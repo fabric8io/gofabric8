@@ -181,7 +181,7 @@ func downloadKubernetes(isMinishift bool) (err error) {
 		if runtime.GOOS == "windows" {
 			kubeURL += ".exe"
 		}
-		util.Infof("Downloading %s...", kubeURL)
+		util.Infof("Downloading %s...\n", kubeURL)
 
 		err = downloadFile(writeFileLocation+kubeBinary, kubeURL)
 		if err != nil {
@@ -212,7 +212,7 @@ func downloadClient(isMinishift bool) (err error) {
 		if runtime.GOOS == "windows" {
 			clientURL += ".exe"
 		}
-		util.Infof("Downloading %s...", clientURL)
+		util.Infof("Downloading %s...\n", clientURL)
 
 		err = downloadFile(writeFileLocation+clientBinary, clientURL)
 		if err != nil {
