@@ -523,7 +523,6 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				printError("Ignoring the deploy of templates", nil)
 			}
 
-			runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, pv)
 			externalNodeName := ""
 			if typeOfMaster == util.Kubernetes {
 				if !mini && d.useIngress {
@@ -563,6 +562,8 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			if err != nil {
 				printError("Failed to create ConfigMap: "+exposecontrollerCM, err)
 			}
+
+			runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, pv)
 
 			if len(d.appToRun) > 0 {
 				runTemplate(c, oc, d.appToRun, ns, domain, apiserver, pv)
