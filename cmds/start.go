@@ -60,6 +60,10 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				kubeBinary = minishift
 			}
 
+			if runtime.GOOS == "windows" && !strings.HasSuffix(kubeBinary, ".exe") {
+				kubeBinary += ".exe"
+			}
+
 			binaryFile := resolveBinaryLocation(kubeBinary)
 
 			// check if already running
