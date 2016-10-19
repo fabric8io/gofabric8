@@ -178,6 +178,7 @@ func resolveBinaryLocation(executable string) string {
 			} else {
 				path = filepath.Join(folder, executable)
 				if fileNotExist(path) {
+					util.Infof("Could not find executable at %v\n", path)
 					path = executable
 				}
 			}
