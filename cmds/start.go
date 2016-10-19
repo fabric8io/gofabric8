@@ -23,12 +23,13 @@ import (
 	"strings"
 	"time"
 
+	"path/filepath"
+
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/kardianos/osext"
 	"github.com/spf13/cobra"
 	client "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"path/filepath"
 )
 
 const (
@@ -55,7 +56,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			if !isInstalled(isOpenshift) {
 				install(isOpenshift)
 			}
-
+			var kubeBinary string
 			if isOpenshift {
 				kubeBinary = minishift
 			}
@@ -165,7 +166,7 @@ func resolveBinaryLocation(executable string) string {
 		if home == "" {
 			util.Error("No $HOME environment variable found")
 		}
-		writeFileLocation = home + binLocation
+		writeFileLocation := getFabric8BinLocation()
 
 		// lets try in the fabric8 folder
 		path = filepath.Join(writeFileLocation, executable)
