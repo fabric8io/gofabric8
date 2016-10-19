@@ -60,6 +60,10 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				kubeBinary = minishift
 			}
 
+			if runtime.GOOS == "windows" && !strings.HasSuffix(kubeBinary, ".exe") {
+				kubeBinary += ".exe"
+			}
+
 			binaryFile := resolveBinaryLocation(kubeBinary)
 
 			// check if already running
@@ -170,6 +174,8 @@ func resolveBinaryLocation(executable string) string {
 			// lets try in the folder where we found the gofabric8 executable
 			folder, err := osext.ExecutableFolder()
 			if err != nil {
+				util.Errorf("Failed to find executable folder: %v\n", err)
+			} else {
 				path = filepath.Join(folder, executable)
 				if fileNotExist(path) {
 					path = executable
