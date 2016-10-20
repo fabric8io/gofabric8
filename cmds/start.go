@@ -193,7 +193,7 @@ func findExecutable(file string) error {
 	if err != nil {
 		return err
 	}
-	if m := d.Mode(); !m.IsDir() && m&0111 != 0 {
+	if m := d.Mode(); !m.IsDir() && (m&0111 != 0 || runtime.GOOS == "windows") {
 		return nil
 	}
 	return os.ErrPermission
