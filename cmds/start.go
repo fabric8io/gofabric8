@@ -56,7 +56,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			if !isInstalled(isOpenshift) {
 				install(isOpenshift)
 			}
-			var kubeBinary string
+			kubeBinary := minikube
 			if isOpenshift {
 				kubeBinary = minishift
 			}
