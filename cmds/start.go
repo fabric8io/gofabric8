@@ -33,9 +33,10 @@ import (
 )
 
 const (
-	memory  = "memory"
-	cpus    = "cpus"
-	console = "console"
+	memory   = "memory"
+	vmDriver = "vm-driver"
+	cpus     = "cpus"
+	console  = "console"
 )
 
 // NewCmdStart starts a local cloud environment
@@ -91,10 +92,21 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			} else {
 				args := []string{"start"}
 
-				// if we're running on OSX default to using xhyve
-				if runtime.GOOS == "darwin" {
-					args = append(args, "--vm-driver=xhyve")
+				vmDriverValue := cmd.Flags().Lookup(vmDriver).Value.String()
+				if len(vmDriverValue) == 0 {
+					switch runtime.GOOS {
+					case "darwin":
+						vmDriverValue = "xhyve"
+					case "windows":
+						vmDriverValue = "hyperv"
+					case "linux":
+						vmDriverValue = "kvm"
+					default:
+						vmDriverValue = "virtualbox"
+					}
+
 				}
+				args = append(args, "--vm-driver="+vmDriverValue)
 
 				// set memory flag
 				memoryValue := cmd.Flags().Lookup(memory).Value.String()
@@ -105,6 +117,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				args = append(args, "--cpus="+cpusValue)
 
 				// start the local VM
+				logCommand(binaryFile, args)
 				e := exec.Command(binaryFile, args...)
 				e.Stdout = os.Stdout
 				e.Stderr = os.Stderr
@@ -154,8 +167,13 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().BoolP(minishift, "", false, "start the openshift flavour of Kubernetes")
 	cmd.PersistentFlags().BoolP(console, "", false, "start only the fabric8 console")
 	cmd.PersistentFlags().StringP(memory, "", "4096", "amount of RAM allocated to the VM")
+	cmd.PersistentFlags().StringP(vmDriver, "", "", "the VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
 	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
 	return cmd
+}
+
+func logCommand(executable string, args []string) {
+	util.Infof("running: %s %s\n", executable, strings.Join(args, " "))
 }
 
 // lets find the executable on the PATH or in the fabric8 directory
