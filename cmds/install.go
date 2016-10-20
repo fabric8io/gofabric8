@@ -16,12 +16,15 @@
 package cmds
 
 import (
+	"archive/zip"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -42,24 +45,29 @@ const (
 	minishiftFlag            = "minishift"
 	minishiftOwner           = "jimmidyson"
 	minishift                = "minishift"
+	minikube                 = "minikube"
 	minishiftDownloadURL     = "https://github.com/jimmidyson/"
 	kubectl                  = "kubectl"
 	kubernetes               = "kubernetes"
 	oc                       = "oc"
 	binLocation              = "/.fabric8/bin/"
+	kubeDownloadURL          = "https://storage.googleapis.com/"
+	ocTools                  = "openshift-origin-client-tools"
 )
 
 var (
-	clientBinary    = kubectl
-	kubeDistroOrg   = "kubernetes"
-	kubeDistroRepo  = "minikube"
-	kubeBinary      = "minikube"
-	kubeDownloadURL = "https://storage.googleapis.com/"
-	downloadPath    = ""
-
-	writeFileLocation string
-	githubClient      *github.Client
+	githubClient *github.Client
 )
+
+type downloadProperties struct {
+	clientBinary   string
+	kubeDistroOrg  string
+	kubeDistroRepo string
+	kubeBinary     string
+	extraPath      string
+	downloadURL    string
+	isMiniShift    bool
+}
 
 // NewCmdInstall installs the dependencies to run the fabric8 microservices platform
 func NewCmdInstall(f *cmdutil.Factory) *cobra.Command {
@@ -78,11 +86,8 @@ func NewCmdInstall(f *cmdutil.Factory) *cobra.Command {
 }
 
 func install(isMinishift bool) {
-	home := homedir.HomeDir()
-	if home == "" {
-		util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
-	}
-	writeFileLocation = home + binLocation
+
+	writeFileLocation := getFabric8BinLocation()
 
 	err := os.MkdirAll(writeFileLocation, 0700)
 	if err != nil {
@@ -94,15 +99,24 @@ func install(isMinishift bool) {
 		util.Warnf("Unable to download driver %v\n", err)
 	}
 
-	err = downloadKubernetes(isMinishift)
+	d := getDownloadProperties(isMinishift)
+	err = downloadKubernetes(d)
 	if err != nil {
 		util.Warnf("Unable to download kubernetes distro %v\n", err)
 	}
 
-	err = downloadClient(isMinishift)
+	err = downloadKubectlClient()
 	if err != nil {
 		util.Warnf("Unable to download client %v\n", err)
 	}
+
+	if d.isMiniShift {
+		err = downloadOpenShiftClient()
+		if err != nil {
+			util.Warnf("Unable to download client %v\n", err)
+		}
+	}
+
 }
 func downloadDriver() (err error) {
 
@@ -154,79 +168,133 @@ func downloadDriver() (err error) {
 	return nil
 }
 
-func downloadKubernetes(isMinishift bool) (err error) {
+func downloadKubernetes(d downloadProperties) (err error) {
 	os := runtime.GOOS
 	arch := runtime.GOARCH
-	if isMinishift {
-		kubeDistroOrg = minishiftOwner
-		kubeDistroRepo = minishift
-		kubeDownloadURL = minishiftDownloadURL
-		downloadPath = "download/"
-		kubeBinary = minishift
-	}
+
 	if runtime.GOOS == "windows" {
-		kubeBinary += ".exe"
-		clientBinary += ".exe"
+		d.kubeBinary += ".exe"
 	}
 
-	_, err = exec.LookPath(kubeBinary)
+	_, err = exec.LookPath(d.kubeBinary)
 	if err != nil {
-		latestVersion, err := getLatestVersionFromGitHub(kubeDistroOrg, kubeDistroRepo)
+		latestVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
 		if err != nil {
-			util.Errorf("Unable to get latest version for %s/%s %v", kubeDistroOrg, kubeDistroRepo, err)
+			util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
 			return err
 		}
 
-		kubeURL := fmt.Sprintf(kubeDownloadURL+kubeDistroRepo+"/releases/"+downloadPath+"v%s/%s-%s-%s", latestVersion, kubeDistroRepo, os, arch)
+		kubeURL := fmt.Sprintf(d.downloadURL+d.kubeDistroRepo+"/releases/"+d.extraPath+"v%s/%s-%s-%s", latestVersion, d.kubeDistroRepo, os, arch)
 		if runtime.GOOS == "windows" {
 			kubeURL += ".exe"
 		}
 		util.Infof("Downloading %s...\n", kubeURL)
 
-		err = downloadFile(writeFileLocation+kubeBinary, kubeURL)
+		writeFileLocation := getFabric8BinLocation()
+
+		err = downloadFile(writeFileLocation+d.kubeBinary, kubeURL)
 		if err != nil {
-			util.Errorf("Unable to download file %s/%s %v", writeFileLocation+kubeBinary, kubeURL, err)
+			util.Errorf("Unable to download file %s/%s %v", writeFileLocation+d.kubeBinary, kubeURL, err)
 			return err
 		}
-		util.Successf("Downloaded %s\n", kubeBinary)
+		util.Successf("Downloaded %s\n", d.kubeBinary)
 	} else {
-		util.Successf("%s is already available on your PATH\n", kubeBinary)
+		util.Successf("%s is already available on your PATH\n", d.kubeBinary)
 	}
 
 	return nil
 }
 
-func downloadClient(isMinishift bool) (err error) {
+func downloadKubectlClient() (err error) {
 
 	os := runtime.GOOS
 	arch := runtime.GOARCH
 
 	_, err = exec.LookPath(kubectl)
 	if err != nil {
-		latestVersion, err := getLatestVersionFromGitHub(kubeDistroOrg, kubernetes)
+		latestVersion, err := getLatestVersionFromGitHub(kubernetes, kubernetes)
 		if err != nil {
-			return fmt.Errorf("Unable to get latest version for %s/%s %v", kubeDistroOrg, kubernetes, err)
+			return fmt.Errorf("Unable to get latest version for %s/%s %v", kubernetes, kubernetes, err)
 		}
 
 		clientURL := fmt.Sprintf("https://storage.googleapis.com/kubernetes-release/release/v%s/bin/%s/%s/%s", latestVersion, os, arch, kubectl)
 		if runtime.GOOS == "windows" {
 			clientURL += ".exe"
 		}
+
 		util.Infof("Downloading %s...\n", clientURL)
 
-		err = downloadFile(writeFileLocation+clientBinary, clientURL)
+		writeFileLocation := getFabric8BinLocation()
+
+		err = downloadFile(writeFileLocation+kubectl, clientURL)
 		if err != nil {
-			util.Errorf("Unable to download file %s/%s %v", writeFileLocation+clientBinary, clientURL, err)
+			util.Errorf("Unable to download file %s/%s %v", writeFileLocation+kubectl, clientURL, err)
 			return err
 		}
-		util.Successf("Downloaded %s\n", clientBinary)
+		util.Successf("Downloaded %s\n", kubectl)
 	} else {
-		util.Successf("%s is already available on your PATH\n", clientBinary)
+		util.Successf("%s is already available on your PATH\n", kubectl)
 	}
 
-	if isMinishift {
-		clientBinary = oc
-		return fmt.Errorf("Openshift client download not yet supported")
+	return nil
+}
+
+func downloadOpenShiftClient() (err error) {
+	os := runtime.GOOS
+	arch := runtime.GOARCH
+
+	_, err = exec.LookPath("oc")
+	if err != nil {
+
+		// need to fix the version we download as not able to work out the oc sha in the URL yet
+		sha := "565691c"
+		latestVersion := "1.2.2"
+
+		clientURL := fmt.Sprintf("https://github.com/openshift/origin/releases/download/v%s/openshift-origin-client-tools-v%s-%s", latestVersion, latestVersion, sha)
+
+		switch runtime.GOOS {
+		case "windows":
+			clientURL += "-windows.zip"
+		case "darwin":
+			clientURL += "-mac.zip"
+		default:
+			clientURL += fmt.Sprintf(clientURL+"-%s-%s.tar.gz", os, arch)
+		}
+
+		util.Infof("Downloading %s...\n", clientURL)
+
+		writeFileLocation := getFabric8BinLocation()
+
+		err = downloadFile(writeFileLocation+oc+".zip", clientURL)
+		if err != nil {
+			util.Errorf("Unable to download file %s/%s %v", writeFileLocation+oc, clientURL, err)
+			return err
+		}
+
+		switch runtime.GOOS {
+		case "windows":
+			err = unzip(writeFileLocation+oc+".zip", writeFileLocation+".")
+			if err != nil {
+				util.Errorf("Unable to unzip %s %v", writeFileLocation+oc+".zip", err)
+				return err
+			}
+		case "darwin":
+			err = unzip(writeFileLocation+oc+".zip", writeFileLocation+".")
+			if err != nil {
+				util.Errorf("Unable to unzip %s %v", writeFileLocation+oc+".zip", err)
+				return err
+			}
+		default:
+			err = unzip(writeFileLocation+oc+".tar.gz", writeFileLocation+".")
+			if err != nil {
+				util.Errorf("Unable to untar %s %v", writeFileLocation+oc+".tar.gz", err)
+				return err
+			}
+		}
+
+		util.Successf("Downloaded %s\n", oc)
+	} else {
+		util.Successf("%s is already available on your PATH\n", oc)
 	}
 
 	return nil
@@ -319,18 +387,125 @@ func isInstalled(isMinishift bool) bool {
 			return false
 		}
 		// check for oc client
-		_, err = exec.LookPath("oc")
+		_, err = exec.LookPath(oc)
 		if err != nil {
 			return false
 		}
 
 	} else {
 		// check for minikube
-		_, err = exec.LookPath(kubeBinary)
+		_, err = exec.LookPath(minikube)
 		if err != nil {
 			return false
 		}
 	}
 
 	return true
+}
+
+func getDownloadProperties(isMinishift bool) downloadProperties {
+	d := downloadProperties{}
+
+	if isMinishift {
+		d.clientBinary = oc
+		d.extraPath = "download/"
+		d.kubeBinary = minishift
+		d.downloadURL = minishiftDownloadURL
+		d.kubeDistroOrg = minishiftOwner
+		d.kubeDistroRepo = minishift
+		d.isMiniShift = true
+
+	} else {
+		d.clientBinary = kubectl
+		d.kubeBinary = minikube
+		d.downloadURL = kubeDownloadURL
+		d.kubeDistroOrg = kubernetes
+		d.kubeDistroRepo = minikube
+		d.isMiniShift = false
+	}
+	return d
+}
+
+func getFabric8BinLocation() string {
+	home := homedir.HomeDir()
+	if home == "" {
+		util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
+	}
+	return home + binLocation
+}
+
+func unzip(archive, target string) error {
+	reader, err := zip.OpenReader(archive)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(target, 0755); err != nil {
+		return err
+	}
+
+	for _, file := range reader.File {
+		path := filepath.Join(target, file.Name)
+		if file.FileInfo().IsDir() {
+			os.MkdirAll(path, file.Mode())
+			continue
+		}
+
+		fileReader, err := file.Open()
+		if err != nil {
+			return err
+		}
+		defer fileReader.Close()
+
+		targetFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.Mode())
+		if err != nil {
+			return err
+		}
+		defer targetFile.Close()
+
+		if _, err := io.Copy(targetFile, fileReader); err != nil {
+			return err
+		}
+
+		// make it executable
+		os.Chmod(path, 0755)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func ungzip(source, target string) error {
+	reader, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	archive, err := gzip.NewReader(reader)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+
+	target = filepath.Join(target, archive.Name)
+	writer, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	defer writer.Close()
+
+	_, err = io.Copy(writer, archive)
+	if err != nil {
+		return err
+	}
+
+	// make it executable
+	os.Chmod(target, 0755)
+	if err != nil {
+		return err
+	}
+	return err
 }
