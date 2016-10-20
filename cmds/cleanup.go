@@ -23,6 +23,7 @@ import (
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
@@ -42,7 +43,11 @@ func NewCmdCleanUp(f *cmdutil.Factory) *cobra.Command {
 
 		Run: func(cmd *cobra.Command, args []string) {
 
-			fmt.Fprintf(os.Stdout, `WARNING this will remove all fabric8 apps, environments and configuration.  Continue? [y/N] `)
+			currentContext, err := util.GetCurrentContext()
+			if err != nil {
+				util.Fatalf("%s", err)
+			}
+			fmt.Fprintf(os.Stdout, `WARNING this is destructive and will remove ALL fabric8 apps, environments and configuration from cluster %s.  Continue? [y/N] `, currentContext)
 
 			var confirm string
 			fmt.Scanln(&confirm)
@@ -82,22 +87,22 @@ func cleanUpOpenshiftResources(c *k8sclient.Client, oc *oclient.Client, ns strin
 
 	err := deleteDeploymentConfigs(oc, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteBuilds(oc, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteBuildConfigs(oc, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteRoutes(oc, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 }
 
@@ -105,61 +110,61 @@ func cleanUpKubernetesResources(c *k8sclient.Client, ns string, selector labels.
 
 	err := deleteDeployments(c, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteReplicationControllers(c, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteReplicaSets(c, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteServices(c, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteSecrets(c, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteIngress(c, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteConfigMaps(c, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	catalogSelector, err := unversioned.LabelSelectorAsSelector(&unversioned.LabelSelector{MatchLabels: map[string]string{"kind": "catalog"}})
 	if err != nil {
-		util.Errorf("%s", err)
+		util.Fatalf("%s", err)
 	} else {
 		err = deleteConfigMaps(c, ns, catalogSelector)
 		if err != nil {
-			util.Warnf("%s", err)
+			util.Fatalf("%s", err)
 		}
 	}
 
 	err = deleteServiceAccounts(c, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 
 	err = deleteEnvironments(c, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 	err = deletePods(c, ns, selector)
 	if err != nil {
-		util.Warnf("%s", err)
+		util.Fatalf("%s", err)
 	}
 }
 
@@ -168,7 +173,7 @@ func deleteDeploymentConfigs(oc *oclient.Client, ns string, selector labels.Sele
 	e := exec.Command("oc", "delete", "dc", "-l", "provider=fabric8")
 	err := e.Run()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to delete DeploymentConfigs")
 	}
 	return nil
 }
@@ -178,7 +183,7 @@ func deleteBuildConfigs(oc *oclient.Client, ns string, selector labels.Selector)
 	e := exec.Command("oc", "delete", "bc", "-l", "provider=fabric8")
 	err := e.Run()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to delete BuildConfigs")
 	}
 	return nil
 }
@@ -188,7 +193,7 @@ func deleteBuilds(oc *oclient.Client, ns string, selector labels.Selector) error
 	e := exec.Command("oc", "delete", "builds", "-l", "provider=fabric8")
 	err := e.Run()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to delete Builds")
 	}
 	return nil
 }
@@ -198,7 +203,7 @@ func deleteRoutes(oc *oclient.Client, ns string, selector labels.Selector) error
 	e := exec.Command("oc", "delete", "routes", "-l", "provider=fabric8")
 	err := e.Run()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to delete Routes")
 	}
 	return nil
 }
@@ -208,12 +213,10 @@ func deleteDeployments(c *k8sclient.Client, ns string, selector labels.Selector)
 	if err != nil {
 		return err
 	}
-	zero := int64(0)
-	opt := &api.DeleteOptions{GracePeriodSeconds: &zero}
 	for _, d := range deployments.Items {
-		c.Deployments(ns).Delete(d.Name, opt)
+		err := c.Deployments(ns).Delete(d.Name, api.NewDeleteOptions(0))
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete Deployment %s", d.Name))
 		}
 	}
 	return nil
@@ -225,9 +228,9 @@ func deleteReplicationControllers(c *k8sclient.Client, ns string, selector label
 		return err
 	}
 	for _, rc := range rcs.Items {
-		c.ReplicationControllers(ns).Delete(rc.Name)
+		err := c.ReplicationControllers(ns).Delete(rc.Name)
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete ReplicationController %s", rc.Name))
 		}
 	}
 	return nil
@@ -239,9 +242,9 @@ func deleteReplicaSets(c *k8sclient.Client, ns string, selector labels.Selector)
 		return err
 	}
 	for _, rs := range rsets.Items {
-		c.ReplicaSets(ns).Delete(rs.Name, nil)
+		err := c.ReplicaSets(ns).Delete(rs.Name, nil)
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete ReplicaSet %s", rs.Name))
 		}
 	}
 	return nil
@@ -253,9 +256,9 @@ func deleteServices(c *k8sclient.Client, ns string, selector labels.Selector) er
 		return err
 	}
 	for _, s := range services.Items {
-		c.Services(ns).Delete(s.Name)
+		err := c.Services(ns).Delete(s.Name)
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete Service %s", s.Name))
 		}
 	}
 	return nil
@@ -267,9 +270,9 @@ func deleteSecrets(c *k8sclient.Client, ns string, selector labels.Selector) err
 		return err
 	}
 	for _, s := range secrets.Items {
-		c.Secrets(ns).Delete(s.Name)
+		err := c.Secrets(ns).Delete(s.Name)
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete Secret %s", s.Name))
 		}
 	}
 	return nil
@@ -281,9 +284,9 @@ func deleteIngress(c *k8sclient.Client, ns string, selector labels.Selector) err
 		return err
 	}
 	for _, i := range ing.Items {
-		c.Ingress(ns).Delete(i.Name, nil)
+		err := c.Ingress(ns).Delete(i.Name, nil)
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete Ingress %s", i.Name))
 		}
 	}
 	return nil
@@ -295,9 +298,9 @@ func deleteConfigMaps(c *k8sclient.Client, ns string, selector labels.Selector) 
 		return err
 	}
 	for _, cm := range cmps.Items {
-		c.ConfigMaps(ns).Delete(cm.Name)
+		err := c.ConfigMaps(ns).Delete(cm.Name)
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete ConfigMap %s", cm.Name))
 		}
 	}
 	return nil
@@ -309,9 +312,9 @@ func deleteServiceAccounts(c *k8sclient.Client, ns string, selector labels.Selec
 		return err
 	}
 	for _, s := range sas.Items {
-		c.ServiceAccounts(ns).Delete(s.Name)
+		err := c.ServiceAccounts(ns).Delete(s.Name)
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete ServiceAccount %s", s.Name))
 		}
 	}
 	return nil
@@ -325,9 +328,9 @@ func deletePods(c *k8sclient.Client, ns string, selector labels.Selector) error 
 	zero := int64(0)
 	opt := &api.DeleteOptions{GracePeriodSeconds: &zero}
 	for _, d := range pods.Items {
-		c.Pods(ns).Delete(d.Name, opt)
+		err := c.Pods(ns).Delete(d.Name, opt)
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete Pod %s", d.Name))
 		}
 	}
 	return nil
@@ -339,9 +342,9 @@ func deleteEnvironments(c *k8sclient.Client, selector labels.Selector) error {
 		return err
 	}
 	for _, n := range ns.Items {
-		c.Namespaces().Delete(n.Name)
+		err := c.Namespaces().Delete(n.Name)
 		if err != nil {
-			return err
+			return errors.Wrap(err, fmt.Sprintf("failed to delete Namespace %s", n.Name))
 		}
 	}
 	return nil
