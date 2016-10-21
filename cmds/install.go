@@ -50,7 +50,6 @@ const (
 	kubectl                  = "kubectl"
 	kubernetes               = "kubernetes"
 	oc                       = "oc"
-	binLocation              = ".fabric8/bin/"
 	kubeDownloadURL          = "https://storage.googleapis.com/"
 	ocTools                  = "openshift-origin-client-tools"
 )
@@ -190,14 +189,13 @@ func downloadKubernetes(d downloadProperties) (err error) {
 		}
 		util.Infof("Downloading %s...\n", kubeURL)
 
-		writeFileLocation := getFabric8BinLocation()
-
-		err = downloadFile(writeFileLocation+d.kubeBinary, kubeURL)
+		fullPath := filepath.Join(getFabric8BinLocation(), d.kubeBinary)
+		err = downloadFile(fullPath, kubeURL)
 		if err != nil {
-			util.Errorf("Unable to download file %s/%s %v", writeFileLocation+d.kubeBinary, kubeURL, err)
+			util.Errorf("Unable to download file %s/%s %v", fullPath, kubeURL, err)
 			return err
 		}
-		util.Successf("Downloaded %s\n", d.kubeBinary)
+		util.Successf("Downloaded %s\n", fullPath)
 	} else {
 		util.Successf("%s is already available on your PATH\n", d.kubeBinary)
 	}
@@ -224,14 +222,13 @@ func downloadKubectlClient() (err error) {
 
 		util.Infof("Downloading %s...\n", clientURL)
 
-		writeFileLocation := getFabric8BinLocation()
-
-		err = downloadFile(writeFileLocation+kubectl, clientURL)
+		fullPath := filepath.Join(getFabric8BinLocation(), kubectl)
+		err = downloadFile(fullPath, clientURL)
 		if err != nil {
-			util.Errorf("Unable to download file %s/%s %v", writeFileLocation+kubectl, clientURL, err)
+			util.Errorf("Unable to download file %s/%s %v", fullPath, clientURL, err)
 			return err
 		}
-		util.Successf("Downloaded %s\n", kubectl)
+		util.Successf("Downloaded %s\n", fullPath)
 	} else {
 		util.Successf("%s is already available on your PATH\n", kubectl)
 	}
@@ -252,20 +249,24 @@ func downloadOpenShiftClient() (err error) {
 
 		clientURL := fmt.Sprintf("https://github.com/openshift/origin/releases/download/v%s/openshift-origin-client-tools-v%s-%s", latestVersion, latestVersion, sha)
 
+		extension := ".zip"
 		switch runtime.GOOS {
 		case "windows":
 			clientURL += "-windows.zip"
 		case "darwin":
 			clientURL += "-mac.zip"
 		default:
+			extension = ".tar.gz"
 			clientURL += fmt.Sprintf(clientURL+"-%s-%s.tar.gz", os, arch)
 		}
 
 		util.Infof("Downloading %s...\n", clientURL)
 
 		writeFileLocation := getFabric8BinLocation()
+		fullPath := filepath.Join(getFabric8BinLocation(), oc+extension)
+		dotPath := filepath.Join(getFabric8BinLocation(), ".")
 
-		err = downloadFile(writeFileLocation+oc+".zip", clientURL)
+		err = downloadFile(fullPath, clientURL)
 		if err != nil {
 			util.Errorf("Unable to download file %s/%s %v", writeFileLocation+oc, clientURL, err)
 			return err
@@ -273,19 +274,19 @@ func downloadOpenShiftClient() (err error) {
 
 		switch runtime.GOOS {
 		case "windows":
-			err = unzip(writeFileLocation+oc+".zip", writeFileLocation+".")
+			err = unzip(fullPath, dotPath)
 			if err != nil {
-				util.Errorf("Unable to unzip %s %v", writeFileLocation+oc+".zip", err)
+				util.Errorf("Unable to unzip %s %v", fullPath, err)
 				return err
 			}
 		case "darwin":
-			err = unzip(writeFileLocation+oc+".zip", writeFileLocation+".")
+			err = unzip(fullPath, dotPath)
 			if err != nil {
-				util.Errorf("Unable to unzip %s %v", writeFileLocation+oc+".zip", err)
+				util.Errorf("Unable to unzip %s %v", fullPath, err)
 				return err
 			}
 		default:
-			err = unzip(writeFileLocation+oc+".tar.gz", writeFileLocation+".")
+			err = unzip(fullPath, dotPath)
 			if err != nil {
 				util.Errorf("Unable to untar %s %v", writeFileLocation+oc+".tar.gz", err)
 				return err
@@ -431,7 +432,7 @@ func getFabric8BinLocation() string {
 	if home == "" {
 		util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
 	}
-	return filepath.Join(home, binLocation)
+	return filepath.Join(home, ".fabric8", "bin")
 }
 
 func unzip(archive, target string) error {
