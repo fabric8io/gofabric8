@@ -50,7 +50,7 @@ const (
 	kubectl                  = "kubectl"
 	kubernetes               = "kubernetes"
 	oc                       = "oc"
-	binLocation              = "/.fabric8/bin/"
+	binLocation              = ".fabric8/bin/"
 	kubeDownloadURL          = "https://storage.googleapis.com/"
 	ocTools                  = "openshift-origin-client-tools"
 )
@@ -431,7 +431,7 @@ func getFabric8BinLocation() string {
 	if home == "" {
 		util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
 	}
-	return home + binLocation
+	return filepath.Join(home, binLocation)
 }
 
 func unzip(archive, target string) error {
