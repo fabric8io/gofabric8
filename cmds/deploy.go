@@ -547,8 +547,9 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 			domainData := "domain: " + domain + "\n"
 			exposeData := exposeRule + ": " + defaultExposeRule(c, mini, d.useLoadbalancer) + "\n"
+			apiserverData := "apiserver: " + apiserver + "\n"
 			configFile := map[string]string{
-				"config.yml": domainData + exposeData,
+				"config.yml": domainData + exposeData + apiserverData,
 			}
 			configMap := kapi.ConfigMap{
 				ObjectMeta: kapi.ObjectMeta{
