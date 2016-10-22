@@ -45,7 +45,7 @@ func NewCmdDockerEnv(f *cmdutil.Factory) *cobra.Command {
 				command = "minikube"
 				cargs = []string{"docker-env"}
 
-			} else if context == util.Minishift {
+			} else if util.IsMiniShift(context) {
 				command = "minishift"
 				cargs = []string{"docker-env"}
 

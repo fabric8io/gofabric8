@@ -370,6 +370,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				// TODO this can go soon when we migrate to the new jenkins-openshift image?
 				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
 
+				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":configmapcontroller")
 				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":exposecontroller")
 				/*
 					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
