@@ -400,6 +400,8 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			format := "yaml"
 			createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, pv)
 
+			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
+
 			createMissingPVs(c, ns)
 		} else {
 			consoleVersion := f8ConsoleVersion(mavenRepo, d.versionConsole, typeOfMaster)
@@ -525,6 +527,8 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				printError("Ignoring the deploy of templates", nil)
 			}
 
+			runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, pv)
+
 			externalNodeName := ""
 			if typeOfMaster == util.Kubernetes {
 				if !mini && d.useIngress {
@@ -534,39 +538,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				}
 			}
 
-			// create a populate the exposecontroller config map
-			cfgms := c.ConfigMaps(ns)
-
-			_, err := cfgms.Get(exposecontrollerCM)
-			if err == nil {
-				util.Infof("\nRecreating configmap %s \n", exposecontrollerCM)
-				err = cfgms.Delete(exposecontrollerCM)
-				if err != nil {
-					printError("\nError deleting ConfigMap: "+exposecontrollerCM, err)
-				}
-			}
-
-			domainData := "domain: " + domain + "\n"
-			exposeData := exposeRule + ": " + defaultExposeRule(c, mini, d.useLoadbalancer) + "\n"
-			apiserverData := "apiserver: " + apiserver + "\n"
-			configFile := map[string]string{
-				"config.yml": domainData + exposeData + apiserverData,
-			}
-			configMap := kapi.ConfigMap{
-				ObjectMeta: kapi.ObjectMeta{
-					Name: exposecontrollerCM,
-					Labels: map[string]string{
-						"provider": "fabric8",
-					},
-				},
-				Data: configFile,
-			}
-			_, err = cfgms.Create(&configMap)
-			if err != nil {
-				printError("Failed to create ConfigMap: "+exposecontrollerCM, err)
-			}
-
-			runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, pv)
+			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
 
 			if len(d.appToRun) > 0 {
 				runTemplate(c, oc, d.appToRun, ns, domain, apiserver, pv)
@@ -595,6 +567,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 			// lets ensure that there is a `fabric8-environments` ConfigMap so that the current namespace
 			// shows up as a Team page in the console
+			cfgms := c.ConfigMaps(ns)
 			_, err = cfgms.Get(fabric8Environments)
 			if err != nil {
 				configMap := kapi.ConfigMap{
@@ -632,6 +605,40 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			printSummary(typeOfMaster, externalNodeName, ns, domain)
 		}
 		openService(ns, "fabric8", c, false)
+	}
+}
+
+func updateExposeControllerConfig(c *k8sclient.Client, ns string, apiserver string, domain string, mini bool, useLoadBalancer bool) {
+	// create a populate the exposecontroller config map
+	cfgms := c.ConfigMaps(ns)
+
+	_, err := cfgms.Get(exposecontrollerCM)
+	if err == nil {
+		util.Infof("\nRecreating configmap %s \n", exposecontrollerCM)
+		err = cfgms.Delete(exposecontrollerCM)
+		if err != nil {
+			printError("\nError deleting ConfigMap: "+exposecontrollerCM, err)
+		}
+	}
+
+	domainData := "domain: " + domain + "\n"
+	exposeData := exposeRule + ": " + defaultExposeRule(c, mini, useLoadBalancer) + "\n"
+	apiserverData := "apiserver: " + apiserver + "\n"
+	configFile := map[string]string{
+		"config.yml": domainData + exposeData + apiserverData,
+	}
+	configMap := kapi.ConfigMap{
+		ObjectMeta: kapi.ObjectMeta{
+			Name: exposecontrollerCM,
+			Labels: map[string]string{
+				"provider": "fabric8",
+			},
+		},
+		Data: configFile,
+	}
+	_, err = cfgms.Create(&configMap)
+	if err != nil {
+		printError("Failed to create ConfigMap: "+exposecontrollerCM, err)
 	}
 }
 
