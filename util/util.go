@@ -15,7 +15,10 @@
  */
 package util
 
-import "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
+import (
+	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
+	"strings"
+)
 
 const (
 	// Minikube context name
@@ -34,10 +37,14 @@ func IsMini() (bool, error) {
 		return false, err
 	}
 
-	if currentContext == Minikube || currentContext == Minishift {
+	if currentContext == Minikube || IsMiniShift(currentContext) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func IsMiniShift(currentContext string) bool {
+	return currentContext == Minishift || strings.Contains(currentContext, "/minishift/")
 }
 
 // GetMiniType returns whether this is a minishift or minikube including which one
@@ -48,7 +55,7 @@ func GetMiniType() (string, bool, error) {
 		return "", false, err
 	}
 
-	if currentContext == Minikube || currentContext == Minishift {
+	if currentContext == Minikube || IsMiniShift(currentContext) {
 		return currentContext, true, nil
 	}
 	return currentContext, false, nil

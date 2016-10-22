@@ -45,7 +45,7 @@ func NewCmdStop(f *cmdutil.Factory) *cobra.Command {
 				command = "minikube"
 				cargs = []string{"stop"}
 
-			} else if context == util.Minishift {
+			} else if util.IsMiniShift(context) {
 				command = "minishift"
 				cargs = []string{"stop"}
 
