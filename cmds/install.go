@@ -118,7 +118,6 @@ func install(isMinishift bool) {
 
 }
 func downloadDriver() (err error) {
-
 	if runtime.GOOS == "darwin" {
 		util.Infof("fabric8 recommends OSX users use the xhyve driver\n")
 		info, err := exec.Command("brew", "info", "docker-machine-driver-xhyve").Output()
@@ -208,21 +207,26 @@ func downloadKubectlClient() (err error) {
 	os := runtime.GOOS
 	arch := runtime.GOARCH
 
-	_, err = exec.LookPath(kubectl)
+	kubectlBinary := kubectl
+	if runtime.GOOS == "windows" {
+		kubectlBinary += ".exe"
+	}
+
+	_, err = exec.LookPath(kubectlBinary)
 	if err != nil {
 		latestVersion, err := getLatestVersionFromGitHub(kubernetes, kubernetes)
 		if err != nil {
 			return fmt.Errorf("Unable to get latest version for %s/%s %v", kubernetes, kubernetes, err)
 		}
 
-		clientURL := fmt.Sprintf("https://storage.googleapis.com/kubernetes-release/release/v%s/bin/%s/%s/%s", latestVersion, os, arch, kubectl)
+		clientURL := fmt.Sprintf("https://storage.googleapis.com/kubernetes-release/release/v%s/bin/%s/%s/%s", latestVersion, os, arch, kubectlBinary)
 		if runtime.GOOS == "windows" {
 			clientURL += ".exe"
 		}
 
 		util.Infof("Downloading %s...\n", clientURL)
 
-		fullPath := filepath.Join(getFabric8BinLocation(), kubectl)
+		fullPath := filepath.Join(getFabric8BinLocation(), kubectlBinary)
 		err = downloadFile(fullPath, clientURL)
 		if err != nil {
 			util.Errorf("Unable to download file %s/%s %v", fullPath, clientURL, err)
@@ -230,7 +234,7 @@ func downloadKubectlClient() (err error) {
 		}
 		util.Successf("Downloaded %s\n", fullPath)
 	} else {
-		util.Successf("%s is already available on your PATH\n", kubectl)
+		util.Successf("%s is already available on your PATH\n", kubectlBinary)
 	}
 
 	return nil
@@ -240,7 +244,12 @@ func downloadOpenShiftClient() (err error) {
 	os := runtime.GOOS
 	arch := runtime.GOARCH
 
-	_, err = exec.LookPath("oc")
+	ocBinary := "oc"
+	if runtime.GOOS == "windows" {
+		ocBinary += ".exe"
+	}
+
+	_, err = exec.LookPath(ocBinary)
 	if err != nil {
 
 		// need to fix the version we download as not able to work out the oc sha in the URL yet
