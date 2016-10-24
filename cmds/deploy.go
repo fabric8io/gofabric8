@@ -87,9 +87,11 @@ const (
 	platformMetadataUrl = "io/fabric8/platform/packages/fabric8-platform/maven-metadata.xml"
 	ipaasMetadataUrl    = "io/fabric8/ipaas/platform/packages/ipaas-platform/maven-metadata.xml"
 
-	platformPackageUrlPrefix = "io/fabric8/platform/packages/fabric8-platform/%[1]s/fabric8-platform-%[1]s-"
-	consolePackageUrlPrefix  = "io/fabric8/platform/packages/console/%[1]s/console-%[1]s-"
-	ipaasPackageUrlPrefix    = "io/fabric8/ipaas/platform/packages/ipaas-platform/%[1]s/ipaas-platform-%[1]s-"
+	platformPackageUrlPrefix  = "io/fabric8/platform/packages/fabric8-platform/%[1]s/fabric8-platform-%[1]s-"
+	consolePackageUrlPrefix   = "io/fabric8/platform/packages/console/%[1]s/console-%[1]s-"
+	consolePackageMetadataUrl = "io/fabric8/platform/packages/console/maven-metadata.xml"
+
+	ipaasPackageUrlPrefix = "io/fabric8/ipaas/platform/packages/ipaas-platform/%[1]s/ipaas-platform-%[1]s-"
 
 	Fabric8SCC    = "fabric8"
 	Fabric8SASSCC = "fabric8-sa-group"
@@ -213,7 +215,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(mavenRepoFlag, mavenRepoDefault, "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().String(runFlag, cdPipeline, "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
-	cmd.PersistentFlags().String(packageFlag, "", "The name of the package to startup. e.g. use `--package=platform` to run the fabric8 platform. Other values `console` or `ipaas`")
+	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup. e.g. use `--package=platform` to run the fabric8 platform. Other values `console` or `ipaas`")
 	cmd.PersistentFlags().Bool(pvFlag, false, "Default: false, unless on minikube or minishift where persistence is enabled out of the box")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
@@ -233,8 +235,10 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 	d.versionDevOps = latest
 	d.versionKubeflix = latest
 	d.versionZipkin = latest
+	d.versionPlatform = latest
 	d.mavenRepo = mavenRepoDefault
 	d.appToRun = cdPipeline
+	d.packageName = "platform"
 	d.pv = false
 	d.templates = true
 	d.deployConsole = true
@@ -336,15 +340,16 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		packageName := d.packageName
 		if len(packageName) > 0 {
-			versionPlatform := versionForUrl(d.versionPlatform, urlJoin(mavenRepo, platformMetadataUrl))
+			versionPlatform := ""
 			baseUri := ""
-
 			switch packageName {
 			case "":
 			case platformPackage:
 				baseUri = platformPackageUrlPrefix
+				versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, platformMetadataUrl))
 			case consolePackage:
 				baseUri = consolePackageUrlPrefix
+				versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, consolePackageMetadataUrl))
 			case iPaaSPackage:
 				baseUri = ipaasPackageUrlPrefix
 				versionPlatform = versionForUrl(d.versioniPaaS, urlJoin(mavenRepo, ipaasMetadataUrl))
