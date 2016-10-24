@@ -154,7 +154,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				d := GetDefaultFabric8Deployment()
 				flag := cmd.Flags().Lookup(console)
 				if flag != nil && flag.Value.String() == "true" {
-					d.appToRun = ""
+					d.packageName = "console"
 				}
 				d.pv = true
 				deploy(f, d)
