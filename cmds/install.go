@@ -250,8 +250,8 @@ func downloadOpenShiftClient() (err error) {
 	if err != nil {
 
 		// need to fix the version we download as not able to work out the oc sha in the URL yet
-		sha := "565691c"
-		latestVersion := "1.2.2"
+		sha := "dad658de7465ba8a234a4fb40b5b446a45a4cee1"
+		latestVersion := "1.3.1"
 
 		clientURL := fmt.Sprintf("https://github.com/openshift/origin/releases/download/v%s/openshift-origin-client-tools-v%s-%s", latestVersion, latestVersion, sha)
 
