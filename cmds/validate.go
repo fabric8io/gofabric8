@@ -18,8 +18,6 @@ package cmds
 import (
 	"strings"
 
-	"fmt"
-
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
@@ -52,15 +50,18 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 			util.Info(" in namespace ")
 			util.Successf("%s\n\n", ns)
 			printValidationResult("Service account", validateServiceAccount, c, f)
-			printValidationResult("Console", validateConsoleDeployment, c, f)
 
 			if util.TypeOfMaster(c) == util.Kubernetes {
+				printValidationResult("Console", validateConsoleDeployment, c, f)
 				printValidationResult("Jenkinshift Service", validateJenkinshiftService, c, f)
 			}
 
 			if util.TypeOfMaster(c) == util.OpenShift {
-				printValidationResult("Router", validateRouter, c, f)
 				oc, _ := client.NewOpenShiftClient(cfg)
+
+				// we don't need the router any more!
+				//printValidationResult("Router", validateRouter, c, f)
+				printOValidationResult("Console", validateConsoleDeploymentConfig, oc, f)
 				printOValidationResult("Templates", validateTemplates, oc, f)
 				printValidationResult("SecurityContextConstraints", validateSecurityContextConstraints, c, f)
 			}
@@ -129,33 +130,23 @@ func validateConsoleDeployment(c *k8sclient.Client, f *cmdutil.Factory) (Result,
 	if err != nil {
 		return Failure, err
 	}
-	rc, err := c.ReplicationControllers(ns).Get("fabric8")
+	rc, err := c.Deployments(ns).Get("fabric8")
 	if rc != nil {
 		return Success, err
 	}
 	return Failure, err
 }
 
-func validateProxyServiceRestAPI(c *k8sclient.Client, f *cmdutil.Factory, host string) (Result, error) {
+func validateConsoleDeploymentConfig(c *oclient.Client, f *cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
 	}
-	uri := host + "/api/v1/proxy/namespaces/" + ns + "/services/fabric8/"
-
-	resp, err := c.Client.Get(uri)
-	if err != nil {
-		err = fmt.Errorf("Cannot query the API Server REST Proxy Service API at %s. Can the master node see the service IPs? Got error: %v", uri, err)
-		return Failure, err
+	rc, err := c.DeploymentConfigs(ns).Get("fabric8")
+	if rc != nil {
+		return Success, err
 	}
-	defer resp.Body.Close()
-
-	statusCode := resp.StatusCode
-	if statusCode < 200 || statusCode >= 300 {
-		err = fmt.Errorf("Cannot query the API Server REST Proxy Service API at %s. Can the master node see the service IPs? Got status code: %d", uri, statusCode)
-		return Failure, err
-	}
-	return Success, err
+	return Failure, err
 }
 
 func validatePersistenceVolumeClaims(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
@@ -179,8 +170,13 @@ func validatePersistenceVolumeClaims(c *k8sclient.Client, f *cmdutil.Factory) (R
 		if len(pendingClaimNames) > 0 {
 			util.Failuref("PersistentVolumeClaim not Bound for: %s. You need to create a PersistentVolume!\n", strings.Join(pendingClaimNames, ", "))
 			util.Info(`
-to generate a single node PersistentVolume then type something like this:
+You can enable dynamic PersistentVolume creation with Kubernetes 1.4 or later.
 
+Or to get gofabric8 to create HostPath based PersistentVolume resources for you on minikube and minishift type:
+
+  gofabric8 volumes
+
+For other clusters you could do something like this - though ideally with a persistent volume implementation other than hostPath:
 
 cat <<EOF | oc create -f -
 ---
