@@ -667,10 +667,14 @@ func updateExposeControllerConfig(c *k8sclient.Client, ns string, apiserver stri
 			printError("\nError deleting ConfigMap: "+exposecontrollerCM, err)
 		}
 	}
+	apiserverAndPort := apiserver
+	if !strings.Contains(apiserverAndPort, ":") {
+		apiserverAndPort = apiserverAndPort + ":8443"
+	}
 
 	domainData := "domain: " + domain + "\n"
 	exposeData := exposeRule + ": " + defaultExposeRule(c, mini, useLoadBalancer) + "\n"
-	apiserverData := "apiserver: " + apiserver + "\n"
+	apiserverData := "apiserver: " + apiserverAndPort + "\n"
 	configFile := map[string]string{
 		"config.yml": domainData + exposeData + apiserverData,
 	}
