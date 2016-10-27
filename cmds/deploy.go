@@ -29,6 +29,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	goruntime "runtime"
@@ -215,7 +216,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(mavenRepoFlag, mavenRepoDefault, "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().String(runFlag, cdPipeline, "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
-	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup. e.g. use `--package=platform` to run the fabric8 platform. Other values `console` or `ipaas`")
+	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
 	cmd.PersistentFlags().Bool(pvFlag, false, "Default: false, unless on minikube or minishift where persistence is enabled out of the box")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
@@ -237,8 +238,6 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 	d.versionZipkin = latest
 	d.versionPlatform = latest
 	d.mavenRepo = mavenRepoDefault
-	d.appToRun = cdPipeline
-	d.packageName = "platform"
 	d.pv = false
 	d.templates = true
 	d.deployConsole = true
@@ -330,6 +329,11 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 		apiserver = domain
 	}
 
+	if len(d.appToRun) > 0 {
+		util.Warn("Please note that the --app parameter is now deprecated.\n")
+		util.Warn("Please use the --package argument to specify a package like `platform`, `console`, `ipaas` or to refer to a URL or file of the YAML package to install\n")
+	}
+
 	if strings.Contains(domain, "=") {
 		util.Warnf("\nInvalid domain: %s\n\n", domain)
 	} else if confirmAction(d.yes) {
@@ -354,14 +358,40 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				baseUri = ipaasPackageUrlPrefix
 				versionPlatform = versionForUrl(d.versioniPaaS, urlJoin(mavenRepo, ipaasMetadataUrl))
 			default:
-				util.Fatalf("Unknown package name %s passed via the flag %s", packageName, packageFlag)
+				baseUri = ""
 			}
-			uri := fmt.Sprintf(urlJoin(mavenRepo, baseUri), versionPlatform)
+			uri := ""
+			if len(baseUri) > 0 {
+				uri = fmt.Sprintf(urlJoin(mavenRepo, baseUri), versionPlatform)
+
+			} else {
+				// lets assume the package is a file or a uri already
+				if strings.Contains(packageName, "://") {
+					uri = packageName
+				} else {
+					d, err := os.Stat(packageName)
+					if err != nil {
+						util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
+					}
+					if m := d.Mode(); m.IsDir() {
+						util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
+					}
+					absFile, err := filepath.Abs(packageName)
+					if err != nil {
+						util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
+					}
+					uri = "file://" + absFile
+				}
+			}
 
 			if typeOfMaster == util.Kubernetes {
-				uri += "kubernetes.yml"
+				if !strings.HasPrefix(uri, "file://") {
+					uri += "kubernetes.yml"
+				}
 			} else {
-				uri += "openshift.yml"
+				if !strings.HasPrefix(uri, "file://") {
+					uri += "openshift.yml"
+				}
 
 				r, err := verifyRestrictedSecurityContextConstraints(c, f)
 				printResult("SecurityContextConstraints restricted", r, err)
@@ -372,15 +402,14 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
 
-				// TODO this can go soon when we migrate to the new jenkins-openshift image?
+				// TODO replace all of this with the necessary RoleBindings inside the OpenShift YAML...
 				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
 
 				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":configmapcontroller")
 				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":exposecontroller")
-				/*
-					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
-					printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
-				*/
+
+				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
+				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
 
 				printAddClusterRoleToGroup(oc, f, "cluster-reader", "system:serviceaccounts")
 
@@ -392,17 +421,30 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			// now lets apply this template
 			util.Infof("Now about to install package %s\n", uri)
 
-			resp, err := http.Get(uri)
-			if err != nil {
-				util.Fatalf("Cannot load YAML package at %s got: %v", uri, err)
-			}
-			defer resp.Body.Close()
-			yamlData, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
+			yamlData := []byte{}
+			format := "yaml"
+
+			if strings.HasPrefix(uri, "file://") {
+				fileName := strings.TrimPrefix(uri, "file://")
+				if strings.HasSuffix(fileName, ".json") {
+					format = "json"
+				}
+				yamlData, err = ioutil.ReadFile(fileName)
+				if err != nil {
+					util.Fatalf("Cannot load file %s got: %v", fileName, err)
+				}
+			} else {
+				resp, err := http.Get(uri)
+				if err != nil {
+					util.Fatalf("Cannot load YAML package at %s got: %v", uri, err)
+				}
+				defer resp.Body.Close()
+				yamlData, err = ioutil.ReadAll(resp.Body)
+				if err != nil {
+					util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
+				}
 			}
 
-			format := "yaml"
 			createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, pv)
 
 			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
@@ -931,6 +973,15 @@ func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver st
 		util.Fatalf("%s", err)
 	}
 
+	namespaceIdx := -1
+	for i, param := range tmpl.Parameters {
+		if param.Name == "NAMESPACE" {
+			namespaceIdx = i
+		}
+	}
+	if namespaceIdx >= 0 {
+		tmpl.Parameters[namespaceIdx].Value = ns
+	}
 	tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
 		Name:  "DOMAIN",
 		Value: ns + "." + domain,
@@ -1174,9 +1225,9 @@ func processResource(c *k8sclient.Client, b []byte, ns string, kind string) erro
 	req := c.Post().Body(b)
 	if kind == "Deployment" {
 		req.AbsPath("apis", "extensions/v1beta1", "namespaces", ns, strings.ToLower(kind+"s"))
-	} else if kind == "BuildConfig" || kind == "DeploymentConfig" || kind == "Template" {
+	} else if kind == "BuildConfig" || kind == "DeploymentConfig" || kind == "Template" || kind == "PolicyBinding" || kind == "Role" || kind == "RoleBinding" {
 		req.AbsPath("oapi", "v1", "namespaces", ns, strings.ToLower(kind+"s"))
-	} else if kind == "OAuthClient" || kind == "Project" || kind == "ProjectRequest" || kind == "RoleBinding" {
+	} else if kind == "OAuthClient" || kind == "Project" || kind == "ProjectRequest" {
 		req.AbsPath("oapi", "v1", strings.ToLower(kind+"s"))
 	} else if kind == "Namespace" {
 		req.AbsPath("api", "v1", "namespaces")
