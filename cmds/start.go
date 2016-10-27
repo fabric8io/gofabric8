@@ -155,6 +155,8 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				flag := cmd.Flags().Lookup(console)
 				if flag != nil && flag.Value.String() == "true" {
 					d.packageName = "console"
+				} else {
+					d.packageName = cmd.Flags().Lookup(packageFlag).Value.String()
 				}
 				d.pv = true
 				deploy(f, d)
@@ -169,6 +171,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().StringP(memory, "", "4096", "amount of RAM allocated to the VM")
 	cmd.PersistentFlags().StringP(vmDriver, "", "", "the VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
 	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
+	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
 	return cmd
 }
 
