@@ -37,6 +37,7 @@ const (
 	vmDriver = "vm-driver"
 	cpus     = "cpus"
 	console  = "console"
+	ipaas    = "ipaas"
 )
 
 // NewCmdStart starts a local cloud environment
@@ -52,6 +53,13 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			isOpenshift := false
 			if flag != nil {
 				isOpenshift = flag.Value.String() == "true"
+			}
+
+			flag = cmd.Flags().Lookup(ipaas)
+			isIPaaS := false
+			if flag != nil && flag.Value.String() == "true" {
+				isOpenshift = true
+				isIPaaS = true
 			}
 
 			if !isInstalled(isOpenshift) {
@@ -153,7 +161,9 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				// deploy fabric8
 				d := GetDefaultFabric8Deployment()
 				flag := cmd.Flags().Lookup(console)
-				if flag != nil && flag.Value.String() == "true" {
+				if isIPaaS {
+					d.packageName = "ipaas"
+				} else if flag != nil && flag.Value.String() == "true" {
 					d.packageName = "console"
 				} else {
 					d.packageName = cmd.Flags().Lookup(packageFlag).Value.String()
@@ -168,6 +178,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd.PersistentFlags().BoolP(minishift, "", false, "start the openshift flavour of Kubernetes")
 	cmd.PersistentFlags().BoolP(console, "", false, "start only the fabric8 console")
+	cmd.PersistentFlags().BoolP(ipaas, "", false, "start the fabric8 iPaaS")
 	cmd.PersistentFlags().StringP(memory, "", "4096", "amount of RAM allocated to the VM")
 	cmd.PersistentFlags().StringP(vmDriver, "", "", "the VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
 	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
