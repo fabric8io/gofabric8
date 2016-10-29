@@ -242,6 +242,7 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 	d.templates = true
 	d.deployConsole = true
 	d.useLoadbalancer = false
+	d.packageName = platformPackage
 	return d
 }
 
@@ -444,12 +445,21 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 					util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
 				}
 			}
-
 			createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, pv)
 
 			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
 
+			externalNodeName := ""
+			if typeOfMaster == util.Kubernetes {
+				if !mini && d.useIngress {
+					ensureNamespaceExists(c, oc, "fabric8-system")
+					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
+					externalNodeName = addIngressInfraLabel(c, ns)
+				}
+			}
+
 			createMissingPVs(c, ns)
+			printSummary(typeOfMaster, externalNodeName, ns, domain)
 		} else {
 			consoleVersion := f8ConsoleVersion(mavenRepo, d.versionConsole, typeOfMaster)
 			versionDevOps := versionForUrl(d.versionDevOps, urlJoin(mavenRepo, devOpsMetadataUrl))
