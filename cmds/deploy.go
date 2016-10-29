@@ -145,6 +145,8 @@ const (
 	latest           = "latest"
 	mavenRepoDefault = "https://repo1.maven.org/maven2/"
 	cdPipeline       = "cd-pipeline"
+
+	fabric8SystemNamespace = "fabric8-system"
 )
 
 // Fabric8Deployment structure to work with the fabric8 deploy command
@@ -452,7 +454,8 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			externalNodeName := ""
 			if typeOfMaster == util.Kubernetes {
 				if !mini && d.useIngress {
-					ensureNamespaceExists(c, oc, "fabric8-system")
+					ensureNamespaceExists(c, oc, fabric8SystemNamespace)
+					util.Infof("ns is %s\n", ns)
 					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
 					externalNodeName = addIngressInfraLabel(c, ns)
 				}
@@ -589,7 +592,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			externalNodeName := ""
 			if typeOfMaster == util.Kubernetes {
 				if !mini && d.useIngress {
-					ensureNamespaceExists(c, oc, "fabric8-system")
+					ensureNamespaceExists(c, oc, fabric8SystemNamespace)
 					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
 					externalNodeName = addIngressInfraLabel(c, ns)
 				}
@@ -1157,6 +1160,9 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 					// TODO why is the namespace empty?
 					// lets default the namespace to the default gogs namespace
 					namespace = "user-secrets-source-admin"
+					if metadata["name"] == "ingress-nginx" || metadata["name"] == "nginx-config" {
+						namespace = fabric8SystemNamespace
+					}
 				}
 				ns = namespace
 
