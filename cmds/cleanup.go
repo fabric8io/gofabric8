@@ -209,17 +209,25 @@ func deleteRoutes(oc *oclient.Client, ns string, selector labels.Selector) error
 }
 
 func deleteDeployments(c *k8sclient.Client, ns string, selector labels.Selector) error {
-	deployments, err := c.Deployments(ns).List(api.ListOptions{LabelSelector: selector})
+	// use kubectl binary until https://github.com/fabric8io/gofabric8/issues/248 is fixed
+	// deployments, err := c.Deployments(ns).List(api.ListOptions{LabelSelector: selector})
+	// if err != nil {
+	// 	return err
+	// }
+	// for _, d := range deployments.Items {
+	// 	err := c.Deployments(ns).Delete(d.Name, api.NewDeleteOptions(0))
+	// 	if err != nil {
+	// 		return errors.Wrap(err, fmt.Sprintf("failed to delete Deployment %s", d.Name))
+	// 	}
+	// }
+	// return nil
+	e := exec.Command("kubectl", "delete", "deployments", "-l", "provider=fabric8")
+	err := e.Run()
 	if err != nil {
-		return err
-	}
-	for _, d := range deployments.Items {
-		err := c.Deployments(ns).Delete(d.Name, api.NewDeleteOptions(0))
-		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("failed to delete Deployment %s", d.Name))
-		}
+		return errors.Wrap(err, "failed to delete Deployments")
 	}
 	return nil
+
 }
 
 func deleteReplicationControllers(c *k8sclient.Client, ns string, selector labels.Selector) error {
