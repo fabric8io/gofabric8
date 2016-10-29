@@ -89,12 +89,17 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				kubectlBinaryFile := resolveBinaryLocation(kubectl)
 
 				// setting context
-				e := exec.Command(kubectlBinaryFile, "config", "use-context", kubeBinary)
-				e.Stdout = os.Stdout
-				e.Stderr = os.Stderr
-				err = e.Run()
-				if err != nil {
-					util.Errorf("Unable to start %v", err)
+				if kubeBinary == minikube {
+					e := exec.Command(kubectlBinaryFile, "config", "use-context", kubeBinary)
+					e.Stdout = os.Stdout
+					e.Stderr = os.Stderr
+					err = e.Run()
+					if err != nil {
+						util.Errorf("Unable to start %v", err)
+					}
+				} else {
+					// minishift context has changed, we need to work it out now
+					util.Info("minishift is already running, you can switch to the context\n")
 				}
 
 			} else {
