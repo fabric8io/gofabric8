@@ -449,8 +449,6 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			}
 			createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, pv)
 
-			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
-
 			externalNodeName := ""
 			if typeOfMaster == util.Kubernetes {
 				if !mini && d.useIngress {
@@ -460,6 +458,8 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 					externalNodeName = addIngressInfraLabel(c, ns)
 				}
 			}
+
+			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
 
 			createMissingPVs(c, ns)
 			printSummary(typeOfMaster, externalNodeName, ns, domain)
