@@ -219,7 +219,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().String(runFlag, cdPipeline, "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
 	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
-	cmd.PersistentFlags().Bool(pvFlag, false, "Default: false, unless on minikube or minishift where persistence is enabled out of the box")
+	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
@@ -311,11 +311,6 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	util.Success(domain)
 	util.Info(" in namespace ")
 	util.Successf("%s\n\n", ns)
-
-	pv, err := shouldEnablePV(c, d.pv)
-	if err != nil {
-		util.Fatalf("No nodes available, something bad has happened: %v", err)
-	}
 
 	mavenRepo := d.mavenRepo
 	if !strings.HasSuffix(mavenRepo, "/") {
@@ -447,14 +442,14 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 					util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
 				}
 			}
-			createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, pv)
+			createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv)
 
 			externalNodeName := ""
 			if typeOfMaster == util.Kubernetes {
 				if !mini && d.useIngress {
 					ensureNamespaceExists(c, oc, fabric8SystemNamespace)
 					util.Infof("ns is %s\n", ns)
-					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
+					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv)
 					externalNodeName = addIngressInfraLabel(c, ns)
 				}
 			}
@@ -462,6 +457,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
 
 			createMissingPVs(c, ns)
+
 			printSummary(typeOfMaster, externalNodeName, ns, domain)
 		} else {
 			consoleVersion := f8ConsoleVersion(mavenRepo, d.versionConsole, typeOfMaster)
@@ -539,7 +535,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 						// lets delete the OAuthClient first as the domain may have changed
 						oc.OAuthClients().Delete("fabric8")
-						createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc, pv)
+						createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc, d.pv)
 
 						oac, err := oc.OAuthClients().Get("fabric8")
 						if err != nil {
@@ -587,13 +583,13 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				printError("Ignoring the deploy of templates", nil)
 			}
 
-			runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, pv)
+			runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, d.pv)
 
 			externalNodeName := ""
 			if typeOfMaster == util.Kubernetes {
 				if !mini && d.useIngress {
 					ensureNamespaceExists(c, oc, fabric8SystemNamespace)
-					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
+					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv)
 					externalNodeName = addIngressInfraLabel(c, ns)
 				}
 			}
@@ -601,7 +597,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
 
 			if len(d.appToRun) > 0 {
-				runTemplate(c, oc, d.appToRun, ns, domain, apiserver, pv)
+				runTemplate(c, oc, d.appToRun, ns, domain, apiserver, d.pv)
 				createMissingPVs(c, ns)
 			}
 
