@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -270,15 +271,10 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	arch := d.arch
 
 	mini, err := util.IsMini()
-
-	// during initial deploy we cant rely on just the context - check the node names too
-	if !mini {
-		_, mini = isNodeNameMini(c, ns)
-	}
-
 	if err != nil {
-		util.Failuref("Unable to detect platform deploying to %v", err)
+		util.Failuref("error checking if minikube or minishift %v", err)
 	}
+
 	typeOfMaster := util.TypeOfMaster(c)
 
 	// extract the ip address from the URL
@@ -456,9 +452,12 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
 
-			createMissingPVs(c, ns)
+			mini, _ := util.IsMini()
+			if mini {
+				createMissingPVs(c, ns)
+			}
 
-			printSummary(typeOfMaster, externalNodeName, ns, domain)
+			printSummary(typeOfMaster, externalNodeName, ns, domain, c)
 		} else {
 			consoleVersion := f8ConsoleVersion(mavenRepo, d.versionConsole, typeOfMaster)
 			versionDevOps := versionForUrl(d.versionDevOps, urlJoin(mavenRepo, devOpsMetadataUrl))
@@ -658,7 +657,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 					}
 				}
 			}
-			printSummary(typeOfMaster, externalNodeName, ns, domain)
+			printSummary(typeOfMaster, externalNodeName, ns, domain, c)
 		}
 		openService(ns, "fabric8", c, false)
 	}
@@ -738,7 +737,7 @@ func createMissingPVs(c *k8sclient.Client, ns string) {
 	}
 }
 
-func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns string, domain string) {
+func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns string, domain string, c *k8sclient.Client) {
 	util.Info("\n")
 	util.Info("-------------------------\n")
 	util.Info("\n")
@@ -756,39 +755,16 @@ func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns stri
 	util.Successf("%s/%s\n", gogsDefaultUsername, gogsDefaultPassword)
 	util.Info("\n")
 
+	found, _ := checkIfPVCsPending(c, ns)
+	if found {
+		util.Errorf("There are pending PersistentVolumeClaims\n")
+		util.Infof("If using a local cluster run `gofabric8 volumes` to create missing HostPath volumes\n")
+		util.Infof("If using a remote cloud then enable dynamic persistence with a StorageClass.  For details see http://fabric8.io/guide/getStarted/persistence.html\n")
+		util.Info("\n")
+	}
 	util.Infof("Downloading images and waiting to open the fabric8 console...\n")
 	util.Info("\n")
 	util.Info("-------------------------\n")
-}
-
-func isNodeNameMini(c *k8sclient.Client, ns string) (string, bool) {
-	nodes, err := c.Nodes().List(api.ListOptions{})
-	if err != nil {
-		util.Errorf("\nUnable to find any nodes: %s\n", err)
-	}
-	if len(nodes.Items) == 1 {
-		node := nodes.Items[0]
-		return node.Name, (node.Name == "minishift" || node.Name == "minikube")
-	}
-	return "", false
-
-}
-
-func shouldEnablePV(c *k8sclient.Client, pv bool) (bool, error) {
-
-	// did we choose to enable PV?
-	if pv {
-		return true, nil
-	}
-
-	// lets default use PV for mini*
-	mini, _ := util.IsMini()
-	if mini {
-		return true, nil
-	}
-
-	// until PV works with stackpoint cloud and openshift lets not enable
-	return false, nil
 }
 
 func getClientTypeName(typeOfMaster util.MasterType) string {
@@ -1838,4 +1814,27 @@ func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) str
 		return route
 	}
 	return ""
+}
+
+func checkIfPVCsPending(c *k8sclient.Client, ns string) (bool, error) {
+	timeout := time.After(20 * time.Second)
+	tick := time.Tick(2 * time.Second)
+	util.Info("Checking if PersistentVolumeClaims bind to a PersistentVolume ")
+	// Keep trying until we're timed out or got a result or got an error
+	for {
+		select {
+		// Got a timeout! fail with a timeout error
+		case <-timeout:
+			return true, errors.New("timed out")
+		// Got a tick, check if PVc have bound
+		case <-tick:
+			found, _, _ := findPendingPVs(c, ns)
+			if !found {
+				util.Info("\n")
+				return false, nil
+			}
+			util.Info(".")
+			// retry
+		}
+	}
 }
