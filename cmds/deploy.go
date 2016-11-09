@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -219,7 +220,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().String(runFlag, cdPipeline, "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
 	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
-	cmd.PersistentFlags().Bool(pvFlag, false, "Default: false, unless on minikube or minishift where persistence is enabled out of the box")
+	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
@@ -270,15 +271,10 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	arch := d.arch
 
 	mini, err := util.IsMini()
-
-	// during initial deploy we cant rely on just the context - check the node names too
-	if !mini {
-		_, mini = isNodeNameMini(c, ns)
-	}
-
 	if err != nil {
-		util.Failuref("Unable to detect platform deploying to %v", err)
+		util.Failuref("error checking if minikube or minishift %v", err)
 	}
+
 	typeOfMaster := util.TypeOfMaster(c)
 
 	// extract the ip address from the URL
@@ -311,11 +307,6 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	util.Success(domain)
 	util.Info(" in namespace ")
 	util.Successf("%s\n\n", ns)
-
-	pv, err := shouldEnablePV(c, d.pv)
-	if err != nil {
-		util.Fatalf("No nodes available, something bad has happened: %v", err)
-	}
 
 	mavenRepo := d.mavenRepo
 	if !strings.HasSuffix(mavenRepo, "/") {
@@ -447,22 +438,26 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 					util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
 				}
 			}
-			createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, pv)
+			createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv)
 
 			externalNodeName := ""
 			if typeOfMaster == util.Kubernetes {
 				if !mini && d.useIngress {
 					ensureNamespaceExists(c, oc, fabric8SystemNamespace)
 					util.Infof("ns is %s\n", ns)
-					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
+					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv)
 					externalNodeName = addIngressInfraLabel(c, ns)
 				}
 			}
 
 			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
 
-			createMissingPVs(c, ns)
-			printSummary(typeOfMaster, externalNodeName, ns, domain)
+			mini, _ := util.IsMini()
+			if mini {
+				createMissingPVs(c, ns)
+			}
+
+			printSummary(typeOfMaster, externalNodeName, ns, domain, c)
 		} else {
 			consoleVersion := f8ConsoleVersion(mavenRepo, d.versionConsole, typeOfMaster)
 			versionDevOps := versionForUrl(d.versionDevOps, urlJoin(mavenRepo, devOpsMetadataUrl))
@@ -539,7 +534,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 						// lets delete the OAuthClient first as the domain may have changed
 						oc.OAuthClients().Delete("fabric8")
-						createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc, pv)
+						createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc, d.pv)
 
 						oac, err := oc.OAuthClients().Get("fabric8")
 						if err != nil {
@@ -587,13 +582,13 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				printError("Ignoring the deploy of templates", nil)
 			}
 
-			runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, pv)
+			runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, d.pv)
 
 			externalNodeName := ""
 			if typeOfMaster == util.Kubernetes {
 				if !mini && d.useIngress {
 					ensureNamespaceExists(c, oc, fabric8SystemNamespace)
-					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, pv)
+					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv)
 					externalNodeName = addIngressInfraLabel(c, ns)
 				}
 			}
@@ -601,7 +596,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
 
 			if len(d.appToRun) > 0 {
-				runTemplate(c, oc, d.appToRun, ns, domain, apiserver, pv)
+				runTemplate(c, oc, d.appToRun, ns, domain, apiserver, d.pv)
 				createMissingPVs(c, ns)
 			}
 
@@ -662,7 +657,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 					}
 				}
 			}
-			printSummary(typeOfMaster, externalNodeName, ns, domain)
+			printSummary(typeOfMaster, externalNodeName, ns, domain, c)
 		}
 		openService(ns, "fabric8", c, false)
 	}
@@ -742,7 +737,7 @@ func createMissingPVs(c *k8sclient.Client, ns string) {
 	}
 }
 
-func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns string, domain string) {
+func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns string, domain string, c *k8sclient.Client) {
 	util.Info("\n")
 	util.Info("-------------------------\n")
 	util.Info("\n")
@@ -760,39 +755,16 @@ func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns stri
 	util.Successf("%s/%s\n", gogsDefaultUsername, gogsDefaultPassword)
 	util.Info("\n")
 
+	found, _ := checkIfPVCsPending(c, ns)
+	if found {
+		util.Errorf("There are pending PersistentVolumeClaims\n")
+		util.Infof("If using a local cluster run `gofabric8 volumes` to create missing HostPath volumes\n")
+		util.Infof("If using a remote cloud then enable dynamic persistence with a StorageClass.  For details see http://fabric8.io/guide/getStarted/persistence.html\n")
+		util.Info("\n")
+	}
 	util.Infof("Downloading images and waiting to open the fabric8 console...\n")
 	util.Info("\n")
 	util.Info("-------------------------\n")
-}
-
-func isNodeNameMini(c *k8sclient.Client, ns string) (string, bool) {
-	nodes, err := c.Nodes().List(api.ListOptions{})
-	if err != nil {
-		util.Errorf("\nUnable to find any nodes: %s\n", err)
-	}
-	if len(nodes.Items) == 1 {
-		node := nodes.Items[0]
-		return node.Name, (node.Name == "minishift" || node.Name == "minikube")
-	}
-	return "", false
-
-}
-
-func shouldEnablePV(c *k8sclient.Client, pv bool) (bool, error) {
-
-	// did we choose to enable PV?
-	if pv {
-		return true, nil
-	}
-
-	// lets default use PV for mini*
-	mini, _ := util.IsMini()
-	if mini {
-		return true, nil
-	}
-
-	// until PV works with stackpoint cloud and openshift lets not enable
-	return false, nil
 }
 
 func getClientTypeName(typeOfMaster util.MasterType) string {
@@ -1842,4 +1814,27 @@ func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) str
 		return route
 	}
 	return ""
+}
+
+func checkIfPVCsPending(c *k8sclient.Client, ns string) (bool, error) {
+	timeout := time.After(20 * time.Second)
+	tick := time.Tick(2 * time.Second)
+	util.Info("Checking if PersistentVolumeClaims bind to a PersistentVolume ")
+	// Keep trying until we're timed out or got a result or got an error
+	for {
+		select {
+		// Got a timeout! fail with a timeout error
+		case <-timeout:
+			return true, errors.New("timed out")
+		// Got a tick, check if PVc have bound
+		case <-tick:
+			found, _, _ := findPendingPVs(c, ns)
+			if !found {
+				util.Info("\n")
+				return false, nil
+			}
+			util.Info(".")
+			// retry
+		}
+	}
 }
