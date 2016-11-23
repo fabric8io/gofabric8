@@ -336,6 +336,8 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		initSchema()
 
+		ensureNamespaceExists(c, oc, ns)
+
 		packageName := d.packageName
 		if len(packageName) > 0 {
 			versionPlatform := ""
