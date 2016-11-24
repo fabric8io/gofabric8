@@ -184,7 +184,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().BoolP(minishift, "", false, "start the openshift flavour of Kubernetes")
 	cmd.PersistentFlags().BoolP(console, "", false, "start only the fabric8 console")
 	cmd.PersistentFlags().BoolP(ipaas, "", false, "start the fabric8 iPaaS")
-	cmd.PersistentFlags().StringP(memory, "", "4096", "amount of RAM allocated to the VM")
+	cmd.PersistentFlags().StringP(memory, "", "6144", "amount of RAM allocated to the VM")
 	cmd.PersistentFlags().StringP(vmDriver, "", "", "the VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
 	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
 	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
