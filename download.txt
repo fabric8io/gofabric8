@@ -83,7 +83,7 @@ if [[ "${FABRIC8_SKIP_DOWNLOAD-}" ]]; then
   exit 0
 fi 
 
-tmpfile=$(mktemp /tmp/gofabric8-download.XXXXXX)
+tmpfile=$(mktemp ~/.fabric8/bin/gofabric8-download.XXXXXX)
 exec 3>"$tmpfile"
 rm "$tmpfile"
   if [[ $(which wget) ]]; then
