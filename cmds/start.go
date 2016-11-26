@@ -38,6 +38,7 @@ const (
 	cpus     = "cpus"
 	console  = "console"
 	ipaas    = "ipaas"
+	diskSize = "disk-size"
 )
 
 // NewCmdStart starts a local cloud environment
@@ -129,6 +130,10 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				cpusValue := cmd.Flags().Lookup(cpus).Value.String()
 				args = append(args, "--cpus="+cpusValue)
 
+				// set disk-size flag
+				diskSizeValue := cmd.Flags().Lookup(diskSize).Value.String()
+				args = append(args, "--disk-size="+diskSizeValue)
+
 				// start the local VM
 				logCommand(binaryFile, args)
 				e := exec.Command(binaryFile, args...)
@@ -186,6 +191,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().BoolP(ipaas, "", false, "start the fabric8 iPaaS")
 	cmd.PersistentFlags().StringP(memory, "", "6144", "amount of RAM allocated to the VM")
 	cmd.PersistentFlags().StringP(vmDriver, "", "", "the VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
+	cmd.PersistentFlags().StringP(diskSize, "", "20g", "the size of the disk allocated to the VM")
 	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
 	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
 	return cmd
