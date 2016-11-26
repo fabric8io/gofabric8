@@ -115,6 +115,7 @@ func main() {
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdVersion())
 	cmds.AddCommand(commands.NewCmdVolumes(f))
+	cmds.AddCommand(commands.NewCmdWaitFor(f))
 
 	cmds.Execute()
 }
