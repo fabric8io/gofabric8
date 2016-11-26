@@ -27,7 +27,9 @@ import (
 )
 
 const (
-	allFlag = "all"
+	allFlag         = "all"
+	timeoutFlag     = "timeout"
+	sleepPeriodFlag = "sleep"
 )
 
 func NewCmdWaitFor(f *cmdutil.Factory) *cobra.Command {
@@ -41,6 +43,17 @@ func NewCmdWaitFor(f *cmdutil.Factory) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 
 			waitAll := cmd.Flags().Lookup(allFlag).Value.String() == "true"
+
+			durationText := cmd.Flags().Lookup(timeoutFlag).Value.String()
+			maxDuration, err := time.ParseDuration(durationText)
+			if err != nil {
+				util.Fatalf("Could not parse duration `%s` from flag --%s. Error %v\n", durationText, timeoutFlag, err)
+			}
+			durationText = cmd.Flags().Lookup(sleepPeriodFlag).Value.String()
+			sleepMillis, err := time.ParseDuration(durationText)
+			if err != nil {
+				util.Fatalf("Could not parse duration `%s` from flag --%s. Error %v\n", durationText, sleepPeriodFlag, err)
+			}
 
 			if !waitAll && len(args) == 0 {
 				util.Infof("Please specify one or more names of Deployment or DeploymentConfig resources or use the --%s flag to match all Deployments and DeploymentConfigs\n", allFlag)
@@ -60,24 +73,38 @@ func NewCmdWaitFor(f *cmdutil.Factory) *cobra.Command {
 				fromNamespace = ns
 			}
 
-			sleepMillis := 1 * time.Second
+			timer := time.NewTimer(maxDuration)
+			go func() {
+				<-timer.C
+				util.Fatalf("Timed out waiting for Deployments. Waited: %v\n", maxDuration)
+			}()
 
 			util.Infof("Waiting for Deployments to be ready in namespace %s\n", fromNamespace)
 
 			typeOfMaster := util.TypeOfMaster(c)
 
 			for i := 0; i < 2; i++ {
-				waitForDeployments(c, fromNamespace, waitAll, args, sleepMillis)
+				handleError(waitForDeployments(c, fromNamespace, waitAll, args, sleepMillis))
 				if typeOfMaster == util.OpenShift {
-					waitForDeploymentConfigs(oc, fromNamespace, waitAll, args, sleepMillis)
+					handleError(waitForDeploymentConfigs(oc, fromNamespace, waitAll, args, sleepMillis))
 				}
 			}
+			timer.Stop()
 			util.Infof("Deployments are ready now!\n")
+
 		},
 	}
 	cmd.PersistentFlags().Bool(allFlag, false, "waits for all the Deployments or DeploymentConfigs to be ready")
 	cmd.PersistentFlags().StringP(fromNamespaceFlag, "f", "", "the source namespace or uses the default namespace")
+	cmd.PersistentFlags().String(timeoutFlag, "60m", "the maximum amount of time to wait for the Deployemnts to be ready before failing. e.g. an expression like: 1.5h, 12m, 10s")
+	cmd.PersistentFlags().String(sleepPeriodFlag, "1s", "the sleep period while polling for Deployment status (e.g. 1s)")
 	return cmd
+}
+
+func handleError(err error) {
+	if err != nil {
+		util.Fatalf("Failed to wait %v\n", err)
+	}
 }
 
 func waitForDeployments(c *k8sclient.Client, ns string, waitAll bool, names []string, sleepMillis time.Duration) error {
