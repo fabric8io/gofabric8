@@ -30,6 +30,7 @@ const (
 	allFlag         = "all"
 	timeoutFlag     = "timeout"
 	sleepPeriodFlag = "sleep"
+	namespaceFlag   = "namespace"
 )
 
 func NewCmdWaitFor(f *cmdutil.Factory) *cobra.Command {
@@ -64,7 +65,7 @@ func NewCmdWaitFor(f *cmdutil.Factory) *cobra.Command {
 
 			initSchema()
 
-			fromNamespace := cmd.Flags().Lookup(fromNamespaceFlag).Value.String()
+			fromNamespace := cmd.Flags().Lookup(namespaceFlag).Value.String()
 			if len(fromNamespace) == 0 {
 				ns, _, err := f.DefaultNamespace()
 				if err != nil {
@@ -95,7 +96,7 @@ func NewCmdWaitFor(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.PersistentFlags().Bool(allFlag, false, "waits for all the Deployments or DeploymentConfigs to be ready")
-	cmd.PersistentFlags().StringP(fromNamespaceFlag, "f", "", "the source namespace or uses the default namespace")
+	cmd.PersistentFlags().StringP(namespaceFlag, "n", "", "the namespace to watch - if ommitted then the default namespace is used")
 	cmd.PersistentFlags().String(timeoutFlag, "60m", "the maximum amount of time to wait for the Deployemnts to be ready before failing. e.g. an expression like: 1.5h, 12m, 10s")
 	cmd.PersistentFlags().String(sleepPeriodFlag, "1s", "the sleep period while polling for Deployment status (e.g. 1s)")
 	return cmd
