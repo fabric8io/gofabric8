@@ -178,7 +178,11 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				} else {
 					d.packageName = cmd.Flags().Lookup(packageFlag).Value.String()
 				}
-				d.pv = true
+				d.versionPlatform = cmd.Flags().Lookup(versionPlatformFlag).Value.String()
+				d.versioniPaaS = cmd.Flags().Lookup(versioniPaaSFlag).Value.String()
+				d.pv = cmd.Flags().Lookup(pvFlag).Value.String() == "true"
+				d.useIngress = cmd.Flags().Lookup(useIngressFlag).Value.String() == "true"
+				d.useLoadbalancer = cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true"
 				deploy(f, d)
 
 			} else {
@@ -194,6 +198,11 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().StringP(diskSize, "", "20g", "the size of the disk allocated to the VM")
 	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
 	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
+	cmd.PersistentFlags().String(versionPlatformFlag, "latest", "The version to use for the Fabric8 Platform packages")
+	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
+	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
+	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
+	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
 	return cmd
 }
 
