@@ -39,6 +39,8 @@ const (
 	console  = "console"
 	ipaas    = "ipaas"
 	diskSize = "disk-size"
+
+	openConsoleFlag = "open-console"
 )
 
 // NewCmdStart starts a local cloud environment
@@ -186,7 +188,10 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				deploy(f, d)
 
 			} else {
-				openService(ns, "fabric8", c, false)
+				flag := cmd.Flags().Lookup(openConsoleFlag)
+				if flag != nil && flag.Value.String() == "true" {
+					openService(ns, "fabric8", c, false)
+				}
 			}
 		},
 	}
@@ -203,6 +208,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
+	cmd.PersistentFlags().Bool(openConsoleFlag, true, "Should we wait an open the console?")
 	return cmd
 }
 
