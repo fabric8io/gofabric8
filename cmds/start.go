@@ -176,32 +176,27 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			// deploy fabric8 if its not already running
 			_, err = c.Services(ns).Get("fabric8")
 			if err != nil {
-				// TODO for some reason this doesn't work!
-				// lets disable for now
-				doWait = false
 				if doWait {
+					initSchema()
+
 					sleepMillis := 1 * time.Second
 
 					typeOfMaster := util.TypeOfMaster(c)
 					if typeOfMaster == util.OpenShift {
-						// lets wait a little bit for the docker-registry DC to start up
-						time.Sleep(20 * time.Second)
-
 						oc, _ := client.NewOpenShiftClient(cfg)
+
+						util.Infof("waiting for docker-registry to start in namespace %s\n", ns)
+						watchAndWaitForDeploymentConfig(oc, ns, "docker-registry", 60*time.Minute)
 
 						util.Infof("waiting for all DeploymentConfigs to start in namespace %s\n", ns)
 						waitForDeploymentConfigs(oc, ns, true, []string{}, sleepMillis)
-
-						// TODO no idea why the above doesn't find "docker-registry" so lets explicitly add it
-						util.Infof("waiting for docker-registry to start in namespace %s\n", ns)
-						waitForDeploymentConfig(oc, ns, "docker-registry", sleepMillis)
-
 						util.Info("DeploymentConfigs all started so we can deploy fabric8\n")
 
 					} else {
 						util.Infof("waiting for all Deployments to start in namespace %s\n", ns)
 						waitForDeployments(c, ns, true, []string{}, sleepMillis)
 					}
+					util.Info("\n\n")
 				}
 
 				// deploy fabric8
