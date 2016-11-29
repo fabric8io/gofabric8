@@ -85,10 +85,10 @@ func NewCmdWaitFor(f *cmdutil.Factory) *cobra.Command {
 			typeOfMaster := util.TypeOfMaster(c)
 
 			for i := 0; i < 2; i++ {
-				handleError(waitForDeployments(c, fromNamespace, waitAll, args, sleepMillis))
 				if typeOfMaster == util.OpenShift {
 					handleError(waitForDeploymentConfigs(oc, fromNamespace, waitAll, args, sleepMillis))
 				}
+				handleError(waitForDeployments(c, fromNamespace, waitAll, args, sleepMillis))
 			}
 			timer.Stop()
 			util.Infof("Deployments are ready now!\n")
@@ -174,11 +174,15 @@ func waitForDeployment(c *k8sclient.Client, ns string, name string, sleepMillis 
 }
 
 func waitForDeploymentConfig(c *oclient.Client, ns string, name string, sleepMillis time.Duration) error {
-	util.Infof("DeploymentConfig %s waiting for it to be ready...\n", name)
+	util.Infof("DeploymentConfig %s in namespace %s waiting for it to be ready...\n", name, ns)
 	for {
 		deployment, err := c.DeploymentConfigs(ns).Get(name)
 		if err != nil {
+			util.Warnf("Cannot find DeploymentConfig %s in namepsace %s due to %s\n", name, ns, err)
 			return err
+		}
+		if deployment.Status.Replicas == 0 {
+			util.Warnf("No replicas for DeploymentConfig %s in namespace %s\n", name, ns)
 		}
 		available := deployment.Status.AvailableReplicas
 		unavailable := deployment.Status.UnavailableReplicas
@@ -186,6 +190,7 @@ func waitForDeploymentConfig(c *oclient.Client, ns string, name string, sleepMil
 			util.Infof("DeploymentConfig %s now has %d available replicas\n", name, available)
 			return nil
 		}
+		//util.Infof("DeploymentConfig %s has %d available replicas and %d unavailable\n", name, available, unavailable)
 		time.Sleep(sleepMillis)
 	}
 }
