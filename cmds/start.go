@@ -185,13 +185,8 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				d.pv = cmd.Flags().Lookup(pvFlag).Value.String() == "true"
 				d.useIngress = cmd.Flags().Lookup(useIngressFlag).Value.String() == "true"
 				d.useLoadbalancer = cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true"
+				d.openConsole = cmd.Flags().Lookup(openConsoleFlag).Value.String() == "true"
 				deploy(f, d)
-
-			} else {
-				flag := cmd.Flags().Lookup(openConsoleFlag)
-				if flag != nil && flag.Value.String() == "true" {
-					openService(ns, "fabric8", c, false)
-				}
 			}
 		},
 	}
@@ -200,7 +195,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().BoolP(ipaas, "", false, "start the fabric8 iPaaS")
 	cmd.PersistentFlags().StringP(memory, "", "6144", "amount of RAM allocated to the VM")
 	cmd.PersistentFlags().StringP(vmDriver, "", "", "the VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
-	cmd.PersistentFlags().StringP(diskSize, "", "20g", "the size of the disk allocated to the VM")
+	cmd.PersistentFlags().StringP(diskSize, "", "50g", "the size of the disk allocated to the VM")
 	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
 	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
 	cmd.PersistentFlags().String(versionPlatformFlag, "latest", "The version to use for the Fabric8 Platform packages")
