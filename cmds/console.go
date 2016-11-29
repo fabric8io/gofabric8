@@ -32,7 +32,7 @@ func NewCmdConsole(f *cmdutil.Factory) *cobra.Command {
 			c, _ := client.NewClient(f)
 			ns, _, _ := f.DefaultNamespace()
 
-			openService(ns, "fabric8", c, false)
+			openService(ns, "fabric8", c, false, true)
 		},
 	}
 
