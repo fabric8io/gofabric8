@@ -16,14 +16,19 @@
 package cmds
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
-	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/spf13/cobra"
+
+	oclient "github.com/openshift/origin/pkg/client"
+	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	"k8s.io/kubernetes/pkg/api"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"time"
+	"k8s.io/kubernetes/pkg/watch"
 )
 
 const (
@@ -193,4 +198,55 @@ func waitForDeploymentConfig(c *oclient.Client, ns string, name string, sleepMil
 		//util.Infof("DeploymentConfig %s has %d available replicas and %d unavailable\n", name, available, unavailable)
 		time.Sleep(sleepMillis)
 	}
+}
+
+func watchAndWaitForDeploymentConfig(c *oclient.Client, ns string, name string, timeout time.Duration) error {
+	if isDeploymentConfigAvailable(c, ns, name) {
+		return nil
+	}
+	w, err := c.DeploymentConfigs(ns).Watch(api.ListOptions{})
+	if err != nil {
+		return err
+	}
+	_, err = watch.Until(timeout, w, func(e watch.Event) (bool, error) {
+		if e.Type == watch.Error {
+			return false, fmt.Errorf("encountered error while watching DeploymentConfigs: %v", e.Object)
+		}
+		obj, isDC := e.Object.(*deployapi.DeploymentConfig)
+		if !isDC {
+			return false, fmt.Errorf("received unknown object while watching for DeploymentConfigs: %v", obj)
+		}
+		deployment := obj
+		if deployment.Name == name {
+			replicas := deployment.Status.Replicas
+			available := deployment.Status.AvailableReplicas
+			unavailable := deployment.Status.UnavailableReplicas
+			if unavailable == 0 && available > 0 {
+				util.Infof("DeploymentConfig %s now has %d available replicas\n", name, available)
+				return true, nil
+			} else {
+				util.Infof("DeploymentConfig %s has %d replicas, %d available and %d unavailable\n", name, replicas, available, unavailable)
+
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func isDeploymentConfigAvailable(c *oclient.Client, ns string, name string) bool {
+	deployment, err := c.DeploymentConfigs(ns).Get(name)
+	if err != nil {
+		return false
+	}
+	if deployment.Status.Replicas == 0 {
+		return false
+	}
+	replicas := deployment.Status.Replicas
+	available := deployment.Status.AvailableReplicas
+	unavailable := deployment.Status.UnavailableReplicas
+	return unavailable == 0 && available > 0 && replicas > 0
 }
