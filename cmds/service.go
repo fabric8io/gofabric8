@@ -33,6 +33,7 @@ import (
 
 const (
 	urlCommandFlag       = "url"
+	retryFlag            = "retry"
 	namespaceCommandFlag = "namespace"
 	exposeURLAnnotation  = "fabric8.io/exposeUrl"
 )
@@ -53,8 +54,9 @@ func NewCmdService(f *cmdutil.Factory) *cobra.Command {
 				ns, _, _ = f.DefaultNamespace()
 			}
 			printURL := cmd.Flags().Lookup(urlCommandFlag).Value.String() == "true"
+			retry := cmd.Flags().Lookup(retryFlag).Value.String() == "true"
 			if len(args) == 1 {
-				openService(ns, args[0], c, printURL)
+				openService(ns, args[0], c, printURL, retry)
 			} else {
 				util.Fatalf("Please choose a service, found %v arguments\n", len(args))
 			}
@@ -62,15 +64,17 @@ func NewCmdService(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd.PersistentFlags().StringP(namespaceCommandFlag, "n", "default", "The service namespace")
 	cmd.PersistentFlags().BoolP(urlCommandFlag, "u", false, "Display the kubernetes service exposed URL in the CLI instead of opening it in the default browser")
+	cmd.PersistentFlags().Bool(retryFlag, true, "Retries to find the service if its not available just yet")
 	return cmd
 }
 
-func openService(ns string, serviceName string, c *k8sclient.Client, printURL bool) {
-	if err := RetryAfter(40, func() error { return CheckService(ns, serviceName, c) }, 10*time.Second); err != nil {
-		util.Errorf("Could not find finalized endpoint being pointed to by %s: %v", serviceName, err)
-		os.Exit(1)
+func openService(ns string, serviceName string, c *k8sclient.Client, printURL bool, retry bool) {
+	if retry {
+		if err := RetryAfter(40, func() error { return CheckService(ns, serviceName, c) }, 10*time.Second); err != nil {
+			util.Errorf("Could not find finalized endpoint being pointed to by %s: %v", serviceName, err)
+			os.Exit(1)
+		}
 	}
-
 	svcs, err := c.Services(ns).List(kubeApi.ListOptions{})
 	if err != nil {
 		util.Errorf("No services found %v\n", err)

@@ -421,7 +421,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		printSummary(typeOfMaster, externalNodeName, ns, domain, c)
 		if d.openConsole {
-			openService(ns, "fabric8", c, false)
+			openService(ns, "fabric8", c, false, true)
 		}
 	}
 }
