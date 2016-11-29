@@ -16,20 +16,16 @@
 package cmds
 
 import (
-	"archive/zip"
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -63,29 +59,11 @@ import (
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
-	kcmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
 const (
-	consoleMetadataUrl           = "io/fabric8/apps/console/maven-metadata.xml"
-	baseConsoleUrl               = "io/fabric8/apps/console/%[1]s/console-%[1]s-kubernetes.json"
-	consoleKubernetesMetadataUrl = "io/fabric8/apps/console-kubernetes/maven-metadata.xml"
-	baseConsoleKubernetesUrl     = "io/fabric8/apps/console-kubernetes/%[1]s/console-kubernetes-%[1]s-kubernetes.json"
-
-	devopsTemplatesDistroUrl = "io/fabric8/forge/distro/distro/%[1]s/distro-%[1]s-templates.zip"
-	devOpsMetadataUrl        = "io/fabric8/forge/distro/distro/maven-metadata.xml"
-
-	kubeflixTemplatesDistroUrl = "io/fabric8/kubeflix/distro/distro/%[1]s/distro-%[1]s-templates.zip"
-	kubeflixMetadataUrl        = "io/fabric8/kubeflix/distro/distro/maven-metadata.xml"
-
-	zipkinTemplatesDistroUrl = "io/fabric8/zipkin/packages/distro/%[1]s/distro-%[1]s-templates.zip"
-	zipkinMetadataUrl        = "io/fabric8/zipkin/packages/distro/maven-metadata.xml"
-
-	iPaaSTemplatesDistroUrl = "io/fabric8/ipaas/distro/distro/%[1]s/distro-%[1]s-templates.zip"
-	iPaaSMetadataUrl        = "io/fabric8/ipaas/distro/distro/maven-metadata.xml"
-
 	platformMetadataUrl = "io/fabric8/platform/packages/fabric8-platform/maven-metadata.xml"
 	ipaasMetadataUrl    = "io/fabric8/ipaas/platform/packages/ipaas-platform/maven-metadata.xml"
 
@@ -97,18 +75,13 @@ const (
 
 	Fabric8SCC    = "fabric8"
 	Fabric8SASSCC = "fabric8-sa-group"
-	PrivilegedSCC = "privileged"
 	RestrictedSCC = "restricted"
 
 	runFlag             = "app"
 	useIngressFlag      = "ingress"
 	useLoadbalancerFlag = "loadbalancer"
 	versionPlatformFlag = "version"
-	versionConsoleFlag  = "version-console"
 	versioniPaaSFlag    = "version-ipaas"
-	versionDevOpsFlag   = "version-devops"
-	versionKubeflixFlag = "version-kubeflix"
-	versionZipkinFlag   = "version-zipkin"
 	mavenRepoFlag       = "maven-repo"
 	dockerRegistryFlag  = "docker-registry"
 	archFlag            = "arch"
@@ -119,10 +92,6 @@ const (
 	consolePackage  = "console"
 	iPaaSPackage    = "ipaas"
 
-	domainAnnotation   = "fabric8.io/domain"
-	typeLabel          = "type"
-	teamTypeLabelValue = "team"
-
 	fabric8Environments = "fabric8-environments"
 	exposecontrollerCM  = "exposecontroller"
 
@@ -131,9 +100,7 @@ const (
 	nodePort     = "NodePort"
 	route        = "Route"
 
-	boot2docker                   = "boot2docker"
-	exposeRule                    = "exposer"
-	externalAPIServerAddressLabel = "fabric8.io/externalApiServerAddress"
+	exposeRule = "exposer"
 
 	externalIPLabel = "fabric8.io/externalIP"
 
@@ -165,12 +132,9 @@ type DefaultFabric8Deployment struct {
 	useIngress      bool
 	useLoadbalancer bool
 	versionPlatform string
-	versionConsole  string
 	versioniPaaS    string
-	versionDevOps   string
-	versionKubeflix string
-	versionZipkin   string
 	yes             bool
+	openConsole     bool
 }
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -194,16 +158,13 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				deployConsole:   cmd.Flags().Lookup(consoleFlag).Value.String() == "true",
 				dockerRegistry:  cmd.Flags().Lookup(dockerRegistryFlag).Value.String(),
 				useIngress:      cmd.Flags().Lookup(useIngressFlag).Value.String() == "true",
-				versionConsole:  cmd.Flags().Lookup(versionConsoleFlag).Value.String(),
 				templates:       cmd.Flags().Lookup(templatesFlag).Value.String() == "true",
 				versionPlatform: cmd.Flags().Lookup(versionPlatformFlag).Value.String(),
 				versioniPaaS:    cmd.Flags().Lookup(versioniPaaSFlag).Value.String(),
-				versionDevOps:   cmd.Flags().Lookup(versionDevOpsFlag).Value.String(),
-				versionKubeflix: cmd.Flags().Lookup(versionKubeflixFlag).Value.String(),
-				versionZipkin:   cmd.Flags().Lookup(versionZipkinFlag).Value.String(),
 				useLoadbalancer: cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true",
 				pv:              cmd.Flags().Lookup(pvFlag).Value.String() == "true",
 				yes:             cmd.Flags().Lookup(yesFlag).Value.String() == "false",
+				openConsole:     cmd.Flags().Lookup(openConsoleFlag).Value.String() == "true",
 			}
 			deploy(f, d)
 		},
@@ -213,9 +174,6 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(archFlag, goruntime.GOARCH, "CPU architecture for referencing Docker images with this as a name suffix")
 	cmd.PersistentFlags().String(versionPlatformFlag, "latest", "The version to use for the Fabric8 Platform packages")
 	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
-	cmd.PersistentFlags().String(versionDevOpsFlag, "latest", "The version to use for the Fabric8 DevOps templates")
-	cmd.PersistentFlags().String(versionKubeflixFlag, "latest", "The version to use for the Kubeflix templates")
-	cmd.PersistentFlags().String(versionZipkinFlag, "latest", "The version to use for the Zipkin templates")
 	cmd.PersistentFlags().String(mavenRepoFlag, mavenRepoDefault, "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().String(runFlag, cdPipeline, "The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
@@ -225,7 +183,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
-
+	cmd.PersistentFlags().Bool(openConsoleFlag, true, "Should we wait an open the console?")
 	return cmd
 }
 
@@ -234,17 +192,14 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 	d := DefaultFabric8Deployment{}
 	d.domain = defaultDomain()
 	d.arch = goruntime.GOARCH
-	d.versionConsole = latest
 	d.versioniPaaS = latest
-	d.versionDevOps = latest
-	d.versionKubeflix = latest
-	d.versionZipkin = latest
 	d.versionPlatform = latest
 	d.mavenRepo = mavenRepoDefault
 	d.pv = false
 	d.templates = true
 	d.deployConsole = true
 	d.useLoadbalancer = false
+	d.openConsole = false
 	d.packageName = platformPackage
 	return d
 }
@@ -268,11 +223,15 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 	domain := d.domain
 	dockerRegistry := d.dockerRegistry
-	arch := d.arch
 
 	mini, err := util.IsMini()
 	if err != nil {
 		util.Failuref("error checking if minikube or minishift %v", err)
+	}
+
+	packageName := d.packageName
+	if len(packageName) == 0 {
+		util.Fatalf("Missing value for --%s", packageFlag)
 	}
 
 	typeOfMaster := util.TypeOfMaster(c)
@@ -338,331 +297,141 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		ensureNamespaceExists(c, oc, ns)
 
-		packageName := d.packageName
-		if len(packageName) > 0 {
-			versionPlatform := ""
-			baseUri := ""
-			switch packageName {
-			case "":
-			case platformPackage:
-				baseUri = platformPackageUrlPrefix
-				versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, platformMetadataUrl))
-			case consolePackage:
-				baseUri = consolePackageUrlPrefix
-				versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, consolePackageMetadataUrl))
-			case iPaaSPackage:
-				baseUri = ipaasPackageUrlPrefix
-				versionPlatform = versionForUrl(d.versioniPaaS, urlJoin(mavenRepo, ipaasMetadataUrl))
-			default:
-				baseUri = ""
-			}
-			uri := ""
-			if len(baseUri) > 0 {
-				uri = fmt.Sprintf(urlJoin(mavenRepo, baseUri), versionPlatform)
-
-			} else {
-				// lets assume the package is a file or a uri already
-				if strings.Contains(packageName, "://") {
-					uri = packageName
-				} else {
-					d, err := os.Stat(packageName)
-					if err != nil {
-						util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
-					}
-					if m := d.Mode(); m.IsDir() {
-						util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
-					}
-					absFile, err := filepath.Abs(packageName)
-					if err != nil {
-						util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
-					}
-					uri = "file://" + absFile
-				}
-			}
-
-			if typeOfMaster == util.Kubernetes {
-				if !strings.HasPrefix(uri, "file://") {
-					uri += "kubernetes.yml"
-				}
-			} else {
-				if !strings.HasPrefix(uri, "file://") {
-					uri += "openshift.yml"
-				}
-
-				r, err := verifyRestrictedSecurityContextConstraints(c, f)
-				printResult("SecurityContextConstraints restricted", r, err)
-				r, err = deployFabric8SecurityContextConstraints(c, f, ns)
-				printResult("SecurityContextConstraints fabric8", r, err)
-				r, err = deployFabric8SASSecurityContextConstraints(c, f, ns)
-				printResult("SecurityContextConstraints "+Fabric8SASSCC, r, err)
-
-				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
-
-				// TODO replace all of this with the necessary RoleBindings inside the OpenShift YAML...
-				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
-
-				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":configmapcontroller")
-				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":exposecontroller")
-
-				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
-				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
-
-				printAddClusterRoleToGroup(oc, f, "cluster-reader", "system:serviceaccounts")
-
-				printAddServiceAccount(c, f, "fluentd")
-				printAddServiceAccount(c, f, "registry")
-				printAddServiceAccount(c, f, "router")
-			}
-
-			// now lets apply this template
-			util.Infof("Now about to install package %s\n", uri)
-
-			yamlData := []byte{}
-			format := "yaml"
-
-			if strings.HasPrefix(uri, "file://") {
-				fileName := strings.TrimPrefix(uri, "file://")
-				if strings.HasSuffix(fileName, ".json") {
-					format = "json"
-				}
-				yamlData, err = ioutil.ReadFile(fileName)
-				if err != nil {
-					util.Fatalf("Cannot load file %s got: %v", fileName, err)
-				}
-			} else {
-				resp, err := http.Get(uri)
-				if err != nil {
-					util.Fatalf("Cannot load YAML package at %s got: %v", uri, err)
-				}
-				defer resp.Body.Close()
-				yamlData, err = ioutil.ReadAll(resp.Body)
-				if err != nil {
-					util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
-				}
-			}
-			createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv)
-
-			externalNodeName := ""
-			if typeOfMaster == util.Kubernetes {
-				if !mini && d.useIngress {
-					ensureNamespaceExists(c, oc, fabric8SystemNamespace)
-					util.Infof("ns is %s\n", ns)
-					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv)
-					externalNodeName = addIngressInfraLabel(c, ns)
-				}
-			}
-
-			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
-
-			mini, _ := util.IsMini()
-			if mini {
-				createMissingPVs(c, ns)
-			}
-
-			printSummary(typeOfMaster, externalNodeName, ns, domain, c)
-		} else {
-			consoleVersion := f8ConsoleVersion(mavenRepo, d.versionConsole, typeOfMaster)
-			versionDevOps := versionForUrl(d.versionDevOps, urlJoin(mavenRepo, devOpsMetadataUrl))
-			versionKubeflix := versionForUrl(d.versionKubeflix, urlJoin(mavenRepo, kubeflixMetadataUrl))
-			versionZipkin := versionForUrl(d.versionZipkin, urlJoin(mavenRepo, zipkinMetadataUrl))
-			versioniPaaS := versionForUrl(d.versioniPaaS, urlJoin(mavenRepo, iPaaSMetadataUrl))
-
-			util.Warnf("\nStarting fabric8 console deployment using %s...\n\n", consoleVersion)
-
-			if typeOfMaster == util.Kubernetes {
-				uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleKubernetesUrl), consoleVersion)
-				if fabric8ImageAdaptionNeeded(dockerRegistry, arch) {
-					jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry, arch)
-					if err == nil {
-						tmpFileName := path.Join(os.TempDir(), "fabric8-console.json")
-						t, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
-						if err != nil {
-							util.Fatalf("Cannot open the converted fabric8 console template file: %v", err)
-						}
-						defer t.Close()
-
-						_, err = io.Copy(t, bytes.NewReader(jsonData))
-						if err != nil {
-							util.Fatalf("Cannot write the converted fabric8 console template file: %v", err)
-						}
-						uri = tmpFileName
-					}
-				}
-				filenames := []string{uri}
-
-				if d.deployConsole {
-					createCmd := &cobra.Command{}
-					cmdutil.AddValidateFlags(createCmd)
-					cmdutil.AddOutputFlagsForMutation(createCmd)
-					cmdutil.AddApplyAnnotationFlags(createCmd)
-					cmdutil.AddRecordFlag(createCmd)
-					err := kcmd.RunCreate(f, createCmd, ioutil.Discard, &kcmd.CreateOptions{Filenames: filenames})
-					if err != nil {
-						printResult("fabric8 console", Failure, err)
-					} else {
-						printResult("fabric8 console", Success, nil)
-					}
-				}
-				printAddServiceAccount(c, f, "fluentd")
-				printAddServiceAccount(c, f, "registry")
-			} else {
-				r, err := verifyRestrictedSecurityContextConstraints(c, f)
-				printResult("SecurityContextConstraints restricted", r, err)
-				r, err = deployFabric8SecurityContextConstraints(c, f, ns)
-				printResult("SecurityContextConstraints fabric8", r, err)
-				r, err = deployFabric8SASSecurityContextConstraints(c, f, ns)
-				printResult("SecurityContextConstraints "+Fabric8SASSCC, r, err)
-
-				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
-				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
-				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":exposecontroller")
-				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
-				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
-
-				printAddClusterRoleToGroup(oc, f, "cluster-reader", "system:serviceaccounts")
-
-				printAddServiceAccount(c, f, "fluentd")
-				printAddServiceAccount(c, f, "registry")
-				printAddServiceAccount(c, f, "router")
-
-				if d.templates {
-					if d.deployConsole {
-						uri := fmt.Sprintf(urlJoin(mavenRepo, baseConsoleUrl), consoleVersion)
-						format := "json"
-						jsonData, err := loadJsonDataAndAdaptFabric8Images(uri, dockerRegistry, arch)
-						if err != nil {
-							printError("failed to apply docker registry prefix", err)
-						}
-
-						// lets delete the OAuthClient first as the domain may have changed
-						oc.OAuthClients().Delete("fabric8")
-						createTemplate(jsonData, format, "fabric8 console", ns, domain, apiserver, c, oc, d.pv)
-
-						oac, err := oc.OAuthClients().Get("fabric8")
-						if err != nil {
-							printError("failed to get the OAuthClient called fabric8", err)
-						}
-
-						// lets add the nodePort URL to the OAuthClient
-						service, err := c.Services(ns).Get("fabric8")
-						if err != nil {
-							printError("failed to get the Service called fabric8", err)
-						}
-						port := 0
-						for _, p := range service.Spec.Ports {
-							port = int(p.NodePort)
-						}
-						if port == 0 {
-							util.Errorf("Failed to find nodePort on the Service called fabric8\n")
-						}
-						redirectURL := fmt.Sprintf("http://%s:%d", ip, port)
-						println("Adding OAuthClient redirectURL: " + redirectURL)
-						oac.RedirectURIs = append(oac.RedirectURIs, redirectURL)
-						oac.ResourceVersion = ""
-						oc.OAuthClients().Delete("fabric8")
-						_, err = oc.OAuthClients().Create(oac)
-						if err != nil {
-							printError("failed to create the OAuthClient called fabric8", err)
-						}
-
-					}
-				} else {
-					printError("Ignoring the deploy of the fabric8 console", nil)
-				}
-			}
-			if d.deployConsole {
-				println("Created fabric8 console")
-			}
-
-			if d.templates {
-				println("Installing templates!")
-				printError("Install DevOps templates", installTemplates(c, oc, f, versionDevOps, urlJoin(mavenRepo, devopsTemplatesDistroUrl), dockerRegistry, arch, domain))
-				printError("Install iPaaS templates", installTemplates(c, oc, f, versioniPaaS, urlJoin(mavenRepo, iPaaSTemplatesDistroUrl), dockerRegistry, arch, domain))
-				printError("Install Kubeflix templates", installTemplates(c, oc, f, versionKubeflix, urlJoin(mavenRepo, kubeflixTemplatesDistroUrl), dockerRegistry, arch, domain))
-				printError("Install Zipkin templates", installTemplates(c, oc, f, versionZipkin, urlJoin(mavenRepo, zipkinTemplatesDistroUrl), dockerRegistry, arch, domain))
-			} else {
-				printError("Ignoring the deploy of templates", nil)
-			}
-
-			runTemplate(c, oc, "exposecontroller", ns, domain, apiserver, d.pv)
-
-			externalNodeName := ""
-			if typeOfMaster == util.Kubernetes {
-				if !mini && d.useIngress {
-					ensureNamespaceExists(c, oc, fabric8SystemNamespace)
-					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv)
-					externalNodeName = addIngressInfraLabel(c, ns)
-				}
-			}
-
-			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
-
-			if len(d.appToRun) > 0 {
-				runTemplate(c, oc, d.appToRun, ns, domain, apiserver, d.pv)
-				createMissingPVs(c, ns)
-			}
-
-			// lets label the namespace/project as a developer team
-			nss := c.Namespaces()
-			namespace, err := nss.Get(ns)
-			if err != nil {
-				printError("Failed to load namespace", err)
-			} else {
-				changed := addLabelIfNotExist(&namespace.ObjectMeta, typeLabel, teamTypeLabelValue)
-				if len(domain) > 0 {
-					if addAnnotationIfNotExist(&namespace.ObjectMeta, domainAnnotation, domain) {
-						changed = true
-					}
-				}
-				if changed {
-					_, err = nss.Update(namespace)
-					if err != nil {
-						printError("Failed to label and annotate namespace", err)
-					}
-				}
-			}
-
-			// lets ensure that there is a `fabric8-environments` ConfigMap so that the current namespace
-			// shows up as a Team page in the console
-			cfgms := c.ConfigMaps(ns)
-			_, err = cfgms.Get(fabric8Environments)
-			if err != nil {
-				configMap := kapi.ConfigMap{
-					ObjectMeta: kapi.ObjectMeta{
-						Name: fabric8Environments,
-						Labels: map[string]string{
-							"provider": "fabric8",
-							"kind":     "environments",
-						},
-					},
-				}
-				_, err = cfgms.Create(&configMap)
-				if err != nil {
-					printError("Failed to create ConfigMap: "+fabric8Environments, err)
-				}
-			}
-
-			nodeClient := c.Nodes()
-			nodes, err := nodeClient.List(api.ListOptions{})
-			changed := false
-
-			for _, node := range nodes.Items {
-				// if running on a single node then we can use node ports to access kubernetes services
-				if len(nodes.Items) == 1 {
-					changed = addAnnotationIfNotExist(&node.ObjectMeta, externalIPLabel, ip)
-				}
-				changed = addAnnotationIfNotExist(&node.ObjectMeta, externalAPIServerAddressLabel, cfg.Host)
-				if changed {
-					_, err = nodeClient.Update(&node)
-					if err != nil {
-						printError("Failed to annotate node with ", err)
-					}
-				}
-			}
-			printSummary(typeOfMaster, externalNodeName, ns, domain, c)
+		versionPlatform := ""
+		baseUri := ""
+		switch packageName {
+		case "":
+		case platformPackage:
+			baseUri = platformPackageUrlPrefix
+			versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, platformMetadataUrl))
+			logPackageVersion(packageName, versionPlatform)
+		case consolePackage:
+			baseUri = consolePackageUrlPrefix
+			versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, consolePackageMetadataUrl))
+			logPackageVersion(packageName, versionPlatform)
+		case iPaaSPackage:
+			baseUri = ipaasPackageUrlPrefix
+			versionPlatform = versionForUrl(d.versioniPaaS, urlJoin(mavenRepo, ipaasMetadataUrl))
+			logPackageVersion(packageName, versionPlatform)
+		default:
+			baseUri = ""
 		}
-		openService(ns, "fabric8", c, false)
+		uri := ""
+		if len(baseUri) > 0 {
+			uri = fmt.Sprintf(urlJoin(mavenRepo, baseUri), versionPlatform)
+
+		} else {
+			// lets assume the package is a file or a uri already
+			if strings.Contains(packageName, "://") {
+				uri = packageName
+			} else {
+				d, err := os.Stat(packageName)
+				if err != nil {
+					util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
+				}
+				if m := d.Mode(); m.IsDir() {
+					util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
+				}
+				absFile, err := filepath.Abs(packageName)
+				if err != nil {
+					util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
+				}
+				uri = "file://" + absFile
+			}
+		}
+
+		if typeOfMaster == util.Kubernetes {
+			if !strings.HasPrefix(uri, "file://") {
+				uri += "kubernetes.yml"
+			}
+		} else {
+			if !strings.HasPrefix(uri, "file://") {
+				uri += "openshift.yml"
+			}
+
+			r, err := verifyRestrictedSecurityContextConstraints(c, f)
+			printResult("SecurityContextConstraints restricted", r, err)
+			r, err = deployFabric8SecurityContextConstraints(c, f, ns)
+			printResult("SecurityContextConstraints fabric8", r, err)
+			r, err = deployFabric8SASSecurityContextConstraints(c, f, ns)
+			printResult("SecurityContextConstraints "+Fabric8SASSCC, r, err)
+
+			printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
+
+			// TODO replace all of this with the necessary RoleBindings inside the OpenShift YAML...
+			printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
+
+			printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":configmapcontroller")
+			printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":exposecontroller")
+
+			printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
+			printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
+
+			printAddClusterRoleToGroup(oc, f, "cluster-reader", "system:serviceaccounts")
+
+			printAddServiceAccount(c, f, "fluentd")
+			printAddServiceAccount(c, f, "registry")
+			printAddServiceAccount(c, f, "router")
+		}
+
+		// now lets apply this template
+		util.Infof("Now about to install package %s\n", uri)
+
+		yamlData := []byte{}
+		format := "yaml"
+
+		if strings.HasPrefix(uri, "file://") {
+			fileName := strings.TrimPrefix(uri, "file://")
+			if strings.HasSuffix(fileName, ".json") {
+				format = "json"
+			}
+			yamlData, err = ioutil.ReadFile(fileName)
+			if err != nil {
+				util.Fatalf("Cannot load file %s got: %v", fileName, err)
+			}
+		} else {
+			resp, err := http.Get(uri)
+			if err != nil {
+				util.Fatalf("Cannot load YAML package at %s got: %v", uri, err)
+			}
+			defer resp.Body.Close()
+			yamlData, err = ioutil.ReadAll(resp.Body)
+			if err != nil {
+				util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
+			}
+		}
+		createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv)
+
+		externalNodeName := ""
+		if typeOfMaster == util.Kubernetes {
+			if !mini && d.useIngress {
+				ensureNamespaceExists(c, oc, fabric8SystemNamespace)
+				util.Infof("ns is %s\n", ns)
+				runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv)
+				externalNodeName = addIngressInfraLabel(c, ns)
+			}
+		}
+
+		updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
+
+		mini, _ := util.IsMini()
+		if mini {
+			createMissingPVs(c, ns)
+		}
+
+		printSummary(typeOfMaster, externalNodeName, ns, domain, c)
+		if d.openConsole {
+			openService(ns, "fabric8", c, false)
+		}
 	}
+}
+
+func logPackageVersion(packageName string, version string) {
+	util.Info("Deploying package: ")
+	util.Success(packageName)
+	util.Info(" version: ")
+	util.Success(version)
+	util.Info("\n\n")
 }
 
 func updateExposeControllerConfig(c *k8sclient.Client, ns string, apiserver string, domain string, mini bool, useLoadBalancer bool) {
@@ -1257,260 +1026,6 @@ func addLabelIfNotExist(metadata *api.ObjectMeta, name string, value string) boo
 	return false
 }
 
-func addAnnotationIfNotExist(metadata *api.ObjectMeta, name string, value string) bool {
-	if metadata.Annotations == nil {
-		metadata.Annotations = make(map[string]string)
-	}
-	annotations := metadata.Annotations
-	current := annotations[name]
-	if len(current) == 0 {
-		annotations[name] = value
-		return true
-	}
-	return false
-}
-
-func installTemplates(kc *k8sclient.Client, c *oclient.Client, fac *cmdutil.Factory, v string, templateUrl string, dockerRegistry string, arch string, domain string) error {
-	ns, _, err := fac.DefaultNamespace()
-	if err != nil {
-		util.Fatal("No default namespace")
-		return err
-	}
-	templates := c.Templates(ns)
-
-	uri := fmt.Sprintf(templateUrl, v)
-	util.Infof("Downloading apps from: %v\n", uri)
-	resp, err := http.Get(uri)
-	if err != nil {
-		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-	}
-	defer resp.Body.Close()
-
-	tmpFileName := path.Join(os.TempDir(), "fabric8-template-distros.tar.gz")
-	t, err := os.OpenFile(tmpFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
-	if err != nil {
-		return err
-	}
-	defer t.Close()
-
-	_, err = io.Copy(t, resp.Body)
-	if err != nil {
-		return err
-	}
-
-	r, err := zip.OpenReader(tmpFileName)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	typeOfMaster := util.TypeOfMaster(kc)
-
-	for _, f := range r.File {
-		mode := f.FileHeader.Mode()
-		if mode.IsDir() {
-			continue
-		}
-
-		rc, err := f.Open()
-		if err != nil {
-			return err
-		}
-		defer rc.Close()
-
-		jsonData, err := ioutil.ReadAll(rc)
-		if err != nil {
-			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-		}
-		jsonData, err = adaptFabric8ImagesInResourceDescriptor(jsonData, dockerRegistry, arch)
-		if err != nil {
-			util.Fatalf("Cannot append docker registry: %v", err)
-		}
-		jsonData = replaceDomain(jsonData, domain, ns, typeOfMaster)
-
-		var v1tmpl tapiv1.Template
-		lowerName := strings.ToLower(f.Name)
-
-		// if the folder starts with kubernetes/ or openshift/ then lets filter based on the cluster:
-		if strings.HasPrefix(lowerName, "kubernetes/") && typeOfMaster != util.Kubernetes {
-			//util.Info("Ignoring as on openshift!")
-			continue
-		}
-		if strings.HasPrefix(lowerName, "openshift/") && typeOfMaster == util.Kubernetes {
-			//util.Info("Ignoring as on kubernetes!")
-			continue
-		}
-		configMapKeySuffix := ".json"
-		if strings.HasSuffix(lowerName, ".yml") || strings.HasSuffix(lowerName, ".yaml") {
-			configMapKeySuffix = ".yml"
-			err = yaml.Unmarshal(jsonData, &v1tmpl)
-
-		} else if strings.HasSuffix(lowerName, ".json") {
-			err = json.Unmarshal(jsonData, &v1tmpl)
-		} else {
-			continue
-		}
-		if err != nil {
-			util.Fatalf("Cannot unmarshall the fabric8 template %s to deploy: %v", f.Name, err)
-		}
-		util.Infof("Loading template %s\n", f.Name)
-
-		var tmpl tapi.Template
-
-		err = api.Scheme.Convert(&v1tmpl, &tmpl, nil)
-		if err != nil {
-			util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-			return err
-		}
-
-		name := tmpl.ObjectMeta.Name
-		template := true
-		if len(name) <= 0 {
-			template = false
-			name = f.Name
-			idx := strings.LastIndex(name, "/")
-			if idx > 0 {
-				name = name[idx+1:]
-			}
-			idx = strings.Index(name, ".")
-			if idx > 0 {
-				name = name[0:idx]
-			}
-
-		}
-		if typeOfMaster == util.Kubernetes {
-			appName := name
-			name = "catalog-" + appName
-
-			// lets install ConfigMaps for the templates
-			// TODO should the name have a prefix?
-			configmap := api.ConfigMap{
-				ObjectMeta: api.ObjectMeta{
-					Name:      name,
-					Namespace: ns,
-					Labels: map[string]string{
-						"name":     appName,
-						"provider": "fabric8.io",
-						"kind":     "catalog",
-					},
-				},
-				Data: map[string]string{
-					name + configMapKeySuffix: string(jsonData),
-				},
-			}
-			configmaps := kc.ConfigMaps(ns)
-			_, err = configmaps.Get(name)
-			if err == nil {
-				err = configmaps.Delete(name)
-				if err != nil {
-					util.Errorf("Could not delete configmap %s due to: %v\n", name, err)
-				}
-			}
-			_, err = configmaps.Create(&configmap)
-			if err != nil {
-				util.Fatalf("Failed to create configmap %v", err)
-				return err
-			}
-		} else {
-			if !template {
-				templateName := name
-				var v1List v1.List
-				if configMapKeySuffix == ".json" {
-					err = json.Unmarshal(jsonData, &v1List)
-				} else {
-					err = yaml.Unmarshal(jsonData, &v1List)
-				}
-				if err != nil {
-					util.Fatalf("Cannot unmarshal List %s to deploy. error: %v\ntemplate: %s", templateName, err, string(jsonData))
-				}
-				if len(v1List.Items) == 0 {
-					// lets check if its an RC / ReplicaSet or something
-					_, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
-					if err != nil {
-						printResult(templateName, Failure, err)
-					} else {
-						kind := groupVersionKind.Kind
-						util.Infof("Processing resource of kind: %s version: %s\n", kind, groupVersionKind.Version)
-						if len(kind) <= 0 {
-							printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
-						} else {
-							util.Warnf("Cannot yet process kind %s, kind for %s\n", kind, templateName)
-							continue
-						}
-					}
-				} else {
-					var kubeList api.List
-					err = api.Scheme.Convert(&v1List, &kubeList, nil)
-					if err != nil {
-						util.Fatalf("Cannot convert %s List to deploy: %v", templateName, err)
-					}
-					tmpl = tapi.Template{
-						ObjectMeta: api.ObjectMeta{
-							Name:      name,
-							Namespace: ns,
-							Labels: map[string]string{
-								"name":     name,
-								"provider": "fabric8.io",
-							},
-						},
-						Objects: kubeList.Items,
-					}
-				}
-			}
-
-			// remove newlines from description to avoid breaking `oc get template`
-			description := tmpl.ObjectMeta.Annotations["description"]
-			if len(description) > 0 {
-				tmpl.ObjectMeta.Annotations["description"] = strings.Replace(description, "\n", " ", -1)
-			}
-
-			// lets install the OpenShift templates
-			_, err = templates.Get(name)
-			if err == nil {
-				err = templates.Delete(name)
-				if err != nil {
-					util.Errorf("Could not delete template %s due to: %v\n", name, err)
-				}
-			}
-			_, err = templates.Create(&tmpl)
-			if err != nil {
-				util.Warnf("Failed to create template %v", err)
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func replaceDomain(jsonData []byte, domain string, ns string, typeOfMaster util.MasterType) []byte {
-	if len(domain) <= 0 {
-		return jsonData
-	}
-	text := string(jsonData)
-	if typeOfMaster == util.Kubernetes {
-		text = strings.Replace(text, "gogs.vagrant.f8", "gogs-"+ns+"."+domain, -1)
-	}
-	text = strings.Replace(text, "vagrant.f8", domain, -1)
-	return []byte(text)
-}
-
-func loadJsonDataAndAdaptFabric8Images(uri string, dockerRegistry string, arch string) ([]byte, error) {
-	resp, err := http.Get(uri)
-	if err != nil {
-		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-	}
-	defer resp.Body.Close()
-	jsonData, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		util.Fatalf("Cannot get fabric8 template to deploy: %v", err)
-	}
-	jsonData, err = adaptFabric8ImagesInResourceDescriptor(jsonData, dockerRegistry, arch)
-	if err != nil {
-		util.Fatalf("Cannot append docker registry: %v", err)
-	}
-	return jsonData, nil
-}
-
 // Check whether mangling of source descriptors is needed
 func fabric8ImageAdaptionNeeded(dockerRegistry string, arch string) bool {
 	return len(dockerRegistry) > 0 || arch == "arm"
@@ -1754,14 +1269,6 @@ func addClusterRoleToGroup(c *oclient.Client, f *cmdutil.Factory, roleName strin
 
 func urlJoin(repo string, path string) string {
 	return repo + path
-}
-
-func f8ConsoleVersion(mavenRepo string, v string, typeOfMaster util.MasterType) string {
-	metadataUrl := urlJoin(mavenRepo, consoleMetadataUrl)
-	if typeOfMaster == util.Kubernetes {
-		metadataUrl = urlJoin(mavenRepo, consoleKubernetesMetadataUrl)
-	}
-	return versionForUrl(v, metadataUrl)
 }
 
 func versionForUrl(v string, metadataUrl string) string {

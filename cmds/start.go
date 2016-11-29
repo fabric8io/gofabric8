@@ -25,10 +25,12 @@ import (
 
 	"path/filepath"
 
+	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/kardianos/osext"
 	"github.com/spf13/cobra"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
+	k8client "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -85,6 +87,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				util.Fatalf("Unable to get status %v", err)
 			}
 
+			doWait := false
 			if err == nil && strings.Contains(string(out), "Running") {
 				// already running
 				util.Successf("%s already running\n", kubeBinary)
@@ -145,6 +148,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				if err != nil {
 					util.Errorf("Unable to start %v", err)
 				}
+				doWait = true
 			}
 
 			if isOpenshift {
@@ -160,15 +164,45 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			}
 
 			// now check that fabric8 is running, if not deploy it
-			c, err := keepTryingToGetClient(f)
+			c, _, err := keepTryingToGetClient(f)
 			if err != nil {
 				util.Fatalf("Unable to connect to %s %v", kubeBinary, err)
 			}
 
-			// deploy fabric8 if its not already running
+			// lets create a connection using the traditional way just to be sure
+			c, cfg := client.NewClient(f)
 			ns, _, _ := f.DefaultNamespace()
+
+			// deploy fabric8 if its not already running
 			_, err = c.Services(ns).Get("fabric8")
 			if err != nil {
+				// TODO for some reason this doesn't work!
+				// lets disable for now
+				doWait = false
+				if doWait {
+					sleepMillis := 1 * time.Second
+
+					typeOfMaster := util.TypeOfMaster(c)
+					if typeOfMaster == util.OpenShift {
+						// lets wait a little bit for the docker-registry DC to start up
+						time.Sleep(20 * time.Second)
+
+						oc, _ := client.NewOpenShiftClient(cfg)
+
+						util.Infof("waiting for all DeploymentConfigs to start in namespace %s\n", ns)
+						waitForDeploymentConfigs(oc, ns, true, []string{}, sleepMillis)
+
+						// TODO no idea why the above doesn't find "docker-registry" so lets explicitly add it
+						util.Infof("waiting for docker-registry to start in namespace %s\n", ns)
+						waitForDeploymentConfig(oc, ns, "docker-registry", sleepMillis)
+
+						util.Info("DeploymentConfigs all started so we can deploy fabric8\n")
+
+					} else {
+						util.Infof("waiting for all Deployments to start in namespace %s\n", ns)
+						waitForDeployments(c, ns, true, []string{}, sleepMillis)
+					}
+				}
 
 				// deploy fabric8
 				d := GetDefaultFabric8Deployment()
@@ -185,13 +219,8 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 				d.pv = cmd.Flags().Lookup(pvFlag).Value.String() == "true"
 				d.useIngress = cmd.Flags().Lookup(useIngressFlag).Value.String() == "true"
 				d.useLoadbalancer = cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true"
+				d.openConsole = cmd.Flags().Lookup(openConsoleFlag).Value.String() == "true"
 				deploy(f, d)
-
-			} else {
-				flag := cmd.Flags().Lookup(openConsoleFlag)
-				if flag != nil && flag.Value.String() == "true" {
-					openService(ns, "fabric8", c, false)
-				}
 			}
 		},
 	}
@@ -200,7 +229,7 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().BoolP(ipaas, "", false, "start the fabric8 iPaaS")
 	cmd.PersistentFlags().StringP(memory, "", "6144", "amount of RAM allocated to the VM")
 	cmd.PersistentFlags().StringP(vmDriver, "", "", "the VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
-	cmd.PersistentFlags().StringP(diskSize, "", "20g", "the size of the disk allocated to the VM")
+	cmd.PersistentFlags().StringP(diskSize, "", "50g", "the size of the disk allocated to the VM")
 	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
 	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
 	cmd.PersistentFlags().String(versionPlatformFlag, "latest", "The version to use for the Fabric8 Platform packages")
@@ -262,7 +291,7 @@ func fileNotExist(path string) bool {
 	return findExecutable(path) != nil
 }
 
-func keepTryingToGetClient(f *cmdutil.Factory) (*client.Client, error) {
+func keepTryingToGetClient(f *cmdutil.Factory) (*k8client.Client, *restclient.Config, error) {
 	timeout := time.After(2 * time.Minute)
 	tick := time.Tick(1 * time.Second)
 	// Keep trying until we're timed out or got a result or got an error
@@ -270,13 +299,13 @@ func keepTryingToGetClient(f *cmdutil.Factory) (*client.Client, error) {
 		select {
 		// Got a timeout! fail with a timeout error
 		case <-timeout:
-			return nil, errors.New("timed out")
+			return nil, nil, errors.New("timed out")
 		// Got a tick, try and get teh client
 		case <-tick:
-			c, _ := getClient(f)
+			c, cfg, _ := getClient(f)
 			// return if we have a client
 			if c != nil {
-				return c, nil
+				return c, cfg, nil
 			}
 			util.Info("Cannot connect to api server, retrying...\n")
 			// retry
@@ -284,15 +313,15 @@ func keepTryingToGetClient(f *cmdutil.Factory) (*client.Client, error) {
 	}
 }
 
-func getClient(f *cmdutil.Factory) (*client.Client, error) {
+func getClient(f *cmdutil.Factory) (*k8client.Client, *restclient.Config, error) {
 	var err error
 	cfg, err := f.ClientConfig()
 	if err != nil {
-		return nil, err
+		return nil, cfg, err
 	}
-	c, err := client.New(cfg)
+	c, err := k8client.New(cfg)
 	if err != nil {
-		return nil, err
+		return nil, cfg, err
 	}
-	return c, nil
+	return c, cfg, nil
 }
