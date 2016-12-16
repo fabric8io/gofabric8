@@ -42,6 +42,10 @@ const (
 	docker                   = "docker"
 	dockerMachine            = "docker-machine"
 	dockerMachineDownloadURL = "https://github.com/docker/machine/releases/download/"
+	githubURL                = "https://github.com/"
+	fabric8io                = "fabric8io"
+	funktion                 = "funktion"
+	funktionOperator         = "funktion-operator"
 	minishiftFlag            = "minishift"
 	minishiftOwner           = "jimmidyson"
 	minishift                = "minishift"
@@ -50,7 +54,7 @@ const (
 	kubectl                  = "kubectl"
 	kubernetes               = "kubernetes"
 	oc                       = "oc"
-	kubeDownloadURL          = "https://storage.googleapis.com/"
+	ghDownloadURL            = "https://storage.googleapis.com/"
 	ocTools                  = "openshift-origin-client-tools"
 )
 
@@ -116,6 +120,10 @@ func install(isMinishift bool) {
 		}
 	}
 
+	err = downloadFunktion()
+	if err != nil {
+		util.Warnf("Unable to download funktion operator %v\n", err)
+	}
 }
 func downloadDriver() (err error) {
 	if runtime.GOOS == "darwin" {
@@ -307,6 +315,38 @@ func downloadOpenShiftClient() (err error) {
 	return nil
 }
 
+func downloadFunktion() (err error) {
+	os := runtime.GOOS
+	arch := runtime.GOARCH
+
+	_, err = exec.LookPath(funktion)
+	if err != nil {
+		latestVersion, err := getLatestVersionFromGitHub(fabric8io, funktionOperator)
+		if err != nil {
+			util.Errorf("Unable to get latest version for %s/%s %v", fabric8io, funktionOperator, err)
+			return err
+		}
+
+		funktionURL := fmt.Sprintf(githubURL+fabric8io+"/"+funktionOperator+"/releases/download/v%s/%s-%s-%s", latestVersion, funktionOperator, os, arch)
+		if runtime.GOOS == "windows" {
+			funktionURL += ".exe"
+		}
+		util.Infof("Downloading %s...\n", funktionURL)
+
+		fullPath := filepath.Join(getFabric8BinLocation(), funktion)
+		err = downloadFile(fullPath, funktionURL)
+		if err != nil {
+			util.Errorf("Unable to download file %s/%s %v", fullPath, funktionURL, err)
+			return err
+		}
+		util.Successf("Downloaded %s\n", fullPath)
+	} else {
+		util.Successf("%s is already available on your PATH\n", funktion)
+	}
+
+	return nil
+}
+
 // download here until install and download binaries are supported in minishift
 func downloadFile(filepath string, url string) (err error) {
 
@@ -425,7 +465,7 @@ func getDownloadProperties(isMinishift bool) downloadProperties {
 	} else {
 		d.clientBinary = kubectl
 		d.kubeBinary = minikube
-		d.downloadURL = kubeDownloadURL
+		d.downloadURL = ghDownloadURL
 		d.kubeDistroOrg = kubernetes
 		d.kubeDistroRepo = minikube
 		d.isMiniShift = false
