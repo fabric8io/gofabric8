@@ -789,7 +789,7 @@ func processData(jsonData []byte, format string, templateName string, ns string,
 			}
 			err = processResource(c, jsonData, ns, kind)
 			if err != nil {
-				printResult(templateName, Failure, err)
+				util.Warnf("Failed to create %s: %v\n", kind, err)
 			}
 		}
 	}
@@ -1001,7 +1001,6 @@ func processResource(c *k8sclient.Client, b []byte, ns string, kind string) erro
 	if res.Error() != nil {
 		err := res.Error()
 		if err != nil {
-			util.Warnf("Failed to create %s: %v", kind, err)
 			return err
 		}
 	}
