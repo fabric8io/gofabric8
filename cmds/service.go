@@ -70,7 +70,7 @@ func NewCmdService(f *cmdutil.Factory) *cobra.Command {
 
 func openService(ns string, serviceName string, c *k8sclient.Client, printURL bool, retry bool) {
 	if retry {
-		if err := RetryAfter(40, func() error { return CheckService(ns, serviceName, c) }, 10*time.Second); err != nil {
+		if err := RetryAfter(1200, func() error { return CheckService(ns, serviceName, c) }, 10*time.Second); err != nil {
 			util.Errorf("Could not find finalized endpoint being pointed to by %s: %v", serviceName, err)
 			os.Exit(1)
 		}
