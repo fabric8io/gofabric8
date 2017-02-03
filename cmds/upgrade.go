@@ -33,8 +33,8 @@ import (
 )
 
 const (
-	metadataUrlKey      = "metadataUrl"
-	packageUrlPrefixKey = "packageUrlPrefix"
+	metadataUrlKey      = "metadata-url"
+	packageUrlPrefixKey = "package-url-prefix"
 	versionFlag         = "version"
 
 	mavenPrefix = "http://central.maven.org/maven2/"
