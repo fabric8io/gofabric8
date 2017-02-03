@@ -1061,8 +1061,8 @@ func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind
 				}
 
 				// now lets copy across any missing annotations / labels / data values
-				old.Labels = mergeStringMaps(old.Labels, new.Labels)
-				old.Annotations = mergeStringMaps(old.Annotations, new.Annotations)
+				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
+				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
 				oldClusterIP := old.Spec.ClusterIP
 				old.Spec = new.Spec
 				old.Spec.ClusterIP = oldClusterIP
@@ -1085,8 +1085,8 @@ func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind
 
 				// now lets copy across any missing annotations / labels / data values
 				old.Data = mergeStringMaps(old.Data, new.Data)
-				old.Labels = mergeStringMaps(old.Labels, new.Labels)
-				old.Annotations = mergeStringMaps(old.Annotations, new.Annotations)
+				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
+				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
 				_, err = c.ConfigMaps(ns).Update(&old)
 				if err != nil {
 					return fmt.Errorf("Failed to update ConfigMap %s. Error %v", name, err)
@@ -1106,8 +1106,8 @@ func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind
 
 				// now lets copy across any missing annotations / labels / data values
 				old.Data = mergeByteMaps(old.Data, new.Data)
-				old.Labels = mergeStringMaps(old.Labels, new.Labels)
-				old.Annotations = mergeStringMaps(old.Annotations, new.Annotations)
+				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
+				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
 				_, err = c.Secrets(ns).Update(&old)
 				if err != nil {
 					return fmt.Errorf("Failed to update Secret %s. Error %v", name, err)
@@ -1138,6 +1138,21 @@ func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind
 		return fmt.Errorf("Failed to create %s: %d %v", kind, statusCode, err)
 	}
 	return nil
+}
+
+// overwriteStringMaps overrides all values ignoring whatever values are in the original map
+func overwriteStringMaps(result map[string]string, overrides map[string]string) map[string]string {
+	if result == nil {
+		if overrides == nil {
+			return map[string]string{}
+		} else {
+			return overrides
+		}
+	}
+	for k, v := range overrides {
+		result[k] = v
+	}
+	return result
 }
 
 // mergeStringMaps merges the overrides onto the result returning the new map with the results
