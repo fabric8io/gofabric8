@@ -187,7 +187,7 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 			if err != nil {
 				util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
 			}
-			createTemplate(yamlData, format, name, ns, domain, apiserver, c, ocl, pv)
+			createTemplate(yamlData, format, name, ns, domain, apiserver, c, ocl, pv, false)
 
 		} else {
 			util.Info("package ")

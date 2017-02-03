@@ -43,6 +43,7 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 			domain := cmd.Flags().Lookup(domainFlag).Value.String()
 			apiserver := cmd.Flags().Lookup(apiServerFlag).Value.String()
 			pv := cmd.Flags().Lookup(pvFlag).Value.String() == "true"
+			create := cmd.Flags().Lookup(updateFlag).Value.String() != "true"
 
 			typeOfMaster := util.TypeOfMaster(c)
 
@@ -68,7 +69,7 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 				initSchema()
 
 				for _, app := range args {
-					runTemplate(c, oc, app, ns, domain, apiserver, pv)
+					runTemplate(c, oc, app, ns, domain, apiserver, pv, create)
 				}
 			}
 		},
@@ -76,5 +77,6 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")
 	cmd.PersistentFlags().Bool(pvFlag, true, "Enable the use of persistence (enabling the PersistentVolumeClaims)?")
+	cmd.PersistentFlags().Bool(updateFlag, false, "Enable update mode which updates any existing resources?")
 	return cmd
 }
