@@ -58,6 +58,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -86,6 +87,7 @@ const (
 	dockerRegistryFlag  = "docker-registry"
 	archFlag            = "arch"
 	pvFlag              = "pv"
+	updateFlag          = "update"
 	packageFlag         = "package"
 
 	platformPackage = "platform"
@@ -116,6 +118,11 @@ const (
 
 	fabric8SystemNamespace = "fabric8-system"
 )
+
+type Metadata struct {
+	Release  string   `xml:"versioning>release"`
+	Versions []string `xml:"versioning>versions>version"`
+}
 
 // Fabric8Deployment structure to work with the fabric8 deploy command
 type DefaultFabric8Deployment struct {
@@ -400,14 +407,14 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
 			}
 		}
-		createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv)
+		createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv, true)
 
 		externalNodeName := ""
 		if typeOfMaster == util.Kubernetes {
 			if !mini && d.useIngress {
 				ensureNamespaceExists(c, oc, fabric8SystemNamespace)
 				util.Infof("ns is %s\n", ns)
-				runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv)
+				runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv, true)
 				externalNodeName = addIngressInfraLabel(c, ns)
 			}
 		}
@@ -587,7 +594,7 @@ func hasExistingLabel(nodes *api.NodeList, label string) (bool, string) {
 	return false, ""
 }
 
-func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, pv bool) {
+func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, pv bool, create bool) {
 	util.Info("\n\nInstalling: ")
 	util.Successf("%s\n\n", appToRun)
 	typeOfMaster := util.TypeOfMaster(c)
@@ -596,7 +603,7 @@ func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns st
 		if err != nil {
 			printError("Failed to load app "+appToRun, err)
 		}
-		createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc, pv)
+		createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc, pv, true)
 	} else {
 		tmpl, err := oc.Templates(ns).Get(appToRun)
 		if err != nil {
@@ -609,7 +616,7 @@ func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns st
 
 		util.Infof("Creating "+appToRun+" template resources from %d objects\n", objectCount)
 		for _, o := range tmpl.Objects {
-			err = processItem(c, oc, &o, ns, pv)
+			err = processItem(c, oc, &o, ns, pv, create)
 		}
 	}
 }
@@ -643,7 +650,7 @@ func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *o
 	return nil, "", nil
 }
 
-func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client, pv bool) {
+func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client, pv bool, create bool) {
 	var v1tmpl tapiv1.Template
 	var err error
 	if format == "yaml" {
@@ -665,6 +672,8 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 
 	objectCount := len(tmpl.Objects)
 
+	linker := runtime.SelfLinker(meta.NewAccessor())
+
 	if objectCount == 0 {
 		// can't be a template so lets try just process it directly
 		var v1List v1.List
@@ -677,7 +686,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 			util.Fatalf("Cannot unmarshal List %s. error: %v\ntemplate: %s", templateName, err, string(jsonData))
 		}
 		if len(v1List.Items) == 0 {
-			processData(jsonData, format, templateName, ns, c, oc, pv)
+			processData(jsonData, format, templateName, ns, c, oc, pv, create)
 		} else {
 			for _, i := range v1List.Items {
 				data := i.Raw
@@ -686,8 +695,13 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 					continue
 				}
 				kind := ""
+				name := ""
 				o := i.Object
 				if o != nil {
+					name, err = linker.Name(o)
+					if err != nil {
+						util.Warnf("Could not find resource name for %s\n", templateName)
+					}
 					objectKind := o.GetObjectKind()
 					if objectKind != nil {
 						groupVersionKind := objectKind.GroupVersionKind()
@@ -695,10 +709,10 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 					}
 				}
 				if len(kind) == 0 {
-					processData(data, format, templateName, ns, c, oc, pv)
+					processData(data, format, templateName, ns, c, oc, pv, create)
 				} else {
 					// TODO how to find the Namespace?
-					err = processResource(c, data, ns, kind)
+					err = processResource(c, data, ns, name, kind, create)
 					if err != nil {
 						util.Fatalf("Failed to process kind %s template: %s error: %v\n", kind, err, templateName)
 					}
@@ -712,7 +726,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	} else {
 		util.Infof("Creating "+templateName+" template resources in namespace %s from %d objects\n", ns, objectCount)
 		for _, o := range tmpl.Objects {
-			err = processItem(c, oc, &o, ns, pv)
+			err = processItem(c, oc, &o, ns, pv, create)
 		}
 	}
 	if err != nil {
@@ -720,6 +734,11 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 	} else {
 		printResult(templateName, Success, nil)
 	}
+}
+
+func getName(o runtime.Object) (string, error) {
+	linker := runtime.SelfLinker(meta.NewAccessor())
+	return linker.Name(o)
 }
 
 func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver string) {
@@ -759,38 +778,43 @@ func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver st
 	}
 }
 
-func processData(jsonData []byte, format string, templateName string, ns string, c *k8sclient.Client, oc *oclient.Client, pv bool) {
+func processData(jsonData []byte, format string, templateName string, ns string, c *k8sclient.Client, oc *oclient.Client, pv bool, create bool) {
 	// lets check if its an RC / ReplicaSet or something
 	o, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
 	if err != nil {
 		printResult(templateName, Failure, err)
+		return
+	}
+	name, err := getName(o)
+	if err != nil {
+		printResult(templateName, Failure, err)
+		return
+	}
+	kind := groupVersionKind.Kind
+	//util.Infof("Processing resource of kind: %s version: %s\n", kind, groupVersionKind.Version)
+	if len(kind) <= 0 {
+		printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
 	} else {
-		kind := groupVersionKind.Kind
-		//util.Infof("Processing resource of kind: %s version: %s\n", kind, groupVersionKind.Version)
-		if len(kind) <= 0 {
-			printResult(templateName, Failure, fmt.Errorf("Could not find kind from json %s", string(jsonData)))
-		} else {
-			accessor := meta.NewAccessor()
-			ons, err := accessor.Namespace(o)
-			if err == nil && len(ons) > 0 {
-				util.Infof("Found namespace on kind %s of %s", kind, ons)
-				ns = ons
+		accessor := meta.NewAccessor()
+		ons, err := accessor.Namespace(o)
+		if err == nil && len(ons) > 0 {
+			util.Infof("Found namespace on kind %s of %s", kind, ons)
+			ns = ons
 
-				err := ensureNamespaceExists(c, oc, ns)
-				if err != nil {
-					printErr(err)
-				}
-			}
-			if !pv {
-				if kind == "PersistentVolumeClaim" {
-					return
-				}
-				jsonData = removePVCVolumes(jsonData, format, templateName, kind)
-			}
-			err = processResource(c, jsonData, ns, kind)
+			err := ensureNamespaceExists(c, oc, ns)
 			if err != nil {
-				util.Warnf("Failed to create %s: %v\n", kind, err)
+				printErr(err)
 			}
+		}
+		if !pv {
+			if kind == "PersistentVolumeClaim" {
+				return
+			}
+			jsonData = removePVCVolumes(jsonData, format, templateName, kind)
+		}
+		err = processResource(c, jsonData, ns, name, kind, create)
+		if err != nil {
+			util.Warnf("Failed to create %s: %v\n", kind, err)
 		}
 	}
 }
@@ -870,7 +894,7 @@ func removePVCVolumes(jsonData []byte, format string, templateName string, kind 
 	return jsonData
 }
 
-func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, ns string, pv bool) error {
+func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, ns string, pv bool, create bool) error {
 	/*
 		groupVersionKind, err := api.Scheme.ObjectKind(*item)
 		if err != nil {
@@ -937,7 +961,13 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 			}
 			b = removePVCVolumes(b, "json", name, kind)
 		}
-		return processResource(c, b, ns, kind)
+		if len(name) == 0 {
+			name, err = getName(o)
+			if err != nil {
+				return err
+			}
+		}
+		return processResource(c, b, ns, name, kind, create)
 	default:
 		util.Infof("Unknown type %v\n", reflect.TypeOf(item))
 	}
@@ -983,31 +1013,42 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 	return nil
 }
 
-func processResource(c *k8sclient.Client, b []byte, ns string, kind string) error {
-	util.Infof("Processing resource kind: %s in namespace %s\n", kind, ns)
-	req := c.Post().Body(b)
-	if kind == "Deployment" {
-		req.AbsPath("apis", "extensions/v1beta1", "namespaces", ns, strings.ToLower(kind+"s"))
-	} else if kind == "BuildConfig" || kind == "DeploymentConfig" || kind == "Template" || kind == "PolicyBinding" || kind == "Role" || kind == "RoleBinding" {
-		req.AbsPath("oapi", "v1", "namespaces", ns, strings.ToLower(kind+"s"))
-	} else if kind == "OAuthClient" || kind == "Project" || kind == "ProjectRequest" {
-		req.AbsPath("oapi", "v1", strings.ToLower(kind+"s"))
-	} else if kind == "Namespace" {
-		req.AbsPath("api", "v1", "namespaces")
+func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind string, create bool) error {
+	util.Infof("Processing resource kind: %s in namespace %s name %s\n", kind, ns, name)
+	var req *restclient.Request
+	if create {
+		req = c.Post().Body(b)
+
 	} else {
-		req.Namespace(ns).Resource(strings.ToLower(kind + "s"))
+		req = c.Put().Body(b)
 	}
+	var paths []string
+	kinds := strings.ToLower(kind + "s")
+	if kind == "Deployment" {
+		paths = []string{"apis", "extensions/v1beta1", "namespaces", ns, kinds}
+	} else if kind == "BuildConfig" || kind == "DeploymentConfig" || kind == "Template" || kind == "PolicyBinding" || kind == "Role" || kind == "RoleBinding" {
+		paths = []string{"oapi", "v1", "namespaces", ns, kinds}
+	} else if kind == "OAuthClient" || kind == "Project" || kind == "ProjectRequest" {
+		paths = []string{"oapi", "v1", kinds}
+	} else if kind == "Namespace" {
+		paths = []string{"api", "v1", "namespaces"}
+
+	} else {
+		paths = []string{"api", "v1", "namespaces", ns, kinds}
+	}
+	if !create {
+		paths = append(paths, name)
+	}
+	req.AbsPath(paths...)
 	res := req.Do()
+	var err error = nil
 	if res.Error() != nil {
-		err := res.Error()
-		if err != nil {
-			return err
-		}
+		err = res.Error()
 	}
 	var statusCode int
 	res.StatusCode(&statusCode)
-	if statusCode != http.StatusCreated {
-		return fmt.Errorf("Failed to create %s: %d", kind, statusCode)
+	if statusCode < 200 || statusCode > 207 {
+		return fmt.Errorf("Failed to create %s: %d %v", kind, statusCode, err)
 	}
 	return nil
 }
@@ -1270,27 +1311,30 @@ func urlJoin(repo string, path string) string {
 	return repo + path
 }
 
-func versionForUrl(v string, metadataUrl string) string {
+func loadMetadata(metadataUrl string) (*Metadata, error) {
 	resp, err := http.Get(metadataUrl)
 	if err != nil {
-		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	// read xml http response
 	xmlData, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
-	}
-
-	type Metadata struct {
-		Release  string   `xml:"versioning>release"`
-		Versions []string `xml:"versioning>versions>version"`
+		return nil, err
 	}
 
 	var m Metadata
 	err = xml.Unmarshal(xmlData, &m)
 	if err != nil {
-		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
+		return nil, err
+	}
+	return &m, nil
+}
+
+func versionForUrl(v string, metadataUrl string) string {
+	m, err := loadMetadata(metadataUrl)
+	if err != nil {
+		util.Fatalf("Failed to get metadata: %v", err)
 	}
 
 	if v == "latest" {
