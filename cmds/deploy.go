@@ -117,6 +117,11 @@ const (
 	fabric8SystemNamespace = "fabric8-system"
 )
 
+type Metadata struct {
+	Release  string   `xml:"versioning>release"`
+	Versions []string `xml:"versioning>versions>version"`
+}
+
 // Fabric8Deployment structure to work with the fabric8 deploy command
 type DefaultFabric8Deployment struct {
 	domain          string
@@ -1270,27 +1275,30 @@ func urlJoin(repo string, path string) string {
 	return repo + path
 }
 
-func versionForUrl(v string, metadataUrl string) string {
+func loadMetadata(metadataUrl string) (*Metadata, error) {
 	resp, err := http.Get(metadataUrl)
 	if err != nil {
-		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	// read xml http response
 	xmlData, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
-	}
-
-	type Metadata struct {
-		Release  string   `xml:"versioning>release"`
-		Versions []string `xml:"versioning>versions>version"`
+		return nil, err
 	}
 
 	var m Metadata
 	err = xml.Unmarshal(xmlData, &m)
 	if err != nil {
-		util.Fatalf("Cannot get fabric8 version to deploy: %v", err)
+		return nil, err
+	}
+	return &m, nil
+}
+
+func versionForUrl(v string, metadataUrl string) string {
+	m, err := loadMetadata(metadataUrl)
+	if err != nil {
+		util.Fatalf("Failed to get metadata: %v", err)
 	}
 
 	if v == "latest" {
