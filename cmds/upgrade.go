@@ -106,6 +106,7 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 	}
 	cmd.PersistentFlags().Bool(allFlag, false, "If enabled then upgrade all packages")
 	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
+	cmd.PersistentFlags().Bool(updateFlag, false, "If the version ")
 	cmd.PersistentFlags().String(versionFlag, "latest", "The version to upgrade to")
 	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")

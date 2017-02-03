@@ -27,7 +27,7 @@ import (
 
 func NewCmdPackageVersions(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "package-version name",
+		Use:   "package-versions name",
 		Short: "Displays the versions available for a package",
 		Long:  `Displays the versions available for a package`,
 		Run: func(cmd *cobra.Command, args []string) {
