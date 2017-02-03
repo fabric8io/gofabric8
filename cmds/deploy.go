@@ -1015,13 +1015,6 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 
 func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind string, create bool) error {
 	util.Infof("Processing resource kind: %s in namespace %s name %s\n", kind, ns, name)
-	var req *restclient.Request
-	if create {
-		req = c.Post().Body(b)
-
-	} else {
-		req = c.Put().Body(b)
-	}
 	var paths []string
 	kinds := strings.ToLower(kind + "s")
 	if kind == "Deployment" {
@@ -1036,8 +1029,102 @@ func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind
 	} else {
 		paths = []string{"api", "v1", "namespaces", ns, kinds}
 	}
+
+	updatePaths := append(paths, name)
 	if !create {
-		paths = append(paths, name)
+		// lets check if the resource already exists
+		req2 := c.Get().AbsPath(updatePaths...)
+		res2 := req2.Do()
+		data, err := res2.Raw()
+		if err != nil {
+			util.Infof("Error looking up resource %s got %v\n", name, err)
+			create = true
+		} else {
+			var statusCode int
+			res2.StatusCode(&statusCode)
+			if statusCode < 200 || statusCode >= 300 {
+				util.Infof("Could not find resource, got status %d so creating rather than updating the resouce\n", statusCode)
+				create = true
+			} else if kind == "PersistentVolumeClaim" {
+				util.Infof("Ignoring the %s resource %s as one already exists\n", kind, name)
+				return nil
+			} else if kind == "Service" {
+				var old api.Service
+				var new api.Service
+				err = yaml.Unmarshal(data, &old)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal current Service %s. error: %v", name, err)
+				}
+				err = yaml.Unmarshal(b, &new)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal new Service %s. error: %v", name, err)
+				}
+
+				// now lets copy across any missing annotations / labels / data values
+				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
+				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
+				oldClusterIP := old.Spec.ClusterIP
+				old.Spec = new.Spec
+				old.Spec.ClusterIP = oldClusterIP
+				_, err = c.Services(ns).Update(&old)
+				if err != nil {
+					return fmt.Errorf("Failed to update Service %s. Error %v", name, err)
+				}
+				return nil
+			} else if kind == "ConfigMap" {
+				var old api.ConfigMap
+				var new api.ConfigMap
+				err = yaml.Unmarshal(data, &old)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal current ConfigMap %s. error: %v", name, err)
+				}
+				err = yaml.Unmarshal(b, &new)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal new ConfigMap %s. error: %v", name, err)
+				}
+
+				// now lets copy across any missing annotations / labels / data values
+				old.Data = mergeStringMaps(old.Data, new.Data)
+				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
+				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
+				_, err = c.ConfigMaps(ns).Update(&old)
+				if err != nil {
+					return fmt.Errorf("Failed to update ConfigMap %s. Error %v", name, err)
+				}
+				return nil
+			} else if kind == "Secret" {
+				var old api.Secret
+				var new api.Secret
+				err = yaml.Unmarshal(data, &old)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal current Secret %s. error: %v", name, err)
+				}
+				err = yaml.Unmarshal(b, &new)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal new Secret %s. error: %v", name, err)
+				}
+
+				// now lets copy across any missing annotations / labels / data values
+				old.Data = mergeByteMaps(old.Data, new.Data)
+				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
+				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
+				_, err = c.Secrets(ns).Update(&old)
+				if err != nil {
+					return fmt.Errorf("Failed to update Secret %s. Error %v", name, err)
+				}
+				return nil
+			}
+		}
+	}
+	if !create {
+		paths = updatePaths
+	}
+	var req *restclient.Request
+	if create {
+		req = c.Post().Body(b)
+
+	} else {
+		req = c.Put().Body(b)
 	}
 	req.AbsPath(paths...)
 	res := req.Do()
@@ -1051,6 +1138,55 @@ func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind
 		return fmt.Errorf("Failed to create %s: %d %v", kind, statusCode, err)
 	}
 	return nil
+}
+
+// overwriteStringMaps overrides all values ignoring whatever values are in the original map
+func overwriteStringMaps(result map[string]string, overrides map[string]string) map[string]string {
+	if result == nil {
+		if overrides == nil {
+			return map[string]string{}
+		} else {
+			return overrides
+		}
+	}
+	for k, v := range overrides {
+		result[k] = v
+	}
+	return result
+}
+
+// mergeStringMaps merges the overrides onto the result returning the new map with the results
+func mergeStringMaps(result map[string]string, overrides map[string]string) map[string]string {
+	if result == nil {
+		if overrides == nil {
+			return map[string]string{}
+		} else {
+			return overrides
+		}
+	}
+	for k, v := range overrides {
+		if len(result[k]) == 0 {
+			result[k] = v
+		}
+	}
+	return result
+}
+
+// mergeByteMaps merges the overrides onto the result returning the new map with the results
+func mergeByteMaps(result map[string][]byte, overrides map[string][]byte) map[string][]byte {
+	if result == nil {
+		if overrides == nil {
+			return map[string][]byte{}
+		} else {
+			return overrides
+		}
+	}
+	for k, v := range overrides {
+		if len(result[k]) == 0 {
+			result[k] = v
+		}
+	}
+	return result
 }
 
 func addLabelIfNotExist(metadata *api.ObjectMeta, name string, value string) bool {
@@ -1334,7 +1470,7 @@ func loadMetadata(metadataUrl string) (*Metadata, error) {
 func versionForUrl(v string, metadataUrl string) string {
 	m, err := loadMetadata(metadataUrl)
 	if err != nil {
-		util.Fatalf("Failed to get metadata: %v", err)
+		util.Fatalf("Failed to get metadata: %v on URL %s", err, metadataUrl)
 	}
 
 	if v == "latest" {
