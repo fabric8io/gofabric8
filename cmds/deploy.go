@@ -1470,7 +1470,7 @@ func loadMetadata(metadataUrl string) (*Metadata, error) {
 func versionForUrl(v string, metadataUrl string) string {
 	m, err := loadMetadata(metadataUrl)
 	if err != nil {
-		util.Fatalf("Failed to get metadata: %v", err)
+		util.Fatalf("Failed to get metadata: %v on URL %s", err, metadataUrl)
 	}
 
 	if v == "latest" {

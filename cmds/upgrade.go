@@ -36,6 +36,8 @@ const (
 	metadataUrlKey      = "metadataUrl"
 	packageUrlPrefixKey = "packageUrlPrefix"
 	versionFlag         = "version"
+
+	mavenPrefix = "http://central.maven.org/maven2/"
 )
 
 func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
@@ -126,6 +128,7 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 		return err
 	}
 
+	found := false
 	for _, p := range list.Items {
 		name := p.Name
 		include := all
@@ -150,6 +153,7 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 			util.Warnf("Invalid package %s it is missing the `%s` data\n", name, packageUrlPrefixKey)
 			continue
 		}
+		found = true
 
 		newVersion := versionForUrl(version, metadataUrl)
 
@@ -159,37 +163,7 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 			version = labels["version"]
 		}
 		if newVersion != version {
-			util.Info("Upgrading package ")
-			util.Success(name)
-			util.Info(" from version: ")
-			util.Success(version)
-			util.Info(" to version: ")
-			util.Success(newVersion)
-			util.Info("\n")
-
-			uri := fmt.Sprintf(packageUrlPrefix, newVersion)
-			typeOfMaster := util.TypeOfMaster(c)
-			if typeOfMaster == util.Kubernetes {
-				uri += "kubernetes.yml"
-			} else {
-				uri += "openshift.yml"
-			}
-
-			util.Infof("About to download package from %s\n", uri)
-			yamlData := []byte{}
-			format := "yaml"
-
-			resp, err := http.Get(uri)
-			if err != nil {
-				util.Fatalf("Cannot load YAML package at %s got: %v", uri, err)
-			}
-			defer resp.Body.Close()
-			yamlData, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
-			}
-			createTemplate(yamlData, format, name, ns, domain, apiserver, c, ocl, pv, false)
-
+			upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix)
 		} else {
 			util.Info("package ")
 			util.Success(name)
@@ -198,5 +172,62 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 			util.Info("\n")
 		}
 	}
+	if !found {
+		if all {
+			util.Infof("No packages found. Have you installed a recent fabric8 package yet?\nYou could try passing `fabric8-console` or `fabric8-platform` as a command line argument instead of the `--all` flag?\n")
+		} else {
+			for _, name := range args {
+				if name == platformPackage || name == "fabric8-platform" || name == "fabric8-platform-package" {
+					metadataUrl := urlJoin(mavenPrefix, platformMetadataUrl)
+					packageUrlPrefix := urlJoin(mavenPrefix, platformPackageUrlPrefix)
+					newVersion := versionForUrl(version, metadataUrl)
+					upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix)
+				} else if name == consolePackage || name == "fabric8-console" || name == "fabric8-console-package" {
+					metadataUrl := urlJoin(mavenPrefix, consolePackageMetadataUrl)
+					packageUrlPrefix := urlJoin(mavenPrefix, consolePackageUrlPrefix)
+					newVersion := versionForUrl(version, metadataUrl)
+					upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix)
+				} else if name == iPaaSPackage || name == "ipaas-platform" || name == "ipaas-platform-package" {
+					metadataUrl := urlJoin(mavenPrefix, ipaasMetadataUrl)
+					packageUrlPrefix := urlJoin(mavenPrefix, ipaasPackageUrlPrefix)
+					newVersion := versionForUrl(version, metadataUrl)
+					upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix)
+				} else {
+					util.Warnf("Unknown package name %s\n", name)
+				}
+			}
+		}
+	}
 	return nil
+}
+
+func upgradePackage(ns string, c *k8sclient.Client, ocl *oclient.Client, domain string, apiserver string, pv bool, name string, newVersion string, packageUrlPrefix string) {
+	util.Info("Upgrading package ")
+	util.Success(name)
+	util.Info(" to version: ")
+	util.Success(newVersion)
+	util.Info("\n")
+
+	uri := fmt.Sprintf(packageUrlPrefix, newVersion)
+	typeOfMaster := util.TypeOfMaster(c)
+	if typeOfMaster == util.Kubernetes {
+		uri += "kubernetes.yml"
+	} else {
+		uri += "openshift.yml"
+	}
+
+	util.Infof("About to download package from %s\n", uri)
+	yamlData := []byte{}
+	format := "yaml"
+
+	resp, err := http.Get(uri)
+	if err != nil {
+		util.Fatalf("Cannot load YAML package at %s got: %v", uri, err)
+	}
+	defer resp.Body.Close()
+	yamlData, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
+	}
+	createTemplate(yamlData, format, name, ns, domain, apiserver, c, ocl, pv, false)
 }
