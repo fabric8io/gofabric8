@@ -35,6 +35,7 @@ BUILDFLAGS := -ldflags \
 		-X $(ROOT_PACKAGE)/version.GoVersion='$(GO_VERSION)'"
 
 build: *.go */*.go fmt
+	rm -rf build
 	CGO_ENABLED=0 $(GO) build $(BUILDFLAGS) -o build/$(NAME) $(NAME).go
 
 test:
@@ -72,5 +73,9 @@ release: test
 
 clean:
 	rm -rf build release
+
+docker:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-amd64 $(NAME).go
+	docker build -t fabric8/gofabric8 .
 
 .PHONY: release clean arm
