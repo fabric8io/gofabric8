@@ -1034,7 +1034,6 @@ func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind
 		paths = []string{"api", "v1", "namespaces"}
 
 	} else {
-		//req.Namespace(ns).Resource(kinds)
 		paths = []string{"api", "v1", "namespaces", ns, kinds}
 	}
 	if !create {
