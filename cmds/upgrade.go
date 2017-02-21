@@ -47,7 +47,7 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 		Long:  `Upgrades the packages if there is a newer version available`,
 		Run: func(cmd *cobra.Command, args []string) {
 			c, cfg := client.NewClient(f)
-			ns, _, err := f.DefaultNamespace()
+			ns, err := defaultNamespace(cmd, f)
 			if err != nil {
 				util.Fatal("No default namespace")
 				printResult("Get default namespace", Failure, err)
@@ -112,6 +112,7 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(versionFlag, "latest", "The version to upgrade to")
 	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")
+	cmd.PersistentFlags().StringP(namespaceCommandFlag, "n", "", "The namespace to use. Can be specified via `export KUBERNETES_NAMESPACE=foo` as well for easier use from jobs and builds")
 	return cmd
 }
 
