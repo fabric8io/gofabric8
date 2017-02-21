@@ -22,6 +22,8 @@ import (
 	"github.com/daviddengcn/go-colortext"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
+
+	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
 type Result string
@@ -40,6 +42,19 @@ const (
 	templatesFlag = "templates"
 	DefaultDomain = ""
 )
+
+func defaultNamespace(cmd *cobra.Command, f *cmdutil.Factory) (string, error) {
+	ns := cmd.Flags().Lookup(namespaceCommandFlag).Value.String()
+	if len(ns) > 0 {
+		return ns, nil
+	}
+	ns = os.Getenv("KUBERNETES_NAMESPACE")
+	if len(ns) > 0 {
+		return ns, nil
+	}
+	ns, _, err := f.DefaultNamespace()
+	return ns, err
+}
 
 func defaultDomain() string {
 	defaultDomain := os.Getenv("KUBERNETES_DOMAIN")
