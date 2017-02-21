@@ -1,5 +1,8 @@
-FROM scratch
+FROM centos:7
 
 ADD ./build/gofabric8-linux-amd64 /bin/gofabric8
 
-ENTRYPOINT ["/bin/gofabric8", "version"]
+ENV ARGS version
+ENV FABRIC8_BATCH true
+
+ENTRYPOINT /bin/gofabric8 ${ARGS}

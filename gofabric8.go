@@ -56,7 +56,7 @@ func main() {
 
 	cmds.PersistentFlags().String(versionConsoleFlag, "latest", "fabric8 version")
 	cmds.PersistentFlags().BoolP("yes", "y", false, "assume yes")
-	cmds.PersistentFlags().BoolP(batchFlag, "b", false, "Run in batch mode to avoid prompts")
+	cmds.PersistentFlags().BoolP(batchFlag, "b", false, "Run in batch mode to avoid prompts. Can also be enabled via `export FABRIC8_BATCH=true`")
 
 	f := cmdutil.NewFactory(nil)
 	f.BindFlags(cmds.PersistentFlags())
@@ -70,6 +70,10 @@ func main() {
 			batch := false
 			if flag != nil {
 				batch = flag.Value.String() == "true"
+			}
+			batchFlag := os.Getenv("FABRIC8_BATCH")
+			if batchFlag == "true" {
+				batch = true
 			}
 
 			if !batch {
