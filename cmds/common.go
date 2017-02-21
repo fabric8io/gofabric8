@@ -23,6 +23,7 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 
+	"io/ioutil"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -46,6 +47,22 @@ const (
 func defaultNamespace(cmd *cobra.Command, f *cmdutil.Factory) (string, error) {
 	ns := cmd.Flags().Lookup(namespaceCommandFlag).Value.String()
 	if len(ns) > 0 {
+		return ns, nil
+	}
+	nsFile := cmd.Flags().Lookup(namespaceFileFlag).Value.String()
+	if len(nsFile) > 0 {
+		util.Infof("Loading namespace file %s\n", nsFile)
+		if fileNotExist(nsFile) {
+			return ns, fmt.Errorf("Could not find file `%s` to resolve the namespace!", nsFile)
+		}
+		data, err := ioutil.ReadFile(nsFile)
+		if err != nil {
+			return ns, fmt.Errorf("Failed to read namespace from file `%s` due to: %v", nsFile, err)
+		}
+		ns = string(data)
+		if len(ns) == 0 {
+			return ns, fmt.Errorf("The file `%s` is empty so cannot set the namespace!", nsFile)
+		}
 		return ns, nil
 	}
 	ns = os.Getenv("KUBERNETES_NAMESPACE")
