@@ -35,6 +35,7 @@ const (
 	urlCommandFlag       = "url"
 	retryFlag            = "retry"
 	namespaceCommandFlag = "namespace"
+	namespaceFileFlag    = "namespace-file"
 	exposeURLAnnotation  = "fabric8.io/exposeUrl"
 )
 
