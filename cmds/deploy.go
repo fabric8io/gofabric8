@@ -1065,14 +1065,15 @@ func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns strin
 				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
 				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
 				old.Spec = new.Spec
+				old.Name = name
 				_, err = c.Extensions().Deployments(ns).Update(&old)
 				if err != nil {
 					return fmt.Errorf("Failed to update Deployment %s. Error %v", name, err)
 				}
 				return nil
 			} else if kind == "DeploymentConfig" {
-				var old deployapi.DeploymentConfig
-				var new deployapi.DeploymentConfig
+				var old deployapiv1.DeploymentConfig
+				var new deployapiv1.DeploymentConfig
 				err = yaml.Unmarshal(data, &old)
 				if err != nil {
 					return fmt.Errorf("Cannot unmarshal current DeploymentConfig %s. error: %v", name, err)
@@ -1083,12 +1084,21 @@ func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns strin
 				}
 
 				// now lets copy across any missing annotations / labels / data values
-				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
-				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
-				old.Spec = new.Spec
-				_, err = oc.DeploymentConfigs(ns).Update(&old)
+				new.Labels = overwriteStringMaps(new.Labels, old.Labels)
+				new.Annotations = overwriteStringMaps(new.Annotations, old.Annotations)
+				new.ResourceVersion = old.ResourceVersion
+				new.Name = name
+
+				// lets convert the v1 to the api version
+				var converted deployapi.DeploymentConfig
+				err = api.Scheme.Convert(&new, &converted, nil)
 				if err != nil {
-					return fmt.Errorf("Failed to update DeploymentConfig %s. Error %v", name, err)
+					return fmt.Errorf("Cannot convert v1 to api DeploymentConfig %s due to: %v", name, err)
+				}
+
+				_, err = oc.DeploymentConfigs(ns).Update(&converted)
+				if err != nil {
+					return fmt.Errorf("Failed to update DeploymentConfig %s. Error %v resource %+v", name, err, converted)
 				}
 				return nil
 			} else if kind == "Service" {
@@ -1109,6 +1119,7 @@ func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns strin
 				oldClusterIP := old.Spec.ClusterIP
 				old.Spec = new.Spec
 				old.Spec.ClusterIP = oldClusterIP
+				old.Name = name
 				_, err = c.Services(ns).Update(&old)
 				if err != nil {
 					return fmt.Errorf("Failed to update Service %s. Error %v", name, err)
@@ -1130,6 +1141,7 @@ func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns strin
 				old.Data = mergeStringMaps(old.Data, new.Data)
 				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
 				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
+				old.Name = name
 				_, err = c.ConfigMaps(ns).Update(&old)
 				if err != nil {
 					return fmt.Errorf("Failed to update ConfigMap %s. Error %v", name, err)
@@ -1151,6 +1163,7 @@ func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns strin
 				old.Data = mergeByteMaps(old.Data, new.Data)
 				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
 				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
+				old.Name = name
 				_, err = c.Secrets(ns).Update(&old)
 				if err != nil {
 					return fmt.Errorf("Failed to update Secret %s. Error %v", name, err)
