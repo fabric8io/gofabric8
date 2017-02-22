@@ -57,6 +57,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
@@ -712,7 +713,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 					processData(data, format, templateName, ns, c, oc, pv, create)
 				} else {
 					// TODO how to find the Namespace?
-					err = processResource(c, data, ns, name, kind, create)
+					err = processResource(c, oc, data, ns, name, kind, create)
 					if err != nil {
 						util.Fatalf("Failed to process kind %s template: %s error: %v\n", kind, err, templateName)
 					}
@@ -812,7 +813,7 @@ func processData(jsonData []byte, format string, templateName string, ns string,
 			}
 			jsonData = removePVCVolumes(jsonData, format, templateName, kind)
 		}
-		err = processResource(c, jsonData, ns, name, kind, create)
+		err = processResource(c, oc, jsonData, ns, name, kind, create)
 		if err != nil {
 			util.Warnf("Failed to create %s: %v\n", kind, err)
 		}
@@ -967,7 +968,7 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 				return err
 			}
 		}
-		return processResource(c, b, ns, name, kind, create)
+		return processResource(c, oc, b, ns, name, kind, create)
 	default:
 		util.Infof("Unknown type %v\n", reflect.TypeOf(item))
 	}
@@ -1013,7 +1014,7 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 	return nil
 }
 
-func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind string, create bool) error {
+func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns string, name string, kind string, create bool) error {
 	util.Infof("Processing resource kind: %s in namespace %s name %s\n", kind, ns, name)
 	var paths []string
 	kinds := strings.ToLower(kind + "s")
@@ -1047,6 +1048,48 @@ func processResource(c *k8sclient.Client, b []byte, ns string, name string, kind
 				create = true
 			} else if kind == "PersistentVolumeClaim" {
 				util.Infof("Ignoring the %s resource %s as one already exists\n", kind, name)
+				return nil
+			} else if kind == "Deployment" {
+				var old extensions.Deployment
+				var new extensions.Deployment
+				err = yaml.Unmarshal(data, &old)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal current Deployment %s. error: %v", name, err)
+				}
+				err = yaml.Unmarshal(b, &new)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal new Deployment %s. error: %v", name, err)
+				}
+
+				// now lets copy across any missing annotations / labels / data values
+				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
+				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
+				old.Spec = new.Spec
+				_, err = c.Extensions().Deployments(ns).Update(&old)
+				if err != nil {
+					return fmt.Errorf("Failed to update Deployment %s. Error %v", name, err)
+				}
+				return nil
+			} else if kind == "DeploymentConfig" {
+				var old deployapi.DeploymentConfig
+				var new deployapi.DeploymentConfig
+				err = yaml.Unmarshal(data, &old)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal current DeploymentConfig %s. error: %v", name, err)
+				}
+				err = yaml.Unmarshal(b, &new)
+				if err != nil {
+					return fmt.Errorf("Cannot unmarshal new DeploymentConfig %s. error: %v", name, err)
+				}
+
+				// now lets copy across any missing annotations / labels / data values
+				old.Labels = overwriteStringMaps(old.Labels, new.Labels)
+				old.Annotations = overwriteStringMaps(old.Annotations, new.Annotations)
+				old.Spec = new.Spec
+				_, err = oc.DeploymentConfigs(ns).Update(&old)
+				if err != nil {
+					return fmt.Errorf("Failed to update DeploymentConfig %s. Error %v", name, err)
+				}
 				return nil
 			} else if kind == "Service" {
 				var old api.Service
