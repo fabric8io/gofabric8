@@ -184,10 +184,15 @@ func downloadKubernetes(d downloadProperties) (err error) {
 
 	_, err = exec.LookPath(d.kubeBinary)
 	if err != nil {
-		latestVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
-		if err != nil {
-			util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
-			return err
+		// fix minishift version to 0.9.0 until we can address issues running on 1.x
+		latestVersion := "0.9.0"
+		if !d.isMiniShift {
+			semverVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
+			latestVersion = semverVersion.String()
+			if err != nil {
+				util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
+				return err
+			}
 		}
 
 		kubeURL := fmt.Sprintf(d.downloadURL+d.kubeDistroRepo+"/releases/"+d.extraPath+"v%s/%s-%s-%s", latestVersion, d.kubeDistroRepo, os, arch)

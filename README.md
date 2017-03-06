@@ -8,24 +8,39 @@ Find more information at http://fabric8.io.
 
 ### Install / Update & run
 
+Get the [latest](https://github.com/fabric8io/gofabric8/releases/latest/) `gofabric8` or use the following script to download it.
+
 ```
-FABRIC8_OS=darwin;FABRIC8_VERSION=0.4.64;curl -L -o gofabric8 https://github.com/fabric8io/gofabric8/releases/download/v$FABRIC8_VERSION/gofabric8-$FABRIC8_OS-amd64 && chmod +x gofabric8
-gofabric8 version
+curl -sS https://get.fabric8.io/download.txt | bash
+```
+add '~/.fabric8/bin' to your path so you can execute the new binaries, for example:
+edit your ~/.zshrc or ~/.bashrc  and append to the end of the file
+```
+export PATH=\$PATH:~/.fabric8/bin
+source ~/.zshrc or ~/.zshrc
 ```
 
-Linux
+#### minikube
 ```
-FABRIC8_OS=linux;FABRIC8_VERSION=0.4.64;wget -O gofabric8 https://github.com/fabric8io/gofabric8/releases/download/v$FABRIC8_VERSION/gofabric8-$FABRIC8_OS-amd64; chmod +x gofabric8
-gofabric8 version
+gofabric8 install
 ```
+#### minishift
 
-See [latest release](https://github.com/fabric8io/gofabric8/releases/latest/) for more distros
+__NOTE__ currently the latest version of minishift that fabric8 currently runs on is 0.9.0
+```
+gofabric8 install --minishift
+```
 
 ### Install the fabric8 microservices platform
 
 To install the [fabric8 microservices platform](http://fabric8.io/) then run the following:
 
 ```sh
+gofabric8 deploy
+```
+
+If you are deploying to a remote OpenShift instance make sure to set the domain so we can generate Toutes to access applications
+```
 gofabric8 deploy --domain=your.domain.io
 ```
 
@@ -108,7 +123,7 @@ Use "gofabric8 [command] --help" for more information about a command.
 
 ### Prerequisites
 
-Install [go version 1.4](https://golang.org/doc/install)
+Install [go version 1.7.4](https://golang.org/doc/install)
 
 ### Developing
 
@@ -122,6 +137,6 @@ Make changes to *.go files, rerun `make` and execute the generated binary
 e.g.
 
 ```sh
-./build/gofabric8 -s https://172.28.128.4:8443 --domain=vagrant.f8 -y --namespace="fabric8" deploy
+./build/gofabric8 deploy
 
 ```
