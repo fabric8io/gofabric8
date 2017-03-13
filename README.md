@@ -1,5 +1,8 @@
 # gofabric8 installer
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/fabric8io/gofabric8)](https://goreportcard.com/report/github.com/fabric8io/gofabric8)
+[![APACHEv2 License](https://img.shields.io/badge/license-APACHEv2-blue.svg)](https://github.com/fabric8io/gofabric8/blob/master/LICENSE)
+
 gofabric8 is used to validate &amp; deploy fabric8 components on to your Kubernetes or OpenShift environment
 
 Find more information at http://fabric8.io.
