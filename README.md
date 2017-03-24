@@ -20,7 +20,7 @@ add '~/.fabric8/bin' to your path so you can execute the new binaries, for examp
 edit your ~/.zshrc or ~/.bashrc  and append to the end of the file
 ```
 export PATH=\$PATH:~/.fabric8/bin
-source ~/.zshrc or ~/.zshrc
+source ~/.zshrc or ~/.bashrc
 ```
 
 #### minikube

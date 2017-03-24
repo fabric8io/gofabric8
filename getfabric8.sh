@@ -107,7 +107,7 @@ echo
 echo "For example:"
 echo "Edit your ~/.zshrc or ~/.bashrc  and append to the end of the file"
 echo "export PATH=\$PATH:~/.fabric8/bin"
-echo "source ~/.zshrc or ~/.zshrc"
+echo "source ~/.zshrc or ~/.bashrc"
 echo 
 echo "To work with the fabric8 microservices platform either:"
 echo " - 'gofabric8 install' for a local cloud development platform" 
