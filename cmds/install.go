@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -56,6 +57,7 @@ const (
 	oc                       = "oc"
 	ghDownloadURL            = "https://storage.googleapis.com/"
 	ocTools                  = "openshift-origin-client-tools"
+	stableVersionURL         = "https://storage.googleapis.com/kubernetes-release/release/stable.txt"
 )
 
 var (
@@ -227,7 +229,7 @@ func downloadKubectlClient() (err error) {
 
 	_, err = exec.LookPath(kubectlBinary)
 	if err != nil {
-		latestVersion, err := getLatestVersionFromGitHub(kubernetes, kubernetes)
+		latestVersion, err := getLatestVersionFromKubernetesReleaseUrl()
 		if err != nil {
 			return fmt.Errorf("Unable to get latest version for %s/%s %v", kubernetes, kubernetes, err)
 		}
@@ -381,6 +383,27 @@ func downloadFile(filepath string, url string) (err error) {
 		return err
 	}
 	return nil
+}
+
+// get the latest version from kubernetes, parse it and return it
+func getLatestVersionFromKubernetesReleaseUrl() (sem semver.Version, err error) {
+	response, err := http.Get(stableVersionURL)
+	if err != nil {
+		return semver.Version{}, fmt.Errorf("Cannot get url " + stableVersionURL)
+	}
+	defer response.Body.Close()
+
+	bytes, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return semver.Version{}, fmt.Errorf("Cannot get url body")
+	}
+
+	s := strings.TrimSpace(string(bytes))
+	if s != "" {
+		return semver.Make(strings.TrimPrefix(s, "v"))
+	}
+
+	return semver.Version{}, fmt.Errorf("Cannot get release name")
 }
 
 // borrowed from minishift until it supports install / download binaries
