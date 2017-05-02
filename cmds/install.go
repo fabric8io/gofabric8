@@ -130,6 +130,11 @@ func install(isMinishift bool) {
 func downloadDriver() (err error) {
 	if runtime.GOOS == "darwin" {
 		util.Infof("fabric8 recommends OSX users use the xhyve driver\n")
+		_, err := exec.LookPath("brew")
+		if err != nil {
+			util.Fatalf("brew command is not available, see https://brew.sh")
+		}
+
 		info, err := exec.Command("brew", "info", "docker-machine-driver-xhyve").Output()
 
 		if err != nil || strings.Contains(string(info), "Not installed") {
