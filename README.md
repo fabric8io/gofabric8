@@ -19,7 +19,7 @@ curl -sS https://get.fabric8.io/download.txt | bash
 add '~/.fabric8/bin' to your path so you can execute the new binaries, for example:
 edit your ~/.zshrc or ~/.bashrc  and append to the end of the file
 ```
-export PATH=\$PATH:~/.fabric8/bin
+export PATH=$PATH:~/.fabric8/bin
 source ~/.zshrc or ~/.bashrc
 ```
 
@@ -65,7 +65,7 @@ Remember to turn off the imagePullPolicy:Always, as otherwise kubernetes won't u
 
 ### Run different versions
 
-When deploying, by default the latest release version is used.  In order to deploy a specific version you can use the various`--version-xxxx` flags as detailed under 
+When deploying, by default the latest release version is used.  In order to deploy a specific version you can use the various`--version-xxxx` flags as detailed under
 
 ```
 gofabric8 deploy help
