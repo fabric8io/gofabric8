@@ -16,6 +16,7 @@
 package cmds
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
 	"errors"
@@ -25,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -258,8 +260,7 @@ func downloadKubectlClient() (err error) {
 }
 
 func downloadOpenShiftClient() (err error) {
-	os := runtime.GOOS
-	arch := runtime.GOARCH
+	var arch string
 
 	ocBinary := "oc"
 	if runtime.GOOS == "windows" {
@@ -282,8 +283,14 @@ func downloadOpenShiftClient() (err error) {
 		case "darwin":
 			clientURL += "-mac.zip"
 		default:
+			switch runtime.GOARCH {
+			case "amd64":
+				arch = "64bit"
+			case "386":
+				arch = "32bit"
+			}
 			extension = ".tar.gz"
-			clientURL += fmt.Sprintf(clientURL+"-%s-%s.tar.gz", os, arch)
+			clientURL += fmt.Sprintf("-%s-%s.tar.gz", runtime.GOOS, arch)
 		}
 
 		util.Infof("Downloading %s...\n", clientURL)
@@ -298,25 +305,20 @@ func downloadOpenShiftClient() (err error) {
 			return err
 		}
 
-		switch runtime.GOOS {
-		case "windows":
+		switch extension {
+		case ".zip":
 			err = unzip(fullPath, dotPath)
 			if err != nil {
 				util.Errorf("Unable to unzip %s %v", fullPath, err)
 				return err
 			}
-		case "darwin":
-			err = unzip(fullPath, dotPath)
-			if err != nil {
-				util.Errorf("Unable to unzip %s %v", fullPath, err)
-				return err
-			}
-		default:
-			err = unzip(fullPath, dotPath)
+		case ".tar.gz":
+			err = untargz(fullPath, dotPath, []string{"oc"})
 			if err != nil {
 				util.Errorf("Unable to untar %s %v", writeFileLocation+oc+".tar.gz", err)
 				return err
 			}
+			os.Remove(fullPath)
 		}
 
 		util.Successf("Downloaded %s\n", oc)
@@ -514,6 +516,66 @@ func getFabric8BinLocation() string {
 	return filepath.Join(home, ".fabric8", "bin")
 }
 
+// untargz a tarball to a target, from
+// http://blog.ralch.com/tutorial/golang-working-with-tar-and-gzipf
+func untargz(tarball, target string, onlyFiles []string) error {
+	zreader, err := os.Open(tarball)
+	if err != nil {
+		return err
+	}
+	defer zreader.Close()
+
+	reader, err := gzip.NewReader(zreader)
+	defer reader.Close()
+	if err != nil {
+		panic(err)
+	}
+
+	tarReader := tar.NewReader(reader)
+
+	for {
+		inkey := false
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		for _, value := range onlyFiles {
+			if value == path.Base(header.Name) {
+				inkey = true
+				break
+			}
+		}
+
+		if !inkey {
+			continue
+		}
+
+		path := filepath.Join(target, path.Base(header.Name))
+		info := header.FileInfo()
+		if info.IsDir() {
+			if err = os.MkdirAll(path, info.Mode()); err != nil {
+				return err
+			}
+			continue
+		}
+
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = io.Copy(file, tarReader)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func unzip(archive, target string) error {
 	reader, err := zip.OpenReader(archive)
 	if err != nil {
@@ -555,37 +617,4 @@ func unzip(archive, target string) error {
 	}
 
 	return nil
-}
-
-func ungzip(source, target string) error {
-	reader, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer reader.Close()
-
-	archive, err := gzip.NewReader(reader)
-	if err != nil {
-		return err
-	}
-	defer archive.Close()
-
-	target = filepath.Join(target, archive.Name)
-	writer, err := os.Create(target)
-	if err != nil {
-		return err
-	}
-	defer writer.Close()
-
-	_, err = io.Copy(writer, archive)
-	if err != nil {
-		return err
-	}
-
-	// make it executable
-	os.Chmod(target, 0755)
-	if err != nil {
-		return err
-	}
-	return err
 }
