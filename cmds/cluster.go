@@ -27,9 +27,9 @@ import (
 const ()
 
 // NewCmdDelete deletes the current local cluster
-func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
+func NewCmdDeleteCluster(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "delete",
+		Use:   "cluster",
 		Short: "Delete a local cluster",
 		Long:  `Delete a local cluster. This command deletes the VM and removes all`,
 
