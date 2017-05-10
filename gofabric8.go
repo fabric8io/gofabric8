@@ -124,6 +124,10 @@ func main() {
 	cmds.AddCommand(commands.NewCmdVolumes(f))
 	cmds.AddCommand(commands.NewCmdWaitFor(f))
 
+	getcmd := commands.NewCmdGet()
+	cmds.AddCommand(getcmd)
+	getcmd.AddCommand(commands.NewCmdGetEnviron(f))
+
 	deletecmd := commands.NewCmdDelete()
 	cmds.AddCommand(deletecmd)
 	deletecmd.AddCommand(commands.NewCmdDeleteCluster(f))
