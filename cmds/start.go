@@ -16,6 +16,7 @@
 package cmds
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -82,13 +83,19 @@ func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
 			binaryFile := resolveBinaryLocation(kubeBinary)
 
 			// check if already running
-			out, err := exec.Command(binaryFile, "status").Output()
+			cmstatus := exec.Command(binaryFile, "status")
+			var cmd_out bytes.Buffer
+			var cmd_stderr bytes.Buffer
+			cmstatus.Stdout = &cmd_out
+			cmstatus.Stderr = &cmd_stderr
+			err := cmstatus.Run()
+
 			if err != nil {
-				util.Fatalf("Unable to get status %v", err)
+				util.Fatalf("Unable to get %s status, %v: %s\n", binaryFile, cmd_stderr.String(), cmd_out.String())
 			}
 
 			doWait := false
-			if err == nil && strings.Contains(string(out), "Running") {
+			if err == nil && strings.Contains(cmd_out.String(), "Running") {
 				// already running
 				util.Successf("%s already running\n", kubeBinary)
 
