@@ -33,13 +33,14 @@ BUILDFLAGS := -ldflags \
 		-X $(ROOT_PACKAGE)/version.Branch='$(BRANCH)'\
 		-X $(ROOT_PACKAGE)/version.BuildDate='$(BUILD_DATE)'\
 		-X $(ROOT_PACKAGE)/version.GoVersion='$(GO_VERSION)'"
+CGO_ENABLED = 0
 
 build: *.go */*.go fmt
 	rm -rf build
-	CGO_ENABLED=0 $(GO) build $(BUILDFLAGS) -o build/$(NAME) $(NAME).go
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(BUILDFLAGS) -o build/$(NAME) $(NAME).go
 
 test:
-	CGO_ENABLED=0 $(GO) test github.com/fabric8io/gofabric8/cmds
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) test github.com/fabric8io/gofabric8/cmds
 
 install: *.go */*.go
 	GOBIN=${GOPATH}/bin $(GO) install $(BUILDFLAGS) $(NAME).go
@@ -48,10 +49,10 @@ fmt:
 	@([[ ! -z "$(FORMATTED)" ]] && printf "Fixed unformatted files:\n$(FORMATTED)") || true
 
 arm:
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-arm $(NAME).go
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-arm $(NAME).go
 
 win:
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME).exe $(NAME).go
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME).exe $(NAME).go
 
 bootstrap:
 	$(GO) get -u github.com/Masterminds/glide
@@ -60,11 +61,11 @@ bootstrap:
 release: test
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \
-		CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
+		CGO_ENABLED=$(CGO_ENABLED) GOOS=$$os GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
 	done
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-windows-amd64.exe $(NAME).go
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-windows-amd64.exe $(NAME).go
 	zip --junk-paths release/$(NAME)-windows-amd64.zip build/$(NAME)-windows-amd64.exe README.md LICENSE
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-arm $(NAME).go
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux GOARCH=arm $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-arm $(NAME).go
 	cp build/$(NAME)-*-amd64* release
 	cp build/$(NAME)-*-arm* release
 	go get -u github.com/progrium/gh-release
@@ -75,7 +76,7 @@ clean:
 	rm -rf build release
 
 docker:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-amd64 $(NAME).go
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=linux GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-linux-amd64 $(NAME).go
 	docker build -t fabric8/gofabric8 .
 
 .PHONY: release clean arm
