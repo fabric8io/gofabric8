@@ -466,8 +466,9 @@ func updateExposeControllerConfig(c *k8sclient.Client, ns string, apiserver stri
 	domainData := "domain: " + domain + "\n"
 	exposeData := exposeRule + ": " + defaultExposeRule(c, mini, useLoadBalancer) + "\n"
 	apiserverData := "apiserver: " + apiserverAndPort + "\n"
+	namespaceData := "watch-current-namespace: true\n"
 	configFile := map[string]string{
-		"config.yml": domainData + exposeData + apiserverData,
+		"config.yml": domainData + exposeData + apiserverData + namespaceData,
 	}
 	configMap := kapi.ConfigMap{
 		ObjectMeta: kapi.ObjectMeta{
