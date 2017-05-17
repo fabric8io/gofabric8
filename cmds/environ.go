@@ -17,6 +17,7 @@ package cmds
 import (
 	"fmt"
 
+	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
 	"k8s.io/kubernetes/pkg/api"
@@ -70,4 +71,58 @@ func getKubeClient(cmd *cobra.Command, f *cmdutil.Factory) (c *k8client.Client, 
 	cmdutil.CheckErr(err)
 
 	return c, ns
+}
+
+func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "environ",
+		Short: "Delete environment from fabric8-environments configmap",
+		Run: func(cmd *cobra.Command, args []string) {
+			c, ns := getKubeClient(cmd, f)
+			selector, err := unversioned.LabelSelectorAsSelector(
+				&unversioned.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+			cmdutil.CheckErr(err)
+
+			if len(args) == 0 {
+				util.Errorf("Delete command requires the name of the environment as a parameter\n.")
+				return
+			}
+
+			cfgmap, err := c.ConfigMaps(ns).List(api.ListOptions{LabelSelector: selector})
+			cmdutil.CheckErr(err)
+
+			//  get all environ names
+			var environNames []string
+
+			//fmt.Printf("%-10s DATA\n", "ENV")
+			for _, item := range cfgmap.Items {
+				for _, data := range item.Data {
+					var ed EnvironmentData
+					err := yaml.Unmarshal([]byte(data), &ed)
+					cmdutil.CheckErr(err)
+					//fmt.Printf("%-10s name=%s namespace=%s order=%d\n", key, ed.Name, ed.Namespace, ed.Order)
+					environNames = append(environNames, ed.Name)
+				}
+			}
+
+			for _, arg := range args {
+				found := false
+				for _, env := range environNames {
+					if arg == env {
+						found = true
+						break
+					}
+				}
+				if !found {
+					util.Errorf("Could not find environment named %s.\n", arg)
+					return
+				}
+			}
+		},
+	}
+	// NB(chmou): we may try to do the whole shenanigans like kubectl/oc does for
+	// outputting stuff but currently this is like swatting flies with a
+	// sledgehammer.
+	// cmdutil.AddPrinterFlags(cmd)
+	return cmd
 }

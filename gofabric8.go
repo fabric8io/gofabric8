@@ -131,6 +131,7 @@ func main() {
 	deletecmd := commands.NewCmdDelete()
 	cmds.AddCommand(deletecmd)
 	deletecmd.AddCommand(commands.NewCmdDeleteCluster(f))
+	deletecmd.AddCommand(commands.NewCmdDeleteEnviron(f))
 
 	cmds.Execute()
 }
