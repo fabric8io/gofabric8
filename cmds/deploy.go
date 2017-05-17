@@ -1549,19 +1549,16 @@ func versionForUrl(v string, metadataUrl string) string {
 }
 
 func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) string {
+	if util.TypeOfMaster(c) == util.OpenShift {
+		return route
+	}
 	if mini {
 		return nodePort
 	}
-
-	if util.TypeOfMaster(c) == util.Kubernetes {
-		if useLoadBalancer {
-			return loadBalancer
-		}
-		return ingress
-	} else if util.TypeOfMaster(c) == util.OpenShift {
-		return route
+	if useLoadBalancer {
+		return loadBalancer
 	}
-	return ""
+	return ingress
 }
 
 func checkIfPVCsPending(c *k8sclient.Client, ns string) (bool, error) {
