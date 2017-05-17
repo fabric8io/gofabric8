@@ -47,6 +47,8 @@ import (
 	oauthapiv1 "github.com/openshift/origin/pkg/oauth/api/v1"
 	projectapi "github.com/openshift/origin/pkg/project/api"
 	projectapiv1 "github.com/openshift/origin/pkg/project/api/v1"
+	routeapi "github.com/openshift/origin/pkg/route/api"
+	routeapiv1 "github.com/openshift/origin/pkg/route/api/v1"
 	"github.com/openshift/origin/pkg/template"
 	tapi "github.com/openshift/origin/pkg/template/api"
 	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
@@ -219,6 +221,8 @@ func initSchema() {
 	tapiv1.AddToScheme(api.Scheme)
 	projectapi.AddToScheme(api.Scheme)
 	projectapiv1.AddToScheme(api.Scheme)
+	routeapi.AddToScheme(api.Scheme)
+	routeapiv1.AddToScheme(api.Scheme)
 	deployapi.AddToScheme(api.Scheme)
 	deployapiv1.AddToScheme(api.Scheme)
 	oauthapi.AddToScheme(api.Scheme)
@@ -1020,7 +1024,7 @@ func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns strin
 	kinds := strings.ToLower(kind + "s")
 	if kind == "Deployment" {
 		paths = []string{"apis", "extensions/v1beta1", "namespaces", ns, kinds}
-	} else if kind == "BuildConfig" || kind == "DeploymentConfig" || kind == "Template" || kind == "PolicyBinding" || kind == "Role" || kind == "RoleBinding" {
+	} else if kind == "BuildConfig" || kind == "DeploymentConfig" || kind == "Template" || kind == "PolicyBinding" || kind == "Role" || kind == "RoleBinding" || kind == "Route" {
 		paths = []string{"oapi", "v1", "namespaces", ns, kinds}
 	} else if kind == "OAuthClient" || kind == "Project" || kind == "ProjectRequest" {
 		paths = []string{"oapi", "v1", kinds}
@@ -1545,19 +1549,16 @@ func versionForUrl(v string, metadataUrl string) string {
 }
 
 func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) string {
+	if util.TypeOfMaster(c) == util.OpenShift {
+		return route
+	}
 	if mini {
 		return nodePort
 	}
-
-	if util.TypeOfMaster(c) == util.Kubernetes {
-		if useLoadBalancer {
-			return loadBalancer
-		}
-		return ingress
-	} else if util.TypeOfMaster(c) == util.OpenShift {
-		return route
+	if useLoadBalancer {
+		return loadBalancer
 	}
-	return ""
+	return ingress
 }
 
 func checkIfPVCsPending(c *k8sclient.Client, ns string) (bool, error) {
