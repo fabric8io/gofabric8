@@ -26,7 +26,7 @@ import (
 
 const ()
 
-// NewCmdDelete deletes the current local cluster
+// NewCmdDeleteCluster deletes the current local cluster
 func NewCmdDeleteCluster(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cluster",

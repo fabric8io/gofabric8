@@ -20,6 +20,7 @@ import "github.com/spf13/cobra"
 const (
 	longhelp = `You must specify the type of resource to get. Valid resource types include:
 * cluster.
+* environ.
 `
 )
 
@@ -28,8 +29,15 @@ func NewCmdDelete() *cobra.Command {
 		Use:   "delete",
 		Short: "Delete a resource type",
 		Long:  longhelp,
-		Run: func(cmd *cobra.Command, args []string) {
-		},
+	}
+	return cmd
+}
+
+func NewCmdGet() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "get",
+		Short: "Get a resource type",
+		Long:  `get a resource type`,
 	}
 	return cmd
 }
