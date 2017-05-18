@@ -161,7 +161,7 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 					}
 				}
 			*/
-			// I can see that the entry is removed here if I run: ./gofabric8 delete environ Production
+			// I can see that the entry is removed here if I run: ./gofabric8 delete environ Staging
 			// Was:
 			// Config map items data : "name: Staging\nnamespace: default-staging\norder: 0"
 			// Config map items data : "name: Production\nnamespace: default-production\norder: 1"
