@@ -73,6 +73,7 @@ func getKubeClient(cmd *cobra.Command, f *cmdutil.Factory) (c *k8client.Client, 
 	return c, ns
 }
 
+// NewCmdDeleteEnviron is a command to delete an environ using: gofabric8 delete environ abcd
 func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "environ",
@@ -91,6 +92,16 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 			cfgmap, err := c.ConfigMaps(ns).List(api.ListOptions{LabelSelector: selector})
 			cmdutil.CheckErr(err)
 
+			/*
+				fmt.Printf("Config map: %#v\n", cfgmap)
+				for _, item := range cfgmap.Items {
+					fmt.Printf("Config map items: %#v\n", item)
+					for _, data := range item.Data {
+						fmt.Printf("Config map items data : %#v\n", data)
+					}
+				}
+			*/
+
 			//  get all environ names
 			var environNames []string
 
@@ -105,6 +116,12 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 				}
 			}
 
+			fmt.Println("environNames")
+			for _, v := range environNames {
+				fmt.Println(v)
+			}
+
+			// args is a list of config map names
 			for _, arg := range args {
 				found := false
 				for _, env := range environNames {
@@ -118,11 +135,41 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 					return
 				}
 			}
+
+			// remove the entry from the config map
+			for _, arg := range args {
+				for _, item := range cfgmap.Items {
+					for k, data := range item.Data {
+						var ed EnvironmentData
+						err := yaml.Unmarshal([]byte(data), &ed)
+						cmdutil.CheckErr(err)
+
+						if arg == ed.Name {
+							delete(item.Data, k)
+						}
+
+					}
+				}
+			}
+
+			/*
+				fmt.Printf("Config map: %#v\n", cfgmap)
+				for _, item := range cfgmap.Items {
+					fmt.Printf("Config map items: %#v\n", item)
+					for _, data := range item.Data {
+						fmt.Printf("Config map items data : %#v\n", data)
+					}
+				}
+			*/
+			// I can see that the entry is removed here if I run: ./gofabric8 delete environ Production
+			// Was:
+			// Config map items data : "name: Staging\nnamespace: default-staging\norder: 0"
+			// Config map items data : "name: Production\nnamespace: default-production\norder: 1"
+
+			// Is:
+			// Config map items data : "name: Production\nnamespace: default-production\norder: 1"
+
 		},
 	}
-	// NB(chmou): we may try to do the whole shenanigans like kubectl/oc does for
-	// outputting stuff but currently this is like swatting flies with a
-	// sledgehammer.
-	// cmdutil.AddPrinterFlags(cmd)
 	return cmd
 }
