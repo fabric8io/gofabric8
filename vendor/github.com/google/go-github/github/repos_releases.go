@@ -34,7 +34,7 @@ type RepositoryRelease struct {
 	UploadURL       *string        `json:"upload_url,omitempty"`
 	ZipballURL      *string        `json:"zipball_url,omitempty"`
 	TarballURL      *string        `json:"tarball_url,omitempty"`
-	Author          *CommitAuthor  `json:"author,omitempty"`
+	Author          *User          `json:"author,omitempty"`
 }
 
 func (r RepositoryRelease) String() string {
@@ -76,12 +76,12 @@ func (s *RepositoriesService) ListReleases(owner, repo string, opt *ListOptions)
 		return nil, nil, err
 	}
 
-	releases := new([]*RepositoryRelease)
-	resp, err := s.client.Do(req, releases)
+	var releases []*RepositoryRelease
+	resp, err := s.client.Do(req, &releases)
 	if err != nil {
 		return nil, resp, err
 	}
-	return *releases, resp, err
+	return releases, resp, nil
 }
 
 // GetRelease fetches a single release.
@@ -119,7 +119,7 @@ func (s *RepositoriesService) getSingleRelease(url string) (*RepositoryRelease, 
 	if err != nil {
 		return nil, resp, err
 	}
-	return release, resp, err
+	return release, resp, nil
 }
 
 // CreateRelease adds a new release for a repository.
@@ -138,7 +138,7 @@ func (s *RepositoriesService) CreateRelease(owner, repo string, release *Reposit
 	if err != nil {
 		return nil, resp, err
 	}
-	return r, resp, err
+	return r, resp, nil
 }
 
 // EditRelease edits a repository release.
@@ -157,7 +157,7 @@ func (s *RepositoriesService) EditRelease(owner, repo string, id int, release *R
 	if err != nil {
 		return nil, resp, err
 	}
-	return r, resp, err
+	return r, resp, nil
 }
 
 // DeleteRelease delete a single release from a repository.
@@ -188,12 +188,12 @@ func (s *RepositoriesService) ListReleaseAssets(owner, repo string, id int, opt 
 		return nil, nil, err
 	}
 
-	assets := new([]*ReleaseAsset)
-	resp, err := s.client.Do(req, assets)
+	var assets []*ReleaseAsset
+	resp, err := s.client.Do(req, &assets)
 	if err != nil {
-		return nil, resp, nil
+		return nil, resp, err
 	}
-	return *assets, resp, err
+	return assets, resp, nil
 }
 
 // GetReleaseAsset fetches a single release asset.
@@ -210,9 +210,9 @@ func (s *RepositoriesService) GetReleaseAsset(owner, repo string, id int) (*Rele
 	asset := new(ReleaseAsset)
 	resp, err := s.client.Do(req, asset)
 	if err != nil {
-		return nil, resp, nil
+		return nil, resp, err
 	}
-	return asset, resp, err
+	return asset, resp, nil
 }
 
 // DownloadReleaseAsset downloads a release asset or returns a redirect URL.
@@ -248,7 +248,7 @@ func (s *RepositoriesService) DownloadReleaseAsset(owner, repo string, id int) (
 		if !strings.Contains(err.Error(), "disable redirect") {
 			return nil, "", err
 		}
-		return nil, loc, nil
+		return nil, loc, nil // Intentionally return no error with valid redirect URL.
 	}
 
 	if err := CheckResponse(resp); err != nil {
@@ -275,7 +275,7 @@ func (s *RepositoriesService) EditReleaseAsset(owner, repo string, id int, relea
 	if err != nil {
 		return nil, resp, err
 	}
-	return asset, resp, err
+	return asset, resp, nil
 }
 
 // DeleteReleaseAsset delete a single release asset from a repository.
@@ -321,5 +321,5 @@ func (s *RepositoriesService) UploadReleaseAsset(owner, repo string, id int, opt
 	if err != nil {
 		return nil, resp, err
 	}
-	return asset, resp, err
+	return asset, resp, nil
 }

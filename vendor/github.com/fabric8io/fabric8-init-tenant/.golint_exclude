@@ -1,0 +1,6 @@
+bindata_assetfs.go
+sqlbindata
+template/bindata.go
+/design/.*
+.*exported
+EOF

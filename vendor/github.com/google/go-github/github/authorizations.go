@@ -146,12 +146,12 @@ func (s *AuthorizationsService) List(opt *ListOptions) ([]*Authorization, *Respo
 		return nil, nil, err
 	}
 
-	auths := new([]*Authorization)
-	resp, err := s.client.Do(req, auths)
+	var auths []*Authorization
+	resp, err := s.client.Do(req, &auths)
 	if err != nil {
 		return nil, resp, err
 	}
-	return *auths, resp, err
+	return auths, resp, nil
 }
 
 // Get a single authorization.
@@ -170,7 +170,7 @@ func (s *AuthorizationsService) Get(id int) (*Authorization, *Response, error) {
 	if err != nil {
 		return nil, resp, err
 	}
-	return a, resp, err
+	return a, resp, nil
 }
 
 // Create a new authorization for the specified OAuth application.
@@ -189,7 +189,7 @@ func (s *AuthorizationsService) Create(auth *AuthorizationRequest) (*Authorizati
 	if err != nil {
 		return nil, resp, err
 	}
-	return a, resp, err
+	return a, resp, nil
 }
 
 // GetOrCreateForApp creates a new authorization for the specified OAuth
@@ -225,7 +225,7 @@ func (s *AuthorizationsService) GetOrCreateForApp(clientID string, auth *Authori
 		return nil, resp, err
 	}
 
-	return a, resp, err
+	return a, resp, nil
 }
 
 // Edit a single authorization.
@@ -245,7 +245,7 @@ func (s *AuthorizationsService) Edit(id int, auth *AuthorizationUpdateRequest) (
 		return nil, resp, err
 	}
 
-	return a, resp, err
+	return a, resp, nil
 }
 
 // Delete a single authorization.
@@ -285,7 +285,7 @@ func (s *AuthorizationsService) Check(clientID string, token string) (*Authoriza
 		return nil, resp, err
 	}
 
-	return a, resp, err
+	return a, resp, nil
 }
 
 // Reset is used to reset a valid OAuth token without end user involvement.
@@ -313,7 +313,7 @@ func (s *AuthorizationsService) Reset(clientID string, token string) (*Authoriza
 		return nil, resp, err
 	}
 
-	return a, resp, err
+	return a, resp, nil
 }
 
 // Revoke an authorization for an application.
@@ -346,16 +346,13 @@ func (s *AuthorizationsService) ListGrants() ([]*Grant, *Response, error) {
 		return nil, nil, err
 	}
 
-	// TODO: remove custom Accept header when this API fully launches.
-	req.Header.Set("Accept", mediaTypeOAuthGrantAuthorizationsPreview)
-
 	grants := []*Grant{}
 	resp, err := s.client.Do(req, &grants)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	return grants, resp, err
+	return grants, resp, nil
 }
 
 // GetGrant gets a single OAuth application grant.
@@ -368,16 +365,13 @@ func (s *AuthorizationsService) GetGrant(id int) (*Grant, *Response, error) {
 		return nil, nil, err
 	}
 
-	// TODO: remove custom Accept header when this API fully launches.
-	req.Header.Set("Accept", mediaTypeOAuthGrantAuthorizationsPreview)
-
 	grant := new(Grant)
 	resp, err := s.client.Do(req, grant)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	return grant, resp, err
+	return grant, resp, nil
 }
 
 // DeleteGrant deletes an OAuth application grant. Deleting an application's
@@ -391,9 +385,6 @@ func (s *AuthorizationsService) DeleteGrant(id int) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// TODO: remove custom Accept header when this API fully launches.
-	req.Header.Set("Accept", mediaTypeOAuthGrantAuthorizationsPreview)
 
 	return s.client.Do(req, nil)
 }
@@ -417,7 +408,7 @@ func (s *AuthorizationsService) CreateImpersonation(username string, authReq *Au
 	if err != nil {
 		return nil, resp, err
 	}
-	return a, resp, err
+	return a, resp, nil
 }
 
 // DeleteImpersonation deletes an impersonation OAuth token.

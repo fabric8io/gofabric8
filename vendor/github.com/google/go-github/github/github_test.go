@@ -375,6 +375,28 @@ func TestDo_redirectLoop(t *testing.T) {
 	}
 }
 
+// Test that an error caused by the internal http client's Do() function
+// does not leak the client secret.
+func TestDo_sanitizeURL(t *testing.T) {
+	tp := &UnauthenticatedRateLimitedTransport{
+		ClientID:     "id",
+		ClientSecret: "secret",
+	}
+	unauthedClient := NewClient(tp.Client())
+	unauthedClient.BaseURL = &url.URL{Scheme: "http", Host: "127.0.0.1:0", Path: "/"} // Use port 0 on purpose to trigger a dial TCP error, expect to get "dial tcp 127.0.0.1:0: connect: can't assign requested address".
+	req, err := unauthedClient.NewRequest("GET", "/", nil)
+	if err != nil {
+		t.Fatalf("NewRequest returned unexpected error: %v", err)
+	}
+	_, err = unauthedClient.Do(req, nil)
+	if err == nil {
+		t.Fatal("Expected error to be returned.")
+	}
+	if strings.Contains(err.Error(), "client_secret=secret") {
+		t.Errorf("Do error contains secret, should be redacted:\n%q", err)
+	}
+}
+
 func TestDo_rateLimit(t *testing.T) {
 	setup()
 	defer teardown()
@@ -535,6 +557,71 @@ func TestDo_rateLimit_noNetworkCall(t *testing.T) {
 	}
 	if rateLimitErr.Rate.Reset.UTC() != reset {
 		t.Errorf("rateLimitErr rate reset = %v, want %v", rateLimitErr.Rate.Reset.UTC(), reset)
+	}
+}
+
+// Ensure *AbuseRateLimitError is returned when the response indicates that
+// the client has triggered an abuse detection mechanism.
+func TestDo_rateLimit_abuseRateLimitError(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+		// When the abuse rate limit error is of the "temporarily blocked from content creation" type,
+		// there is no "Retry-After" header.
+		fmt.Fprintln(w, `{
+   "message": "You have triggered an abuse detection mechanism and have been temporarily blocked from content creation. Please retry your request again later.",
+   "documentation_url": "https://developer.github.com/v3#abuse-rate-limits"
+}`)
+	})
+
+	req, _ := client.NewRequest("GET", "/", nil)
+	_, err := client.Do(req, nil)
+
+	if err == nil {
+		t.Error("Expected error to be returned.")
+	}
+	abuseRateLimitErr, ok := err.(*AbuseRateLimitError)
+	if !ok {
+		t.Fatalf("Expected a *AbuseRateLimitError error; got %#v.", err)
+	}
+	if got, want := abuseRateLimitErr.RetryAfter, (*time.Duration)(nil); got != want {
+		t.Errorf("abuseRateLimitErr RetryAfter = %v, want %v", got, want)
+	}
+}
+
+// Ensure *AbuseRateLimitError.RetryAfter is parsed correctly.
+func TestDo_rateLimit_abuseRateLimitError_retryAfter(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Retry-After", "123") // Retry after value of 123 seconds.
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintln(w, `{
+   "message": "You have triggered an abuse detection mechanism ...",
+   "documentation_url": "https://developer.github.com/v3#abuse-rate-limits"
+}`)
+	})
+
+	req, _ := client.NewRequest("GET", "/", nil)
+	_, err := client.Do(req, nil)
+
+	if err == nil {
+		t.Error("Expected error to be returned.")
+	}
+	abuseRateLimitErr, ok := err.(*AbuseRateLimitError)
+	if !ok {
+		t.Fatalf("Expected a *AbuseRateLimitError error; got %#v.", err)
+	}
+	if abuseRateLimitErr.RetryAfter == nil {
+		t.Fatalf("abuseRateLimitErr RetryAfter is nil, expected not-nil")
+	}
+	if got, want := *abuseRateLimitErr.RetryAfter, 123*time.Second; got != want {
+		t.Errorf("abuseRateLimitErr RetryAfter = %v, want %v", got, want)
 	}
 }
 

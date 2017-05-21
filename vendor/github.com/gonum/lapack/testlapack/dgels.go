@@ -18,7 +18,6 @@ type Dgelser interface {
 }
 
 func DgelsTest(t *testing.T, impl Dgelser) {
-	rnd := rand.New(rand.NewSource(1))
 	for _, trans := range []blas.Transpose{blas.NoTrans, blas.Trans} {
 		for _, test := range []struct {
 			m, n, nrhs, lda, ldb int
@@ -70,7 +69,7 @@ func DgelsTest(t *testing.T, impl Dgelser) {
 			}
 			a := make([]float64, m*lda)
 			for i := range a {
-				a[i] = rnd.Float64()
+				a[i] = rand.Float64()
 			}
 			aCopy := make([]float64, len(a))
 			copy(aCopy, a)
@@ -85,7 +84,7 @@ func DgelsTest(t *testing.T, impl Dgelser) {
 			}
 			b := make([]float64, mb*ldb)
 			for i := range b {
-				b[i] = rnd.Float64()
+				b[i] = rand.Float64()
 			}
 			bCopy := make([]float64, len(b))
 			copy(bCopy, b)
@@ -98,7 +97,7 @@ func DgelsTest(t *testing.T, impl Dgelser) {
 			work = make([]float64, int(work[0]))
 			lwork := len(work)
 			for i := range work {
-				work[i] = rnd.Float64()
+				work[i] = rand.Float64()
 			}
 			impl.Dgels(trans, m, n, nrhs, a, lda, b, ldb, work, lwork)
 

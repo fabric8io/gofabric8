@@ -1,0 +1,41 @@
+## Machine specific variable
+machine:
+    environment:
+        GOPATH: $HOME
+        PATH: $GOPATH/bin:$PATH
+        XCODE_SCHEME: symbolicator
+        XCODE_WORKSPACE: symbolicator
+
+## Post operation after git checkout
+checkout:
+    post:
+        - mkdir -p $HOME/src/github.com/minishift && cp -r ../$CIRCLE_PROJECT_REPONAME $HOME/src/github.com/minishift
+
+## Customize dependencies
+dependencies:
+    override:
+        - go version
+        - go env
+        # Install Glide
+        - curl -sL ${GLIDE_LATEST_RELEASE_URL} -o /tmp/glide.tar.gz:
+            environment:
+                GLIDE_OS_ARCH: $(go env GOHOSTOS)-$(go env GOHOSTARCH)
+                GLIDE_TAG: v0.12.3
+                GLIDE_LATEST_RELEASE_URL: "https://github.com/Masterminds/glide/releases/download/${GLIDE_TAG}/glide-${GLIDE_TAG}-${GLIDE_OS_ARCH}.tar.gz"
+        - mkdir /tmp/glide
+        - tar --directory=/tmp/glide -xvf /tmp/glide.tar.gz
+        - mv /tmp/glide/${GLIDE_OS_ARCH}/glide $GOPATH/bin/:
+            environment:
+                GLIDE_OS_ARCH: $(go env GOHOSTOS)-$(go env GOHOSTARCH)
+
+## Customize test commands
+test:
+    override:
+        - make test cross fmtcheck prerelease:
+                pwd:
+                    ../src/github.com/minishift/minishift
+
+## Artifacts
+general:
+    artifacts:
+        - "../src/github.com/minishift/minishift/out"

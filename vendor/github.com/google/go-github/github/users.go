@@ -90,7 +90,7 @@ func (s *UsersService) Get(user string) (*User, *Response, error) {
 		return nil, resp, err
 	}
 
-	return uResp, resp, err
+	return uResp, resp, nil
 }
 
 // GetByID fetches a user.
@@ -109,7 +109,7 @@ func (s *UsersService) GetByID(id int) (*User, *Response, error) {
 		return nil, resp, err
 	}
 
-	return user, resp, err
+	return user, resp, nil
 }
 
 // Edit the authenticated user.
@@ -128,7 +128,7 @@ func (s *UsersService) Edit(user *User) (*User, *Response, error) {
 		return nil, resp, err
 	}
 
-	return uResp, resp, err
+	return uResp, resp, nil
 }
 
 // UserListOptions specifies optional parameters to the UsersService.ListAll
@@ -156,13 +156,13 @@ func (s *UsersService) ListAll(opt *UserListOptions) ([]*User, *Response, error)
 		return nil, nil, err
 	}
 
-	users := new([]*User)
-	resp, err := s.client.Do(req, users)
+	var users []*User
+	resp, err := s.client.Do(req, &users)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	return *users, resp, err
+	return users, resp, nil
 }
 
 // ListInvitations lists all currently-open repository invitations for the
@@ -184,7 +184,7 @@ func (s *UsersService) ListInvitations() ([]*RepositoryInvitation, *Response, er
 		return nil, resp, err
 	}
 
-	return invites, resp, err
+	return invites, resp, nil
 }
 
 // AcceptInvitation accepts the currently-open repository invitation for the

@@ -7,19 +7,24 @@ package mat64
 import (
 	"math"
 	"math/rand"
-	"reflect"
 	"testing"
 
 	"github.com/gonum/blas/blas64"
 	"github.com/gonum/floats"
-	"github.com/gonum/matrix"
+	"gopkg.in/check.v1"
 )
 
-func asBasicMatrix(d *Dense) Matrix            { return (*basicMatrix)(d) }
-func asBasicSymmetric(s *SymDense) Matrix      { return (*basicSymmetric)(s) }
-func asBasicTriangular(t *TriDense) Triangular { return (*basicTriangular)(t) }
+func asDense(d *Dense) Matrix {
+	return d
+}
+func asBasicMatrix(d *Dense) Matrix {
+	return (*basicMatrix)(d)
+}
+func asBasicVectorer(d *Dense) Matrix {
+	return (*basicVectorer)(d)
+}
 
-func TestNewDense(t *testing.T) {
+func (s *S) TestNewDense(c *check.C) {
 	for i, test := range []struct {
 		a          []float64
 		rows, cols int
@@ -137,31 +142,17 @@ func TestNewDense(t *testing.T) {
 	} {
 		m := NewDense(test.rows, test.cols, test.a)
 		rows, cols := m.Dims()
-		if rows != test.rows {
-			t.Errorf("unexpected number of rows for test %d: got: %d want: %d", i, rows, test.rows)
-		}
-		if cols != test.cols {
-			t.Errorf("unexpected number of cols for test %d: got: %d want: %d", i, cols, test.cols)
-		}
-		if min := Min(m); min != test.min {
-			t.Errorf("unexpected min for test %d: got: %v want: %v", i, min, test.min)
-		}
-		if max := Max(m); max != test.max {
-			t.Errorf("unexpected max for test %d: got: %v want: %v", i, max, test.max)
-		}
-		if fro := Norm(m, 2); math.Abs(Norm(m, 2)-test.fro) > 1e-14 {
-			t.Errorf("unexpected Frobenius norm for test %d: got: %v want: %v", i, fro, test.fro)
-		}
-		if !reflect.DeepEqual(m, test.mat) {
-			t.Errorf("unexpected matrix for test %d", i)
-		}
-		if !Equal(m, test.mat) {
-			t.Errorf("matrix does not equal expected matrix for test %d", i)
-		}
+		c.Check(rows, check.Equals, test.rows, check.Commentf("Test %d", i))
+		c.Check(cols, check.Equals, test.cols, check.Commentf("Test %d", i))
+		c.Check(m.Min(), check.Equals, test.min, check.Commentf("Test %d", i))
+		c.Check(m.Max(), check.Equals, test.max, check.Commentf("Test %d", i))
+		c.Check(m.Norm(0), check.Equals, test.fro, check.Commentf("Test %d", i))
+		c.Check(m, check.DeepEquals, test.mat, check.Commentf("Test %d", i))
+		c.Check(m.Equals(test.mat), check.Equals, true, check.Commentf("Test %d", i))
 	}
 }
 
-func TestAtSet(t *testing.T) {
+func (s *S) TestAtSet(c *check.C) {
 	for test, af := range [][][]float64{
 		{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}, // even
 		{{1, 2}, {4, 5}, {7, 8}},          // wide
@@ -171,50 +162,52 @@ func TestAtSet(t *testing.T) {
 		rows, cols := m.Dims()
 		for i := 0; i < rows; i++ {
 			for j := 0; j < cols; j++ {
-				if m.At(i, j) != af[i][j] {
-					t.Errorf("unexpected value for At(%d, %d) for test %d: got: %v want: %v",
-						i, j, test, m.At(i, j), af[i][j])
-				}
+				c.Check(m.At(i, j), check.Equals, af[i][j], check.Commentf("At test %d", test))
 
 				v := float64(i * j)
 				m.Set(i, j, v)
-				if m.At(i, j) != v {
-					t.Errorf("unexpected value for At(%d, %d) after Set(%[1]d, %d, %v) for test %d: got: %v want: %[3]v",
-						i, j, v, test, m.At(i, j))
-				}
+				c.Check(m.At(i, j), check.Equals, v, check.Commentf("Set test %d", test))
 			}
 		}
 		// Check access out of bounds fails
-		for _, row := range []int{-1, rows, rows + 1} {
-			panicked, message := panics(func() { m.At(row, 0) })
-			if !panicked || message != matrix.ErrRowAccess.Error() {
-				t.Errorf("expected panic for invalid row access N=%d r=%d", rows, row)
-			}
-		}
-		for _, col := range []int{-1, cols, cols + 1} {
-			panicked, message := panics(func() { m.At(0, col) })
-			if !panicked || message != matrix.ErrColAccess.Error() {
-				t.Errorf("expected panic for invalid column access N=%d c=%d", cols, col)
-			}
-		}
+		c.Check(func() { m.At(rows, 0) }, check.PanicMatches, ErrRowAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.At(rows+1, 0) }, check.PanicMatches, ErrRowAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.At(0, cols) }, check.PanicMatches, ErrColAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.At(0, cols+1) }, check.PanicMatches, ErrColAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.At(-1, 0) }, check.PanicMatches, ErrRowAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.At(0, -1) }, check.PanicMatches, ErrColAccess.Error(), check.Commentf("Test %d", test))
 
-		// Check Set out of bounds
-		for _, row := range []int{-1, rows, rows + 1} {
-			panicked, message := panics(func() { m.Set(row, 0, 1.2) })
-			if !panicked || message != matrix.ErrRowAccess.Error() {
-				t.Errorf("expected panic for invalid row access N=%d r=%d", rows, row)
-			}
+		// Check access out of bounds fails
+		c.Check(func() { m.Set(rows, 0, 1.2) }, check.PanicMatches, ErrRowAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.Set(rows+1, 0, 1.2) }, check.PanicMatches, ErrRowAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.Set(0, cols, 1.2) }, check.PanicMatches, ErrColAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.Set(0, cols+1, 1.2) }, check.PanicMatches, ErrColAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.Set(-1, 0, 1.2) }, check.PanicMatches, ErrRowAccess.Error(), check.Commentf("Test %d", test))
+		c.Check(func() { m.Set(0, -1, 1.2) }, check.PanicMatches, ErrColAccess.Error(), check.Commentf("Test %d", test))
+	}
+}
+
+func (s *S) TestRowCol(c *check.C) {
+	for i, af := range [][][]float64{
+		{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}},
+		{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}},
+		{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
+	} {
+		a := NewDense(flatten(af))
+		for ri, row := range af {
+			c.Check(a.Row(nil, ri), check.DeepEquals, row, check.Commentf("Test %d", i))
 		}
-		for _, col := range []int{-1, cols, cols + 1} {
-			panicked, message := panics(func() { m.Set(0, col, 1.2) })
-			if !panicked || message != matrix.ErrColAccess.Error() {
-				t.Errorf("expected panic for invalid column access N=%d c=%d", cols, col)
+		for ci := range af[0] {
+			col := make([]float64, a.mat.Rows)
+			for j := range col {
+				col[j] = float64(ci + 1 + j*a.mat.Cols)
 			}
+			c.Check(a.Col(nil, ci), check.DeepEquals, col, check.Commentf("Test %d", i))
 		}
 	}
 }
 
-func TestSetRowColumn(t *testing.T) {
+func (s *S) TestSetRowColumn(c *check.C) {
 	for _, as := range [][][]float64{
 		{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}},
 		{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}},
@@ -222,37 +215,29 @@ func TestSetRowColumn(t *testing.T) {
 	} {
 		for ri, row := range as {
 			a := NewDense(flatten(as))
-			m := &Dense{}
-			m.Clone(a)
+			t := &Dense{}
+			t.Clone(a)
 			a.SetRow(ri, make([]float64, a.mat.Cols))
-			m.Sub(m, a)
-			nt := Norm(m, 2)
-			nr := floats.Norm(row, 2)
-			if math.Abs(nt-nr) > 1e-14 {
-				t.Errorf("Row %d norm mismatch, want: %g, got: %g", ri, nr, nt)
-			}
+			t.Sub(t, a)
+			c.Check(t.Norm(0), check.Equals, floats.Norm(row, 2))
 		}
 
 		for ci := range as[0] {
 			a := NewDense(flatten(as))
-			m := &Dense{}
-			m.Clone(a)
+			t := &Dense{}
+			t.Clone(a)
 			a.SetCol(ci, make([]float64, a.mat.Rows))
 			col := make([]float64, a.mat.Rows)
 			for j := range col {
 				col[j] = float64(ci + 1 + j*a.mat.Cols)
 			}
-			m.Sub(m, a)
-			nt := Norm(m, 2)
-			nc := floats.Norm(col, 2)
-			if math.Abs(nt-nc) > 1e-14 {
-				t.Errorf("Column %d norm mismatch, want: %g, got: %g", ci, nc, nt)
-			}
+			t.Sub(t, a)
+			c.Check(t.Norm(0), check.Equals, floats.Norm(col, 2))
 		}
 	}
 }
 
-func TestRowColView(t *testing.T) {
+func (s *S) TestRowColView(c *check.C) {
 	for _, test := range []struct {
 		mat [][]float64
 	}{
@@ -290,127 +275,77 @@ func TestRowColView(t *testing.T) {
 		rows, cols, flat := flatten(test.mat)
 		m := NewDense(rows, cols, flat[:len(flat):len(flat)])
 
-		for _, row := range []int{-1, rows, rows + 1} {
-			panicked, message := panics(func() { m.At(row, 0) })
-			if !panicked || message != matrix.ErrRowAccess.Error() {
-				t.Errorf("expected panic for invalid row access rows=%d r=%d", rows, row)
-			}
-		}
-		for _, col := range []int{-1, cols, cols + 1} {
-			panicked, message := panics(func() { m.At(0, col) })
-			if !panicked || message != matrix.ErrColAccess.Error() {
-				t.Errorf("expected panic for invalid column access cols=%d c=%d", cols, col)
-			}
-		}
+		c.Check(func() { m.RowView(-1) }, check.PanicMatches, ErrRowAccess.Error())
+		c.Check(func() { m.RowView(rows) }, check.PanicMatches, ErrRowAccess.Error())
+		c.Check(func() { m.ColView(-1) }, check.PanicMatches, ErrColAccess.Error())
+		c.Check(func() { m.ColView(cols) }, check.PanicMatches, ErrColAccess.Error())
 
 		for i := 0; i < rows; i++ {
 			vr := m.RowView(i)
-			if vr.Len() != cols {
-				t.Errorf("unexpected number of columns: got: %d want: %d", vr.Len(), cols)
-			}
+			c.Check(vr.Len(), check.Equals, cols)
 			for j := 0; j < cols; j++ {
-				if got := vr.At(j, 0); got != test.mat[i][j] {
-					t.Errorf("unexpected value for row.At(%d, 0): got: %v want: %v",
-						j, got, test.mat[i][j])
-				}
+				c.Check(vr.At(j, 0), check.Equals, test.mat[i][j])
 			}
 		}
 		for j := 0; j < cols; j++ {
-			vc := m.ColView(j)
-			if vc.Len() != rows {
-				t.Errorf("unexpected number of rows: got: %d want: %d", vc.Len(), rows)
-			}
+			vr := m.ColView(j)
+			c.Check(vr.Len(), check.Equals, rows)
 			for i := 0; i < rows; i++ {
-				if got := vc.At(i, 0); got != test.mat[i][j] {
-					t.Errorf("unexpected value for col.At(%d, 0): got: %v want: %v",
-						i, got, test.mat[i][j])
-				}
+				c.Check(vr.At(i, 0), check.Equals, test.mat[i][j])
 			}
 		}
 		m = m.View(1, 1, rows-2, cols-2).(*Dense)
 		for i := 1; i < rows-1; i++ {
 			vr := m.RowView(i - 1)
-			if vr.Len() != cols-2 {
-				t.Errorf("unexpected number of columns: got: %d want: %d", vr.Len(), cols-2)
-			}
+			c.Check(vr.Len(), check.Equals, cols-2)
 			for j := 1; j < cols-1; j++ {
-				if got := vr.At(j-1, 0); got != test.mat[i][j] {
-					t.Errorf("unexpected value for row.At(%d, 0): got: %v want: %v",
-						j-1, got, test.mat[i][j])
-				}
+				c.Check(vr.At(j-1, 0), check.Equals, test.mat[i][j])
 			}
 		}
 		for j := 1; j < cols-1; j++ {
-			vc := m.ColView(j - 1)
-			if vc.Len() != rows-2 {
-				t.Errorf("unexpected number of rows: got: %d want: %d", vc.Len(), rows-2)
-			}
+			vr := m.ColView(j - 1)
+			c.Check(vr.Len(), check.Equals, rows-2)
 			for i := 1; i < rows-1; i++ {
-				if got := vc.At(i-1, 0); got != test.mat[i][j] {
-					t.Errorf("unexpected value for col.At(%d, 0): got: %v want: %v",
-						i-1, got, test.mat[i][j])
-				}
+				c.Check(vr.At(i-1, 0), check.Equals, test.mat[i][j])
 			}
 		}
 	}
 }
 
-func TestGrow(t *testing.T) {
+func (s *S) TestGrow(c *check.C) {
 	m := &Dense{}
 	m = m.Grow(10, 10).(*Dense)
 	rows, cols := m.Dims()
 	capRows, capCols := m.Caps()
-	if rows != 10 {
-		t.Errorf("unexpected value for rows: got: %d want: 10", rows)
-	}
-	if cols != 10 {
-		t.Errorf("unexpected value for cols: got: %d want: 10", cols)
-	}
-	if capRows != 10 {
-		t.Errorf("unexpected value for capRows: got: %d want: 10", capRows)
-	}
-	if capCols != 10 {
-		t.Errorf("unexpected value for capCols: got: %d want: 10", capCols)
-	}
+	c.Check(rows, check.Equals, 10)
+	c.Check(cols, check.Equals, 10)
+	c.Check(capRows, check.Equals, 10)
+	c.Check(capCols, check.Equals, 10)
 
 	// Test grow within caps is in-place.
 	m.Set(1, 1, 1)
 	v := m.View(1, 1, 4, 4).(*Dense)
-	if v.At(0, 0) != m.At(1, 1) {
-		t.Errorf("unexpected viewed element value: got: %v want: %v", v.At(0, 0), m.At(1, 1))
-	}
+	c.Check(v.At(0, 0), check.Equals, m.At(1, 1))
 	v = v.Grow(5, 5).(*Dense)
-	if !Equal(v, m.View(1, 1, 9, 9)) {
-		t.Error("unexpected view value after grow")
-	}
+	c.Check(v.Equals(m.View(1, 1, 9, 9)), check.Equals, true)
 
 	// Test grow bigger than caps copies.
 	v = v.Grow(5, 5).(*Dense)
-	if !Equal(v.View(0, 0, 9, 9), m.View(1, 1, 9, 9)) {
-		t.Error("unexpected mismatched common view value after grow")
-	}
+	c.Check(v.View(0, 0, 9, 9).(*Dense).Equals(m.View(1, 1, 9, 9)), check.Equals, true)
 	v.Set(0, 0, 0)
-	if Equal(v.View(0, 0, 9, 9), m.View(1, 1, 9, 9)) {
-		t.Error("unexpected matching view value after grow past capacity")
-	}
+	c.Check(v.View(0, 0, 9, 9).(*Dense).Equals(m.View(1, 1, 9, 9)), check.Equals, false)
 
 	// Test grow uses existing data slice when matrix is zero size.
 	v.Reset()
 	p, l := &v.mat.Data[:1][0], cap(v.mat.Data)
-	*p = 1 // This element is at position (-1, -1) relative to v and so should not be visible.
+	*p = 1
 	v = v.Grow(5, 5).(*Dense)
-	if &v.mat.Data[:1][0] != p {
-		t.Error("grow unexpectedly copied slice within cap limit")
-	}
-	if cap(v.mat.Data) != l {
-		t.Errorf("unexpected change in data slice capacity: got: %d want: %d", cap(v.mat.Data), l)
-	}
-	if v.At(0, 0) != 0 {
-		t.Errorf("unexpected value for At(0, 0): got: %v want: 0", v.At(0, 0))
-	}
+	c.Check(&v.mat.Data[:1][0], check.Equals, p)
+	c.Check(cap(v.mat.Data), check.Equals, l)
+	c.Check(v.At(0, 0), check.Equals, 0.)
 }
 
-func TestAdd(t *testing.T) {
+func (s *S) TestAdd(c *check.C) {
 	for i, test := range []struct {
 		a, b, r [][]float64
 	}{
@@ -446,58 +381,25 @@ func TestAdd(t *testing.T) {
 
 		var temp Dense
 		temp.Add(a, b)
-		if !Equal(&temp, r) {
-			t.Errorf("unexpected result from Add for test %d %v Add %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v Add %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data)))
 
 		zero(temp.mat.Data)
 		temp.Add(a, b)
-		if !Equal(&temp, r) {
-			t.Errorf("unexpected result from Add for test %d %v Add %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v Add %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data)))
 
 		// These probably warrant a better check and failure. They should never happen in the wild though.
 		temp.mat.Data = nil
-		panicked, message := panics(func() { temp.Add(a, b) })
-		if !panicked || message != "runtime error: index out of range" {
-			t.Error("exected runtime panic for nil data slice")
-		}
+		c.Check(func() { temp.Add(a, b) }, check.PanicMatches, "runtime error: index out of range", check.Commentf("Test %d", i))
 
 		a.Add(a, b)
-		if !Equal(a, r) {
-			t.Errorf("unexpected result from Add for test %d %v Add %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(a.mat.Rows, a.mat.Cols, a.mat.Data), test.r)
-		}
+		c.Check(a.Equals(r), check.Equals, true, check.Commentf("Test %d: %v Add %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(a.mat.Rows, a.mat.Cols, a.mat.Data)))
 	}
-
-	panicked, message := panics(func() {
-		m := NewDense(10, 10, nil)
-		a := NewDense(5, 5, nil)
-		m.View(1, 1, 5, 5).(*Dense).Add(a, m.View(2, 2, 5, 5))
-	})
-	if !panicked {
-		t.Error("expected panic for overlapping matrices")
-	}
-	if message != regionOverlap {
-		t.Errorf("unexpected panic message: got: %q want: %q", message, regionOverlap)
-	}
-
-	method := func(receiver, a, b Matrix) {
-		type Adder interface {
-			Add(a, b Matrix)
-		}
-		rd := receiver.(Adder)
-		rd.Add(a, b)
-	}
-	denseComparison := func(receiver, a, b *Dense) {
-		receiver.Add(a, b)
-	}
-	testTwoInput(t, "Add", &Dense{}, method, denseComparison, legalTypesAll, legalSizeSameRectangular, 1e-14)
 }
 
-func TestSub(t *testing.T) {
+func (s *S) TestSub(c *check.C) {
 	for i, test := range []struct {
 		a, b, r [][]float64
 	}{
@@ -533,58 +435,25 @@ func TestSub(t *testing.T) {
 
 		var temp Dense
 		temp.Sub(a, b)
-		if !Equal(&temp, r) {
-			t.Errorf("unexpected result from Sub for test %d %v Sub %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v Sub %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data)))
 
 		zero(temp.mat.Data)
 		temp.Sub(a, b)
-		if !Equal(&temp, r) {
-			t.Errorf("unexpected result from Sub for test %d %v Sub %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v Sub %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data)))
 
 		// These probably warrant a better check and failure. They should never happen in the wild though.
 		temp.mat.Data = nil
-		panicked, message := panics(func() { temp.Sub(a, b) })
-		if !panicked || message != "runtime error: index out of range" {
-			t.Error("exected runtime panic for nil data slice")
-		}
+		c.Check(func() { temp.Sub(a, b) }, check.PanicMatches, "runtime error: index out of range", check.Commentf("Test %d", i))
 
 		a.Sub(a, b)
-		if !Equal(a, r) {
-			t.Errorf("unexpected result from Sub for test %d %v Sub %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(a.mat.Rows, a.mat.Cols, a.mat.Data), test.r)
-		}
+		c.Check(a.Equals(r), check.Equals, true, check.Commentf("Test %d: %v Sub %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(a.mat.Rows, a.mat.Cols, a.mat.Data)))
 	}
-
-	panicked, message := panics(func() {
-		m := NewDense(10, 10, nil)
-		a := NewDense(5, 5, nil)
-		m.View(1, 1, 5, 5).(*Dense).Sub(a, m.View(2, 2, 5, 5))
-	})
-	if !panicked {
-		t.Error("expected panic for overlapping matrices")
-	}
-	if message != regionOverlap {
-		t.Errorf("unexpected panic message: got: %q want: %q", message, regionOverlap)
-	}
-
-	method := func(receiver, a, b Matrix) {
-		type Suber interface {
-			Sub(a, b Matrix)
-		}
-		rd := receiver.(Suber)
-		rd.Sub(a, b)
-	}
-	denseComparison := func(receiver, a, b *Dense) {
-		receiver.Sub(a, b)
-	}
-	testTwoInput(t, "Sub", &Dense{}, method, denseComparison, legalTypesAll, legalSizeSameRectangular, 1e-14)
 }
 
-func TestMulElem(t *testing.T) {
+func (s *S) TestMulElem(c *check.C) {
 	for i, test := range []struct {
 		a, b, r [][]float64
 	}{
@@ -620,55 +489,22 @@ func TestMulElem(t *testing.T) {
 
 		var temp Dense
 		temp.MulElem(a, b)
-		if !Equal(&temp, r) {
-			t.Errorf("unexpected result from MulElem for test %d %v MulElem %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v MulElem %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data)))
 
 		zero(temp.mat.Data)
 		temp.MulElem(a, b)
-		if !Equal(&temp, r) {
-			t.Errorf("unexpected result from MulElem for test %d %v MulElem %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v MulElem %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data)))
 
 		// These probably warrant a better check and failure. They should never happen in the wild though.
 		temp.mat.Data = nil
-		panicked, message := panics(func() { temp.MulElem(a, b) })
-		if !panicked || message != "runtime error: index out of range" {
-			t.Error("exected runtime panic for nil data slice")
-		}
+		c.Check(func() { temp.MulElem(a, b) }, check.PanicMatches, "runtime error: index out of range", check.Commentf("Test %d", i))
 
 		a.MulElem(a, b)
-		if !Equal(a, r) {
-			t.Errorf("unexpected result from MulElem for test %d %v MulElem %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(a.mat.Rows, a.mat.Cols, a.mat.Data), test.r)
-		}
+		c.Check(a.Equals(r), check.Equals, true, check.Commentf("Test %d: %v MulElem %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(a.mat.Rows, a.mat.Cols, a.mat.Data)))
 	}
-
-	panicked, message := panics(func() {
-		m := NewDense(10, 10, nil)
-		a := NewDense(5, 5, nil)
-		m.View(1, 1, 5, 5).(*Dense).MulElem(a, m.View(2, 2, 5, 5))
-	})
-	if !panicked {
-		t.Error("expected panic for overlapping matrices")
-	}
-	if message != regionOverlap {
-		t.Errorf("unexpected panic message: got: %q want: %q", message, regionOverlap)
-	}
-
-	method := func(receiver, a, b Matrix) {
-		type ElemMuler interface {
-			MulElem(a, b Matrix)
-		}
-		rd := receiver.(ElemMuler)
-		rd.MulElem(a, b)
-	}
-	denseComparison := func(receiver, a, b *Dense) {
-		receiver.MulElem(a, b)
-	}
-	testTwoInput(t, "MulElem", &Dense{}, method, denseComparison, legalTypesAll, legalSizeSameRectangular, 1e-14)
 }
 
 // A comparison that treats NaNs as equal, for testing.
@@ -687,7 +523,7 @@ func (m *Dense) same(b Matrix) bool {
 	return true
 }
 
-func TestDivElem(t *testing.T) {
+func (s *S) TestDivElem(c *check.C) {
 	for i, test := range []struct {
 		a, b, r [][]float64
 	}{
@@ -723,58 +559,25 @@ func TestDivElem(t *testing.T) {
 
 		var temp Dense
 		temp.DivElem(a, b)
-		if !temp.same(r) {
-			t.Errorf("unexpected result from DivElem for test %d %v DivElem %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.same(r), check.Equals, true, check.Commentf("Test %d: %v DivElem %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data)))
 
 		zero(temp.mat.Data)
 		temp.DivElem(a, b)
-		if !temp.same(r) {
-			t.Errorf("unexpected result from DivElem for test %d %v DivElem %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.same(r), check.Equals, true, check.Commentf("Test %d: %v DivElem %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data)))
 
 		// These probably warrant a better check and failure. They should never happen in the wild though.
 		temp.mat.Data = nil
-		panicked, message := panics(func() { temp.DivElem(a, b) })
-		if !panicked || message != "runtime error: index out of range" {
-			t.Error("exected runtime panic for nil data slice")
-		}
+		c.Check(func() { temp.DivElem(a, b) }, check.PanicMatches, "runtime error: index out of range", check.Commentf("Test %d", i))
 
 		a.DivElem(a, b)
-		if !a.same(r) {
-			t.Errorf("unexpected result from DivElem for test %d %v DivElem %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(a.mat.Rows, a.mat.Cols, a.mat.Data), test.r)
-		}
+		c.Check(a.same(r), check.Equals, true, check.Commentf("Test %d: %v DivElem %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(a.mat.Rows, a.mat.Cols, a.mat.Data)))
 	}
-
-	panicked, message := panics(func() {
-		m := NewDense(10, 10, nil)
-		a := NewDense(5, 5, nil)
-		m.View(1, 1, 5, 5).(*Dense).DivElem(a, m.View(2, 2, 5, 5))
-	})
-	if !panicked {
-		t.Error("expected panic for overlapping matrices")
-	}
-	if message != regionOverlap {
-		t.Errorf("unexpected panic message: got: %q want: %q", message, regionOverlap)
-	}
-
-	method := func(receiver, a, b Matrix) {
-		type ElemDiver interface {
-			DivElem(a, b Matrix)
-		}
-		rd := receiver.(ElemDiver)
-		rd.DivElem(a, b)
-	}
-	denseComparison := func(receiver, a, b *Dense) {
-		receiver.DivElem(a, b)
-	}
-	testTwoInput(t, "DivElem", &Dense{}, method, denseComparison, legalTypesAll, legalSizeSameRectangular, 1e-14)
 }
 
-func TestMul(t *testing.T) {
+func (s *S) TestMul(c *check.C) {
 	for i, test := range []struct {
 		a, b, r [][]float64
 	}{
@@ -815,61 +618,146 @@ func TestMul(t *testing.T) {
 
 		var temp Dense
 		temp.Mul(a, b)
-		if !Equal(&temp, r) {
-			t.Errorf("unexpected result from Mul for test %d %v Mul %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v Mul %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data)))
 
 		zero(temp.mat.Data)
 		temp.Mul(a, b)
-		if !Equal(&temp, r) {
-			t.Errorf("unexpected result from Mul for test %d %v Mul %v: got: %v want: %v",
-				i, test.a, test.b, unflatten(temp.mat.Rows, temp.mat.Cols, temp.mat.Data), test.r)
-		}
+		c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v Mul %v expect %v got %v",
+			i, test.a, test.b, test.r, unflatten(a.mat.Rows, a.mat.Cols, a.mat.Data)))
 
 		// These probably warrant a better check and failure. They should never happen in the wild though.
 		temp.mat.Data = nil
-		panicked, message := panics(func() { temp.Mul(a, b) })
-		if !panicked || message != "blas: insufficient matrix slice length" {
-			if message != "" {
-				t.Errorf("expected runtime panic for nil data slice: got %q", message)
-			} else {
-				t.Error("expected runtime panic for nil data slice")
+		c.Check(func() { temp.Mul(a, b) }, check.PanicMatches, "blas: index of c out of range", check.Commentf("Test %d", i))
+	}
+}
+
+func (s *S) TestMulTrans(c *check.C) {
+	for i, test := range []struct {
+		a, b [][]float64
+	}{
+		{
+			[][]float64{{0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+			[][]float64{{0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+		},
+		{
+			[][]float64{{1, 1, 1}, {1, 1, 1}, {1, 1, 1}},
+			[][]float64{{1, 1, 1}, {1, 1, 1}, {1, 1, 1}},
+		},
+		{
+			[][]float64{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}},
+			[][]float64{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}},
+		},
+		{
+			[][]float64{{-1, 0, 0}, {0, -1, 0}, {0, 0, -1}},
+			[][]float64{{-1, 0, 0}, {0, -1, 0}, {0, 0, -1}},
+		},
+		{
+			[][]float64{{1, 2, 3}, {4, 5, 6}},
+			[][]float64{{1, 2}, {3, 4}, {5, 6}},
+		},
+		{
+			[][]float64{{0, 1, 1}, {0, 1, 1}, {0, 1, 1}},
+			[][]float64{{0, 1, 1}, {0, 1, 1}, {0, 1, 1}},
+		},
+	} {
+		for _, matInterface := range []func(d *Dense) Matrix{asDense, asBasicMatrix, asBasicVectorer} {
+			a := matInterface(NewDense(flatten(test.a)))
+			b := matInterface(NewDense(flatten(test.b)))
+			for _, aTrans := range []bool{false, true} {
+				for _, bTrans := range []bool{false, true} {
+					r := NewDense(0, 0, nil)
+					var aCopy, bCopy Dense
+					if aTrans {
+						aCopy.TCopy(NewDense(flatten(test.a)))
+					} else {
+						aCopy = *NewDense(flatten(test.a))
+					}
+					if bTrans {
+						bCopy.TCopy(NewDense(flatten(test.b)))
+					} else {
+						bCopy = *NewDense(flatten(test.b))
+					}
+					var temp Dense
+
+					_, ac := aCopy.Dims()
+					br, _ := bCopy.Dims()
+					if ac != br {
+						// check that both calls error and that the same error returns
+						c.Check(func() { temp.Mul(matInterface(&aCopy), matInterface(&bCopy)) }, check.PanicMatches, ErrShape.Error(), check.Commentf("Test Mul %d", i))
+						c.Check(func() { temp.MulTrans(a, aTrans, b, bTrans) }, check.PanicMatches, ErrShape.Error(), check.Commentf("Test MulTrans %d", i))
+						continue
+					}
+
+					r.Mul(matInterface(&aCopy), matInterface(&bCopy))
+
+					temp.MulTrans(a, aTrans, b, bTrans)
+					c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v trans=%b MulTrans %v trans=%b expect %v got %v",
+						i, test.a, aTrans, test.b, bTrans, r, temp))
+
+					zero(temp.mat.Data)
+					temp.MulTrans(a, aTrans, b, bTrans)
+					c.Check(temp.Equals(r), check.Equals, true, check.Commentf("Test %d: %v trans=%b MulTrans %v trans=%b expect %v got %v",
+						i, test.a, aTrans, test.b, bTrans, r, temp))
+				}
 			}
 		}
 	}
+}
 
-	panicked, message := panics(func() {
-		m := NewDense(10, 10, nil)
-		a := NewDense(5, 5, nil)
-		m.View(1, 1, 5, 5).(*Dense).Mul(a, m.View(2, 2, 5, 5))
-	})
-	if !panicked {
-		t.Error("expected panic for overlapping matrices")
-	}
-	if message != regionOverlap {
-		t.Errorf("unexpected panic message: got: %q want: %q", message, regionOverlap)
-	}
+func (s *S) TestMulTransSelf(c *check.C) {
+	for i, test := range []struct {
+		a [][]float64
+	}{
+		{
+			[][]float64{{0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+		},
+		{
+			[][]float64{{1, 1, 1}, {1, 1, 1}, {1, 1, 1}},
+		},
+		{
+			[][]float64{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}},
+		},
+		{
+			[][]float64{{-1, 0, 0}, {0, -1, 0}, {0, 0, -1}},
+		},
+		{
+			[][]float64{{1, 2, 3}, {4, 5, 6}},
+		},
+		{
+			[][]float64{{0, 1, 1}, {0, 1, 1}, {0, 1, 1}},
+		},
+	} {
+		var aT Dense
+		a := NewDense(flatten(test.a))
+		aT.TCopy(a)
+		for _, trans := range []bool{false, true} {
+			var aCopy, bCopy Dense
+			if trans {
+				aCopy.TCopy(NewDense(flatten(test.a)))
+				bCopy = *NewDense(flatten(test.a))
+			} else {
+				aCopy = *NewDense(flatten(test.a))
+				bCopy.TCopy(NewDense(flatten(test.a)))
+			}
 
-	method := func(receiver, a, b Matrix) {
-		type Muler interface {
-			Mul(a, b Matrix)
+			var r Dense
+			r.Mul(&aCopy, &bCopy)
+
+			var temp Dense
+			temp.MulTrans(a, trans, a, !trans)
+			c.Check(temp.Equals(&r), check.Equals, true, check.Commentf("Test %d: %v MulTrans self trans=%b expect %v got %v", i, test.a, trans, r, temp))
+
+			zero(temp.mat.Data)
+			temp.MulTrans(a, trans, a, !trans)
+			c.Check(temp.Equals(&r), check.Equals, true, check.Commentf("Test %d: %v MulTrans self trans=%b expect %v got %v", i, test.a, trans, r, temp))
 		}
-		rd := receiver.(Muler)
-		rd.Mul(a, b)
 	}
-	denseComparison := func(receiver, a, b *Dense) {
-		receiver.Mul(a, b)
-	}
-	legalSizeMul := func(ar, ac, br, bc int) bool {
-		return ac == br
-	}
-	testTwoInput(t, "Mul", &Dense{}, method, denseComparison, legalTypesAll, legalSizeMul, 1e-14)
 }
 
 func randDense(size int, rho float64, rnd func() float64) (*Dense, error) {
 	if size == 0 {
-		return nil, matrix.ErrZeroLength
+		return nil, ErrZeroLength
 	}
 	d := &Dense{
 		mat: blas64.General{
@@ -888,8 +776,8 @@ func randDense(size int, rho float64, rnd func() float64) (*Dense, error) {
 	return d, nil
 }
 
-func TestExp(t *testing.T) {
-	for i, test := range []struct {
+func (s *S) TestExp(c *check.C) {
+	for i, t := range []struct {
 		a    [][]float64
 		want [][]float64
 		mod  func(*Dense)
@@ -915,18 +803,16 @@ func TestExp(t *testing.T) {
 		},
 	} {
 		var got Dense
-		if test.mod != nil {
-			test.mod(&got)
+		if t.mod != nil {
+			t.mod(&got)
 		}
-		got.Exp(NewDense(flatten(test.a)))
-		if !EqualApprox(&got, NewDense(flatten(test.want)), 1e-12) {
-			t.Errorf("unexpected result for Exp test %d", i)
-		}
+		got.Exp(NewDense(flatten(t.a)))
+		c.Check(got.EqualsApprox(NewDense(flatten(t.want)), 1e-12), check.Equals, true, check.Commentf("Test %d", i))
 	}
 }
 
-func TestPow(t *testing.T) {
-	for i, test := range []struct {
+func (s *S) TestPow(c *check.C) {
+	for i, t := range []struct {
 		a    [][]float64
 		n    int
 		mod  func(*Dense)
@@ -1002,34 +888,16 @@ func TestPow(t *testing.T) {
 		},
 	} {
 		var got Dense
-		if test.mod != nil {
-			test.mod(&got)
+		if t.mod != nil {
+			t.mod(&got)
 		}
-		got.Pow(NewDense(flatten(test.a)), test.n)
-		if !EqualApprox(&got, NewDense(flatten(test.want)), 1e-12) {
-			t.Errorf("unexpected result for Pow test %d", i)
-		}
+		got.Pow(NewDense(flatten(t.a)), t.n)
+		c.Check(got.Equals(NewDense(flatten(t.want))), check.Equals, true, check.Commentf("Test %d", i))
 	}
 }
 
-func TestScale(t *testing.T) {
-	for _, f := range []float64{0.5, 1, 3} {
-		method := func(receiver, a Matrix) {
-			type Scaler interface {
-				Scale(f float64, a Matrix)
-			}
-			rd := receiver.(Scaler)
-			rd.Scale(f, a)
-		}
-		denseComparison := func(receiver, a *Dense) {
-			receiver.Scale(f, a)
-		}
-		testOneInput(t, "Scale", &Dense{}, method, denseComparison, isAnyType, isAnySize, 1e-14)
-	}
-}
-
-func TestPowN(t *testing.T) {
-	for i, test := range []struct {
+func (s *S) TestPowN(c *check.C) {
+	for i, t := range []struct {
 		a    [][]float64
 		mod  func(*Dense)
 		want [][]float64
@@ -1050,14 +918,12 @@ func TestPowN(t *testing.T) {
 	} {
 		for n := 1; n <= 14; n++ {
 			var got, want Dense
-			if test.mod != nil {
-				test.mod(&got)
+			if t.mod != nil {
+				t.mod(&got)
 			}
-			got.Pow(NewDense(flatten(test.a)), n)
-			want.iterativePow(NewDense(flatten(test.a)), n)
-			if !Equal(&got, &want) {
-				t.Errorf("unexpected result for iterative Pow test %d", i)
-			}
+			got.Pow(NewDense(flatten(t.a)), n)
+			want.iterativePow(NewDense(flatten(t.a)), n)
+			c.Check(got.Equals(&want), check.Equals, true, check.Commentf("Test %d", i))
 		}
 	}
 }
@@ -1069,9 +935,72 @@ func (m *Dense) iterativePow(a Matrix, n int) {
 	}
 }
 
-func TestCloneT(t *testing.T) {
+func (s *S) TestLU(c *check.C) {
+	for i := 0; i < 100; i++ {
+		size := rand.Intn(100)
+		r, err := randDense(size, rand.Float64(), rand.NormFloat64)
+		if size == 0 {
+			c.Check(err, check.Equals, ErrZeroLength)
+			continue
+		}
+		c.Assert(err, check.Equals, nil)
+
+		var (
+			u, l Dense
+			rc   *Dense
+		)
+
+		u.U(r)
+		l.L(r)
+		for m := 0; m < size; m++ {
+			for n := 0; n < size; n++ {
+				switch {
+				case m < n: // Upper triangular matrix.
+					c.Check(u.At(m, n), check.Equals, r.At(m, n), check.Commentf("Test #%d At(%d, %d)", i, m, n))
+				case m == n: // Diagonal matrix.
+					c.Check(u.At(m, n), check.Equals, l.At(m, n), check.Commentf("Test #%d At(%d, %d)", i, m, n))
+					c.Check(u.At(m, n), check.Equals, r.At(m, n), check.Commentf("Test #%d At(%d, %d)", i, m, n))
+				case m < n: // Lower triangular matrix.
+					c.Check(l.At(m, n), check.Equals, r.At(m, n), check.Commentf("Test #%d At(%d, %d)", i, m, n))
+				}
+			}
+		}
+
+		rc = DenseCopyOf(r)
+		rc.U(rc)
+		for m := 0; m < size; m++ {
+			for n := 0; n < size; n++ {
+				switch {
+				case m < n: // Upper triangular matrix.
+					c.Check(rc.At(m, n), check.Equals, r.At(m, n), check.Commentf("Test #%d At(%d, %d)", i, m, n))
+				case m == n: // Diagonal matrix.
+					c.Check(rc.At(m, n), check.Equals, r.At(m, n), check.Commentf("Test #%d At(%d, %d)", i, m, n))
+				case m > n: // Lower triangular matrix.
+					c.Check(rc.At(m, n), check.Equals, 0., check.Commentf("Test #%d At(%d, %d)", i, m, n))
+				}
+			}
+		}
+
+		rc = DenseCopyOf(r)
+		rc.L(rc)
+		for m := 0; m < size; m++ {
+			for n := 0; n < size; n++ {
+				switch {
+				case m < n: // Upper triangular matrix.
+					c.Check(rc.At(m, n), check.Equals, 0., check.Commentf("Test #%d At(%d, %d)", i, m, n))
+				case m == n: // Diagonal matrix.
+					c.Check(rc.At(m, n), check.Equals, r.At(m, n), check.Commentf("Test #%d At(%d, %d)", i, m, n))
+				case m > n: // Lower triangular matrix.
+					c.Check(rc.At(m, n), check.Equals, r.At(m, n), check.Commentf("Test #%d At(%d, %d)", i, m, n))
+				}
+			}
+		}
+	}
+}
+
+func (s *S) TestTranspose(c *check.C) {
 	for i, test := range []struct {
-		a, want [][]float64
+		a, t [][]float64
 	}{
 		{
 			[][]float64{{0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
@@ -1095,160 +1024,99 @@ func TestCloneT(t *testing.T) {
 		},
 	} {
 		a := NewDense(flatten(test.a))
-		want := NewDense(flatten(test.want))
+		t := NewDense(flatten(test.t))
 
-		var got, gotT Dense
+		var r, rr Dense
 
-		for j := 0; j < 2; j++ {
-			got.Clone(a.T())
-			if !Equal(&got, want) {
-				t.Errorf("expected transpose for test %d iteration %d: %v transpose = %v",
-					i, j, test.a, test.want)
-			}
-			gotT.Clone(got.T())
-			if !Equal(&gotT, a) {
-				t.Errorf("expected transpose for test %d iteration %d: %v transpose = %v",
-					i, j, test.a, test.want)
-			}
+		r.TCopy(a)
+		c.Check(r.Equals(t), check.Equals, true, check.Commentf("Test %d: %v transpose = %v", i, test.a, test.t))
 
-			zero(got.mat.Data)
-		}
+		rr.TCopy(&r)
+		c.Check(rr.Equals(a), check.Equals, true, check.Commentf("Test %d: %v transpose = I", i, test.a, test.t))
+
+		zero(r.mat.Data)
+		r.TCopy(a)
+		c.Check(r.Equals(t), check.Equals, true, check.Commentf("Test %d: %v transpose = %v", i, test.a, test.t))
+
+		zero(rr.mat.Data)
+		rr.TCopy(&r)
+		c.Check(rr.Equals(a), check.Equals, true, check.Commentf("Test %d: %v transpose = I", i, test.a, test.t))
 	}
 }
 
-func TestCopyT(t *testing.T) {
+func (s *S) TestNorm(c *check.C) {
 	for i, test := range []struct {
-		a, want [][]float64
+		a    [][]float64
+		ord  float64
+		norm float64
 	}{
 		{
-			[][]float64{{0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
-			[][]float64{{0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
+			a:    [][]float64{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}},
+			ord:  0,
+			norm: 25.49509756796392,
 		},
 		{
-			[][]float64{{1, 1, 1}, {1, 1, 1}, {1, 1, 1}},
-			[][]float64{{1, 1, 1}, {1, 1, 1}, {1, 1, 1}},
+			a:    [][]float64{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}},
+			ord:  1,
+			norm: 30,
 		},
 		{
-			[][]float64{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}},
-			[][]float64{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}},
+			a:    [][]float64{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}},
+			ord:  -1,
+			norm: 22,
 		},
 		{
-			[][]float64{{-1, 0, 0}, {0, -1, 0}, {0, 0, -1}},
-			[][]float64{{-1, 0, 0}, {0, -1, 0}, {0, 0, -1}},
+			a:    [][]float64{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}},
+			ord:  2,
+			norm: 25.46240743603639,
 		},
 		{
-			[][]float64{{1, 2, 3}, {4, 5, 6}},
-			[][]float64{{1, 4}, {2, 5}, {3, 6}},
+			a:    [][]float64{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}},
+			ord:  -2,
+			norm: 9.013990486603544e-16,
+		},
+		{
+			a:    [][]float64{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}},
+			ord:  inf,
+			norm: 33,
+		},
+		{
+			a:    [][]float64{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}, {10, 11, 12}},
+			ord:  -inf,
+			norm: 6,
+		},
+		{
+			a:    [][]float64{{1, -2, -2}, {-4, 5, 6}},
+			ord:  1,
+			norm: 8,
+		},
+		{
+			a:    [][]float64{{1, -2, -2}, {-4, 5, 6}},
+			ord:  -1,
+			norm: 5,
+		},
+		{
+			a:    [][]float64{{1, -2, -2}, {-4, 5, 6}},
+			ord:  inf,
+			norm: 15,
+		},
+		{
+			a:    [][]float64{{1, -2, -2}, {-4, 5, 6}},
+			ord:  -inf,
+			norm: 5,
 		},
 	} {
 		a := NewDense(flatten(test.a))
-		want := NewDense(flatten(test.want))
-
-		ar, ac := a.Dims()
-		got := NewDense(ac, ar, nil)
-		rr := NewDense(ar, ac, nil)
-
-		for j := 0; j < 2; j++ {
-			got.Copy(a.T())
-			if !Equal(got, want) {
-				t.Errorf("expected transpose for test %d iteration %d: %v transpose = %v",
-					i, j, test.a, test.want)
-			}
-			rr.Copy(got.T())
-			if !Equal(rr, a) {
-				t.Errorf("expected transpose for test %d iteration %d: %v transpose = %v",
-					i, j, test.a, test.want)
-			}
-
-			zero(got.mat.Data)
-		}
-	}
-}
-
-func TestCopyDenseAlias(t *testing.T) {
-	for _, trans := range []bool{false, true} {
-		for di := 0; di < 2; di++ {
-			for dj := 0; dj < 2; dj++ {
-				for si := 0; si < 2; si++ {
-					for sj := 0; sj < 2; sj++ {
-						a := NewDense(3, 3, []float64{
-							1, 2, 3,
-							4, 5, 6,
-							7, 8, 9,
-						})
-						src := a.View(si, sj, 2, 2)
-						want := DenseCopyOf(src)
-						got := a.View(di, dj, 2, 2).(*Dense)
-
-						if trans {
-							panicked, _ := panics(func() { got.Copy(src.T()) })
-							if !panicked {
-								t.Errorf("expected panic for transpose aliased copy with offsets dst(%d,%d) src(%d,%d):\ngot:\n%v\nwant:\n%v",
-									di, dj, si, sj, Formatted(got), Formatted(want),
-								)
-							}
-							continue
-						}
-
-						got.Copy(src)
-						if !Equal(got, want) {
-							t.Errorf("unexpected aliased copy result with offsets dst(%d,%d) src(%d,%d):\ngot:\n%v\nwant:\n%v",
-								di, dj, si, sj, Formatted(got), Formatted(want),
-							)
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-func TestCopyVectorAlias(t *testing.T) {
-	for _, horiz := range []bool{false, true} {
-		for do := 0; do < 2; do++ {
-			for di := 0; di < 3; di++ {
-				for si := 0; si < 3; si++ {
-					a := NewDense(3, 3, []float64{
-						1, 2, 3,
-						4, 5, 6,
-						7, 8, 9,
-					})
-					var src *Vector
-					var want *Dense
-					if horiz {
-						src = a.RowView(si)
-						want = DenseCopyOf(a.View(si, 0, 1, 2))
-					} else {
-						src = a.ColView(si)
-						want = DenseCopyOf(a.View(0, si, 2, 1))
-					}
-
-					var got *Dense
-					if horiz {
-						got = a.View(di, do, 1, 2).(*Dense)
-						got.Copy(src.T())
-					} else {
-						got = a.View(do, di, 2, 1).(*Dense)
-						got.Copy(src)
-					}
-
-					if !Equal(got, want) {
-						t.Errorf("unexpected aliased copy result with offsets dst(%d) src(%d):\ngot:\n%v\nwant:\n%v",
-							di, si, Formatted(got), Formatted(want),
-						)
-					}
-				}
-			}
-		}
+		c.Check(a.Norm(test.ord), check.Equals, test.norm, check.Commentf("Test %d: %v norm = %f", i, test.a, test.norm))
 	}
 }
 
 func identity(r, c int, v float64) float64 { return v }
 
-func TestApply(t *testing.T) {
+func (s *S) TestApply(c *check.C) {
 	for i, test := range []struct {
-		a, want [][]float64
-		fn      func(r, c int, v float64) float64
+		a, t [][]float64
+		fn   ApplyFunc
 	}{
 		{
 			[][]float64{{0, 0, 0}, {0, 0, 0}, {0, 0, 0}},
@@ -1302,50 +1170,19 @@ func TestApply(t *testing.T) {
 		},
 	} {
 		a := NewDense(flatten(test.a))
-		want := NewDense(flatten(test.want))
+		t := NewDense(flatten(test.t))
 
-		var got Dense
+		var r Dense
 
-		for j := 0; j < 2; j++ {
-			got.Apply(test.fn, a)
-			if !Equal(&got, want) {
-				t.Errorf("unexpected result for test %d iteration %d: got: %v want: %v", i, j, got.mat.Data, want.mat.Data)
-			}
-		}
-	}
+		r.Apply(test.fn, a)
+		c.Check(r.Equals(t), check.Equals, true, check.Commentf("Test %d: obtained %v expect: %v", i, r.mat.Data, t.mat.Data))
 
-	for _, fn := range []func(r, c int, v float64) float64{
-		identity,
-		func(r, c int, v float64) float64 {
-			if r < c {
-				return v
-			}
-			return -v
-		},
-		func(r, c int, v float64) float64 {
-			if r%2 == 0 && c%2 == 0 {
-				return v
-			}
-			return -v
-		},
-		func(_, _ int, v float64) float64 { return v * v },
-		func(_, _ int, v float64) float64 { return -v },
-	} {
-		method := func(receiver, x Matrix) {
-			type Applier interface {
-				Apply(func(r, c int, v float64) float64, Matrix)
-			}
-			rd := receiver.(Applier)
-			rd.Apply(fn, x)
-		}
-		denseComparison := func(receiver, x *Dense) {
-			receiver.Apply(fn, x)
-		}
-		testOneInput(t, "Apply", &Dense{}, method, denseComparison, isAnyType, isAnySize, 0)
+		a.Apply(test.fn, a)
+		c.Check(a.Equals(t), check.Equals, true, check.Commentf("Test %d: obtained %v expect: %v", i, a.mat.Data, t.mat.Data))
 	}
 }
 
-func TestClone(t *testing.T) {
+func (s *S) TestClone(c *check.C) {
 	for i, test := range []struct {
 		a    [][]float64
 		i, j int
@@ -1367,36 +1204,11 @@ func TestClone(t *testing.T) {
 		a.Clone(a)
 		a.Set(test.i, test.j, test.v)
 
-		if Equal(&b, a) {
-			t.Errorf("unexpected mirror of write to cloned matrix for test %d: %v cloned and altered = %v",
-				i, a, &b)
-		}
+		c.Check(b.Equals(a), check.Equals, false, check.Commentf("Test %d: %v cloned and altered = %v", i, a, &b))
 	}
 }
 
-// TODO(kortschak) Roll this into testOneInput when it exists.
-func TestCopyPanic(t *testing.T) {
-	for _, a := range []*Dense{
-		{},
-		{mat: blas64.General{Rows: 1}},
-		{mat: blas64.General{Cols: 1}},
-	} {
-		var rows, cols int
-		m := NewDense(1, 1, nil)
-		panicked, message := panics(func() { rows, cols = m.Copy(a) })
-		if panicked {
-			t.Errorf("unexpected panic: %v", message)
-		}
-		if rows != 0 {
-			t.Errorf("unexpected rows: got: %d want: 0", rows)
-		}
-		if cols != 0 {
-			t.Errorf("unexpected cols: got: %d want: 0", cols)
-		}
-	}
-}
-
-func TestStack(t *testing.T) {
+func (s *S) TestStack(c *check.C) {
 	for i, test := range []struct {
 		a, b, e [][]float64
 	}{
@@ -1422,25 +1234,11 @@ func TestStack(t *testing.T) {
 		var s Dense
 		s.Stack(a, b)
 
-		if !Equal(&s, NewDense(flatten(test.e))) {
-			t.Errorf("unexpected result for Stack test %d: %v stack %v = %v", i, a, b, s)
-		}
+		c.Check(s.Equals(NewDense(flatten(test.e))), check.Equals, true, check.Commentf("Test %d: %v stack %v = %v", i, a, b, s))
 	}
-
-	method := func(receiver, a, b Matrix) {
-		type Stacker interface {
-			Stack(a, b Matrix)
-		}
-		rd := receiver.(Stacker)
-		rd.Stack(a, b)
-	}
-	denseComparison := func(receiver, a, b *Dense) {
-		receiver.Stack(a, b)
-	}
-	testTwoInput(t, "Stack", &Dense{}, method, denseComparison, legalTypesAll, legalSizeSameWidth, 0)
 }
 
-func TestAugment(t *testing.T) {
+func (s *S) TestAugment(c *check.C) {
 	for i, test := range []struct {
 		a, b, e [][]float64
 	}{
@@ -1466,25 +1264,11 @@ func TestAugment(t *testing.T) {
 		var s Dense
 		s.Augment(a, b)
 
-		if !Equal(&s, NewDense(flatten(test.e))) {
-			t.Errorf("unexpected result for Augment test %d: %v augment %v = %v", i, a, b, s)
-		}
+		c.Check(s.Equals(NewDense(flatten(test.e))), check.Equals, true, check.Commentf("Test %d: %v stack %v = %v", i, a, b, s))
 	}
-
-	method := func(receiver, a, b Matrix) {
-		type Augmenter interface {
-			Augment(a, b Matrix)
-		}
-		rd := receiver.(Augmenter)
-		rd.Augment(a, b)
-	}
-	denseComparison := func(receiver, a, b *Dense) {
-		receiver.Augment(a, b)
-	}
-	testTwoInput(t, "Augment", &Dense{}, method, denseComparison, legalTypesAll, legalSizeSameHeight, 0)
 }
 
-func TestRankOne(t *testing.T) {
+func (s *S) TestRankOne(c *check.C) {
 	for i, test := range []struct {
 		x     []float64
 		y     []float64
@@ -1551,18 +1335,14 @@ func TestRankOne(t *testing.T) {
 		m := &Dense{}
 		// Check with a new matrix
 		m.RankOne(a, test.alpha, NewVector(len(test.x), test.x), NewVector(len(test.y), test.y))
-		if !Equal(m, want) {
-			t.Errorf("unexpected result for RankOne test %d iteration 0: got: %+v want: %+v", i, m, want)
-		}
+		c.Check(m.Equals(want), check.Equals, true, check.Commentf("Test %v. Want %v, Got %v", i, want, m))
 		// Check with the same matrix
 		a.RankOne(a, test.alpha, NewVector(len(test.x), test.x), NewVector(len(test.y), test.y))
-		if !Equal(a, want) {
-			t.Errorf("unexpected result for Outer test %d iteration 1: got: %+v want: %+v", i, m, want)
-		}
+		c.Check(a.Equals(want), check.Equals, true, check.Commentf("Test %v. Want %v, Got %v", i, want, m))
 	}
 }
 
-func TestOuter(t *testing.T) {
+func (s *S) TestOuter(c *check.C) {
 	for i, test := range []struct {
 		x []float64
 		y []float64
@@ -1593,80 +1373,19 @@ func TestOuter(t *testing.T) {
 			y: []float64{8, 9, 9},
 		},
 	} {
-		for _, f := range []float64{0.5, 1, 3} {
-			want := &Dense{}
-			xm := NewDense(len(test.x), 1, test.x)
-			ym := NewDense(1, len(test.y), test.y)
+		want := &Dense{}
+		xm := NewDense(len(test.x), 1, test.x)
+		ym := NewDense(1, len(test.y), test.y)
 
-			want.Mul(xm, ym)
-			want.Scale(f, want)
+		want.Mul(xm, ym)
 
-			var m Dense
-			for j := 0; j < 2; j++ {
-				// Check with a new matrix - and then again.
-				m.Outer(f, NewVector(len(test.x), test.x), NewVector(len(test.y), test.y))
-				if !Equal(&m, want) {
-					t.Errorf("unexpected result for Outer test %d iteration %d scale %v: got: %+v want: %+v", i, j, f, m, want)
-				}
-			}
-		}
-	}
-}
-
-func TestInverse(t *testing.T) {
-	for i, test := range []struct {
-		a    *Dense
-		want *Dense
-		tol  float64
-	}{
-		{
-			a: NewDense(3, 3, []float64{
-				8, 1, 6,
-				3, 5, 7,
-				4, 9, 2,
-			}),
-			want: NewDense(3, 3, []float64{
-				0.147222222222222, -0.144444444444444, 0.063888888888889,
-				-0.061111111111111, 0.022222222222222, 0.105555555555556,
-				-0.019444444444444, 0.188888888888889, -0.102777777777778,
-			}),
-			tol: 1e-14,
-		},
-		{
-			a: NewDense(4, 4, []float64{
-				5, 2, 8, 7,
-				4, 5, 8, 2,
-				8, 5, 3, 2,
-				8, 7, 7, 5,
-			}),
-			want: NewDense(4, 4, []float64{
-				0.100548446069470, 0.021937842778793, 0.334552102376599, -0.283363802559415,
-				-0.226691042047532, -0.067641681901280, -0.281535648994515, 0.457038391224863,
-				0.080438756855576, 0.217550274223035, 0.067641681901280, -0.226691042047532,
-				0.043875685557587, -0.244972577696527, -0.235831809872029, 0.330895795246801,
-			}),
-			tol: 1e-14,
-		},
-	} {
-		var got Dense
-		err := got.Inverse(test.a)
-		if err != nil {
-			t.Errorf("Error computing inverse: %v", err)
-		}
-		if !equalApprox(&got, test.want, test.tol, false) {
-			t.Errorf("Case %d, inverse mismatch.", i)
-		}
 		var m Dense
-		m.Mul(&got, test.a)
-		r, _ := test.a.Dims()
-		d := make([]float64, r*r)
-		for i := 0; i < r*r; i += r + 1 {
-			d[i] = 1
-		}
-		eye := NewDense(r, r, d)
-		if !equalApprox(eye, &m, 1e-14, false) {
-			t.Errorf("Case %d, A^-1 * A != I", i)
-		}
+		// Check with a new matrix
+		m.Outer(NewVector(len(test.x), test.x), NewVector(len(test.y), test.y))
+		c.Check(m.Equals(want), check.Equals, true, check.Commentf("Test %v. Want %v, Got %v", i, want, m))
+		// Check with the same matrix
+		m.Outer(NewVector(len(test.x), test.x), NewVector(len(test.y), test.y))
+		c.Check(m.Equals(want), check.Equals, true, check.Commentf("Test %v. Want %v, Got %v", i, want, m))
 	}
 }
 
@@ -1706,21 +1425,6 @@ func densePreMulBench(b *testing.B, size int, rho float64) {
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		wd.Mul(a, d)
-	}
-}
-
-func BenchmarkRow10(b *testing.B)   { rowBench(b, 10) }
-func BenchmarkRow100(b *testing.B)  { rowBench(b, 100) }
-func BenchmarkRow1000(b *testing.B) { rowBench(b, 1000) }
-
-func rowBench(b *testing.B, size int) {
-	a, _ := randDense(size, 1, rand.NormFloat64)
-	_, c := a.Dims()
-	dst := make([]float64, c)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		Row(dst, 0, a)
 	}
 }
 
@@ -1783,7 +1487,7 @@ func denseMulTransBench(b *testing.B, size int, rho float64) {
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		var n Dense
-		n.Mul(a, d.T())
+		n.MulTrans(a, false, d, true)
 		wd = &n
 	}
 }
@@ -1800,7 +1504,7 @@ func denseMulTransSymBench(b *testing.B, size int, rho float64) {
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		var n Dense
-		n.Mul(a, a.T())
+		n.MulTrans(a, false, a, true)
 		wd = &n
 	}
 }

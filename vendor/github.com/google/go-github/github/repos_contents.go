@@ -117,7 +117,7 @@ func (s *RepositoriesService) GetReadme(owner, repo string, opt *RepositoryConte
 	if err != nil {
 		return nil, resp, err
 	}
-	return readme, resp, err
+	return readme, resp, nil
 }
 
 // DownloadContents returns an io.ReadCloser that reads the contents of the
@@ -196,7 +196,7 @@ func (s *RepositoriesService) CreateFile(owner, repo, path string, opt *Reposito
 	if err != nil {
 		return nil, resp, err
 	}
-	return createResponse, resp, err
+	return createResponse, resp, nil
 }
 
 // UpdateFile updates a file in a repository at the given path and returns the
@@ -214,7 +214,7 @@ func (s *RepositoriesService) UpdateFile(owner, repo, path string, opt *Reposito
 	if err != nil {
 		return nil, resp, err
 	}
-	return updateResponse, resp, err
+	return updateResponse, resp, nil
 }
 
 // DeleteFile deletes a file from a repository and returns the commit.
@@ -232,7 +232,7 @@ func (s *RepositoriesService) DeleteFile(owner, repo, path string, opt *Reposito
 	if err != nil {
 		return nil, resp, err
 	}
-	return deleteResponse, resp, err
+	return deleteResponse, resp, nil
 }
 
 // archiveFormat is used to define the archive type when calling GetArchiveLink.
@@ -267,8 +267,12 @@ func (s *RepositoriesService) GetArchiveLink(owner, repo string, archiveformat a
 	} else {
 		resp, err = s.client.client.Transport.RoundTrip(req)
 	}
-	if err != nil || resp.StatusCode != http.StatusFound {
-		return nil, newResponse(resp), err
+	if err != nil {
+		return nil, nil, err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		return nil, newResponse(resp), fmt.Errorf("unexpected status code: %s", resp.Status)
 	}
 	parsedURL, err := url.Parse(resp.Header.Get("Location"))
 	return parsedURL, newResponse(resp), err

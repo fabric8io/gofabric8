@@ -22,7 +22,6 @@ type Dlarfber interface {
 }
 
 func DlarfbTest(t *testing.T, impl Dlarfber) {
-	rnd := rand.New(rand.NewSource(1))
 	for _, store := range []lapack.StoreV{lapack.ColumnWise, lapack.RowWise} {
 		for _, direct := range []lapack.Direct{lapack.Forward, lapack.Backward} {
 			for _, side := range []blas.Side{blas.Left, blas.Right} {
@@ -62,7 +61,7 @@ func DlarfbTest(t *testing.T, impl Dlarfber) {
 						a := make([]float64, ma*lda)
 						for i := 0; i < ma; i++ {
 							for j := 0; j < lda; j++ {
-								a[i*lda+j] = rnd.Float64()
+								a[i*lda+j] = rand.Float64()
 							}
 						}
 						k := min(ma, na)
@@ -110,7 +109,7 @@ func DlarfbTest(t *testing.T, impl Dlarfber) {
 						c := make([]float64, m*ldc)
 						for i := 0; i < m; i++ {
 							for j := 0; j < ldc; j++ {
-								c[i*ldc+j] = rnd.Float64()
+								c[i*ldc+j] = rand.Float64()
 							}
 						}
 						cCopy := make([]float64, len(c))

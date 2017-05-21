@@ -1,4 +1,4 @@
-// Copyright 2013 go-dockerclient authors. All rights reserved.
+// Copyright 2015 go-dockerclient authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -27,15 +27,12 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
-	"github.com/docker/docker/opts"
-	"github.com/docker/docker/pkg/homedir"
-	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/hashicorp/go-cleanhttp"
-	"golang.org/x/net/context"
-	"golang.org/x/net/context/ctxhttp"
+	"github.com/fsouza/go-dockerclient/external/github.com/docker/docker/opts"
+	"github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/homedir"
+	"github.com/fsouza/go-dockerclient/external/github.com/docker/docker/pkg/stdcopy"
+	"github.com/fsouza/go-dockerclient/external/github.com/hashicorp/go-cleanhttp"
 )
 
 const userAgent = "go-dockerclient"
@@ -47,12 +44,9 @@ var (
 	// ErrConnectionRefused is returned when the client cannot connect to the given endpoint.
 	ErrConnectionRefused = errors.New("cannot connect to Docker endpoint")
 
-	// ErrInactivityTimeout is returned when a streamable call has been inactive for some time.
-	ErrInactivityTimeout = errors.New("inactivity time exceeded timeout")
-
 	apiVersion112, _ = NewAPIVersion("1.12")
+
 	apiVersion119, _ = NewAPIVersion("1.19")
-	apiVersion124, _ = NewAPIVersion("1.24")
 )
 
 // APIVersion is an internal representation of a version of the Remote API.
@@ -198,16 +192,14 @@ func NewVersionedClient(endpoint string, apiVersionString string) (*Client, erro
 			return nil, err
 		}
 	}
-	c := &Client{
+	return &Client{
 		HTTPClient:          cleanhttp.DefaultClient(),
 		Dialer:              &net.Dialer{},
 		endpoint:            endpoint,
 		endpointURL:         u,
 		eventMonitor:        new(eventMonitoringState),
 		requestedAPIVersion: requestedAPIVersion,
-	}
-	c.initializeUnixClient()
-	return c, nil
+	}, nil
 }
 
 // NewVersionnedTLSClient has been DEPRECATED, please use NewVersionedTLSClient.
@@ -309,7 +301,7 @@ func NewVersionedTLSClientFromBytes(endpoint string, certPEMBlock, keyPEMBlock, 
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{
+	return &Client{
 		HTTPClient:          &http.Client{Transport: tr},
 		TLSConfig:           tlsConfig,
 		Dialer:              &net.Dialer{},
@@ -317,21 +309,7 @@ func NewVersionedTLSClientFromBytes(endpoint string, certPEMBlock, keyPEMBlock, 
 		endpointURL:         u,
 		eventMonitor:        new(eventMonitoringState),
 		requestedAPIVersion: requestedAPIVersion,
-	}
-	c.initializeUnixClient()
-	return c, nil
-}
-
-// SetTimeout takes a timeout and applies it to both the HTTPClient and
-// unixHTTPClient. It should not be called concurrently with any other Client
-// methods.
-func (c *Client) SetTimeout(t time.Duration) {
-	if c.HTTPClient != nil {
-		c.HTTPClient.Timeout = t
-	}
-	if c.unixHTTPClient != nil {
-		c.unixHTTPClient.Timeout = t
-	}
+	}, nil
 }
 
 func (c *Client) checkAPIVersion() error {
@@ -397,7 +375,6 @@ type doOptions struct {
 	data      interface{}
 	forceJSON bool
 	headers   map[string]string
-	context   context.Context
 }
 
 func (c *Client) do(method, path string, doOptions doOptions) (*http.Response, error) {
@@ -419,12 +396,11 @@ func (c *Client) do(method, path string, doOptions doOptions) (*http.Response, e
 	protocol := c.endpointURL.Scheme
 	var u string
 	if protocol == "unix" {
-		httpClient = c.unixHTTPClient
+		httpClient = c.unixClient()
 		u = c.getFakeUnixURL(path)
 	} else {
 		u = c.getURL(path)
 	}
-
 	req, err := http.NewRequest(method, u, params)
 	if err != nil {
 		return nil, err
@@ -439,19 +415,12 @@ func (c *Client) do(method, path string, doOptions doOptions) (*http.Response, e
 	for k, v := range doOptions.headers {
 		req.Header.Set(k, v)
 	}
-
-	ctx := doOptions.context
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	resp, err := ctxhttp.Do(ctx, httpClient, req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		if strings.Contains(err.Error(), "connection refused") {
 			return nil, ErrConnectionRefused
 		}
-
-		return nil, chooseError(ctx, err)
+		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return nil, newError(resp)
@@ -467,22 +436,8 @@ type streamOptions struct {
 	in             io.Reader
 	stdout         io.Writer
 	stderr         io.Writer
-	// timeout is the initial connection timeout
+	// timeout is the inital connection timeout
 	timeout time.Duration
-	// Timeout with no data is received, it's reset every time new data
-	// arrives
-	inactivityTimeout time.Duration
-	context           context.Context
-}
-
-// if error in context, return that instead of generic http error
-func chooseError(ctx context.Context, err error) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		return err
-	}
 }
 
 func (c *Client) stream(method, path string, streamOptions streamOptions) error {
@@ -515,30 +470,16 @@ func (c *Client) stream(method, path string, streamOptions streamOptions) error 
 	if streamOptions.stderr == nil {
 		streamOptions.stderr = ioutil.Discard
 	}
-
-	// make a sub-context so that our active cancellation does not affect parent
-	ctx := streamOptions.context
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	subCtx, cancelRequest := context.WithCancel(ctx)
-	defer cancelRequest()
-
 	if protocol == "unix" {
 		dial, err := c.Dialer.Dial(protocol, address)
 		if err != nil {
 			return err
 		}
-		go func() {
-			select {
-			case <-subCtx.Done():
-				dial.Close()
-			}
-		}()
+		defer dial.Close()
 		breader := bufio.NewReader(dial)
 		err = req.Write(dial)
 		if err != nil {
-			return chooseError(subCtx, err)
+			return err
 		}
 
 		// ReadResponse may hang if server does not replay
@@ -554,39 +495,47 @@ func (c *Client) stream(method, path string, streamOptions streamOptions) error 
 			if strings.Contains(err.Error(), "connection refused") {
 				return ErrConnectionRefused
 			}
-
-			return chooseError(subCtx, err)
+			return err
 		}
 	} else {
-		if resp, err = ctxhttp.Do(subCtx, c.HTTPClient, req); err != nil {
+		if resp, err = c.HTTPClient.Do(req); err != nil {
 			if strings.Contains(err.Error(), "connection refused") {
 				return ErrConnectionRefused
 			}
-			return chooseError(subCtx, err)
+			return err
 		}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		return newError(resp)
 	}
-	var canceled uint32
-	if streamOptions.inactivityTimeout > 0 {
-		ch := handleInactivityTimeout(&streamOptions, cancelRequest, &canceled)
-		defer close(ch)
-	}
-	err = handleStreamResponse(resp, &streamOptions)
-	if err != nil {
-		if atomic.LoadUint32(&canceled) != 0 {
-			return ErrInactivityTimeout
+	if streamOptions.useJSONDecoder || resp.Header.Get("Content-Type") == "application/json" {
+		// if we want to get raw json stream, just copy it back to output
+		// without decoding it
+		if streamOptions.rawJSONStream {
+			_, err = io.Copy(streamOptions.stdout, resp.Body)
+			return err
 		}
-		return chooseError(subCtx, err)
-	}
-	return nil
-}
-
-func handleStreamResponse(resp *http.Response, streamOptions *streamOptions) error {
-	var err error
-	if !streamOptions.useJSONDecoder && resp.Header.Get("Content-Type") != "application/json" {
+		dec := json.NewDecoder(resp.Body)
+		for {
+			var m jsonMessage
+			if err := dec.Decode(&m); err == io.EOF {
+				break
+			} else if err != nil {
+				return err
+			}
+			if m.Stream != "" {
+				fmt.Fprint(streamOptions.stdout, m.Stream)
+			} else if m.Progress != "" {
+				fmt.Fprintf(streamOptions.stdout, "%s %s\r", m.Status, m.Progress)
+			} else if m.Error != "" {
+				return errors.New(m.Error)
+			}
+			if m.Status != "" {
+				fmt.Fprintln(streamOptions.stdout, m.Status)
+			}
+		}
+	} else {
 		if streamOptions.setRawTerminal {
 			_, err = io.Copy(streamOptions.stdout, resp.Body)
 		} else {
@@ -594,72 +543,7 @@ func handleStreamResponse(resp *http.Response, streamOptions *streamOptions) err
 		}
 		return err
 	}
-	// if we want to get raw json stream, just copy it back to output
-	// without decoding it
-	if streamOptions.rawJSONStream {
-		_, err = io.Copy(streamOptions.stdout, resp.Body)
-		return err
-	}
-	dec := json.NewDecoder(resp.Body)
-	for {
-		var m jsonMessage
-		if err := dec.Decode(&m); err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
-		if m.Stream != "" {
-			fmt.Fprint(streamOptions.stdout, m.Stream)
-		} else if m.Progress != "" {
-			fmt.Fprintf(streamOptions.stdout, "%s %s\r", m.Status, m.Progress)
-		} else if m.Error != "" {
-			return errors.New(m.Error)
-		}
-		if m.Status != "" {
-			fmt.Fprintln(streamOptions.stdout, m.Status)
-		}
-	}
 	return nil
-}
-
-type proxyWriter struct {
-	io.Writer
-	calls uint64
-}
-
-func (p *proxyWriter) callCount() uint64 {
-	return atomic.LoadUint64(&p.calls)
-}
-
-func (p *proxyWriter) Write(data []byte) (int, error) {
-	atomic.AddUint64(&p.calls, 1)
-	return p.Writer.Write(data)
-}
-
-func handleInactivityTimeout(options *streamOptions, cancelRequest func(), canceled *uint32) chan<- struct{} {
-	done := make(chan struct{})
-	proxyStdout := &proxyWriter{Writer: options.stdout}
-	proxyStderr := &proxyWriter{Writer: options.stderr}
-	options.stdout = proxyStdout
-	options.stderr = proxyStderr
-	go func() {
-		var lastCallCount uint64
-		for {
-			select {
-			case <-time.After(options.inactivityTimeout):
-			case <-done:
-				return
-			}
-			curCallCount := proxyStdout.callCount() + proxyStderr.callCount()
-			if curCallCount == lastCallCount {
-				atomic.AddUint32(canceled, 1)
-				cancelRequest()
-				return
-			}
-			lastCallCount = curCallCount
-		}
-	}()
-	return done
 }
 
 type hijackOptions struct {
@@ -727,7 +611,7 @@ func (c *Client) hijack(method, path string, hijackOptions hijackOptions) (Close
 		}
 	}
 
-	errs := make(chan error, 1)
+	errs := make(chan error)
 	quit := make(chan struct{})
 	go func() {
 		clientconn := httputil.NewClientConn(dial, nil)
@@ -741,7 +625,7 @@ func (c *Client) hijack(method, path string, hijackOptions hijackOptions) (Close
 		defer rwc.Close()
 
 		errChanOut := make(chan error, 1)
-		errChanIn := make(chan error, 2)
+		errChanIn := make(chan error, 1)
 		if hijackOptions.stdout == nil && hijackOptions.stderr == nil {
 			close(errChanOut)
 		} else {
@@ -791,12 +675,14 @@ func (c *Client) hijack(method, path string, hijackOptions hijackOptions) (Close
 		select {
 		case errIn = <-errChanIn:
 		case <-quit:
+			return
 		}
 
 		var errOut error
 		select {
 		case errOut = <-errChanOut:
 		case <-quit:
+			return
 		}
 
 		if errIn != nil {
@@ -842,16 +728,19 @@ func (c *Client) getFakeUnixURL(path string) string {
 	return fmt.Sprintf("%s%s", urlStr, path)
 }
 
-func (c *Client) initializeUnixClient() {
-	if c.endpointURL.Scheme != "unix" {
-		return
+func (c *Client) unixClient() *http.Client {
+	if c.unixHTTPClient != nil {
+		return c.unixHTTPClient
 	}
 	socketPath := c.endpointURL.Path
-	tr := cleanhttp.DefaultTransport()
-	tr.Dial = func(network, addr string) (net.Conn, error) {
-		return c.Dialer.Dial("unix", socketPath)
+	tr := &http.Transport{
+		Dial: func(network, addr string) (net.Conn, error) {
+			return c.Dialer.Dial("unix", socketPath)
+		},
 	}
+	cleanhttp.SetTransportFinalizer(tr)
 	c.unixHTTPClient = &http.Client{Transport: tr}
+	return c.unixHTTPClient
 }
 
 type jsonMessage struct {
@@ -956,7 +845,7 @@ func parseEndpoint(endpoint string, tls bool) (*url.URL, error) {
 	if err != nil {
 		return nil, ErrInvalidEndpoint
 	}
-	if tls && u.Scheme != "unix" {
+	if tls {
 		u.Scheme = "https"
 	}
 	switch u.Scheme {

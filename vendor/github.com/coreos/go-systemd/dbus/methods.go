@@ -239,11 +239,12 @@ type UnitStatus struct {
 	JobPath     dbus.ObjectPath // The job object path
 }
 
-type storeFunc func(retvalues ...interface{}) error
-
-func (c *Conn) listUnitsInternal(f storeFunc) ([]UnitStatus, error) {
+// ListUnits returns an array with all currently loaded units. Note that
+// units may be known by multiple names at the same time, and hence there might
+// be more unit names loaded than actual units behind them.
+func (c *Conn) ListUnits() ([]UnitStatus, error) {
 	result := make([][]interface{}, 0)
-	err := f(&result)
+	err := c.sysobj.Call("org.freedesktop.systemd1.Manager.ListUnits", 0).Store(&result)
 	if err != nil {
 		return nil, err
 	}
@@ -267,43 +268,15 @@ func (c *Conn) listUnitsInternal(f storeFunc) ([]UnitStatus, error) {
 	return status, nil
 }
 
-// ListUnits returns an array with all currently loaded units. Note that
-// units may be known by multiple names at the same time, and hence there might
-// be more unit names loaded than actual units behind them.
-func (c *Conn) ListUnits() ([]UnitStatus, error) {
-	return c.listUnitsInternal(c.sysobj.Call("org.freedesktop.systemd1.Manager.ListUnits", 0).Store)
-}
-
-// ListUnitsFiltered returns an array with units filtered by state.
-// It takes a list of units' statuses to filter.
-func (c *Conn) ListUnitsFiltered(states []string) ([]UnitStatus, error) {
-	return c.listUnitsInternal(c.sysobj.Call("org.freedesktop.systemd1.Manager.ListUnitsFiltered", 0, states).Store)
-}
-
-// ListUnitsByPatterns returns an array with units.
-// It takes a list of units' statuses and names to filter.
-// Note that units may be known by multiple names at the same time,
-// and hence there might be more unit names loaded than actual units behind them.
-func (c *Conn) ListUnitsByPatterns(states []string, patterns []string) ([]UnitStatus, error) {
-	return c.listUnitsInternal(c.sysobj.Call("org.freedesktop.systemd1.Manager.ListUnitsByPatterns", 0, states, patterns).Store)
-}
-
-// ListUnitsByNames returns an array with units. It takes a list of units'
-// names and returns an UnitStatus array. Comparing to ListUnitsByPatterns
-// method, this method returns statuses even for inactive or non-existing
-// units. Input array should contain exact unit names, but not patterns.
-func (c *Conn) ListUnitsByNames(units []string) ([]UnitStatus, error) {
-	return c.listUnitsInternal(c.sysobj.Call("org.freedesktop.systemd1.Manager.ListUnitsByNames", 0, units).Store)
-}
-
 type UnitFile struct {
 	Path string
 	Type string
 }
 
-func (c *Conn) listUnitFilesInternal(f storeFunc) ([]UnitFile, error) {
+// ListUnitFiles returns an array of all available units on disk.
+func (c *Conn) ListUnitFiles() ([]UnitFile, error) {
 	result := make([][]interface{}, 0)
-	err := f(&result)
+	err := c.sysobj.Call("org.freedesktop.systemd1.Manager.ListUnitFiles", 0).Store(&result)
 	if err != nil {
 		return nil, err
 	}
@@ -325,16 +298,6 @@ func (c *Conn) listUnitFilesInternal(f storeFunc) ([]UnitFile, error) {
 	}
 
 	return files, nil
-}
-
-// ListUnitFiles returns an array of all available units on disk.
-func (c *Conn) ListUnitFiles() ([]UnitFile, error) {
-	return c.listUnitFilesInternal(c.sysobj.Call("org.freedesktop.systemd1.Manager.ListUnitFiles", 0).Store)
-}
-
-// ListUnitFilesByPatterns returns an array of all available units on disk matched the patterns.
-func (c *Conn) ListUnitFilesByPatterns(states []string, patterns []string) ([]UnitFile, error) {
-	return c.listUnitFilesInternal(c.sysobj.Call("org.freedesktop.systemd1.Manager.ListUnitFilesByPatterns", 0, states, patterns).Store)
 }
 
 type LinkUnitFileChange EnableUnitFileChange
@@ -468,87 +431,6 @@ func (c *Conn) DisableUnitFiles(files []string, runtime bool) ([]DisableUnitFile
 }
 
 type DisableUnitFileChange struct {
-	Type        string // Type of the change (one of symlink or unlink)
-	Filename    string // File name of the symlink
-	Destination string // Destination of the symlink
-}
-
-// MaskUnitFiles masks one or more units in the system
-//
-// It takes three arguments:
-//   * list of units to mask (either just file names or full
-//     absolute paths if the unit files are residing outside
-//     the usual unit search paths)
-//   * runtime to specify whether the unit was enabled for runtime
-//     only (true, /run/systemd/..), or persistently (false, /etc/systemd/..)
-//   * force flag
-func (c *Conn) MaskUnitFiles(files []string, runtime bool, force bool) ([]MaskUnitFileChange, error) {
-	result := make([][]interface{}, 0)
-	err := c.sysobj.Call("org.freedesktop.systemd1.Manager.MaskUnitFiles", 0, files, runtime, force).Store(&result)
-	if err != nil {
-		return nil, err
-	}
-
-	resultInterface := make([]interface{}, len(result))
-	for i := range result {
-		resultInterface[i] = result[i]
-	}
-
-	changes := make([]MaskUnitFileChange, len(result))
-	changesInterface := make([]interface{}, len(changes))
-	for i := range changes {
-		changesInterface[i] = &changes[i]
-	}
-
-	err = dbus.Store(resultInterface, changesInterface...)
-	if err != nil {
-		return nil, err
-	}
-
-	return changes, nil
-}
-
-type MaskUnitFileChange struct {
-	Type        string // Type of the change (one of symlink or unlink)
-	Filename    string // File name of the symlink
-	Destination string // Destination of the symlink
-}
-
-// UnmaskUnitFiles unmasks one or more units in the system
-//
-// It takes two arguments:
-//   * list of unit files to mask (either just file names or full
-//     absolute paths if the unit files are residing outside
-//     the usual unit search paths)
-//   * runtime to specify whether the unit was enabled for runtime
-//     only (true, /run/systemd/..), or persistently (false, /etc/systemd/..)
-func (c *Conn) UnmaskUnitFiles(files []string, runtime bool) ([]UnmaskUnitFileChange, error) {
-	result := make([][]interface{}, 0)
-	err := c.sysobj.Call("org.freedesktop.systemd1.Manager.UnmaskUnitFiles", 0, files, runtime).Store(&result)
-	if err != nil {
-		return nil, err
-	}
-
-	resultInterface := make([]interface{}, len(result))
-	for i := range result {
-		resultInterface[i] = result[i]
-	}
-
-	changes := make([]UnmaskUnitFileChange, len(result))
-	changesInterface := make([]interface{}, len(changes))
-	for i := range changes {
-		changesInterface[i] = &changes[i]
-	}
-
-	err = dbus.Store(resultInterface, changesInterface...)
-	if err != nil {
-		return nil, err
-	}
-
-	return changes, nil
-}
-
-type UnmaskUnitFileChange struct {
 	Type        string // Type of the change (one of symlink or unlink)
 	Filename    string // File name of the symlink
 	Destination string // Destination of the symlink

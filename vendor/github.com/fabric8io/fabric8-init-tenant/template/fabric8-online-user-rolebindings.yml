@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: Template
+metadata:
+objects:
+- apiVersion: v1
+  kind: RoleBinding
+  metadata:
+    labels:
+      provider: fabric8
+      project: fabric8-online-team
+      version: 1.0.91
+      group: io.fabric8.online.packages
+    name: dsaas-admin
+    namespace: ${PROJECT_NAME}
+  roleRef:
+    name: admin
+  subjects:
+  - kind: User
+    name: ${PROJECT_ADMIN_USER}
+  userNames:
+  - ${PROJECT_ADMIN_USER}

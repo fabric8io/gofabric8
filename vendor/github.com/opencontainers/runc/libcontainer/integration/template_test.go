@@ -20,6 +20,7 @@ const defaultMountFlags = syscall.MS_NOEXEC | syscall.MS_NOSUID | syscall.MS_NOD
 // it uses a network strategy of just setting a loopback interface
 // and the default setup for devices
 func newTemplateConfig(rootfs string) *configs.Config {
+	allowAllDevices := false
 	return &configs.Config{
 		Rootfs: rootfs,
 		Capabilities: []string{
@@ -46,16 +47,16 @@ func newTemplateConfig(rootfs string) *configs.Config {
 			{Type: configs.NEWNET},
 		}),
 		Cgroups: &configs.Cgroup{
-			Name:   "test",
-			Parent: "integration",
+			Path: "integration/test",
 			Resources: &configs.Resources{
-				MemorySwappiness: -1,
-				AllowAllDevices:  false,
+				MemorySwappiness: nil,
+				AllowAllDevices:  &allowAllDevices,
 				AllowedDevices:   configs.DefaultAllowedDevices,
 			},
 		},
 		MaskPaths: []string{
 			"/proc/kcore",
+			"/sys/firmware",
 		},
 		ReadonlyPaths: []string{
 			"/proc/sys", "/proc/sysrq-trigger", "/proc/irq", "/proc/bus",
@@ -90,12 +91,15 @@ func newTemplateConfig(rootfs string) *configs.Config {
 				Data:        "mode=1777,size=65536k",
 				Flags:       defaultMountFlags,
 			},
-			{
-				Source:      "mqueue",
-				Destination: "/dev/mqueue",
-				Device:      "mqueue",
-				Flags:       defaultMountFlags,
-			},
+			/*
+				            CI is broken on the debian based kernels with this
+							{
+								Source:      "mqueue",
+								Destination: "/dev/mqueue",
+								Device:      "mqueue",
+								Flags:       defaultMountFlags,
+							},
+			*/
 			{
 				Source:      "sysfs",
 				Destination: "/sys",

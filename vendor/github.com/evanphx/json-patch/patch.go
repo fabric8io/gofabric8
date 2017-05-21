@@ -14,8 +14,6 @@ const (
 	eAry
 )
 
-const LeftBrace byte = 91 // []byte("[")
-
 type lazyNode struct {
 	raw   *json.RawMessage
 	doc   partialDoc
@@ -264,6 +262,10 @@ func findObject(pd *container, path string) (container, string) {
 
 	split := strings.Split(path, "/")
 
+	if len(split) < 2 {
+		return nil, ""
+	}
+
 	parts := split[1 : len(split)-1]
 
 	key := split[len(split)-1]
@@ -495,9 +497,8 @@ func (p Patch) test(doc *container, op operation) error {
 	if val == nil {
 		if op.value().raw == nil {
 			return nil
-		} else {
-			return fmt.Errorf("Testing value %s failed", path)
 		}
+		return fmt.Errorf("Testing value %s failed", path)
 	}
 
 	if val.equal(op.value()) {
@@ -543,7 +544,7 @@ func (p Patch) Apply(doc []byte) ([]byte, error) {
 // document indented.
 func (p Patch) ApplyIndent(doc []byte, indent string) ([]byte, error) {
 	var pd container
-	if (doc[0] == LeftBrace) {
+	if doc[0] == '[' {
 		pd = &partialArray{}
 	} else {
 		pd = &partialDoc{}

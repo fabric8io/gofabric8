@@ -86,13 +86,13 @@ func (s *OrganizationsService) ListMembers(org string, opt *ListMembersOptions) 
 		return nil, nil, err
 	}
 
-	members := new([]*User)
-	resp, err := s.client.Do(req, members)
+	var members []*User
+	resp, err := s.client.Do(req, &members)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	return *members, resp, err
+	return members, resp, nil
 }
 
 // IsMember checks if a user is a member of an organization.
@@ -196,7 +196,7 @@ func (s *OrganizationsService) ListOrgMemberships(opt *ListOrgMembershipsOptions
 		return nil, resp, err
 	}
 
-	return memberships, resp, err
+	return memberships, resp, nil
 }
 
 // GetOrgMembership gets the membership for a user in a specified organization.
@@ -224,7 +224,7 @@ func (s *OrganizationsService) GetOrgMembership(user, org string) (*Membership, 
 		return nil, resp, err
 	}
 
-	return membership, resp, err
+	return membership, resp, nil
 }
 
 // EditOrgMembership edits the membership for user in specified organization.
@@ -254,7 +254,7 @@ func (s *OrganizationsService) EditOrgMembership(user, org string, membership *M
 		return nil, resp, err
 	}
 
-	return m, resp, err
+	return m, resp, nil
 }
 
 // RemoveOrgMembership removes user from the specified organization.  If the
@@ -269,4 +269,30 @@ func (s *OrganizationsService) RemoveOrgMembership(user, org string) (*Response,
 	}
 
 	return s.client.Do(req, nil)
+}
+
+// ListPendingOrgInvitations returns a list of pending invitations.
+//
+// GitHub API docs: https://developer.github.com/v3/orgs/members/#list-pending-organization-invitations
+func (s *OrganizationsService) ListPendingOrgInvitations(org int, opt *ListOptions) ([]*Invitation, *Response, error) {
+	u := fmt.Sprintf("orgs/%v/invitations", org)
+	u, err := addOptions(u, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req, err := s.client.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// TODO: remove custom Accept header when this API fully launches.
+	req.Header.Set("Accept", mediaTypeOrgMembershipPreview)
+
+	var pendingInvitations []*Invitation
+	resp, err := s.client.Do(req, &pendingInvitations)
+	if err != nil {
+		return nil, resp, err
+	}
+	return pendingInvitations, resp, nil
 }

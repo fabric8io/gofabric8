@@ -13,7 +13,9 @@ import:
   - pkg/template/api/v1
   - pkg/template/generator
 - package: github.com/spf13/cobra
+  version: 9c28e4bbd74e5c3ed7aacbc552b2cab7cfdfe744
 - package: github.com/spf13/pflag
+  version: c7e63cf4530bcd3ba943729cee0efeff2ebea63f
 - package: github.com/golang/glog
   repo: git://github.com/openshift/glog
   vcs: git
@@ -62,3 +64,23 @@ import:
   version: 0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d
 - package: github.com/imdario/mergo
   version: 6633656539c1639d9d78127b7d47c622b5d7b6dc
+- package: github.com/fabric8io/fabric8-init-tenant
+  subpackages:
+  - pkg/openshift
+  - pkg/template
+- package: github.com/gogo/protobuf
+  version: c0656edd0d9eab7c66d1eb0c568f9039345796f7
+  subpackages:
+  - gogoproto
+  - proto
+  - protoc-gen-gogo/descriptor
+  - sortkeys
+- package: github.com/dgrijalva/jwt-go
+  version: 5ca80149b9d3f8b863af0e2bb6742e608603bd99
+- package: github.com/jteeuwen/go-bindata
+  version: ^3.0.7
+  subpackages:
+  - '...'
+- package: github.com/elazarl/go-bindata-assetfs
+  subpackages:
+

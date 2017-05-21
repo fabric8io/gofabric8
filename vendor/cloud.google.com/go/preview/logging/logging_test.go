@@ -138,7 +138,7 @@ func TestMain(m *testing.M) {
 // waitFor calls f periodically, blocking until it returns true.
 // It calls log.Fatal after one minute.
 func waitFor(f func() bool) {
-	timeout := time.NewTimer(2 * time.Minute)
+	timeout := time.NewTimer(1 * time.Minute)
 	for {
 		select {
 		case <-time.After(1 * time.Second):
@@ -247,21 +247,14 @@ func TestLogSync(t *testing.T) {
 		}
 		return len(got) >= len(want)
 	})
-	if msg, ok := compareEntries(got, want); !ok {
-		t.Error(msg)
-	}
-}
-
-func compareEntries(got, want []*Entry) (string, bool) {
 	if len(got) != len(want) {
-		return fmt.Sprintf("got %d entries, want %d", len(got), len(want)), false
+		t.Fatalf("got %d entries, want %d", len(got), len(want))
 	}
 	for i := range got {
 		if !reflect.DeepEqual(got[i], want[i]) {
-			return fmt.Sprintf("#%d:\ngot  %+v\nwant %+v", i, got[i], want[i]), false
+			t.Errorf("#%d:\ngot  %+v\nwant %+v", i, got[i], want[i])
 		}
 	}
-	return "", true
 }
 
 func entryForTesting(payload interface{}) *Entry {
@@ -327,18 +320,13 @@ func TestLogAndEntries(t *testing.T) {
 	for _, p := range payloads {
 		want = append(want, entryForTesting(p))
 	}
-	var got []*Entry
-	waitFor(func() bool {
-		var err error
-		got, err = allTestLogEntries(ctx)
-		if err != nil {
-			return false
-		}
-		return len(got) >= len(want)
-	})
-	if msg, ok := compareEntries(got, want); !ok {
-		t.Error(msg)
+	waitFor(func() bool { return countLogEntries(ctx, testFilter) >= len(want) })
+	it := client.Entries(ctx, Filter(testFilter))
+	msg, ok := testutil.TestIteratorNext(want, iterator.Done, func() (interface{}, error) { return cleanNext(it) })
+	if !ok {
+		t.Fatal(msg)
 	}
+	// TODO(jba): test exact paging.
 }
 
 func TestStandardLogger(t *testing.T) {
@@ -356,15 +344,11 @@ func TestStandardLogger(t *testing.T) {
 
 	slg.Print("info")
 	lg.Flush()
-	var got []*Entry
-	waitFor(func() bool {
-		var err error
-		got, err = allTestLogEntries(ctx)
-		if err != nil {
-			return false
-		}
-		return len(got) >= 1
-	})
+	waitFor(func() bool { return countLogEntries(ctx, testFilter) > 0 })
+	got, err := allTestLogEntries(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("expected non-nil request with one entry; got:\n%+v", got)
 	}

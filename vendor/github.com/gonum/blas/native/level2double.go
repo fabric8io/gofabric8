@@ -100,7 +100,7 @@ func (Implementation) Dgemv(tA blas.Transpose, m, n int, alpha float64, a []floa
 		for i := 0; i < m; i++ {
 			tmp := alpha * x[i]
 			if tmp != 0 {
-				asm.DaxpyUnitaryTo(y, tmp, a[lda*i:lda*i+n], y)
+				asm.DaxpyUnitary(tmp, a[lda*i:lda*i+n], y, y)
 			}
 		}
 		return
@@ -170,7 +170,7 @@ func (Implementation) Dger(m, n int, alpha float64, x []float64, incX int, y []f
 			tmp := alpha * xv
 			if tmp != 0 {
 				atmp := a[i*lda : i*lda+n]
-				asm.DaxpyUnitaryTo(atmp, tmp, y, atmp)
+				asm.DaxpyUnitary(tmp, y, atmp, atmp)
 			}
 		}
 		return
@@ -365,9 +365,7 @@ func (Implementation) Dtrmv(ul blas.Uplo, tA blas.Transpose, d blas.Diag, n int,
 	}
 	nonUnit := d != blas.Unit
 	if n == 1 {
-		if nonUnit {
-			x[0] *= a[0]
-		}
+		x[0] *= a[0]
 		return
 	}
 	var kx int
@@ -691,7 +689,7 @@ func (Implementation) Dsymv(ul blas.Uplo, n int, alpha float64, a []float64, lda
 	if n < 0 {
 		panic(negativeN)
 	}
-	if lda > 1 && lda < n {
+	if lda > 1 && lda > n {
 		panic(badLdA)
 	}
 	if incX == 0 {
@@ -2156,9 +2154,8 @@ func (Implementation) Dspr(ul blas.Uplo, n int, alpha float64, x []float64, incX
 }
 
 // Dspr2 performs the symmetric rank-2 update
-//  A += alpha * x * y^T + alpha * y * x^T,
-// where A is an n×n symmetric matrix in packed format, x and y are vectors,
-// and alpha is a scalar.
+//  a += alpha * x * y^T + alpha * y * x^T
+// where a is an n×n symmetric matrix in packed format and x and y are vectors.
 func (Implementation) Dspr2(ul blas.Uplo, n int, alpha float64, x []float64, incX int, y []float64, incY int, ap []float64) {
 	if ul != blas.Lower && ul != blas.Upper {
 		panic(badUplo)

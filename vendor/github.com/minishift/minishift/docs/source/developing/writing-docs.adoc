@@ -1,0 +1,113 @@
+[[writing-minishift-docs]]
+= Writing and publishing Minishift documentation
+:icons:
+:toc: macro
+:toc-title:
+:toclevels: 1
+
+toc::[]
+
+[[writing-docs-overview]]
+== Overview
+
+This section contains information about contributing to the Minishift documentation.
+
+[[section-building-minishift-docs]]
+== Building Minishift documentation
+
+Minishift documentation is located in the `docs` sub-folder.
+The documentation is a mix of generated https://en.wikipedia.org/wiki/Markdown[Markdown] files and manually maintained https://en.wikipedia.org/wiki/AsciiDoc[Asciidoc] files.
+
+If you are adding a new file to the doumentation please update the `_topic_map.yml`  in the root of `docs/source` sub-folder.
+
+Per default the documentation is built in a Docker container. This way
+you avoid having to install all the required dependencies on your
+development machine. All you need is a running Docker daemon. In case
+you don't have one, use Minishift itself. For further information refer to
+link:../command-ref/minishift_docker-env{outfilesuffix}[`minishift docker-env`].
+
+To build the Docker image, run:
+
+----
+$ make build_docs_container
+----
+
+To generate the documentation into the directory `docs/build`, run:
+
+----
+$ make gen_docs
+----
+
+[NOTE]
+====
+Your local checkout of the sources are going to be mounted into the container in order to built the docs.
+Depending on your UID on the host, you might see file permissions problems when trying to run _gen_docs_.
+This is caused by the fact, that the _docs_ user used within the container uses per default a UID of 1000.
+This might conflict with the user id of the mounted docs sources.
+Your output might look like:
+----
+$ make gen_docs
+mkdir -p build
+rake aborted!
+Errno::EACCES: Permission denied @ dir_s_mkdir - build
+----
+
+In this case you need to build the container with a different user id.
+This will ensure that the _docs_ user in the container will be able to create files and directories.
+
+----
+$ make build_docs_container IMAGE_UID=$(id -u)
+----
+====
+
+To build and serve the documentation for editing, run:
+
+----
+$ make serve_docs
+----
+
+The latter will start the https://middlemanapp.com[Middleman] server on port 4567.
+You can access the rendered documentation by browsing to http://<IP of Docker daemon>:4567.
+
+[[section-deploying-minishift-docs]]
+== Deploying Minishift documentation
+
+The Minishift documentation is deployed on _docs.openshift.org_.
+To integrate with this site we deliver a tarball containing the Minishift asciidoc files as well as some link:http://www.asciibinder.org/[AsciiBinder] meta data.
+
+This tarball can be built using:
+
+----
+$ make gen_adoc_tar
+----
+
+Once the build completes there will be a _minishift-adoc.tar_ in the _docs/build_ directory
+of your checkout.
+
+How this tarball is integrated into the docs.openshift.org site build is described in
+<<section-building-openshift-docs>>.
+
+[[section-building-openshift-docs]]
+=== Building OpenShift documentation
+
+To start with you need a checkout of the link:https://github.com/openshift/openshift-docs.git[openshift-docs]
+GitHub repository. You need all the tooling to build openshift-docs. Refer to
+link:https://github.com/openshift/openshift-docs/blob/master/contributing_to_docs/tools_and_setup.adoc[Install and set up the tools and software] which is part of the openshift-docs repository.
+
+Once you can successfully run `rake build` in your openshift-docs checkout, you can integrate the
+Minishift documentation.
+
+Start with building the documentation tarball as described in <<section-deploying-minishift-docs>>,
+then follow these steps (assuming you are in the directory of your openshift-docs checkout):
+
+----
+$ mkdir minishift
+$ cd minishift
+$ cp <path to tarball> .
+$ tar -xvf minishift-adoc.tar --strip 1
+$ cat _topic_map.yml >> ../_topic_map.yml
+$ cd ..
+$ rake build
+----
+
+If the build completes successfully, the site is available under _preview/openshift-origin/latest/welcome/index.html_.

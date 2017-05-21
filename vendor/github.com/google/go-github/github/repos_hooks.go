@@ -99,7 +99,7 @@ func (s *RepositoriesService) CreateHook(owner, repo string, hook *Hook) (*Hook,
 		return nil, resp, err
 	}
 
-	return h, resp, err
+	return h, resp, nil
 }
 
 // ListHooks lists all Hooks for the specified repository.
@@ -117,13 +117,13 @@ func (s *RepositoriesService) ListHooks(owner, repo string, opt *ListOptions) ([
 		return nil, nil, err
 	}
 
-	hooks := new([]*Hook)
-	resp, err := s.client.Do(req, hooks)
+	var hooks []*Hook
+	resp, err := s.client.Do(req, &hooks)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	return *hooks, resp, err
+	return hooks, resp, nil
 }
 
 // GetHook returns a single specified Hook.
