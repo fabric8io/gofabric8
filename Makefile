@@ -35,6 +35,15 @@ BUILDFLAGS := -ldflags \
 		-X $(ROOT_PACKAGE)/version.GoVersion='$(GO_VERSION)'"
 CGO_ENABLED = 0
 
+VENDOR_DIR=vendor
+INIT_TENANT_DIR=$(VENDOR_DIR)/github.com/fabric8io/fabric8-init-tenant
+INIT_TENANT_BINDATA=$(INIT_TENANT_DIR)/template/bindata.go
+GO_BINDATA_BIN=$(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata/go-bindata
+FULL_GO_BINDATA_BIN=$(shell pwd)/$(GO_BINDATA_BIN)
+GO_BINDATA_DIR=$(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata/
+GO_BINDATA_ASSETFS_BIN=$(VENDOR_DIR)/github.com/elazarl/go-bindata-assetfs/go-bindata-assetfs/go-bindata-assetfs
+TEAM_VERSION=$(shell cat TEAM_VERSION)
+
 build: *.go */*.go fmt
 	rm -rf build
 	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(BUILDFLAGS) -o build/$(NAME) $(NAME).go
@@ -54,9 +63,40 @@ arm:
 win:
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=windows GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME).exe $(NAME).go
 
-bootstrap:
+bootstrap: vendoring $(INIT_TENANT_BINDATA)
+
+templates: $(INIT_TENANT_BINDATA)
+
+clean-templates:
+	rm $(INIT_TENANT_DIR)/template/bindata.go
+	rm $(INIT_TENANT_DIR)/template/fabric8-online-che-openshift.yml
+	rm $(INIT_TENANT_DIR)/template/fabric8-online-jenkins-openshift.yml
+	rm $(INIT_TENANT_DIR)/template/fabric8-online-team-openshift.yml
+
+$(GO_BINDATA_BIN): $(VENDOR_DIR)
+	cd $(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata && go build -v
+$(GO_BINDATA_ASSETFS_BIN): $(VENDOR_DIR)
+	cd $(VENDOR_DIR)/github.com/elazarl/go-bindata-assetfs/go-bindata-assetfs && go build -v
+
+#$(INIT_TENANT_DIR)/template/bindata.go: $(GO_BINDATA_BIN) $(wildcard $(INIT_TENANT_DIR)/template/*.yml)
+
+$(INIT_TENANT_BINDATA): $(GO_BINDATA_BIN)
+	export TEAM_VERSION=$(TEAM_VERSION)
+	echo "using team version ${TEAM_VERSION}"
+	cd $(INIT_TENANT_DIR) && TEAM_VERSION=$(TEAM_VERSION) go generate template/generate.go
+	cd $(INIT_TENANT_DIR) && $(FULL_GO_BINDATA_BIN) -o template/bindata.go \
+	-pkg template \
+	-prefix '' \
+	-nocompress \
+	template
+
+
+vendoring:
 	$(GO) get -u github.com/Masterminds/glide
 	GO15VENDOREXPERIMENT=1 glide update --strip-vendor --strip-vcs --update-vendored
+
+tools:
+	$(GO) get -u get -u github.com/jteeuwen/go-bindata/go-bindata/go-bindata
 
 release: test
 	rm -rf build release && mkdir build release
@@ -71,6 +111,7 @@ release: test
 	go get -u github.com/progrium/gh-release
 	gh-release checksums sha256
 	gh-release create fabric8io/$(NAME) $(VERSION) $(BRANCH) $(VERSION)
+
 
 clean:
 	rm -rf build release

@@ -123,6 +123,7 @@ func main() {
 	cmds.AddCommand(commands.NewCmdVersion())
 	cmds.AddCommand(commands.NewCmdVolumes(f))
 	cmds.AddCommand(commands.NewCmdWaitFor(f))
+	cmds.AddCommand(commands.NewCmdTenant(f))
 
 	getcmd := commands.NewCmdGet()
 	cmds.AddCommand(getcmd)

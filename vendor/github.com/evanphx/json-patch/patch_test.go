@@ -19,12 +19,12 @@ func reformatJSON(j string) string {
 func compareJSON(a, b string) bool {
 	// return Equal([]byte(a), []byte(b))
 
-	var obj_a, obj_b map[string]interface{}
-	json.Unmarshal([]byte(a), &obj_a)
-	json.Unmarshal([]byte(b), &obj_b)
+	var objA, objB map[string]interface{}
+	json.Unmarshal([]byte(a), &objA)
+	json.Unmarshal([]byte(b), &objB)
 
-	// fmt.Printf("Comparing %#v\nagainst %#v\n", obj_a, obj_b)
-	return reflect.DeepEqual(obj_a, obj_b)
+	// fmt.Printf("Comparing %#v\nagainst %#v\n", objA, objB)
+	return reflect.DeepEqual(objA, objB)
 }
 
 func applyPatch(doc, patch string) (string, error) {
@@ -183,6 +183,14 @@ var BadCases = []BadCase{
 	{
 		`{ "a": { "b": [1] } }`,
 		`[ { "op": "move", "from": "/a/b/1", "path": "/a/b/2" } ]`,
+	},
+	{
+		`{ "foo": "bar" }`,
+		`[ { "op": "add", "pathz": "/baz", "value": "qux" } ]`,
+	},
+	{
+		`{ "foo": "bar" }`,
+		`[ { "op": "add", "path": "", "value": "qux" } ]`,
 	},
 }
 

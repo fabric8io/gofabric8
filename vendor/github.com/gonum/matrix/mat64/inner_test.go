@@ -9,10 +9,10 @@ import (
 	"testing"
 
 	"github.com/gonum/blas/blas64"
-	"github.com/gonum/blas/testblas"
+	"gopkg.in/check.v1"
 )
 
-func TestInner(t *testing.T) {
+func (s *S) TestInner(c *check.C) {
 	for i, test := range []struct {
 		x []float64
 		y []float64
@@ -75,23 +75,18 @@ func TestInner(t *testing.T) {
 			cell.Mul(x, &tmp)
 
 			rm, cm := cell.Dims()
-			if rm != 1 {
-				t.Errorf("Test %d result doesn't have 1 row", i)
-			}
-			if cm != 1 {
-				t.Errorf("Test %d result doesn't have 1 column", i)
-			}
+			c.Check(rm, check.Equals, 1, check.Commentf("Test %v result doesn't have 1 row", i))
+			c.Check(cm, check.Equals, 1, check.Commentf("Test %v result doesn't have 1 column", i))
 
 			want := cell.At(0, 0)
+
 			got := Inner(makeVectorInc(inc.x, test.x), m, makeVectorInc(inc.y, test.y))
-			if got != want {
-				t.Errorf("Test %v: want %v, got %v", i, want, got)
-			}
+			c.Check(want, check.Equals, got, check.Commentf("Test %v: want %v, got %v", i, want, got))
 		}
 	}
 }
 
-func TestInnerSym(t *testing.T) {
+func (s *S) TestInnerSym(c *check.C) {
 	for _, inc := range []struct{ x, y int }{
 		{1, 1},
 		{1, 2},
@@ -123,7 +118,7 @@ func TestInnerSym(t *testing.T) {
 		}
 
 		if math.Abs(Inner(x, sym, y)-ans) > 1e-14 {
-			t.Error("inner different symmetric and dense")
+			c.Error("inner different symmetric and dense")
 		}
 	}
 }
@@ -165,17 +160,17 @@ func benchmarkInner(b *testing.B, m, n int) {
 }
 
 func BenchmarkInnerSmSm(b *testing.B) {
-	benchmarkInner(b, testblas.SmallMat, testblas.SmallMat)
+	benchmarkInner(b, Sm, Sm)
 }
 
 func BenchmarkInnerMedMed(b *testing.B) {
-	benchmarkInner(b, testblas.MediumMat, testblas.MediumMat)
+	benchmarkInner(b, Med, Med)
 }
 
 func BenchmarkInnerLgLg(b *testing.B) {
-	benchmarkInner(b, testblas.LargeMat, testblas.LargeMat)
+	benchmarkInner(b, Lg, Lg)
 }
 
 func BenchmarkInnerLgSm(b *testing.B) {
-	benchmarkInner(b, testblas.LargeMat, testblas.SmallMat)
+	benchmarkInner(b, Lg, Sm)
 }

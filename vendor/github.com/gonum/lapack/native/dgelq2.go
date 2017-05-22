@@ -6,24 +6,19 @@ package native
 
 import "github.com/gonum/blas"
 
-// Dgelq2 computes the LQ factorization of the m×n matrix A.
+// Dgelq2 computes the LQ factorization of the m×n matrix a.
 //
-// In an LQ factorization, L is a lower triangular m×n matrix, and Q is an n×n
-// orthonormal matrix.
-//
-// a is modified to contain the information to construct L and Q.
+// During Dgelq2, a is modified to contain the information to construct Q and L.
 // The lower triangle of a contains the matrix L. The upper triangular elements
-// (not including the diagonal) contain the elementary reflectors. tau is modified
-// to contain the reflector scales. tau must have length of at least k = min(m,n)
+// (not including the diagonal) contain the elementary reflectors. Tau is modified
+// to contain the reflector scales. Tau must have length of at least k = min(m,n)
 // and this function will panic otherwise.
 //
 // See Dgeqr2 for a description of the elementary reflectors and orthonormal
 // matrix Q. Q is constructed as a product of these elementary reflectors,
-// Q = H_{k-1} * ... * H_1 * H_0.
+// Q = H_k ... H_2*H_1.
 //
-// work is temporary storage of length at least m and this function will panic otherwise.
-//
-// Dgelq2 is an internal routine. It is exported for testing purposes.
+// Work is temporary storage of length at least m and this function will panic otherwise.
 func (impl Implementation) Dgelq2(m, n int, a []float64, lda int, tau, work []float64) {
 	checkMatrix(m, n, a, lda)
 	k := min(m, n)

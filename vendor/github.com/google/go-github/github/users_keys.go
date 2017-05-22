@@ -41,13 +41,13 @@ func (s *UsersService) ListKeys(user string, opt *ListOptions) ([]*Key, *Respons
 		return nil, nil, err
 	}
 
-	keys := new([]*Key)
-	resp, err := s.client.Do(req, keys)
+	var keys []*Key
+	resp, err := s.client.Do(req, &keys)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	return *keys, resp, err
+	return keys, resp, nil
 }
 
 // GetKey fetches a single public key.
@@ -67,7 +67,7 @@ func (s *UsersService) GetKey(id int) (*Key, *Response, error) {
 		return nil, resp, err
 	}
 
-	return key, resp, err
+	return key, resp, nil
 }
 
 // CreateKey adds a public key for the authenticated user.
@@ -87,7 +87,7 @@ func (s *UsersService) CreateKey(key *Key) (*Key, *Response, error) {
 		return nil, resp, err
 	}
 
-	return k, resp, err
+	return k, resp, nil
 }
 
 // DeleteKey deletes a public key.

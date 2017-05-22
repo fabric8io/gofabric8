@@ -44,22 +44,13 @@ func (Implementation) Dnrm2(n int, x []float64, incX int) float64 {
 	if incX == 1 {
 		x = x[:n]
 		for _, v := range x {
-			if v == 0 {
-				continue
-			}
 			absxi := math.Abs(v)
-			if math.IsNaN(absxi) {
-				return math.NaN()
-			}
 			if scale < absxi {
 				sumSquares = 1 + sumSquares*(scale/absxi)*(scale/absxi)
 				scale = absxi
 			} else {
 				sumSquares = sumSquares + (absxi/scale)*(absxi/scale)
 			}
-		}
-		if math.IsInf(scale, 1) {
-			return math.Inf(1)
 		}
 		return scale * math.Sqrt(sumSquares)
 	}
@@ -69,18 +60,12 @@ func (Implementation) Dnrm2(n int, x []float64, incX int) float64 {
 			continue
 		}
 		absxi := math.Abs(val)
-		if math.IsNaN(absxi) {
-			return math.NaN()
-		}
 		if scale < absxi {
 			sumSquares = 1 + sumSquares*(scale/absxi)*(scale/absxi)
 			scale = absxi
 		} else {
 			sumSquares = sumSquares + (absxi/scale)*(absxi/scale)
 		}
-	}
-	if math.IsInf(scale, 1) {
-		return math.Inf(1)
 	}
 	return scale * math.Sqrt(sumSquares)
 }
@@ -115,9 +100,9 @@ func (Implementation) Dasum(n int, x []float64, incX int) float64 {
 	return sum
 }
 
-// Idamax returns the index of an element of x with the largest absolute value.
-// If there are multiple such indices the earliest is returned.
-// Idamax returns -1 if n == 0.
+// Idamax returns the index of the largest element of x. If there are multiple
+// such indices the earliest is returned. Idamax returns -1 if incX is negative or if
+// n == 0.
 func (Implementation) Idamax(n int, x []float64, incX int) int {
 	if incX < 1 {
 		if incX == 0 {
@@ -167,17 +152,17 @@ func (Implementation) Idamax(n int, x []float64, incX int) int {
 // Dswap exchanges the elements of two vectors.
 //  x[i], y[i] = y[i], x[i] for all i
 func (Implementation) Dswap(n int, x []float64, incX int, y []float64, incY int) {
-	if incX == 0 {
-		panic(zeroIncX)
-	}
-	if incY == 0 {
-		panic(zeroIncY)
-	}
 	if n < 1 {
 		if n == 0 {
 			return
 		}
 		panic(negativeN)
+	}
+	if incX == 0 {
+		panic(zeroIncX)
+	}
+	if incY == 0 {
+		panic(zeroIncY)
 	}
 	if (incX > 0 && (n-1)*incX >= len(x)) || (incX < 0 && (1-n)*incX >= len(x)) {
 		panic(badX)
@@ -209,17 +194,17 @@ func (Implementation) Dswap(n int, x []float64, incX int, y []float64, incY int)
 // Dcopy copies the elements of x into the elements of y.
 //  y[i] = x[i] for all i
 func (Implementation) Dcopy(n int, x []float64, incX int, y []float64, incY int) {
-	if incX == 0 {
-		panic(zeroIncX)
-	}
-	if incY == 0 {
-		panic(zeroIncY)
-	}
 	if n < 1 {
 		if n == 0 {
 			return
 		}
 		panic(negativeN)
+	}
+	if incX == 0 {
+		panic(zeroIncX)
+	}
+	if incY == 0 {
+		panic(zeroIncY)
 	}
 	if (incX > 0 && (n-1)*incX >= len(x)) || (incX < 0 && (1-n)*incX >= len(x)) {
 		panic(badX)
@@ -248,17 +233,17 @@ func (Implementation) Dcopy(n int, x []float64, incX int, y []float64, incY int)
 // Daxpy adds alpha times x to y
 //  y[i] += alpha * x[i] for all i
 func (Implementation) Daxpy(n int, alpha float64, x []float64, incX int, y []float64, incY int) {
-	if incX == 0 {
-		panic(zeroIncX)
-	}
-	if incY == 0 {
-		panic(zeroIncY)
-	}
 	if n < 1 {
 		if n == 0 {
 			return
 		}
 		panic(negativeN)
+	}
+	if incX == 0 {
+		panic(zeroIncX)
+	}
+	if incY == 0 {
+		panic(zeroIncY)
 	}
 	if (incX > 0 && (n-1)*incX >= len(x)) || (incX < 0 && (1-n)*incX >= len(x)) {
 		panic(badX)
@@ -276,7 +261,7 @@ func (Implementation) Daxpy(n int, alpha float64, x []float64, incX int, y []flo
 		if len(y) < n {
 			panic(badLenY)
 		}
-		asm.DaxpyUnitaryTo(y, alpha, x[:n], y)
+		asm.DaxpyUnitary(alpha, x[:n], y, y)
 		return
 	}
 	var ix, iy int
@@ -297,11 +282,11 @@ func (Implementation) Daxpy(n int, alpha float64, x []float64, incX int, y []flo
 
 // Drotg computes the plane rotation
 //   _    _      _ _       _ _
-//  |  c s |    | a |     | r |
+//  | c  s |    | a |     | r |
 //  | -s c |  * | b |   = | 0 |
 //   ‾    ‾      ‾ ‾       ‾ ‾
 // where
-//  r = ±√(a^2 + b^2)
+//  r = ±(a^2 + b^2)
 //  c = a/r, the cosine of the plane rotation
 //  s = b/r, the sine of the plane rotation
 //
@@ -460,17 +445,17 @@ func (Implementation) Drotmg(d1, d2, x1, y1 float64) (p blas.DrotmParams, rd1, r
 //  x[i] = c * x[i] + s * y[i]
 //  y[i] = c * y[i] - s * x[i]
 func (Implementation) Drot(n int, x []float64, incX int, y []float64, incY int, c float64, s float64) {
-	if incX == 0 {
-		panic(zeroIncX)
-	}
-	if incY == 0 {
-		panic(zeroIncY)
-	}
 	if n < 1 {
 		if n == 0 {
 			return
 		}
 		panic(negativeN)
+	}
+	if incX == 0 {
+		panic(zeroIncX)
+	}
+	if incY == 0 {
+		panic(zeroIncY)
 	}
 	if (incX > 0 && (n-1)*incX >= len(x)) || (incX < 0 && (1-n)*incX >= len(x)) {
 		panic(badX)
@@ -504,17 +489,17 @@ func (Implementation) Drot(n int, x []float64, incX int, y []float64, incY int, 
 
 // Drotm applies the modified Givens rotation to the 2×n matrix.
 func (Implementation) Drotm(n int, x []float64, incX int, y []float64, incY int, p blas.DrotmParams) {
-	if incX == 0 {
-		panic(zeroIncX)
-	}
-	if incY == 0 {
-		panic(zeroIncY)
-	}
 	if n <= 0 {
 		if n == 0 {
 			return
 		}
 		panic(negativeN)
+	}
+	if incX == 0 {
+		panic(zeroIncX)
+	}
+	if incY == 0 {
+		panic(zeroIncY)
 	}
 	if (incX > 0 && (n-1)*incX >= len(x)) || (incX < 0 && (1-n)*incX >= len(x)) {
 		panic(badX)
@@ -578,14 +563,16 @@ func (Implementation) Dscal(n int, alpha float64, x []float64, incX int) {
 		}
 		return
 	}
-	if (n-1)*incX >= len(x) {
+	if incX > 0 && (n-1)*incX >= len(x) {
 		panic(badX)
 	}
 	if n < 1 {
 		if n == 0 {
 			return
 		}
-		panic(negativeN)
+		if n < 1 {
+			panic(negativeN)
+		}
 	}
 	if alpha == 0 {
 		if incX == 1 {
@@ -593,18 +580,20 @@ func (Implementation) Dscal(n int, alpha float64, x []float64, incX int) {
 			for i := range x {
 				x[i] = 0
 			}
-			return
 		}
 		for ix := 0; ix < n*incX; ix += incX {
 			x[ix] = 0
 		}
-		return
 	}
 	if incX == 1 {
-		asm.DscalUnitary(alpha, x[:n])
+		x = x[:n]
+		for i := range x {
+			x[i] *= alpha
+		}
 		return
 	}
 	for ix := 0; ix < n*incX; ix += incX {
 		x[ix] *= alpha
 	}
+	return
 }

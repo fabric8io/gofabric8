@@ -101,7 +101,7 @@ func (s *OrganizationsService) ListAll(opt *OrganizationsListOptions) ([]*Organi
 	if err != nil {
 		return nil, resp, err
 	}
-	return orgs, resp, err
+	return orgs, resp, nil
 }
 
 // List the organizations for a user.  Passing the empty string will list
@@ -125,13 +125,13 @@ func (s *OrganizationsService) List(user string, opt *ListOptions) ([]*Organizat
 		return nil, nil, err
 	}
 
-	orgs := new([]*Organization)
-	resp, err := s.client.Do(req, orgs)
+	var orgs []*Organization
+	resp, err := s.client.Do(req, &orgs)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	return *orgs, resp, err
+	return orgs, resp, nil
 }
 
 // Get fetches an organization by name.
@@ -150,7 +150,7 @@ func (s *OrganizationsService) Get(org string) (*Organization, *Response, error)
 		return nil, resp, err
 	}
 
-	return organization, resp, err
+	return organization, resp, nil
 }
 
 // Edit an organization.
@@ -169,5 +169,5 @@ func (s *OrganizationsService) Edit(name string, org *Organization) (*Organizati
 		return nil, resp, err
 	}
 
-	return o, resp, err
+	return o, resp, nil
 }

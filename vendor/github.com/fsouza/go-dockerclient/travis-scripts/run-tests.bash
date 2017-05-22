@@ -4,8 +4,12 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-make test
+if ! [[ $TRAVIS_GO_VERSION =~ ^1\.[34] ]]; then
+	make lint vet
+fi
+
+make fmtcheck gotest
 
 if [[ $TRAVIS_OS_NAME == "linux" ]]; then
-	make integration
+	DOCKER_HOST=tcp://127.0.0.1:2375 make integration
 fi

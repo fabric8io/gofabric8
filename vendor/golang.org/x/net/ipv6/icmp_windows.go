@@ -4,6 +4,10 @@
 
 package ipv6
 
+type sysICMPv6Filter struct {
+	// TODO(mikio): implement this
+}
+
 func (f *sysICMPv6Filter) accept(typ ICMPType) {
 	// TODO(mikio): implement this
 }

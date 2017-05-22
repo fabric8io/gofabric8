@@ -23,9 +23,7 @@ const (
 
 	sysSizeofSockaddrInet6 = 0x1c
 
-	sysSizeofIPv6Mreq     = 0x14
-	sysSizeofIPv6Mtuinfo  = 0x20
-	sysSizeofICMPv6Filter = 0
+	sysSizeofIPv6Mreq = 0x14
 )
 
 type sysSockaddrInet6 struct {
@@ -39,15 +37,6 @@ type sysSockaddrInet6 struct {
 type sysIPv6Mreq struct {
 	Multiaddr [16]byte /* in6_addr */
 	Interface uint32
-}
-
-type sysIPv6Mtuinfo struct {
-	Addr sysSockaddrInet6
-	Mtu  uint32
-}
-
-type sysICMPv6Filter struct {
-	// TODO(mikio): implement this
 }
 
 var (

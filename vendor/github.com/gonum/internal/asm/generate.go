@@ -4,6 +4,5 @@
 
 //go:generate ./single_precision
 //go:generate ./complex
-//go:generate go run genasm.go
 
 package asm

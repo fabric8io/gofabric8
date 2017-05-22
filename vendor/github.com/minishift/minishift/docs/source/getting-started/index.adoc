@@ -1,0 +1,11 @@
+[[getting-started-index]]
+= Getting started with Minishift
+:icons:
+
+This section contains information about installing Minishift, quickstart steps, and sample
+application deployment.
+
+- link:../getting-started/installing{outfilesuffix}[Installing Minishift]
+- link:../getting-started/quickstart{outfilesuffix}[Minishift Quickstart]
+- link:../getting-started/docker-machine-drivers{outfilesuffix}[Installing Docker Machine drivers]
+- link:../getting-started/uninstalling{outfilesuffix}[Uninstalling Minishift]
