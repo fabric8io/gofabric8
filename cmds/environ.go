@@ -85,89 +85,48 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 			cmdutil.CheckErr(err)
 
 			if len(args) == 0 {
-				util.Errorf("Delete command requires the name of the environment as a parameter\n.")
+				util.Errorf("Delete command requires the name of the environment as a parameter.\n.")
 				return
 			}
+
+			if len(args) != 1 {
+				util.Errorf("Delete command can have only one environment name parameter.\n.")
+				return
+			}
+
+			toDeleteEnv := args[0]
 
 			cfgmap, err := c.ConfigMaps(ns).List(api.ListOptions{LabelSelector: selector})
 			cmdutil.CheckErr(err)
 
-			/*
-				fmt.Printf("Config map: %#v\n", cfgmap)
-				for _, item := range cfgmap.Items {
-					fmt.Printf("Config map items: %#v\n", item)
-					for _, data := range item.Data {
-						fmt.Printf("Config map items data : %#v\n", data)
-					}
-				}
-			*/
-
-			//  get all environ names
-			var environNames []string
-
-			//fmt.Printf("%-10s DATA\n", "ENV")
+			// remove the entry from the config map
+			var updatedCfgMap *api.ConfigMap
 			for _, item := range cfgmap.Items {
-				for _, data := range item.Data {
+				for k, data := range item.Data {
 					var ed EnvironmentData
 					err := yaml.Unmarshal([]byte(data), &ed)
 					cmdutil.CheckErr(err)
-					//fmt.Printf("%-10s name=%s namespace=%s order=%d\n", key, ed.Name, ed.Namespace, ed.Order)
-					environNames = append(environNames, ed.Name)
-				}
-			}
 
-			fmt.Println("environNames")
-			for _, v := range environNames {
-				fmt.Println(v)
-			}
-
-			// args is a list of config map names
-			for _, arg := range args {
-				found := false
-				for _, env := range environNames {
-					if arg == env {
-						found = true
-						break
+					if ed.Name == toDeleteEnv {
+						delete(item.Data, k)
+						updatedCfgMap = &item
+						goto DeletedConfig
 					}
-				}
-				if !found {
-					util.Errorf("Could not find environment named %s.\n", arg)
-					return
+
 				}
 			}
 
-			// remove the entry from the config map
-			for _, arg := range args {
-				for _, item := range cfgmap.Items {
-					for k, data := range item.Data {
-						var ed EnvironmentData
-						err := yaml.Unmarshal([]byte(data), &ed)
-						cmdutil.CheckErr(err)
-
-						if arg == ed.Name {
-							delete(item.Data, k)
-						}
-
-					}
-				}
+		DeletedConfig:
+			if updatedCfgMap == nil {
+				util.Warnf("Could not find environment named %s.\n", toDeleteEnv)
+				return
 			}
 
-			/*
-				fmt.Printf("Config map: %#v\n", cfgmap)
-				for _, item := range cfgmap.Items {
-					fmt.Printf("Config map items: %#v\n", item)
-					for _, data := range item.Data {
-						fmt.Printf("Config map items data : %#v\n", data)
-					}
-				}
-			*/
-			// I can see that the entry is removed here if I run: ./gofabric8 delete environ Staging
-			// Was:
-			// Config map items data : "name: Staging\nnamespace: default-staging\norder: 0"
-			// Config map items data : "name: Production\nnamespace: default-production\norder: 1"
-
-			// Is:
-			// Config map items data : "name: Production\nnamespace: default-production\norder: 1"
+			_, err = c.ConfigMaps(ns).Update(updatedCfgMap)
+			if err != nil {
+				util.Errorf("Failed to update config map after deleting: %v.\n", err)
+				return
+			}
 
 		},
 	}
