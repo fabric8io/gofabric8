@@ -103,6 +103,7 @@ func main() {
 
 	cmds.AddCommand(commands.NewCmdCleanUp(f))
 	cmds.AddCommand(commands.NewCmdCopyEndpoints(f))
+	cmds.AddCommand(commands.NewCmdCheShell(f))
 	cmds.AddCommand(commands.NewCmdConsole(f))
 	cmds.AddCommand(commands.NewCmdDeploy(f))
 	cmds.AddCommand(commands.NewCmdDockerEnv(f))

@@ -274,7 +274,7 @@ func resolveBinaryLocation(executable string) string {
 			}
 		}
 	}
-	util.Infof("using the executable %s\n", path)
+	//util.Infof("using the executable %s\n", path)
 	return path
 }
 
