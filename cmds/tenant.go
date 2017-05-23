@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/fabric8io/almighty-core/log"
 	"github.com/fabric8io/fabric8-init-tenant/openshift"
 	"github.com/fabric8io/gofabric8/util"
 
@@ -34,9 +35,11 @@ type cmdTenant struct {
 	cmd  *cobra.Command
 	args []string
 
-	apiserver string
-	username  string
-	token     string
+	apiserver   string
+	username    string
+	token       string
+	templateDir string
+	teamVersion string
 }
 
 func NewCmdTenant(f *cmdutil.Factory) *cobra.Command {
@@ -55,6 +58,8 @@ func NewCmdTenant(f *cmdutil.Factory) *cobra.Command {
 	flags.StringVarP(&p.apiserver, "apiserver", "a", "", "the URL of the Kubernetes API Server to use. Defaults to the current kubectl/oc context cluster's URL")
 	flags.StringVarP(&p.username, "username", "u", "", "the username to communicate with the API server. Defaults to the current kubectl/oc context's user name")
 	flags.StringVarP(&p.token, "token", "t", "", "the token to communicate with the API server. Defaults to the current kubectl/oc context cluster's token")
+	flags.StringVarP(&p.templateDir, "template-dir", "d", "", "the directory to look for templates")
+	flags.StringVarP(&p.teamVersion, "team-version", "v", "", "the version to use for the team templates")
 	return cmd
 }
 
@@ -118,17 +123,25 @@ func (p *cmdTenant) run(f *cmdutil.Factory) error {
 	}
 
 	osConfig := openshift.Config{
-		MasterURL:  apiserver,
-		MasterUser: username,
-		Token:      token,
+		MasterURL:   apiserver,
+		MasterUser:  username,
+		Token:       token,
+		TemplateDir: p.templateDir,
+		TeamVersion: p.teamVersion,
 		HttpTransport: &http.Transport{
 			// we need to disable TLS verify on minishift
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
+		LogCallback: logMessage,
 	}
 	templateVars := map[string]string{}
 
+	log.InitializeLogger(false, "debug")
 	return openshift.InitTenant(osConfig, defaultCallback, username, token, templateVars)
+}
+
+func logMessage(message string) {
+	util.Info(message + "\n")
 }
 
 func defaultCallback(statusCode int, method string, request, response map[interface{}]interface{}) (string, map[interface{}]interface{}) {

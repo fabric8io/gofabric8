@@ -1,5 +1,5 @@
-hash: 1a60a4d1a608e7c1ae7105cce3b3bd1f37a0c6623d0b743d3edaea4a6017162d
-updated: 2017-05-19T17:52:40.46912191+01:00
+hash: ed46c01786ccc98c1ee8eebebcc2137a3239f33d0bdc79ac12cbe20d9e8b8a41
+updated: 2017-05-23T09:00:35.302698419+01:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: 75cd24fc2f2c2a2088577d12123ddee5f54e0675
@@ -8,6 +8,14 @@ imports:
   subpackages:
   - compute/metadata
   - internal
+- name: github.com/almighty/almighty-core
+  version: 2ae9b5ed657fef5d1af5bc783ed33fe6005ea240
+  subpackages:
+  - configuration
+  - errors
+  - log
+  - login/tokencontext
+  - rest
 - name: github.com/asaskevich/govalidator
   version: 7b3beb6df3c42abd3509abfc3bcacc0fbfb7c877
 - name: github.com/beorn7/perks
@@ -86,6 +94,8 @@ imports:
   version: e30f1e79f3cd72542f2026ceec18d3bd67ab859c
 - name: github.com/docker/libtrust
   version: c54fbb67c1f1e68d7d6f8d2ad7c9360404616a41
+- name: github.com/elazarl/go-bindata-assetfs
+  version: 30f82fa23fd844bd5bb1e5f216db87fd77b5eb43
 - name: github.com/emicklei/go-restful
   version: 09691a3b6378b740595c1002f40c34dd5f218a22
   subpackages:
@@ -93,12 +103,18 @@ imports:
   - swagger
 - name: github.com/evanphx/json-patch
   version: ba18e35c5c1b36ef6334cad706eb681153d2d379
+- name: github.com/fabric8io/almighty-core
+  version: 2fea9f1ec811cebd28e894ada28a68fbe594fe9c
+  subpackages:
+  - configuration
+  - errors
+  - log
+  - login/tokencontext
+  - rest
 - name: github.com/fabric8io/fabric8-init-tenant
-  version: 221a34ae295f30eacfc82bdcf931651fb58595ce
+  version: 0af19b270d40bdb93f398d40c3ea1ee0a48f5f6e
   subpackages:
   - openshift
-  - pkg/openshift
-  - pkg/template
   - template
 - name: github.com/fsnotify/fsnotify
   version: f12c6236fe7b5cf6bcf30e5935d08cb079d78334
@@ -259,7 +275,7 @@ imports:
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/jimmidyson/minishift
-  version: 7474f536c8eae3ea229d892e5147ba141ff529af
+  version: fcb9abcea84837173e27855a6a2dca7853f9abe5
   subpackages:
   - pkg/minikube/update
 - name: github.com/jonboulle/clockwork
@@ -275,7 +291,7 @@ imports:
 - name: github.com/kr/fs
   version: 2788f0dbd16903de03cb8186e5c7d97b69ad387b
 - name: github.com/kubernetes/minikube
-  version: d4b5b62b2e9211ba1ebba766025ecdc907cd68ad
+  version: 37f698549943fb9b4c2282c87aef0e666c591830
   subpackages:
   - pkg/minikube/config
 - name: github.com/magiconair/properties
@@ -293,7 +309,7 @@ imports:
   subpackages:
   - pbutil
 - name: github.com/minishift/minishift
-  version: 7474f536c8eae3ea229d892e5147ba141ff529af
+  version: fcb9abcea84837173e27855a6a2dca7853f9abe5
   subpackages:
   - pkg/minikube/config
   - pkg/minikube/constants
@@ -523,7 +539,7 @@ imports:
 - name: gopkg.in/yaml.v2
   version: 53feefa2559fb8dfa8d81baad31be332c97d6c77
 - name: k8s.io/apimachinery
-  version: 7579408ece3cd0671ed2440d1f89616dd5f13bc3
+  version: 2de00c78cb6d6127fb51b9531c1b3def1cbcac8c
   subpackages:
   - pkg/api/equality
   - pkg/api/errors
@@ -550,6 +566,8 @@ imports:
   - pkg/runtime/serializer/versioning
   - pkg/selection
   - pkg/types
+  - pkg/util/cache
+  - pkg/util/clock
   - pkg/util/diff
   - pkg/util/errors
   - pkg/util/framer
@@ -574,7 +592,7 @@ imports:
   - third_party/forked/golang/netutil
   - third_party/forked/golang/reflect
 - name: k8s.io/client-go
-  version: 45154911ef4ddfdf2b6310c11ac10117e5e72b9e
+  version: 6b1566ccaa7c069f392461bef8a5fb17087f4729
   subpackages:
   - pkg/api
   - pkg/api/v1
@@ -592,7 +610,6 @@ imports:
   - tools/metrics
   - transport
   - util/cert
-  - util/clock
   - util/flowcontrol
   - util/homedir
   - util/integer
@@ -753,7 +770,7 @@ imports:
   - third_party/golang/netutil
   - third_party/golang/template
 - name: k8s.io/minikube
-  version: d4b5b62b2e9211ba1ebba766025ecdc907cd68ad
+  version: 37f698549943fb9b4c2282c87aef0e666c591830
   subpackages:
   - pkg/minikube/constants
   - pkg/version

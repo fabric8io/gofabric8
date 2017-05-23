@@ -66,8 +66,8 @@ import:
   version: 6633656539c1639d9d78127b7d47c622b5d7b6dc
 - package: github.com/fabric8io/fabric8-init-tenant
   subpackages:
-  - pkg/openshift
-  - pkg/template
+  - openshift
+  - template
 - package: github.com/gogo/protobuf
   version: c0656edd0d9eab7c66d1eb0c568f9039345796f7
   subpackages:
@@ -83,4 +83,6 @@ import:
   - '...'
 - package: github.com/elazarl/go-bindata-assetfs
   subpackages:
+ignore:
+- github.com/goadesign/goa      
 
