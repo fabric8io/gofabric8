@@ -44,7 +44,7 @@ GO_BINDATA_DIR=$(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata/
 GO_BINDATA_ASSETFS_BIN=$(VENDOR_DIR)/github.com/elazarl/go-bindata-assetfs/go-bindata-assetfs/go-bindata-assetfs
 TEAM_VERSION=$(shell cat TEAM_VERSION)
 
-full-build: $(INIT_TENANT_BINDATA) build
+full-build: bindata build
  
 build: *.go */*.go fmt
 	rm -rf build
@@ -82,7 +82,9 @@ $(GO_BINDATA_ASSETFS_BIN): $(VENDOR_DIR)
 
 #$(INIT_TENANT_DIR)/template/bindata.go: $(GO_BINDATA_BIN) $(wildcard $(INIT_TENANT_DIR)/template/*.yml)
 
-$(INIT_TENANT_BINDATA): $(GO_BINDATA_BIN)
+$(INIT_TENANT_BINDATA): bindata
+
+bindata: $(GO_BINDATA_BIN)
 	export TEAM_VERSION=$(TEAM_VERSION)
 	echo "using team version ${TEAM_VERSION}"
 	cd $(INIT_TENANT_DIR) && TEAM_VERSION=$(TEAM_VERSION) go generate template/generate.go
