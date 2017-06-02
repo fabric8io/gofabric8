@@ -44,7 +44,7 @@ GO_BINDATA_DIR=$(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata/
 GO_BINDATA_ASSETFS_BIN=$(VENDOR_DIR)/github.com/elazarl/go-bindata-assetfs/go-bindata-assetfs/go-bindata-assetfs
 TEAM_VERSION=$(shell cat TEAM_VERSION)
 
-full-build: bindata build
+all: $(GO_BINDATA_BIN) bindata build
  
 build: *.go */*.go fmt
 	rm -rf build
@@ -82,11 +82,11 @@ $(GO_BINDATA_ASSETFS_BIN): $(VENDOR_DIR)
 
 #$(INIT_TENANT_DIR)/template/bindata.go: $(GO_BINDATA_BIN) $(wildcard $(INIT_TENANT_DIR)/template/*.yml)
 
-$(INIT_TENANT_BINDATA): bindata
+$(INIT_TENANT_BINDATA): $(GO_BINDATA_BIN) bindata
 
-bindata: $(GO_BINDATA_BIN)
+bindata: 
 	export TEAM_VERSION=$(TEAM_VERSION)
-	echo "using team version ${TEAM_VERSION}"
+	echo "using team version ${TEAM_VERSION} to generate tenant templates. Please use the 'build' target to omit this step in future builds "
 	cd $(INIT_TENANT_DIR) && TEAM_VERSION=$(TEAM_VERSION) go generate template/generate.go
 	cd $(INIT_TENANT_DIR) && $(FULL_GO_BINDATA_BIN) -o template/bindata.go \
 	-pkg template \
