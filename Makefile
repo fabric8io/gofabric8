@@ -102,7 +102,7 @@ vendoring:
 tools:
 	$(GO) get -u get -u github.com/jteeuwen/go-bindata/go-bindata/go-bindata
 
-release: test
+release: all test
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \
 		CGO_ENABLED=$(CGO_ENABLED) GOOS=$$os GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
