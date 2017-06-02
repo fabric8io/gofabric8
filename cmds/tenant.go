@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/fabric8io/almighty-core/log"
 	"github.com/fabric8io/fabric8-init-tenant/openshift"
 	"github.com/fabric8io/gofabric8/util"
 
@@ -136,7 +135,6 @@ func (p *cmdTenant) run(f *cmdutil.Factory) error {
 	}
 	templateVars := map[string]string{}
 
-	log.InitializeLogger(false, "debug")
 	return openshift.InitTenant(osConfig, defaultCallback, username, token, templateVars)
 }
 
