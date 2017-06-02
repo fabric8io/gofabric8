@@ -57,7 +57,11 @@ import:
   subpackages:
   - difflib
 - package: github.com/pkg/browser
-- package: github.com/jimmidyson/minishift
+- package: github.com/minishift/minishift
+  version: 7474f536c8eae3ea229d892e5147ba141ff529af
+  subpackages:
+  - pkg/minikube/update
+  - pkg/minikube/config
 - package: github.com/gonum/graph/concrete
   version: bde6d0fbd9dec5a997e906611fe0364001364c41
 - package: github.com/docker/docker
@@ -84,5 +88,6 @@ import:
 - package: github.com/elazarl/go-bindata-assetfs
   subpackages:
 ignore:
-- github.com/goadesign/goa      
+- github.com/goadesign/goa  
+- github.com/fabric8io/almighty-core    
 

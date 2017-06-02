@@ -56,7 +56,7 @@ func get(url, token string) (*usertoken, error) {
 		fmt.Println(string(rb))
 	}
 
-	client := http.DefaultClient
+	client := createHttpClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

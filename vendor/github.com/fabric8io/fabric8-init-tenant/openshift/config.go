@@ -10,10 +10,25 @@ type Config struct {
 	MasterUser    string
 	Token         string
 	HttpTransport *http.Transport
+	TemplateDir   string
+	TeamVersion   string
+	LogCallback   LogCallback
 }
+
+type LogCallback func(message string)
 
 func (c Config) WithToken(token string) Config {
 	return Config{MasterURL: c.MasterURL, MasterUser: c.MasterUser, Token: token, HttpTransport: c.HttpTransport}
+}
+
+func (c Config) GetLogCallback() LogCallback {
+	if c.LogCallback == nil {
+		return nilLogCallback
+	}
+	return c.LogCallback
+}
+
+func nilLogCallback(string) {
 }
 
 type multiError struct {

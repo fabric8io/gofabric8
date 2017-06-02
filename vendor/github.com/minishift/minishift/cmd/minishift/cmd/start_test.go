@@ -294,8 +294,6 @@ func TestClusterUpWithProxyFlag(t *testing.T) {
 	viper.Set("no-proxy", "10.0.0.1")
 
 	setOcProxy()
-	// To make sure oc download doesn't take localhost:3128 proxy in account
-	proxyUrl = ""
 
 	clusterUp(&testMachineConfig, testIp)
 

@@ -1,5 +1,5 @@
-hash: ed46c01786ccc98c1ee8eebebcc2137a3239f33d0bdc79ac12cbe20d9e8b8a41
-updated: 2017-05-23T09:00:35.302698419+01:00
+hash: 9dab56042339db3610f7b338849a201b6e80b9aca105a010265b0cf921d38e5c
+updated: 2017-06-02T12:51:15.793323206+01:00
 imports:
 - name: bitbucket.org/ww/goautoneg
   version: 75cd24fc2f2c2a2088577d12123ddee5f54e0675
@@ -8,14 +8,6 @@ imports:
   subpackages:
   - compute/metadata
   - internal
-- name: github.com/almighty/almighty-core
-  version: 2ae9b5ed657fef5d1af5bc783ed33fe6005ea240
-  subpackages:
-  - configuration
-  - errors
-  - log
-  - login/tokencontext
-  - rest
 - name: github.com/asaskevich/govalidator
   version: 7b3beb6df3c42abd3509abfc3bcacc0fbfb7c877
 - name: github.com/beorn7/perks
@@ -23,7 +15,7 @@ imports:
   subpackages:
   - quantile
 - name: github.com/blang/semver
-  version: b38d23b8782a487059e8fc8773e9a5b228a77cb6
+  version: 31b736133b98f26d5e078ec9eb591666edfd091f
 - name: github.com/coreos/go-oidc
   version: be73733bb8cc830d0205609b95d125215f8e9c70
   subpackages:
@@ -103,16 +95,8 @@ imports:
   - swagger
 - name: github.com/evanphx/json-patch
   version: ba18e35c5c1b36ef6334cad706eb681153d2d379
-- name: github.com/fabric8io/almighty-core
-  version: 2fea9f1ec811cebd28e894ada28a68fbe594fe9c
-  subpackages:
-  - configuration
-  - errors
-  - log
-  - login/tokencontext
-  - rest
 - name: github.com/fabric8io/fabric8-init-tenant
-  version: 0af19b270d40bdb93f398d40c3ea1ee0a48f5f6e
+  version: 5164ca51ca23e6a169ade70db4697ef15d5703c2
   subpackages:
   - openshift
   - template
@@ -274,10 +258,6 @@ imports:
   - internal/osext
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
-- name: github.com/jimmidyson/minishift
-  version: fcb9abcea84837173e27855a6a2dca7853f9abe5
-  subpackages:
-  - pkg/minikube/update
 - name: github.com/jonboulle/clockwork
   version: 72f9bd7c4e0c2a40055ab3d0f09654f730cce982
 - name: github.com/jteeuwen/go-bindata
@@ -287,11 +267,11 @@ imports:
 - name: github.com/juju/ratelimit
   version: 77ed1c8a01217656d2080ad51981f6e99adaa177
 - name: github.com/kardianos/osext
-  version: ae77be60afb1dcacde03767a8c37337fad28ac14
+  version: 8fef92e41e22a70e700a96b29f066cda30ea24ef
 - name: github.com/kr/fs
   version: 2788f0dbd16903de03cb8186e5c7d97b69ad387b
 - name: github.com/kubernetes/minikube
-  version: 37f698549943fb9b4c2282c87aef0e666c591830
+  version: 3e581c7fe7ea17add3075a0e829819c122f40cd7
   subpackages:
   - pkg/minikube/config
 - name: github.com/magiconair/properties
@@ -309,17 +289,18 @@ imports:
   subpackages:
   - pbutil
 - name: github.com/minishift/minishift
-  version: fcb9abcea84837173e27855a6a2dca7853f9abe5
+  version: 7474f536c8eae3ea229d892e5147ba141ff529af
   subpackages:
   - pkg/minikube/config
   - pkg/minikube/constants
+  - pkg/minikube/update
   - pkg/util
   - pkg/util/archive
   - pkg/util/github
   - pkg/util/os
   - pkg/version
 - name: github.com/mitchellh/mapstructure
-  version: db1efb556f84b25a0a13a04aad883943538ad2e0
+  version: 740c764bc6149d3f1806231418adb9f52c11bcbf
 - name: github.com/opencontainers/runc
   version: 45c30e75abfd52107b53048004a83165403ad0d1
   subpackages:
@@ -422,7 +403,7 @@ imports:
 - name: github.com/pkg/browser
   version: c90ca0c84f15f81c982e32665bffd8d7aac8f097
 - name: github.com/pkg/errors
-  version: 645ef00459ed84a119197bfb8d8205042c6df63d
+  version: a22138067af1c4942683050411a841ade67fe1eb
 - name: github.com/pkg/sftp
   version: 4d0e916071f68db74f8a73926335f809396d6b42
 - name: github.com/pmezard/go-difflib
@@ -464,9 +445,9 @@ imports:
 - name: github.com/spf13/pflag
   version: c7e63cf4530bcd3ba943729cee0efeff2ebea63f
 - name: github.com/spf13/viper
-  version: 382f87b929b84ce13e9c8a375a4b217f224e6c65
+  version: 7fb2782df3d83e0036cc89f461ed0422628776f4
 - name: github.com/stretchr/testify
-  version: 4d4bfba8f1d1027c4fdbe371823030df51419987
+  version: f6abca593680b2315d2075e0f5e2a9751e3f431a
   subpackages:
   - assert
 - name: github.com/ugorji/go
@@ -506,6 +487,7 @@ imports:
   version: 8f0908ab3b2457e2e15403d3697c9ef5cb4b57a9
   subpackages:
   - unix
+  - windows
   - windows/registry
 - name: golang.org/x/text
   version: 2910a502d2bf9e43193af9d68ca516529614eed3
@@ -770,7 +752,7 @@ imports:
   - third_party/golang/netutil
   - third_party/golang/template
 - name: k8s.io/minikube
-  version: 37f698549943fb9b4c2282c87aef0e666c591830
+  version: 3e581c7fe7ea17add3075a0e829819c122f40cd7
   subpackages:
   - pkg/minikube/constants
   - pkg/version

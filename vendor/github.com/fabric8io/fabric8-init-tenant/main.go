@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
+	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -58,12 +61,30 @@ func main() {
 
 	serviceToken := config.GetOpenshiftServiceToken()
 	if serviceToken == "" {
-		logrus.Panic(nil, map[string]interface{}{}, "missing service token")
+		if config.UseOpenshiftCurrentCluster() {
+			file, err := ioutil.ReadFile("/run/secrets/kubernetes.io/serviceaccount/token")
+			if err != nil {
+				logrus.Panic(nil, map[string]interface{}{
+					"err": err,
+				}, "failed to read service account token")
+			}
+			serviceToken = strings.TrimSpace(string(file))
+		} else {
+			logrus.Panic(nil, map[string]interface{}{}, "missing service token")
+		}
+	}
+
+	var tr *http.Transport
+	if config.APIServerInsecureSkipTLSVerify() {
+		tr = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
 	}
 
 	openshiftConfig := openshift.Config{
-		MasterURL: config.GetOpenshiftTenantMasterURL(),
-		Token:     serviceToken,
+		MasterURL:     config.GetOpenshiftTenantMasterURL(),
+		Token:         serviceToken,
+		HttpTransport: tr,
 	}
 
 	openshiftMasterUser, err := openshift.WhoAmI(openshiftConfig)

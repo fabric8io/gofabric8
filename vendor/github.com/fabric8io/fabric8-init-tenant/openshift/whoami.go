@@ -14,7 +14,7 @@ import (
 // returns the username
 func WhoAmI(config Config) (string, error) {
 	whoamiURL := config.MasterURL + "/oapi/v1/users/~"
-	user, err := get(whoamiURL, config.Token)
+	user, err := get(whoamiURL, config.Token, config.HttpTransport)
 	if err != nil {
 		return "", err
 	}
@@ -28,7 +28,7 @@ type user struct {
 	}
 }
 
-func get(url, token string) (*user, error) {
+func get(url, token string, tr *http.Transport) (*user, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,13 @@ func get(url, token string) (*user, error) {
 		fmt.Println(string(rb))
 	}
 
-	client := http.DefaultClient
+	var client *http.Client
+	if tr != nil {
+		client = &http.Client{Transport: tr}
+	} else {
+		client = http.DefaultClient
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

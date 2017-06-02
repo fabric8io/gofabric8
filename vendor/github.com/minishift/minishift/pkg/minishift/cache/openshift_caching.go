@@ -45,8 +45,7 @@ const (
 
 // openshiftCacher is a struct with methods designed for caching openshift
 type openshiftCacher struct {
-	config   cluster.MachineConfig
-	ProxyUrl string
+	config cluster.MachineConfig
 }
 
 func (l *openshiftCacher) getOpenShiftCacheFilepath() string {
@@ -108,7 +107,7 @@ func (l *openshiftCacher) updateOpenShiftFromURI(client *ssh.Client) error {
 
 func (l *openshiftCacher) updateOpenShiftFromRelease(client *ssh.Client) error {
 	if !l.isOpenShiftCached() {
-		if err := github.DownloadOpenShiftReleaseBinary(github.OC, minishiftos.LINUX, l.config.OpenShiftVersion, l.getOpenShiftCacheFilepath(), l.ProxyUrl); err != nil {
+		if err := github.DownloadOpenShiftReleaseBinary(github.OC, minishiftos.LINUX, l.config.OpenShiftVersion, l.getOpenShiftCacheFilepath()); err != nil {
 			return errors.Wrap(err, "Error attempting to download and cache openshift")
 		}
 	}
