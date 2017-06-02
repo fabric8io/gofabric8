@@ -44,6 +44,8 @@ GO_BINDATA_DIR=$(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata/
 GO_BINDATA_ASSETFS_BIN=$(VENDOR_DIR)/github.com/elazarl/go-bindata-assetfs/go-bindata-assetfs/go-bindata-assetfs
 TEAM_VERSION=$(shell cat TEAM_VERSION)
 
+full-build: $(INIT_TENANT_BINDATA) build
+ 
 build: *.go */*.go fmt
 	rm -rf build
 	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(BUILDFLAGS) -o build/$(NAME) $(NAME).go
