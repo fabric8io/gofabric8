@@ -260,6 +260,9 @@ else
 	@go build -o $(CHECK_GOPATH_BIN) .make/check_gopath.go
 endif
 
+.PHONY: release
+release: all
+
 # Keep this "clean" target here at the bottom
 .PHONY: clean
 ## Runs all clean-* targets.

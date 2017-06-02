@@ -2,6 +2,10 @@ package openshift
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fabric8io/fabric8-init-tenant/template"
@@ -52,31 +56,31 @@ func do(config Config, callback Callback, username, usertoken string, templateVa
 	masterOpts := ApplyOptions{Config: config, Callback: callback}
 	userOpts := ApplyOptions{Config: config.WithToken(usertoken), Namespace: name, Callback: callback}
 
-	userProjectT, err := template.Asset("template/fabric8-online-user-project.yml")
+	userProjectT, err := loadTemplate(config, "fabric8-online-user-project.yml")
 	if err != nil {
 		return err
 	}
 
-	userProjectRolesT, err := template.Asset("template/fabric8-online-user-rolebindings.yml")
+	userProjectRolesT, err := loadTemplate(config, "fabric8-online-user-rolebindings.yml")
 	if err != nil {
 		return err
 	}
 
-	userProjectCollabT, err := template.Asset("template/fabric8-online-user-colaborators.yml")
+	userProjectCollabT, err := loadTemplate(config, "fabric8-online-user-colaborators.yml")
 	if err != nil {
 		return err
 	}
 
-	projectT, err := template.Asset("template/fabric8-online-team-openshift.yml")
+	projectT, err := loadTemplate(config, "fabric8-online-team-openshift.yml")
 	if err != nil {
 		return err
 	}
 
-	jenkinsT, err := template.Asset("template/fabric8-online-jenkins-openshift.yml")
+	jenkinsT, err := loadTemplate(config, "fabric8-online-jenkins-openshift.yml")
 	if err != nil {
 		return err
 	}
-	cheT, err := template.Asset("template/fabric8-online-che-openshift.yml")
+	cheT, err := loadTemplate(config, "fabric8-online-che-openshift.yml")
 	if err != nil {
 		return err
 	}
@@ -134,6 +138,50 @@ func do(config Config, callback Callback, username, usertoken string, templateVa
 		return multiError{Errors: errors}
 	}
 	return nil
+}
+
+// loadTemplate will load the template for a specific version from maven central or from the template directory
+// or default to the OOTB template included
+func loadTemplate(config Config, name string) ([]byte, error) {
+	teamVersion := config.TeamVersion
+	logCallback := config.GetLogCallback()
+	if len(teamVersion) > 0 {
+		url := ""
+		switch name {
+		case "fabric8-online-team-openshift.yml":
+			url = "http://central.maven.org/maven2/io/fabric8/online/packages/fabric8-online-team/$TEAM_VERSION/fabric8-online-team-$TEAM_VERSION-openshift.yml"
+		case "fabric8-online-jenkins-openshift.yml":
+			url = "http://central.maven.org/maven2/io/fabric8/online/packages/fabric8-online-jenkins/$TEAM_VERSION/fabric8-online-jenkins-$TEAM_VERSION-openshift.yml"
+		case "fabric8-online-che-openshift.yml":
+			url = "http://central.maven.org/maven2/io/fabric8/online/packages/fabric8-online-che/$TEAM_VERSION/fabric8-online-che-$TEAM_VERSION-openshift.yml"
+		}
+		if len(url) > 0 {
+			url = strings.Replace(url, "$TEAM_VERSION", teamVersion, -1)
+			logCallback(fmt.Sprintf("Loading template from URL: %s", url))
+			resp, err := http.Get(url)
+			if err != nil {
+				return nil, fmt.Errorf("Failed to load template from %s due to: %v", url, err)
+			}
+			defer resp.Body.Close()
+			statusCode := resp.StatusCode
+			if statusCode >= 300 {
+				return nil, fmt.Errorf("Failed to GET template from %s got status code to: %d", url, statusCode)
+			}
+			return ioutil.ReadAll(resp.Body)
+		}
+	}
+	dir := config.TemplateDir
+	if len(dir) > 0 {
+		fullName := filepath.Join(dir, name)
+		d, err := os.Stat(fullName)
+		if err == nil {
+			if m := d.Mode(); m.IsRegular() {
+				logCallback(fmt.Sprintf("Loading template from file: %s", fullName))
+				return ioutil.ReadFile(fullName)
+			}
+		}
+	}
+	return template.Asset("template/" + name)
 }
 
 func createName(username string) string {

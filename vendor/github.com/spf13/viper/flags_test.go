@@ -22,7 +22,7 @@ func TestBindFlagValueSet(t *testing.T) {
 		"endpoint": "/public",
 	}
 
-	for name := range testValues {
+	for name, _ := range testValues {
 		testValues[name] = flagSet.String(name, "", "test")
 	}
 

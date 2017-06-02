@@ -25,7 +25,7 @@ import (
 var SupportedVMDrivers = [...]string{
 	"virtualbox",
 	"kvm",
+	"none",
 }
 
 var DefaultMountDir = homedir.HomeDir()
-var DefaultMountEndpoint = "/hosthome"

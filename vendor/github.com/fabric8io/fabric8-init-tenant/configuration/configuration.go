@@ -34,9 +34,11 @@ const (
 	varKeycloakURL                     = "keycloak.url"
 	varOpenshiftTenantMasterURL        = "openshift.tenant.masterurl"
 	varOpenshiftServiceToken           = "openshift.service.token"
+	varOpenshiftUseCurrentCluster      = "openshift.use.current.cluster"
 	varTemplateRecommenderExternalName = "template.recommender.external.name"
 	varTemplateRecommenderAPIToken     = "template.recommender.api.token"
 	varTemplateDomain                  = "template.domain"
+	varAPIServerInsecureSkipTLSVerify  = "api.server.insecure.skip.tls.verify"
 )
 
 // Data encapsulates the Viper configuration object which stores the configuration data in-memory.
@@ -105,12 +107,15 @@ func (c *Data) setConfigDefaults() {
 	// Misc
 	//-----
 	c.v.SetDefault(varKeycloakOpenshiftBroker, defaultKeycloakOpenshiftBroker)
+	c.v.SetDefault(varOpenshiftUseCurrentCluster, false)
+	c.v.SetDefault(varAPIServerInsecureSkipTLSVerify, false)
 
 	// Enable development related features, e.g. token generation endpoint
 	c.v.SetDefault(varDeveloperModeEnabled, false)
 
 	// HTTP Cache-Control/max-age default
 	c.v.SetDefault(varOpenshiftTenantMasterURL, defaultOpenshiftTenantMasterURL)
+
 }
 
 // GetPostgresHost returns the postgres host as set via default, config file, or environment variable
@@ -226,6 +231,16 @@ func (c *Data) GetOpenshiftTenantMasterURL() string {
 // GetOpenshiftServiceToken returns the token be used by matser user for tenant init
 func (c *Data) GetOpenshiftServiceToken() string {
 	return c.v.GetString(varOpenshiftServiceToken)
+}
+
+// UseOpenshiftCurrentCluster returns if we should use the current cluster to provision tenant service
+func (c *Data) UseOpenshiftCurrentCluster() bool {
+	return c.v.GetBool(varOpenshiftUseCurrentCluster)
+}
+
+// APIServerInsecureSkipTLSVerify returns if the server's certificate should be checked for validity. This will make your HTTPS connections insecure.
+func (c *Data) APIServerInsecureSkipTLSVerify() bool {
+	return c.v.GetBool(varAPIServerInsecureSkipTLSVerify)
 }
 
 // GetTemplateValues return a Map of additional variables used to process the templates

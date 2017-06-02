@@ -17,16 +17,20 @@ limitations under the License.
 package machine
 
 import (
+	"encoding/json"
+
 	"github.com/docker/machine/drivers/virtualbox"
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/drivers/plugin"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
+	"k8s.io/minikube/pkg/minikube/machine/drivers/none"
 )
 
 var driverMap = map[string]driverGetter{
 	"kvm":        getKVMDriver,
 	"virtualbox": getVirtualboxDriver,
+	"none":       getNoneDriver,
 }
 
 func getKVMDriver(rawDriver []byte) (drivers.Driver, error) {
@@ -36,11 +40,22 @@ https://github.com/kubernetes/minikube/blob/master/DRIVERS.md#kvm-driver
 `)
 }
 
+func getNoneDriver(rawDriver []byte) (drivers.Driver, error) {
+	var driver drivers.Driver
+	driver = &none.Driver{}
+	if err := json.Unmarshal(rawDriver, &driver); err != nil {
+		return nil, errors.Wrap(err, "Error unmarshalling none driver")
+	}
+	return driver, nil
+}
+
 // StartDriver starts the desired machine driver if necessary.
 func registerDriver(driverName string) {
 	switch driverName {
 	case "virtualbox":
 		plugin.RegisterDriver(virtualbox.NewDriver("", ""))
+	case "none":
+		plugin.RegisterDriver(none.NewDriver("", ""))
 	default:
 		glog.Exitf("Unsupported driver: %s\n", driverName)
 	}
