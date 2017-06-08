@@ -44,7 +44,7 @@ GO_BINDATA_DIR=$(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata/
 GO_BINDATA_ASSETFS_BIN=$(VENDOR_DIR)/github.com/elazarl/go-bindata-assetfs/go-bindata-assetfs/go-bindata-assetfs
 TEAM_VERSION=$(shell cat TEAM_VERSION)
 
-all: $(GO_BINDATA_BIN) bindata build
+all: $(GO_BINDATA_BIN) bindata build test
  
 build: *.go */*.go fmt
 	rm -rf build
@@ -102,7 +102,7 @@ vendoring:
 tools:
 	$(GO) get -u get -u github.com/jteeuwen/go-bindata/go-bindata/go-bindata
 
-release: all test
+release: all 
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \
 		CGO_ENABLED=$(CGO_ENABLED) GOOS=$$os GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
