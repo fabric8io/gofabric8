@@ -17,6 +17,7 @@ package cmds
 import (
 	"fmt"
 
+	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
 	"k8s.io/kubernetes/pkg/api"
@@ -70,4 +71,64 @@ func getKubeClient(cmd *cobra.Command, f *cmdutil.Factory) (c *k8client.Client, 
 	cmdutil.CheckErr(err)
 
 	return c, ns
+}
+
+// NewCmdDeleteEnviron is a command to delete an environ using: gofabric8 delete environ abcd
+func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "environ",
+		Short: "Delete environment from fabric8-environments configmap",
+		Run: func(cmd *cobra.Command, args []string) {
+			c, ns := getKubeClient(cmd, f)
+			selector, err := unversioned.LabelSelectorAsSelector(
+				&unversioned.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+			cmdutil.CheckErr(err)
+
+			if len(args) == 0 {
+				util.Errorf("Delete command requires the name of the environment as a parameter.\n.")
+				return
+			}
+
+			if len(args) != 1 {
+				util.Errorf("Delete command can have only one environment name parameter.\n.")
+				return
+			}
+
+			toDeleteEnv := args[0]
+
+			cfgmap, err := c.ConfigMaps(ns).List(api.ListOptions{LabelSelector: selector})
+			cmdutil.CheckErr(err)
+
+			// remove the entry from the config map
+			var updatedCfgMap *api.ConfigMap
+			for _, item := range cfgmap.Items {
+				for k, data := range item.Data {
+					var ed EnvironmentData
+					err := yaml.Unmarshal([]byte(data), &ed)
+					cmdutil.CheckErr(err)
+
+					if ed.Name == toDeleteEnv {
+						delete(item.Data, k)
+						updatedCfgMap = &item
+						goto DeletedConfig
+					}
+
+				}
+			}
+
+		DeletedConfig:
+			if updatedCfgMap == nil {
+				util.Warnf("Could not find environment named %s.\n", toDeleteEnv)
+				return
+			}
+
+			_, err = c.ConfigMaps(ns).Update(updatedCfgMap)
+			if err != nil {
+				util.Errorf("Failed to update config map after deleting: %v.\n", err)
+				return
+			}
+
+		},
+	}
+	return cmd
 }
