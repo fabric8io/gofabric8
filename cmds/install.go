@@ -129,6 +129,7 @@ func install(isMinishift bool) {
 		util.Warnf("Unable to download funktion operator %v\n", err)
 	}
 }
+
 func downloadDriver() (err error) {
 	if runtime.GOOS == "darwin" {
 		util.Infof("fabric8 recommends OSX users use the xhyve driver\n")
@@ -174,7 +175,8 @@ func downloadDriver() (err error) {
 
 			util.Success("xhyve driver installed\n")
 		} else {
-			util.Success("xhyve driver already installed\n")
+			pgmPath, _ := exec.LookPath("docker-machine-driver-xhyve")
+			util.Successf("xhyve driver is already available on your PATH at %s\n", pgmPath)
 		}
 
 	} else if runtime.GOOS == "linux" {
@@ -193,7 +195,7 @@ func downloadKubernetes(d downloadProperties) error {
 
 	pgmPath, err := exec.LookPath(d.kubeBinary)
 	if err == nil {
-		util.Successf("%s is already available on your PATH in %s.\n", d.kubeBinary, pgmPath)
+		util.Successf("%s is already available on your PATH at %s\n", d.kubeBinary, pgmPath)
 		return nil
 	}
 
@@ -237,7 +239,7 @@ func downloadKubectlClient() error {
 
 	pgmPath, err := exec.LookPath(kubectlBinary)
 	if err == nil {
-		util.Successf("%s is already available on your PATH in %s.\n", kubectlBinary, pgmPath)
+		util.Successf("%s is already available on your PATH at %s\n", kubectlBinary, pgmPath)
 		return nil
 	}
 
@@ -271,7 +273,7 @@ func downloadOpenShiftClient() error {
 
 	pgmPath, err := exec.LookPath(ocBinary)
 	if err == nil {
-		util.Successf("%s is already available on your PATH in %s.\n", oc, pgmPath)
+		util.Successf("%s is already available on your PATH at %s\n", oc, pgmPath)
 		return nil
 	}
 
@@ -337,7 +339,7 @@ func downloadFunktion() error {
 
 	pgmPath, err := exec.LookPath(funktion)
 	if err == nil {
-		util.Successf("%s is already available on your PATH in %s.\n", oc, pgmPath)
+		util.Successf("%s is already available on your PATH at %s\n", funktion, pgmPath)
 		return nil
 	}
 
