@@ -183,7 +183,7 @@ func downloadDriver() (err error) {
 	return nil
 }
 
-func downloadKubernetes(d downloadProperties) (err error) {
+func downloadKubernetes(d downloadProperties) error {
 	os := runtime.GOOS
 	arch := runtime.GOARCH
 
@@ -191,40 +191,41 @@ func downloadKubernetes(d downloadProperties) (err error) {
 		d.kubeBinary += ".exe"
 	}
 
-	_, err = exec.LookPath(d.kubeBinary)
-	if err != nil {
-		// fix minishift version to 0.9.0 until we can address issues running on 1.x
-		latestVersion := "0.9.0"
-		if !d.isMiniShift {
-			semverVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
-			latestVersion = semverVersion.String()
-			if err != nil {
-				util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
-				return err
-			}
-		}
+	pgmPath, err := exec.LookPath(d.kubeBinary)
+	if err == nil {
+		util.Successf("%s is already available on your PATH in %s.\n", d.kubeBinary, pgmPath)
+		return nil
+	}
 
-		kubeURL := fmt.Sprintf(d.downloadURL+d.kubeDistroRepo+"/releases/"+d.extraPath+"v%s/%s-%s-%s", latestVersion, d.kubeDistroRepo, os, arch)
-		if runtime.GOOS == "windows" {
-			kubeURL += ".exe"
-		}
-		util.Infof("Downloading %s...\n", kubeURL)
-
-		fullPath := filepath.Join(getFabric8BinLocation(), d.kubeBinary)
-		err = downloadFile(fullPath, kubeURL)
+	// fix minishift version to 0.9.0 until we can address issues running on 1.x
+	latestVersion := "0.9.0"
+	if !d.isMiniShift {
+		semverVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
+		latestVersion = semverVersion.String()
 		if err != nil {
-			util.Errorf("Unable to download file %s/%s %v", fullPath, kubeURL, err)
+			util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
 			return err
 		}
-		util.Successf("Downloaded %s\n", fullPath)
-	} else {
-		util.Successf("%s is already available on your PATH\n", d.kubeBinary)
 	}
+
+	kubeURL := fmt.Sprintf(d.downloadURL+d.kubeDistroRepo+"/releases/"+d.extraPath+"v%s/%s-%s-%s", latestVersion, d.kubeDistroRepo, os, arch)
+	if runtime.GOOS == "windows" {
+		kubeURL += ".exe"
+	}
+	util.Infof("Downloading %s...\n", kubeURL)
+
+	fullPath := filepath.Join(getFabric8BinLocation(), d.kubeBinary)
+	err = downloadFile(fullPath, kubeURL)
+	if err != nil {
+		util.Errorf("Unable to download file %s/%s %v", fullPath, kubeURL, err)
+		return err
+	}
+	util.Successf("Downloaded %s\n", fullPath)
 
 	return nil
 }
 
-func downloadKubectlClient() (err error) {
+func downloadKubectlClient() error {
 
 	os := runtime.GOOS
 	arch := runtime.GOARCH
@@ -234,32 +235,33 @@ func downloadKubectlClient() (err error) {
 		kubectlBinary += ".exe"
 	}
 
-	_, err = exec.LookPath(kubectlBinary)
-	if err != nil {
-		latestVersion, err := getLatestVersionFromKubernetesReleaseUrl()
-		if err != nil {
-			return fmt.Errorf("Unable to get latest version for %s/%s %v", kubernetes, kubernetes, err)
-		}
-
-		clientURL := fmt.Sprintf("https://storage.googleapis.com/kubernetes-release/release/v%s/bin/%s/%s/%s", latestVersion, os, arch, kubectlBinary)
-
-		util.Infof("Downloading %s...\n", clientURL)
-
-		fullPath := filepath.Join(getFabric8BinLocation(), kubectlBinary)
-		err = downloadFile(fullPath, clientURL)
-		if err != nil {
-			util.Errorf("Unable to download file %s/%s %v", fullPath, clientURL, err)
-			return err
-		}
-		util.Successf("Downloaded %s\n", fullPath)
-	} else {
-		util.Successf("%s is already available on your PATH\n", kubectlBinary)
+	pgmPath, err := exec.LookPath(kubectlBinary)
+	if err == nil {
+		util.Successf("%s is already available on your PATH in %s.\n", kubectlBinary, pgmPath)
+		return nil
 	}
+
+	latestVersion, err := getLatestVersionFromKubernetesReleaseUrl()
+	if err != nil {
+		return fmt.Errorf("Unable to get latest version for %s/%s %v", kubernetes, kubernetes, err)
+	}
+
+	clientURL := fmt.Sprintf("https://storage.googleapis.com/kubernetes-release/release/v%s/bin/%s/%s/%s", latestVersion, os, arch, kubectlBinary)
+
+	util.Infof("Downloading %s...\n", clientURL)
+
+	fullPath := filepath.Join(getFabric8BinLocation(), kubectlBinary)
+	err = downloadFile(fullPath, clientURL)
+	if err != nil {
+		util.Errorf("Unable to download file %s/%s %v", fullPath, clientURL, err)
+		return err
+	}
+	util.Successf("Downloaded %s\n", fullPath)
 
 	return nil
 }
 
-func downloadOpenShiftClient() (err error) {
+func downloadOpenShiftClient() error {
 	var arch string
 
 	ocBinary := "oc"
@@ -267,96 +269,97 @@ func downloadOpenShiftClient() (err error) {
 		ocBinary += ".exe"
 	}
 
-	_, err = exec.LookPath(ocBinary)
-	if err != nil {
+	pgmPath, err := exec.LookPath(ocBinary)
+	if err == nil {
+		util.Successf("%s is already available on your PATH in %s.\n", oc, pgmPath)
+		return nil
+	}
 
-		// need to fix the version we download as not able to work out the oc sha in the URL yet
-		sha := "dad658de7465ba8a234a4fb40b5b446a45a4cee1"
-		latestVersion := "1.3.1"
+	// need to fix the version we download as not able to work out the oc sha in the URL yet
+	sha := "dad658de7465ba8a234a4fb40b5b446a45a4cee1"
+	latestVersion := "1.3.1"
 
-		clientURL := fmt.Sprintf("https://github.com/openshift/origin/releases/download/v%s/openshift-origin-client-tools-v%s-%s", latestVersion, latestVersion, sha)
+	clientURL := fmt.Sprintf("https://github.com/openshift/origin/releases/download/v%s/openshift-origin-client-tools-v%s-%s", latestVersion, latestVersion, sha)
 
-		extension := ".zip"
-		switch runtime.GOOS {
-		case "windows":
-			clientURL += "-windows.zip"
-		case "darwin":
-			clientURL += "-mac.zip"
-		default:
-			switch runtime.GOARCH {
-			case "amd64":
-				arch = "64bit"
-			case "386":
-				arch = "32bit"
-			}
-			extension = ".tar.gz"
-			clientURL += fmt.Sprintf("-%s-%s.tar.gz", runtime.GOOS, arch)
+	extension := ".zip"
+	switch runtime.GOOS {
+	case "windows":
+		clientURL += "-windows.zip"
+	case "darwin":
+		clientURL += "-mac.zip"
+	default:
+		switch runtime.GOARCH {
+		case "amd64":
+			arch = "64bit"
+		case "386":
+			arch = "32bit"
 		}
+		extension = ".tar.gz"
+		clientURL += fmt.Sprintf("-%s-%s.tar.gz", runtime.GOOS, arch)
+	}
 
-		util.Infof("Downloading %s...\n", clientURL)
+	util.Infof("Downloading %s...\n", clientURL)
 
-		writeFileLocation := getFabric8BinLocation()
-		fullPath := filepath.Join(getFabric8BinLocation(), oc+extension)
-		dotPath := filepath.Join(getFabric8BinLocation(), ".")
+	writeFileLocation := getFabric8BinLocation()
+	fullPath := filepath.Join(getFabric8BinLocation(), oc+extension)
+	dotPath := filepath.Join(getFabric8BinLocation(), ".")
 
-		err = downloadFile(fullPath, clientURL)
+	err = downloadFile(fullPath, clientURL)
+	if err != nil {
+		util.Errorf("Unable to download file %s/%s %v", writeFileLocation+oc, clientURL, err)
+		return err
+	}
+
+	switch extension {
+	case ".zip":
+		err = unzip(fullPath, dotPath)
 		if err != nil {
-			util.Errorf("Unable to download file %s/%s %v", writeFileLocation+oc, clientURL, err)
+			util.Errorf("Unable to unzip %s %v", fullPath, err)
 			return err
 		}
-
-		switch extension {
-		case ".zip":
-			err = unzip(fullPath, dotPath)
-			if err != nil {
-				util.Errorf("Unable to unzip %s %v", fullPath, err)
-				return err
-			}
-		case ".tar.gz":
-			err = untargz(fullPath, dotPath, []string{"oc"})
-			if err != nil {
-				util.Errorf("Unable to untar %s %v", writeFileLocation+oc+".tar.gz", err)
-				return err
-			}
-			os.Remove(fullPath)
+	case ".tar.gz":
+		err = untargz(fullPath, dotPath, []string{"oc"})
+		if err != nil {
+			util.Errorf("Unable to untar %s %v", writeFileLocation+oc+".tar.gz", err)
+			return err
 		}
-
-		util.Successf("Downloaded %s\n", oc)
-	} else {
-		util.Successf("%s is already available on your PATH\n", oc)
+		os.Remove(fullPath)
 	}
+
+	util.Successf("Downloaded %s\n", oc)
 
 	return nil
 }
 
-func downloadFunktion() (err error) {
+func downloadFunktion() error {
 	os := runtime.GOOS
 	arch := runtime.GOARCH
 
-	_, err = exec.LookPath(funktion)
-	if err != nil {
-		latestVersion, err := getLatestVersionFromGitHub(fabric8io, funktionOperator)
-		if err != nil {
-			util.Errorf("Unable to get latest version for %s/%s %v", fabric8io, funktionOperator, err)
-			return err
-		}
-
-		funktionURL := fmt.Sprintf(githubURL+fabric8io+"/"+funktionOperator+"/releases/download/v%s/%s-%s-%s", latestVersion, funktionOperator, os, arch)
-		if runtime.GOOS == "windows" {
-			funktionURL += ".exe"
-		}
-		util.Infof("Downloading %s...\n", funktionURL)
-
-		fullPath := filepath.Join(getFabric8BinLocation(), funktion)
-		err = downloadFile(fullPath, funktionURL)
-		if err != nil {
-			util.Errorf("Unable to download file %s/%s %v", fullPath, funktionURL, err)
-			return err
-		}
-		util.Successf("Downloaded %s\n", fullPath)
-	} else {
-		util.Successf("%s is already available on your PATH\n", funktion)
+	pgmPath, err := exec.LookPath(funktion)
+	if err == nil {
+		util.Successf("%s is already available on your PATH in %s.\n", oc, pgmPath)
+		return nil
 	}
+
+	latestVersion, err := getLatestVersionFromGitHub(fabric8io, funktionOperator)
+	if err != nil {
+		util.Errorf("Unable to get latest version for %s/%s %v", fabric8io, funktionOperator, err)
+		return err
+	}
+
+	funktionURL := fmt.Sprintf(githubURL+fabric8io+"/"+funktionOperator+"/releases/download/v%s/%s-%s-%s", latestVersion, funktionOperator, os, arch)
+	if runtime.GOOS == "windows" {
+		funktionURL += ".exe"
+	}
+	util.Infof("Downloading %s...\n", funktionURL)
+
+	fullPath := filepath.Join(getFabric8BinLocation(), funktion)
+	err = downloadFile(fullPath, funktionURL)
+	if err != nil {
+		util.Errorf("Unable to download file %s/%s %v", fullPath, funktionURL, err)
+		return err
+	}
+	util.Successf("Downloaded %s\n", fullPath)
 
 	return nil
 }
