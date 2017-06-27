@@ -40,8 +40,9 @@ type EnvironmentData struct {
 
 func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "environ",
-		Short: "Get environment from fabric8-environments configmap",
+		Use:     "environ",
+		Short:   "Get environment from fabric8-environments configmap",
+		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
 			detectedNS, c, _ := getOpenShiftClient(f)
 
@@ -73,9 +74,10 @@ func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
 
 func NewCmdCreateEnviron(f *cmdutil.Factory) (cmd *cobra.Command) {
 	cmd = &cobra.Command{
-		Use:   "environ",
-		Short: "Create environment from fabric8-environments configmap",
-		Long:  "gofabric8 create environ environKey namespace=string order=int ...",
+		Use:     "environ",
+		Short:   "Create environment from fabric8-environments configmap",
+		Long:    "gofabric8 create environ environKey namespace=string order=int ...",
+		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
 			var ev EnvironmentData
 			var yamlData []byte
@@ -138,8 +140,9 @@ func NewCmdCreateEnviron(f *cmdutil.Factory) (cmd *cobra.Command) {
 // NewCmdDeleteEnviron is a command to delete an environ using: gofabric8 delete environ abcd
 func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "environ",
-		Short: "Delete environment from fabric8-environments configmap",
+		Use:     "environ",
+		Short:   "Delete environment from fabric8-environments configmap",
+		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
 			detectedNS, c, _ := getOpenShiftClient(f)
 
