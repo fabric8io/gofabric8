@@ -82,12 +82,12 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 			cmdutil.CheckErr(err)
 
 			if len(args) == 0 {
-				util.Errorf("Delete command requires the name of the environment as a parameter.\n.")
+				util.Errorf("Delete command requires the name of the environment as a parameter\n")
 				return
 			}
 
 			if len(args) != 1 {
-				util.Errorf("Delete command can have only one environment name parameter.\n.")
+				util.Errorf("Delete command can have only one environment name parameter\n")
 				return
 			}
 
@@ -115,16 +115,16 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 
 		DeletedConfig:
 			if updatedCfgMap == nil {
-				util.Warnf("Could not find environment named %s.\n", toDeleteEnv)
+				util.Warnf("Could not find environment named %s\n", toDeleteEnv)
 				return
 			}
 
 			_, err = c.ConfigMaps(detectedNS).Update(updatedCfgMap)
 			if err != nil {
-				util.Errorf("Failed to update config map after deleting: %v.\n", err)
+				util.Errorf("Failed to update config map after deleting: %v\n", err)
 				return
 			}
-
+			util.Infof("environment %s has been deleted\n", toDeleteEnv)
 		},
 	}
 	return cmd
