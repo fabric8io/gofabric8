@@ -17,6 +17,8 @@ package cmds
 import (
 	"fmt"
 
+	"strings"
+
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
@@ -102,7 +104,7 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 					err := yaml.Unmarshal([]byte(data), &ed)
 					cmdutil.CheckErr(err)
 
-					if ed.Name == toDeleteEnv {
+					if strings.ToLower(ed.Name) == strings.ToLower(toDeleteEnv) {
 						delete(item.Data, k)
 						updatedCfgMap = &item
 						goto DeletedConfig
