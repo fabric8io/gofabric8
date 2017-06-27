@@ -17,11 +17,13 @@ package cmds
 import (
 	"fmt"
 
+	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/unversioned"
+	k8api "k8s.io/kubernetes/pkg/api/unversioned"
+	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	k8client "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
@@ -37,12 +39,13 @@ func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
 		Use:   "environ",
 		Short: "Get environment from fabric8-environments configmap",
 		Run: func(cmd *cobra.Command, args []string) {
-			c, ns := getKubeClient(cmd, f)
-			selector, err := unversioned.LabelSelectorAsSelector(
-				&unversioned.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+			detectedNS, c, _ := getOpenShiftClient(f)
+
+			selector, err := k8api.LabelSelectorAsSelector(
+				&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
 			cmdutil.CheckErr(err)
 
-			cfgmap, err := c.ConfigMaps(ns).List(api.ListOptions{LabelSelector: selector})
+			cfgmap, err := c.ConfigMaps(detectedNS).List(api.ListOptions{LabelSelector: selector})
 			cmdutil.CheckErr(err)
 
 			fmt.Printf("%-10s DATA\n", "ENV")
@@ -64,24 +67,16 @@ func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func getKubeClient(cmd *cobra.Command, f *cmdutil.Factory) (c *k8client.Client, ns string) {
-	c, _, err := keepTryingToGetClient(f)
-	cmdutil.CheckErr(err)
-	ns, _, err = f.DefaultNamespace()
-	cmdutil.CheckErr(err)
-
-	return c, ns
-}
-
 // NewCmdDeleteEnviron is a command to delete an environ using: gofabric8 delete environ abcd
 func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "environ",
 		Short: "Delete environment from fabric8-environments configmap",
 		Run: func(cmd *cobra.Command, args []string) {
-			c, ns := getKubeClient(cmd, f)
-			selector, err := unversioned.LabelSelectorAsSelector(
-				&unversioned.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+			detectedNS, c, _ := getOpenShiftClient(f)
+
+			selector, err := k8api.LabelSelectorAsSelector(
+				&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
 			cmdutil.CheckErr(err)
 
 			if len(args) == 0 {
@@ -96,7 +91,7 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 
 			toDeleteEnv := args[0]
 
-			cfgmap, err := c.ConfigMaps(ns).List(api.ListOptions{LabelSelector: selector})
+			cfgmap, err := c.ConfigMaps(detectedNS).List(api.ListOptions{LabelSelector: selector})
 			cmdutil.CheckErr(err)
 
 			// remove the entry from the config map
@@ -122,7 +117,7 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 				return
 			}
 
-			_, err = c.ConfigMaps(ns).Update(updatedCfgMap)
+			_, err = c.ConfigMaps(detectedNS).Update(updatedCfgMap)
 			if err != nil {
 				util.Errorf("Failed to update config map after deleting: %v.\n", err)
 				return
@@ -131,4 +126,32 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// getOpenShiftClient Get an openshift client and detect the project we want to
+// be in
+func getOpenShiftClient(f *cmdutil.Factory) (detectedNS string, c *k8client.Client, cfg *restclient.Config) {
+	c, cfg = client.NewClient(f)
+
+	initSchema()
+
+	typeOfMaster := util.TypeOfMaster(c)
+	isOpenshift := typeOfMaster == util.OpenShift
+
+	if isOpenshift {
+		oc, _ := client.NewOpenShiftClient(cfg)
+		projects, err := oc.Projects().List(api.ListOptions{})
+		if err != nil {
+			util.Warnf("Could not list projects: %v", err)
+		} else {
+			currentNS, _, _ := f.DefaultNamespace()
+			detectedNS = detectCurrentUserProject(currentNS, projects.Items)
+		}
+	}
+
+	if detectedNS == "" {
+		detectedNS, _, _ = f.DefaultNamespace()
+	}
+
+	return
 }
