@@ -130,6 +130,10 @@ func main() {
 	cmds.AddCommand(getcmd)
 	getcmd.AddCommand(commands.NewCmdGetEnviron(f))
 
+	createcmd := commands.NewCmdCreate()
+	cmds.AddCommand(createcmd)
+	createcmd.AddCommand(commands.NewCmdCreateEnviron(f))
+
 	deletecmd := commands.NewCmdDelete()
 	cmds.AddCommand(deletecmd)
 	deletecmd.AddCommand(commands.NewCmdDeleteCluster(f))
