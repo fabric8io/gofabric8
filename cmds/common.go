@@ -18,12 +18,15 @@ package cmds
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/daviddengcn/go-colortext"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 
 	"io/ioutil"
+
+	"github.com/openshift/origin/pkg/project/api"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -71,6 +74,54 @@ func defaultNamespace(cmd *cobra.Command, f *cmdutil.Factory) (string, error) {
 	}
 	ns, _, err := f.DefaultNamespace()
 	return ns, err
+}
+
+// currentProject ...
+func detectCurrentUserProject(current string, items []api.Project) (chosenone string) {
+	var detected []string
+
+	for _, p := range items {
+		name := p.Name
+		// if we find a che suffix then store it, we are using -che as anchor if
+		// init-tenant has been properly run
+		if strings.HasSuffix(name, "-che") {
+			detected = append(detected, strings.TrimSuffix(p.Name, "-che"))
+		}
+	}
+
+	if len(detected) == 1 {
+		chosenone = detected[0]
+	}
+
+	if len(detected) > 1 {
+		for _, p := range detected {
+
+			if current == p {
+				chosenone = current
+				break
+			}
+
+			for _, k := range []string{"che", "jenkins", "run", "stage"} {
+				if stripped := strings.TrimSuffix(current, "-"+k); stripped == p {
+					chosenone = stripped
+					break
+				}
+			}
+		}
+		if chosenone == "" {
+			chosenone = detected[0]
+		}
+	}
+
+	// Make sure after all it exists
+	for _, p := range items {
+		if p.Name == chosenone {
+			return
+		}
+	}
+
+	util.Errorf("Cannot find parent project for: %s", current)
+	return ""
 }
 
 func defaultDomain() string {

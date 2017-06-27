@@ -19,7 +19,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -72,19 +71,16 @@ func (p *cmdCheShell) run(f *cmdutil.Factory) error {
 	if cheNS == "" {
 		if isOpenshift {
 			oc, _ := client.NewOpenShiftClient(cfg)
-
 			projects, err := oc.Projects().List(api.ListOptions{})
 			if err != nil {
 				util.Warnf("Could not list projects: %v", err)
 			} else {
-				for _, p := range projects.Items {
-					name := p.Name
-					if strings.HasSuffix(name, "-che") {
-						cheNS = name
-						break
-					}
-
+				currentNS, _, _ := f.DefaultNamespace()
+				cheNS = detectCurrentUserProject(currentNS, projects.Items)
+				if cheNS != "" {
+					cheNS += "-che"
 				}
+
 			}
 		}
 	}
