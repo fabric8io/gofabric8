@@ -58,8 +58,8 @@ func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
 					var ed EnvironmentData
 					err := yaml.Unmarshal([]byte(data), &ed)
 					cmdutil.CheckErr(err)
-					fmt.Printf("%-10s name=%s namespace=%s order=%d\n",
-						key, ed.Name, ed.Namespace, ed.Order)
+					fmt.Printf("%-10s namespace=%s order=%d\n",
+						key, ed.Namespace, ed.Order)
 				}
 			}
 		},
