@@ -16,10 +16,35 @@ import (
 )
 
 // NB(chmou): I don't like this either :\
-var CONFIG_MAP_LIST_JSON = `{"kind":"ConfigMapList","apiVersion":"v1","metadata":{"selfLink":"/api/v1/namespaces/test/configmaps","resourceVersion":"174694"},"items":[{"metadata":{"name":"fabric8-environments","namespace":"developer","selfLink":"/api/v1/namespaces/developer/configmaps/fabric8-environments","uid":"f1db4293-5b3d-11e7-b9a0-fa163e96266f","resourceVersion":"146433","creationTimestamp":"2017-06-27T13:38:46Z","labels":{"group":"io.fabric8.online.packages","kind":"environments","project":"fabric8-online-team","provider":"fabric8","version":"1.0.175"},"annotations":{"description":"Defines the environments used by your Continuous Delivery pipelines.","fabric8.console/iconUrl":"https://cdn.rawgit.com/fabric8io/fabric8-console/master/app-kubernetes/src/main/fabric8/icon.svg"}},"data":{"key":"name: key\nnamespace: developer\norder: 5\n","key2":"name: key2\nnamespace: developer\norder: 3\n"}},{"metadata":{"name":"fabric8-pipelines","namespace":"developer","selfLink":"/api/v1/namespaces/developer/configmaps/fabric8-pipelines","uid":"bccefdda-5820-11e7-b9a0-fa163e96266f","resourceVersion":"39403","creationTimestamp":"2017-06-23T14:32:08Z","labels":{"group":"io.fabric8.online.packages","project":"fabric8-online-team","provider":"fabric8","version":"1.0.175"}},"data":{"cd-branch-patterns":"- master","ci-branch-patterns":"- PR-.*","disable-itests-cd":"false","disable-itests-ci":"false"}}]}`
+var CONFIG_MAP_LIST_JSON = `{"kind":"ConfigMapList","apiVersion":"v1","metadata":{"selfLink":"/api/v1/namespaces/developer/configmaps","resourceVersion":"176055"},"items":[{"metadata":{"name":"fabric8-environments","namespace":"developer","selfLink":"/api/v1/namespaces/developer/configmaps/fabric8-environments","uid":"f1db4293-5b3d-11e7-b9a0-fa163e96266f","resourceVersion":"146433","creationTimestamp":"2017-06-27T13:38:46Z","labels":{"group":"io.fabric8.online.packages","kind":"environments","project":"fabric8-online-team","provider":"fabric8","version":"1.0.175"},"annotations":{"description":"Defines the environments used by your Continuous Delivery pipelines.","fabric8.console/iconUrl":"https://cdn.rawgit.com/fabric8io/fabric8-console/master/app-kubernetes/src/main/fabric8/icon.svg"}},"data":{"key":"name: key\nnamespace: developer\norder: 5\n","key2":"name: key2\nnamespace: developer\norder: 3\n"}}]}`
+
 var CONFIG_MAP_PUT_JSON = `{"kind":"ConfigMap","apiVersion":"v1","metadata":{"name":"foo","namespace":"developer","selfLink":"/api/v1/namespaces/test/configmaps/foo","uid":"665aad53-5c16-11e7-b9a0-fa163e96266f","resourceVersion":"175503","creationTimestamp":"2017-06-28T15:28:13Z"}}`
 
-func TestCreateEnvironArgs(t *testing.T) {
+func TestGetEnviron(t *testing.T) {
+	cmd := &cobra.Command{}
+	detectedNS := "test"
+	var args = []string{}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/namespaces/"+detectedNS+"/configmaps", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, CONFIG_MAP_LIST_JSON)
+	}))
+	server := httptest.NewServer(mux)
+
+	defer server.Close()
+	c, _ := k8client.New(&restclient.Config{
+		Host: server.URL,
+	})
+
+	err := getEnviron(cmd, args, detectedNS, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateEnviron(t *testing.T) {
 	cmd := &cobra.Command{}
 	detectedNS := "test"
 	ch := make(chan string, 1)

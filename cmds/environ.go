@@ -46,28 +46,34 @@ func NewCmdGetEnviron(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
 			detectedNS, c, _ := getOpenShiftClient(f)
-
-			selector, err := k8api.LabelSelectorAsSelector(
-				&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+			err := getEnviron(cmd, args, detectedNS, c)
 			cmdutil.CheckErr(err)
-
-			cfgmap, err := c.ConfigMaps(detectedNS).List(api.ListOptions{LabelSelector: selector})
-			cmdutil.CheckErr(err)
-
-			fmt.Printf("%-10s DATA\n", "ENV")
-			for _, item := range cfgmap.Items {
-				for key, data := range item.Data {
-					var ed EnvironmentData
-					err := yaml.Unmarshal([]byte(data), &ed)
-					cmdutil.CheckErr(err)
-					fmt.Printf("%-10s namespace=%s order=%d\n",
-						key, ed.Namespace, ed.Order)
-				}
-			}
+			cmd.Help()
 		},
 	}
+	return cmd
+}
 
-	cmd.SetOutput(out)
+func getEnviron(cmd *cobra.Command, args []string, detectedNS string, c *k8client.Client) (err error) {
+	selector, err := k8api.LabelSelectorAsSelector(
+		&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+	cmdutil.CheckErr(err)
+
+	cfgmap, err := c.ConfigMaps(detectedNS).List(api.ListOptions{LabelSelector: selector})
+	cmdutil.CheckErr(err)
+
+	fmt.Printf("%-10s DATA\n", "ENV")
+	for _, item := range cfgmap.Items {
+		for key, data := range item.Data {
+			var ed EnvironmentData
+			err := yaml.Unmarshal([]byte(data), &ed)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%-10s namespace=%s order=%d\n",
+				key, ed.Namespace, ed.Order)
+		}
+	}
 	return
 }
 
@@ -176,6 +182,7 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 			for _, item := range cfgmap.Items {
 				for k, data := range item.Data {
 					var ed EnvironmentData
+
 					err := yaml.Unmarshal([]byte(data), &ed)
 					cmdutil.CheckErr(err)
 
