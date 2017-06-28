@@ -19,6 +19,8 @@ import (
 
 	"strings"
 
+	"strconv"
+
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
@@ -38,8 +40,9 @@ type EnvironmentData struct {
 
 func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "environ",
-		Short: "Get environment from fabric8-environments configmap",
+		Use:     "environ",
+		Short:   "Get environment from fabric8-environments configmap",
+		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
 			detectedNS, c, _ := getOpenShiftClient(f)
 
@@ -56,8 +59,8 @@ func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
 					var ed EnvironmentData
 					err := yaml.Unmarshal([]byte(data), &ed)
 					cmdutil.CheckErr(err)
-					fmt.Printf("%-10s name=%s namespace=%s order=%d\n",
-						key, ed.Name, ed.Namespace, ed.Order)
+					fmt.Printf("%-10s namespace=%s order=%d\n",
+						key, ed.Namespace, ed.Order)
 				}
 			}
 		},
@@ -69,11 +72,77 @@ func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
+func NewCmdCreateEnviron(f *cmdutil.Factory) (cmd *cobra.Command) {
+	cmd = &cobra.Command{
+		Use:     "environ",
+		Short:   "Create environment from fabric8-environments configmap",
+		Long:    "gofabric8 create environ environKey namespace=string order=int ...",
+		Aliases: []string{"env"},
+		Run: func(cmd *cobra.Command, args []string) {
+			var ev EnvironmentData
+			var yamlData []byte
+			ev.Order = -1
+
+			for _, kv := range args {
+				split := strings.Split(kv, "=")
+				k := split[0]
+				v := split[1]
+
+				if strings.ToLower(k) == "name" {
+					ev.Name = strings.ToLower(v)
+				} else if strings.ToLower(k) == "namespace" {
+					ev.Namespace = v
+				} else if strings.ToLower(k) == "order" {
+					conv, err := strconv.Atoi(v)
+					if err != nil {
+						util.Errorf("Cannot use %s from %s as number\n", v, k)
+						return
+					}
+					ev.Order = conv
+				} else {
+					util.Errorf("Unkown key: %s\n", k)
+					return
+				}
+			}
+
+			if ev.Name == "" || ev.Namespace == "" || ev.Order == -1 {
+				util.Error("missing some key=value\n")
+				cmd.Help()
+				return
+			}
+
+			detectedNS, c, _ := getOpenShiftClient(f)
+			yamlData, err := yaml.Marshal(&ev)
+			if err != nil {
+				util.Fatalf("Failed to marshal configmap fabric8-environments error: %v\ntemplate: %s", err, string(yamlData))
+			}
+
+			selector, err := k8api.LabelSelectorAsSelector(
+				&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+			cmdutil.CheckErr(err)
+
+			cfgmaps, err := c.ConfigMaps(detectedNS).List(api.ListOptions{LabelSelector: selector})
+			cmdutil.CheckErr(err)
+
+			cfgmap := &cfgmaps.Items[0] // TODO(chmou): can we have more than one cfgmap with kind=environments label?
+			cfgmap.Data[ev.Name] = string(yamlData)
+
+			_, err = c.ConfigMaps(detectedNS).Update(cfgmap)
+			cmdutil.CheckErr(err)
+
+			//cfgmap, err := c.ConfigMaps(detectedNS).Create()
+
+		},
+	}
+	return
+}
+
 // NewCmdDeleteEnviron is a command to delete an environ using: gofabric8 delete environ abcd
 func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "environ",
-		Short: "Delete environment from fabric8-environments configmap",
+		Use:     "environ",
+		Short:   "Delete environment from fabric8-environments configmap",
+		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
 			detectedNS, c, _ := getOpenShiftClient(f)
 

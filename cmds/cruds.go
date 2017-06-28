@@ -24,6 +24,15 @@ const (
 `
 )
 
+func NewCmdCreate() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a resource type",
+		Long:  longhelp,
+	}
+	return cmd
+}
+
 func NewCmdDelete() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete",
