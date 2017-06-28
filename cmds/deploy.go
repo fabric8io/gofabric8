@@ -259,9 +259,9 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 		util.Fatalf("%s", err)
 	}
 
-	// default xip domain if local deployment incase users deploy ingress controller or router
+	// default nip domain if local deployment incase users deploy ingress controller or router
 	if mini && typeOfMaster == util.OpenShift {
-		domain = ip + ".xip.io"
+		domain = ip + ".nip.io"
 	}
 
 	// default to the server from the current context

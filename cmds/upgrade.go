@@ -20,6 +20,10 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"net"
+	"net/url"
+	"strings"
+
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
@@ -27,9 +31,6 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"net"
-	"net/url"
-	"strings"
 )
 
 const (
@@ -83,9 +84,9 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 					util.Failuref("error checking if minikube or minishift %v", err)
 				}
 
-				// default xip domain if local deployment incase users deploy ingress controller or router
+				// default nip domain if local deployment incase users deploy ingress controller or router
 				if mini && typeOfMaster == util.OpenShift {
-					domain = ip + ".xip.io"
+					domain = ip + ".nip.io"
 				}
 				if len(apiserver) == 0 {
 					apiserver = u.Host
