@@ -15,7 +15,12 @@
  */
 package cmds
 
-import "github.com/spf13/cobra"
+import (
+	"io"
+
+	"github.com/spf13/cobra"
+	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+)
 
 const (
 	longhelp = `You must specify the type of resource to get. Valid resource types include:
@@ -24,29 +29,37 @@ const (
 `
 )
 
-func NewCmdCreate() *cobra.Command {
+func NewCmdCreate(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a resource type",
 		Long:  longhelp,
 	}
+
+	cmd.AddCommand(NewCmdCreateEnviron(f))
 	return cmd
 }
 
-func NewCmdDelete() *cobra.Command {
+func NewCmdDelete(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a resource type",
 		Long:  longhelp,
 	}
+
+	cmd.AddCommand(NewCmdDeleteCluster(f))
+	cmd.AddCommand(NewCmdDeleteEnviron(f))
+
 	return cmd
 }
 
-func NewCmdGet() *cobra.Command {
+func NewCmdGet(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get",
 		Short: "Get a resource type",
 		Long:  `get a resource type`,
 	}
+
+	cmd.AddCommand(NewCmdGetEnviron(f, out))
 	return cmd
 }

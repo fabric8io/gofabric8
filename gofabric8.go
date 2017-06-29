@@ -16,6 +16,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"runtime"
 
@@ -45,7 +46,7 @@ func runHelp(cmd *cobra.Command, args []string) {
 	cmd.Help()
 }
 
-func main() {
+func NewGoFabric8Command(f *cmdutil.Factory, in io.Reader, out, err io.Writer) *cobra.Command {
 	cmds := &cobra.Command{
 		Use:   "gofabric8",
 		Short: "gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment",
@@ -58,7 +59,6 @@ func main() {
 	cmds.PersistentFlags().BoolP("yes", "y", false, "assume yes")
 	cmds.PersistentFlags().BoolP(batchFlag, "b", false, "Run in batch mode to avoid prompts. Can also be enabled via `export FABRIC8_BATCH=true`")
 
-	f := cmdutil.NewFactory(nil)
 	f.BindFlags(cmds.PersistentFlags())
 
 	updated := false
@@ -126,18 +126,21 @@ func main() {
 	cmds.AddCommand(commands.NewCmdWaitFor(f))
 	cmds.AddCommand(commands.NewCmdTenant(f))
 
-	getcmd := commands.NewCmdGet()
+	getcmd := commands.NewCmdGet(f, out)
 	cmds.AddCommand(getcmd)
-	getcmd.AddCommand(commands.NewCmdGetEnviron(f))
 
-	createcmd := commands.NewCmdCreate()
+	createcmd := commands.NewCmdCreate(f, out)
 	cmds.AddCommand(createcmd)
-	createcmd.AddCommand(commands.NewCmdCreateEnviron(f))
 
-	deletecmd := commands.NewCmdDelete()
+	deletecmd := commands.NewCmdDelete(f, out)
 	cmds.AddCommand(deletecmd)
-	deletecmd.AddCommand(commands.NewCmdDeleteCluster(f))
-	deletecmd.AddCommand(commands.NewCmdDeleteEnviron(f))
 
-	cmds.Execute()
+	cmds.AddCommand(commands.NewCmdCompletion(f, out))
+
+	return cmds
+}
+
+func main() {
+	cmd := NewGoFabric8Command(cmdutil.NewFactory(nil), os.Stdin, os.Stdout, os.Stderr)
+	cmd.Execute()
 }
