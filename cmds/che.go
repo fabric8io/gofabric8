@@ -123,7 +123,7 @@ func (p *cmdCheShell) openShell(c *k8sclient.Client, namespace string, podName s
 	e.Stderr = os.Stderr
 	err := e.Run()
 	if err != nil {
-		fmt.Errorf("Unable to start shell %s in pod %s on namespace %s due to: %v", shell, podName, namespace, err)
+		fmt.Printf("Unable to start shell %s in pod %s on namespace %s due to: %v", shell, podName, namespace, err)
 	}
 	return nil
 }

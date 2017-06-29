@@ -82,7 +82,7 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 					LabelSelector: labels.Set(catalogSelector).AsSelector(),
 				})
 				if err != nil {
-					fmt.Println("Failed to load Catalog configmaps %s", err)
+					fmt.Printf("Failed to load Catalog configmaps %s", err)
 				} else {
 					for _, configmap := range configmaps.Items {
 						for key, data := range configmap.Data {
@@ -131,7 +131,7 @@ func processSecretsForTemplate(c *k8sclient.Client, i tapi.Template, f *cmdutil.
 	// convert TemplateList.Objects to Kubernetes resources
 	errs := runtime.DecodeList(i.Objects, api.Codecs.UniversalDecoder())
 	if len(errs) > 0 {
-		fmt.Println("Failed to decode templates %v", errs)
+		fmt.Printf("Failed to decode templates %v", errs)
 		os.Exit(2)
 	}
 	for _, rc := range i.Objects {
@@ -378,7 +378,7 @@ func generateSshKeyPair() Keypair {
 
 	priv, err := rsa.GenerateKey(rand.Reader, 2014)
 	if err != nil {
-		util.Fatalf("Error generating key", err)
+		util.Fatalf("Error generating key: %s", err)
 	}
 
 	// Get der format. priv_der []byte

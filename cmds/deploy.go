@@ -653,7 +653,6 @@ func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *o
 		data, err := json.Marshal(template)
 		return data, "json", err
 	}
-	return nil, "", nil
 }
 
 func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client, pv bool, create bool) {
