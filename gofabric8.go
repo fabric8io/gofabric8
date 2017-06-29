@@ -101,7 +101,6 @@ func NewGoFabric8Command(f *cmdutil.Factory, in io.Reader, out, err io.Writer) *
 		}
 	}
 
-	cmds.AddCommand(commands.NewCmdCleanUp(f))
 	cmds.AddCommand(commands.NewCmdCopyEndpoints(f))
 	cmds.AddCommand(commands.NewCmdCheShell(f))
 	cmds.AddCommand(commands.NewCmdConsole(f))

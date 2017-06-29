@@ -35,9 +35,9 @@ import (
 const ()
 
 // NewCmdCleanUp delete all fabric8 apps, environments and configurations
-func NewCmdCleanUp(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "cleanup",
+		Use:   "system",
 		Short: "Hard delete all fabric8 apps, environments and configurations",
 		Long:  `Hard delete all fabric8 apps, environments and configurations`,
 

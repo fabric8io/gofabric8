@@ -49,7 +49,7 @@ func NewCmdDelete(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 
 	cmd.AddCommand(NewCmdDeleteCluster(f))
 	cmd.AddCommand(NewCmdDeleteEnviron(f))
-
+	cmd.AddCommand(NewCmdCleanUpSystem(f))
 	return cmd
 }
 
