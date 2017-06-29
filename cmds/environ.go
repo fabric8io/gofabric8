@@ -16,6 +16,7 @@ package cmds
 
 import (
 	"fmt"
+	"io"
 
 	"strings"
 
@@ -38,7 +39,7 @@ type EnvironmentData struct {
 	Order     int    `yaml:"order"`
 }
 
-func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
+func NewCmdGetEnviron(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "environ",
 		Short:   "Get environment from fabric8-environments configmap",
@@ -65,6 +66,9 @@ func NewCmdGetEnviron(f *cmdutil.Factory) *cobra.Command {
 			}
 		},
 	}
+
+	cmd.SetOutput(out)
+
 	// NB(chmou): we may try to do the whole shenanigans like kubectl/oc does for
 	// outputting stuff but currently this is like swatting flies with a
 	// sledgehammer.
