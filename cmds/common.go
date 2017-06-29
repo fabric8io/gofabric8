@@ -79,13 +79,17 @@ func defaultNamespace(cmd *cobra.Command, f *cmdutil.Factory) (string, error) {
 // currentProject ...
 func detectCurrentUserProject(current string, items []api.Project) (chosenone string) {
 	var detected []string
+	var prefixes = []string{"che", "jenkins", "run", "stage"}
 
 	for _, p := range items {
 		name := p.Name
-		// if we find a che suffix then store it, we are using -che as anchor if
-		// init-tenant has been properly run
-		if strings.HasSuffix(name, "-che") {
-			detected = append(detected, strings.TrimSuffix(p.Name, "-che"))
+		// NB(chmou): if we find a che suffix then store it, we are using the
+		// project prefixes as create from init-tenant. this probably need to be
+		// updated to be future proof.
+		for _, k := range prefixes {
+			if strings.HasSuffix(name, "-"+k) {
+				detected = append(detected, strings.TrimSuffix(name, "-"+k))
+			}
 		}
 	}
 
@@ -101,7 +105,7 @@ func detectCurrentUserProject(current string, items []api.Project) (chosenone st
 				break
 			}
 
-			for _, k := range []string{"che", "jenkins", "run", "stage"} {
+			for _, k := range prefixes {
 				if stripped := strings.TrimSuffix(current, "-"+k); stripped == p {
 					chosenone = stripped
 					break

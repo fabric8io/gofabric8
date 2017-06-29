@@ -53,4 +53,13 @@ func TestGetProject(t *testing.T) {
 		t.Fatalf("%s != foo", res)
 	}
 
+	// test if we can get properly the -jenkins and not just the *-che
+	p1.Name = "foo"
+	p2.Name = "foo-jenkins"
+	p3.Name = "hellomoto"
+	res = detectCurrentUserProject("hellomoto", []api.Project{p1, p2, p3})
+	if res != "foo" {
+		t.Fatalf("%s != foo", res)
+	}
+
 }
