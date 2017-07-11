@@ -76,7 +76,7 @@ func (p *cmdCheShell) run(f *cmdutil.Factory) error {
 				util.Warnf("Could not list projects: %v", err)
 			} else {
 				currentNS, _, _ := f.DefaultNamespace()
-				cheNS = detectCurrentUserProject(currentNS, projects.Items)
+				cheNS = detectCurrentUserProject(currentNS, projects.Items, c)
 				if cheNS != "" {
 					cheNS += "-che"
 				}

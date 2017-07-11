@@ -26,7 +26,10 @@ import (
 
 	"io/ioutil"
 
-	"github.com/openshift/origin/pkg/project/api"
+	osapi "github.com/openshift/origin/pkg/project/api"
+	"k8s.io/kubernetes/pkg/api"
+	k8api "k8s.io/kubernetes/pkg/api/unversioned"
+	k8client "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -77,7 +80,7 @@ func defaultNamespace(cmd *cobra.Command, f *cmdutil.Factory) (string, error) {
 }
 
 // currentProject ...
-func detectCurrentUserProject(current string, items []api.Project) (chosenone string) {
+func detectCurrentUserProject(current string, items []osapi.Project, c *k8client.Client) (chosenone string) {
 	var detected []string
 	var prefixes = []string{"che", "jenkins", "run", "stage"}
 
@@ -117,14 +120,24 @@ func detectCurrentUserProject(current string, items []api.Project) (chosenone st
 		}
 	}
 
+	selector, err := k8api.LabelSelectorAsSelector(
+		&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+	cmdutil.CheckErr(err)
+
 	// Make sure after all it exists
 	for _, p := range items {
 		if p.Name == chosenone {
+			cfgmap, err := c.ConfigMaps(p.Name).List(api.ListOptions{LabelSelector: selector})
+			cmdutil.CheckErr(err)
+			if len(cfgmap.Items) == 0 {
+				//TODO: add command line switch to specify the environment if we can't detect it.
+				util.Fatalf("Could not autodetect your environment, there is no configmaps environment in the `%s` project.\n", p.Name)
+			}
 			return
 		}
 	}
 
-	util.Errorf("Cannot find parent project for: %s", current)
+	util.Errorf("Cannot find parent project for: %s\n", current)
 	return ""
 }
 
