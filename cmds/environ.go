@@ -15,12 +15,12 @@
 package cmds
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"strconv"
 
 	"strings"
-
-	"strconv"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -46,34 +46,35 @@ func NewCmdGetEnviron(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
 			detectedNS, c, _ := getOpenShiftClient(f)
-
-			selector, err := k8api.LabelSelectorAsSelector(
-				&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+			err := getEnviron(cmd, args, detectedNS, c)
 			cmdutil.CheckErr(err)
-
-			cfgmap, err := c.ConfigMaps(detectedNS).List(api.ListOptions{LabelSelector: selector})
-			cmdutil.CheckErr(err)
-
-			fmt.Printf("%-10s DATA\n", "ENV")
-			for _, item := range cfgmap.Items {
-				for key, data := range item.Data {
-					var ed EnvironmentData
-					err := yaml.Unmarshal([]byte(data), &ed)
-					cmdutil.CheckErr(err)
-					fmt.Printf("%-10s namespace=%s order=%d\n",
-						key, ed.Namespace, ed.Order)
-				}
-			}
+			cmd.Help()
 		},
 	}
-
-	cmd.SetOutput(out)
-
-	// NB(chmou): we may try to do the whole shenanigans like kubectl/oc does for
-	// outputting stuff but currently this is like swatting flies with a
-	// sledgehammer.
-	// cmdutil.AddPrinterFlags(cmd)
 	return cmd
+}
+
+func getEnviron(cmd *cobra.Command, args []string, detectedNS string, c *k8client.Client) (err error) {
+	selector, err := k8api.LabelSelectorAsSelector(
+		&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+	cmdutil.CheckErr(err)
+
+	cfgmap, err := c.ConfigMaps(detectedNS).List(api.ListOptions{LabelSelector: selector})
+	cmdutil.CheckErr(err)
+
+	fmt.Printf("%-10s DATA\n", "ENV")
+	for _, item := range cfgmap.Items {
+		for key, data := range item.Data {
+			var ed EnvironmentData
+			err := yaml.Unmarshal([]byte(data), &ed)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%-10s namespace=%s order=%d\n",
+				key, ed.Namespace, ed.Order)
+		}
+	}
+	return
 }
 
 func NewCmdCreateEnviron(f *cmdutil.Factory) (cmd *cobra.Command) {
@@ -83,61 +84,68 @@ func NewCmdCreateEnviron(f *cmdutil.Factory) (cmd *cobra.Command) {
 		Long:    "gofabric8 create environ environKey namespace=string order=int ...",
 		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
-			var ev EnvironmentData
-			var yamlData []byte
-			ev.Order = -1
-
-			for _, kv := range args {
-				split := strings.Split(kv, "=")
-				k := split[0]
-				v := split[1]
-
-				if strings.ToLower(k) == "name" {
-					ev.Name = strings.ToLower(v)
-				} else if strings.ToLower(k) == "namespace" {
-					ev.Namespace = v
-				} else if strings.ToLower(k) == "order" {
-					conv, err := strconv.Atoi(v)
-					if err != nil {
-						util.Errorf("Cannot use %s from %s as number\n", v, k)
-						return
-					}
-					ev.Order = conv
-				} else {
-					util.Errorf("Unkown key: %s\n", k)
-					return
-				}
-			}
-
-			if ev.Name == "" || ev.Namespace == "" || ev.Order == -1 {
-				util.Error("missing some key=value\n")
-				cmd.Help()
-				return
-			}
-
 			detectedNS, c, _ := getOpenShiftClient(f)
-			yamlData, err := yaml.Marshal(&ev)
-			if err != nil {
-				util.Fatalf("Failed to marshal configmap fabric8-environments error: %v\ntemplate: %s", err, string(yamlData))
-			}
-
-			selector, err := k8api.LabelSelectorAsSelector(
-				&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+			err := createEnviron(cmd, args, detectedNS, c)
 			cmdutil.CheckErr(err)
-
-			cfgmaps, err := c.ConfigMaps(detectedNS).List(api.ListOptions{LabelSelector: selector})
-			cmdutil.CheckErr(err)
-
-			cfgmap := &cfgmaps.Items[0] // TODO(chmou): can we have more than one cfgmap with kind=environments label?
-			cfgmap.Data[ev.Name] = string(yamlData)
-
-			_, err = c.ConfigMaps(detectedNS).Update(cfgmap)
-			cmdutil.CheckErr(err)
-
-			//cfgmap, err := c.ConfigMaps(detectedNS).Create()
-
+			cmd.Help()
 		},
 	}
+	return
+}
+
+func createEnviron(cmd *cobra.Command, args []string, detectedNS string, c *k8client.Client) (err error) {
+	var ev EnvironmentData
+	var yamlData []byte
+	ev.Order = -1
+
+	for _, kv := range args {
+		split := strings.Split(kv, "=")
+		if len(split) == 1 {
+			return errors.New("Invalid argument " + kv + " you are missing an assignment like foo=bar")
+		}
+		k := split[0]
+		v := split[1]
+
+		if strings.ToLower(k) == "name" {
+			ev.Name = strings.ToLower(v)
+		} else if strings.ToLower(k) == "namespace" {
+			ev.Namespace = v
+		} else if strings.ToLower(k) == "order" {
+			conv, err := strconv.Atoi(v)
+			if err != nil {
+				return errors.New(fmt.Sprintf("Cannot use %s from %s as number: %v\n", v, k, err))
+			}
+			ev.Order = conv
+		} else {
+			util.Errorf("Unkown key: %s\n", k)
+			return
+		}
+	}
+
+	if ev.Name == "" || ev.Namespace == "" || ev.Order == -1 {
+		return errors.New("missing some key=value\n")
+	}
+
+	yamlData, err = yaml.Marshal(&ev)
+	if err != nil {
+		return errors.New(fmt.Sprintf("Failed to marshal configmap fabric8-environments error: %v\ntemplate: %s", err, string(yamlData)))
+	}
+
+	selector, err := k8api.LabelSelectorAsSelector(
+		&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
+	if err != nil {
+		return err
+	}
+
+	cfgmaps, err := c.ConfigMaps(detectedNS).List(api.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return err
+	}
+
+	cfgmap := &cfgmaps.Items[0] // TODO(chmou): can we have more than one cfgmap with kind=environments label?
+	cfgmap.Data[ev.Name] = string(yamlData)
+
+	_, err = c.ConfigMaps(detectedNS).Update(cfgmap)
 	return
 }
 
@@ -174,6 +182,7 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 			for _, item := range cfgmap.Items {
 				for k, data := range item.Data {
 					var ed EnvironmentData
+
 					err := yaml.Unmarshal([]byte(data), &ed)
 					cmdutil.CheckErr(err)
 
