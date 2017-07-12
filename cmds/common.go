@@ -18,6 +18,7 @@ package cmds
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/daviddengcn/go-colortext"
@@ -160,6 +161,9 @@ func confirmAction(yes bool) bool {
 }
 
 func showBanner() {
+	if runtime.GOOS == "windows" {
+		return
+	}
 	ct.ChangeColor(ct.Blue, false, ct.None, false)
 	fmt.Println(fabric8AsciiArt)
 	ct.ResetColor()
