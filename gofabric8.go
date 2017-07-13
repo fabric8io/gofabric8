@@ -40,6 +40,7 @@ const (
 	lastUpdateCheck    = "last_update_check"
 	hiddenFolder       = "/.fabric8/"
 	versionConsoleFlag = "version-console"
+	workProject        = "work-project"
 )
 
 func runHelp(cmd *cobra.Command, args []string) {
@@ -55,6 +56,7 @@ func NewGoFabric8Command(f *cmdutil.Factory, in io.Reader, out, err io.Writer) *
 		Run: runHelp,
 	}
 
+	cmds.PersistentFlags().String(workProject, "autodetect", "The work project")
 	cmds.PersistentFlags().String(versionConsoleFlag, "latest", "fabric8 version")
 	cmds.PersistentFlags().BoolP("yes", "y", false, "assume yes")
 	cmds.PersistentFlags().BoolP(batchFlag, "b", false, "Run in batch mode to avoid prompts. Can also be enabled via `export FABRIC8_BATCH=true`")

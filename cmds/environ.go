@@ -45,10 +45,10 @@ func NewCmdGetEnviron(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 		Short:   "Get environment from fabric8-environments configmap",
 		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
-			detectedNS, c, _ := getOpenShiftClient(f)
+			wp := cmd.Flags().Lookup("work-project").Value.String()
+			detectedNS, c, _ := getOpenShiftClient(f, wp)
 			err := getEnviron(cmd, args, detectedNS, c)
 			cmdutil.CheckErr(err)
-			cmd.Help()
 		},
 	}
 	return cmd
@@ -84,7 +84,8 @@ func NewCmdCreateEnviron(f *cmdutil.Factory) (cmd *cobra.Command) {
 		Long:    "gofabric8 create environ environKey namespace=string order=int ...",
 		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
-			detectedNS, c, _ := getOpenShiftClient(f)
+			wp := cmd.Flags().Lookup("work-project").Value.String()
+			detectedNS, c, _ := getOpenShiftClient(f, wp)
 			err := createEnviron(cmd, args, detectedNS, c)
 			cmdutil.CheckErr(err)
 			cmd.Help()
@@ -156,7 +157,8 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 		Short:   "Delete environment from fabric8-environments configmap",
 		Aliases: []string{"env"},
 		Run: func(cmd *cobra.Command, args []string) {
-			detectedNS, c, _ := getOpenShiftClient(f)
+			wp := cmd.Flags().Lookup("work-project").Value.String()
+			detectedNS, c, _ := getOpenShiftClient(f, wp)
 
 			selector, err := k8api.LabelSelectorAsSelector(
 				&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
@@ -214,8 +216,15 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 
 // getOpenShiftClient Get an openshift client and detect the project we want to
 // be in
-func getOpenShiftClient(f *cmdutil.Factory) (detectedNS string, c *k8client.Client, cfg *restclient.Config) {
+func getOpenShiftClient(f *cmdutil.Factory, wp string) (detectedNS string, c *k8client.Client, cfg *restclient.Config) {
 	c, cfg = client.NewClient(f)
+
+	// If the user has specified a userproject then don't do auto detection and
+	// use it immediatly.
+	if wp != "autodetect" {
+		detectedNS = wp
+		return
+	}
 
 	initSchema()
 
