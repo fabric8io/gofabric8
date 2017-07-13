@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -42,7 +43,6 @@ func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 		Long:  `Hard delete all fabric8 apps, environments and configurations`,
 
 		Run: func(cmd *cobra.Command, args []string) {
-
 			currentContext, err := util.GetCurrentContext()
 			if err != nil {
 				util.Fatalf("%s", err)
@@ -54,17 +54,16 @@ func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 
 			if confirm == "y" {
 				util.Info("Removing...\n")
-				cleanUp(f)
+				deleteSystem(f)
 				return
 			}
 			util.Info("Cancelled")
 		},
 	}
-
 	return cmd
 }
 
-func cleanUp(f *cmdutil.Factory) error {
+func deleteSystem(f *cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	typeOfMaster := util.TypeOfMaster(c)
@@ -72,100 +71,22 @@ func cleanUp(f *cmdutil.Factory) error {
 	if err != nil {
 		return err
 	}
+
+	deletePersistentVolumeClaims(c, ns, selector)
 	if typeOfMaster == util.OpenShift {
 		oc, _ := client.NewOpenShiftClient(cfg)
-		cleanUpOpenshiftResources(c, oc, ns, selector)
+		initSchema()
+		err = deleteProjects(oc)
+	} else {
+		err = deleteNamespaces(c, selector)
 	}
 
-	cleanUpKubernetesResources(c, ns, selector)
+	if err != nil {
+		util.Fatalf("%s", err)
+	}
 
 	util.Success("Successfully cleaned up\n")
 	return nil
-}
-
-func cleanUpOpenshiftResources(c *k8sclient.Client, oc *oclient.Client, ns string, selector labels.Selector) {
-
-	err := deleteDeploymentConfigs(oc, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteBuilds(oc, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteBuildConfigs(oc, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteRoutes(oc, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-}
-
-func cleanUpKubernetesResources(c *k8sclient.Client, ns string, selector labels.Selector) {
-
-	err := deleteDeployments(c, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteReplicationControllers(c, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteReplicaSets(c, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteServices(c, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteSecrets(c, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteIngress(c, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteConfigMaps(c, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	catalogSelector, err := unversioned.LabelSelectorAsSelector(&unversioned.LabelSelector{MatchLabels: map[string]string{"kind": "catalog"}})
-	if err != nil {
-		util.Fatalf("%s", err)
-	} else {
-		err = deleteConfigMaps(c, ns, catalogSelector)
-		if err != nil {
-			util.Fatalf("%s", err)
-		}
-	}
-
-	err = deleteServiceAccounts(c, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-
-	err = deleteEnvironments(c, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
-	err = deletePods(c, ns, selector)
-	if err != nil {
-		util.Fatalf("%s", err)
-	}
 }
 
 func deleteDeploymentConfigs(oc *oclient.Client, ns string, selector labels.Selector) error {
@@ -228,6 +149,21 @@ func deleteDeployments(c *k8sclient.Client, ns string, selector labels.Selector)
 	}
 	return nil
 
+}
+
+func deletePersistentVolumeClaims(c *k8sclient.Client, ns string, selector labels.Selector) (err error) {
+	pvcs, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{})
+	if pvcs == nil {
+		return
+	}
+	for _, item := range pvcs.Items {
+		name := item.ObjectMeta.Name
+		errd := c.PersistentVolumeClaims(ns).Delete(name)
+		if errd != nil {
+			util.Infof("Error deleting PVC %s\n", name)
+		}
+	}
+	return
 }
 
 func deleteReplicationControllers(c *k8sclient.Client, ns string, selector labels.Selector) error {
@@ -344,7 +280,26 @@ func deletePods(c *k8sclient.Client, ns string, selector labels.Selector) error 
 	return nil
 }
 
-func deleteEnvironments(c *k8sclient.Client, selector labels.Selector) error {
+func deleteProjects(oc *oclient.Client) error {
+	ns, err := oc.Projects().List(api.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, n := range ns.Items {
+		err := oc.Projects().Delete(n.Name)
+		if err != nil {
+			// TODO(chmou): Handle with a special case, see https://goo.gl/vAFxaa
+			if strings.HasSuffix(n.Name, "-jenkins") {
+				err = nil
+				continue
+			}
+			return errors.Wrap(err, fmt.Sprintf("failed to delete Project %s", n.Name))
+		}
+	}
+	return nil
+}
+
+func deleteNamespaces(c *k8sclient.Client, selector labels.Selector) error {
 	ns, err := c.Namespaces().List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return err
