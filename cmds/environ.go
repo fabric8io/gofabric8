@@ -144,8 +144,10 @@ func createEnviron(cmd *cobra.Command, args []string, detectedNS string, c *k8cl
 
 	cfgmap := &cfgmaps.Items[0] // TODO(chmou): can we have more than one cfgmap with kind=environments label?
 	cfgmap.Data[ev.Name] = string(yamlData)
+	cfgmap.Name = ev.Name
 
 	_, err = c.ConfigMaps(detectedNS).Update(cfgmap)
+
 	return
 }
 
@@ -229,7 +231,7 @@ func getOpenShiftClient(f *cmdutil.Factory) (detectedNS string, c *k8client.Clie
 			util.Warnf("Could not list projects: %v", err)
 		} else {
 			currentNS, _, _ := f.DefaultNamespace()
-			detectedNS = detectCurrentUserProject(currentNS, projects.Items)
+			detectedNS = detectCurrentUserProject(currentNS, projects.Items, c)
 		}
 	}
 
