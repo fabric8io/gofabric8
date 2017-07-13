@@ -182,7 +182,7 @@ func showBanner() {
 	ct.ResetColor()
 }
 
-func defaultParameters(c *k8sclient.Client, exposer string, githubClientID string, githubClientSecret string, ns string) map[string]string {
+func defaultParameters(c *k8client.Client, exposer string, githubClientID string, githubClientSecret string, ns string) map[string]string {
 	if len(exposer) == 0 {
 		typeOfMaster := util.TypeOfMaster(c)
 		if typeOfMaster == util.Kubernetes {

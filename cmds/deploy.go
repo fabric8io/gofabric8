@@ -68,11 +68,11 @@ import (
 )
 
 const (
-	serviceMetadataUrl  = "io/fabric8/platform/packages/fabric8-service/maven-metadata.xml"
+	systemMetadataUrl   = "io/fabric8/platform/packages/fabric8-system/maven-metadata.xml"
 	platformMetadataUrl = "io/fabric8/platform/packages/fabric8-platform/maven-metadata.xml"
 	ipaasMetadataUrl    = "io/fabric8/ipaas/platform/packages/ipaas-platform/maven-metadata.xml"
 
-	servicePackageUrlPrefix   = "io/fabric8/platform/packages/fabric8-service/%[1]s/fabric8-service-%[1]s-"
+	systemPackageUrlPrefix    = "io/fabric8/platform/packages/fabric8-system/%[1]s/fabric8-system-%[1]s-"
 	platformPackageUrlPrefix  = "io/fabric8/platform/packages/fabric8-platform/%[1]s/fabric8-platform-%[1]s-"
 	consolePackageUrlPrefix   = "io/fabric8/platform/packages/console/%[1]s/console-%[1]s-"
 	consolePackageMetadataUrl = "io/fabric8/platform/packages/console/maven-metadata.xml"
@@ -99,7 +99,7 @@ const (
 	githubClientSecretFlag = "github-client-secret"
 	githubClientIDFlag     = "github-client-id"
 
-	servicePackage  = "service"
+	systemPackage   = "system"
 	platformPackage = "platform"
 	consolePackage  = "console"
 	iPaaSPackage    = "ipaas"
@@ -209,7 +209,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(exposerFlag, "", "The exposecontroller strategy such as Ingress, Router, NodePort, LoadBalancer")
 	cmd.PersistentFlags().String(githubClientIDFlag, "", "The github OAuth Application Client ID. Defaults to $GITHUB_OAUTH_CLIENT_ID if not specified")
 	cmd.PersistentFlags().String(githubClientSecretFlag, "", "The github OAuth Application Client Secret. Defaults to $GITHUB_OAUTH_CLIENT_SECRET if not specified")
-	cmd.PersistentFlags().String(packageFlag, servicePackage, "The name of the package to startup such as 'service', 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
+	cmd.PersistentFlags().String(packageFlag, systemPackage, "The name of the package to startup such as 'service', 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
 
 	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
@@ -234,7 +234,7 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 	d.deployConsole = true
 	d.useLoadbalancer = false
 	d.openConsole = false
-	d.packageName = servicePackage
+	d.packageName = systemPackage
 	return d
 }
 
@@ -342,10 +342,10 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 		baseUri := ""
 		switch packageName {
 		case "":
-		case servicePackage:
+		case systemPackage:
 			legacyPackage = false
-			baseUri = servicePackageUrlPrefix
-			versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, serviceMetadataUrl))
+			baseUri = systemPackageUrlPrefix
+			versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, systemMetadataUrl))
 			logPackageVersion(packageName, versionPlatform)
 		case platformPackage:
 			baseUri = platformPackageUrlPrefix
