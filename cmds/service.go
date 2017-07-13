@@ -101,6 +101,40 @@ func openService(ns string, serviceName string, c *k8sclient.Client, printURL bo
 	}
 }
 
+// FindServiceURL returns the external service URL waiting a little bit for it to show up
+func FindServiceURL(ns string, serviceName string, c *k8sclient.Client, retry bool) string {
+	answer := ""
+	if retry {
+		if err := RetryAfter(1200, func() error { return CheckServiceExists(ns, serviceName, c) }, 10*time.Second); err != nil {
+			util.Errorf("Could not find finalized endpoint being pointed to by %s: %v", serviceName, err)
+			os.Exit(1)
+		}
+	}
+	svc, err := c.Services(ns).Get(serviceName)
+	if err != nil {
+		util.Errorf("No service %s found %v\n", serviceName, err)
+	}
+	url := svc.ObjectMeta.Annotations[exposeURLAnnotation]
+	if len(url) > 0 {
+		answer = url
+	}
+	return answer
+}
+
+// CheckServiceExists waits for the specified service to have an external URL
+func CheckServiceExists(ns string, service string, c *k8sclient.Client) error {
+	svc, err := c.Services(ns).Get(service)
+	if err != nil {
+		return err
+	}
+	url := svc.ObjectMeta.Annotations[exposeURLAnnotation]
+	if url == "" {
+		util.Info(".")
+		return errors.New("")
+	}
+	return nil
+}
+
 // CheckService waits for the specified service to be ready by returning an error until the service is up
 // The check is done by polling the endpoint associated with the service and when the endpoint exists, returning no error->service-online
 // Credits: https://github.com/kubernetes/minikube/blob/v0.9.0/cmd/minikube/cmd/service.go#L89
