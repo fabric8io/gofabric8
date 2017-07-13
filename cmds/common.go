@@ -182,6 +182,36 @@ func showBanner() {
 	ct.ResetColor()
 }
 
+func defaultParameters(c *k8client.Client, exposer string, githubClientID string, githubClientSecret string, ns string) map[string]string {
+	if len(exposer) == 0 {
+		typeOfMaster := util.TypeOfMaster(c)
+		if typeOfMaster == util.Kubernetes {
+			exposer = "Ingress"
+		} else {
+			exposer = "Router"
+		}
+	}
+	if len(githubClientID) == 0 {
+		githubClientID = os.Getenv("GITHUB_OAUTH_CLIENT_ID")
+	}
+	if len(githubClientSecret) == 0 {
+		githubClientSecret = os.Getenv("GITHUB_OAUTH_CLIENT_SECRET")
+	}
+
+	if len(githubClientID) == 0 {
+		util.Fatalf("No --%s flag was specified or $GITHUB_OAUTH_CLIENT_ID environment variable supplied!\n", githubClientIDFlag)
+	}
+	if len(githubClientSecret) == 0 {
+		util.Fatalf("No --%s flag was specified or $GITHUB_OAUTH_CLIENT_SECRET environment variable supplied!\n", githubClientSecretFlag)
+	}
+	return map[string]string{
+		"NAMESPACE":                  ns,
+		"EXPOSER":                    exposer,
+		"GITHUB_OAUTH_CLIENT_SECRET": githubClientSecret,
+		"GITHUB_OAUTH_CLIENT_ID":     githubClientID,
+	}
+}
+
 const fabric8AsciiArt = `             [38;5;25m▄[38;5;25m▄▄[38;5;25m▄[38;5;25m▄[38;5;25m▄[38;5;235m▄[39m         [00m
              [48;5;25;38;5;25m█[48;5;235;38;5;235m█[48;5;235;38;5;235m█[48;5;25;38;5;25m█[48;5;25;38;5;25m█[48;5;25;38;5;25m█[48;5;235;38;5;235m█[49;39m         [00m
      [48;5;233;38;5;235m▄[48;5;235;38;5;25m▄[38;5;25m▄[38;5;25m▄[38;5;24m▄[38;5;25m▄[48;5;233;38;5;235m▄[49;39m [48;5;25;38;5;25m▄[48;5;235;38;5;24m▄[48;5;235;38;5;24m▄[48;5;25;38;5;25m▄[48;5;25;38;5;25m▄[48;5;25;38;5;25m▄[48;5;235;38;5;235m█[49;39m         [00m

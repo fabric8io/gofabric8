@@ -99,7 +99,13 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 				util.Info(" in namespace ")
 				util.Successf("%s\n\n", ns)
 
-				err = upgradePackages(ns, c, ocl, args, all, version, domain, apiserver, pv)
+				exposer := cmd.Flags().Lookup(exposerFlag).Value.String()
+				githubClientID := cmd.Flags().Lookup(githubClientIDFlag).Value.String()
+				githubClientSecret := cmd.Flags().Lookup(githubClientSecretFlag).Value.String()
+
+				params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns)
+
+				err = upgradePackages(ns, c, ocl, args, all, version, domain, apiserver, pv, params)
 				if err != nil {
 					util.Failuref("%v", err)
 					util.Blank()
@@ -110,6 +116,9 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(allFlag, false, "If enabled then upgrade all packages")
 	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(updateFlag, false, "If the version ")
+	cmd.PersistentFlags().String(exposerFlag, "", "The exposecontroller strategy such as Ingress, Router, NodePort, LoadBalancer")
+	cmd.PersistentFlags().String(githubClientIDFlag, "", "The github OAuth Application Client ID. Defaults to $GITHUB_OAUTH_CLIENT_ID if not specified")
+	cmd.PersistentFlags().String(githubClientSecretFlag, "", "The github OAuth Application Client Secret. Defaults to $GITHUB_OAUTH_CLIENT_SECRET if not specified")
 	cmd.PersistentFlags().String(versionFlag, "latest", "The version to upgrade to")
 	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")
@@ -118,7 +127,7 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv bool) error {
+func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv bool, params map[string]string) error {
 	selector, err := createPackageSelector()
 	if err != nil {
 		return err
@@ -166,7 +175,7 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 			version = labels["version"]
 		}
 		if newVersion != version {
-			upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix)
+			upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix, params)
 		} else {
 			util.Info("package ")
 			util.Success(name)
@@ -184,17 +193,17 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 					metadataUrl := urlJoin(mavenPrefix, platformMetadataUrl)
 					packageUrlPrefix := urlJoin(mavenPrefix, platformPackageUrlPrefix)
 					newVersion := versionForUrl(version, metadataUrl)
-					upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix)
+					upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix, params)
 				} else if name == consolePackage || name == "fabric8-console" || name == "fabric8-console-package" {
 					metadataUrl := urlJoin(mavenPrefix, consolePackageMetadataUrl)
 					packageUrlPrefix := urlJoin(mavenPrefix, consolePackageUrlPrefix)
 					newVersion := versionForUrl(version, metadataUrl)
-					upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix)
+					upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix, params)
 				} else if name == iPaaSPackage || name == "ipaas-platform" || name == "ipaas-platform-package" {
 					metadataUrl := urlJoin(mavenPrefix, ipaasMetadataUrl)
 					packageUrlPrefix := urlJoin(mavenPrefix, ipaasPackageUrlPrefix)
 					newVersion := versionForUrl(version, metadataUrl)
-					upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix)
+					upgradePackage(ns, c, ocl, domain, apiserver, pv, name, newVersion, packageUrlPrefix, params)
 				} else {
 					util.Warnf("Unknown package name %s\n", name)
 				}
@@ -204,7 +213,7 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 	return nil
 }
 
-func upgradePackage(ns string, c *k8sclient.Client, ocl *oclient.Client, domain string, apiserver string, pv bool, name string, newVersion string, packageUrlPrefix string) {
+func upgradePackage(ns string, c *k8sclient.Client, ocl *oclient.Client, domain string, apiserver string, pv bool, name string, newVersion string, packageUrlPrefix string, params map[string]string) {
 	util.Info("Upgrading package ")
 	util.Success(name)
 	util.Info(" to version: ")
@@ -232,5 +241,5 @@ func upgradePackage(ns string, c *k8sclient.Client, ocl *oclient.Client, domain 
 	if err != nil {
 		util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
 	}
-	createTemplate(yamlData, format, name, ns, domain, apiserver, c, ocl, pv, false)
+	createTemplate(yamlData, format, name, ns, domain, apiserver, c, ocl, pv, false, params)
 }

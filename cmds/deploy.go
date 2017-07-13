@@ -68,9 +68,11 @@ import (
 )
 
 const (
+	systemMetadataUrl   = "io/fabric8/platform/packages/fabric8-system/maven-metadata.xml"
 	platformMetadataUrl = "io/fabric8/platform/packages/fabric8-platform/maven-metadata.xml"
 	ipaasMetadataUrl    = "io/fabric8/ipaas/platform/packages/ipaas-platform/maven-metadata.xml"
 
+	systemPackageUrlPrefix    = "io/fabric8/platform/packages/fabric8-system/%[1]s/fabric8-system-%[1]s-"
 	platformPackageUrlPrefix  = "io/fabric8/platform/packages/fabric8-platform/%[1]s/fabric8-platform-%[1]s-"
 	consolePackageUrlPrefix   = "io/fabric8/platform/packages/console/%[1]s/console-%[1]s-"
 	consolePackageMetadataUrl = "io/fabric8/platform/packages/console/maven-metadata.xml"
@@ -81,18 +83,23 @@ const (
 	Fabric8SASSCC = "fabric8-sa-group"
 	RestrictedSCC = "restricted"
 
-	runFlag             = "app"
-	useIngressFlag      = "ingress"
-	useLoadbalancerFlag = "loadbalancer"
-	versionPlatformFlag = "version"
-	versioniPaaSFlag    = "version-ipaas"
-	mavenRepoFlag       = "maven-repo"
-	dockerRegistryFlag  = "docker-registry"
-	archFlag            = "arch"
-	pvFlag              = "pv"
-	updateFlag          = "update"
-	packageFlag         = "package"
+	runFlag                = "app"
+	useIngressFlag         = "ingress"
+	useLoadbalancerFlag    = "loadbalancer"
+	versionPlatformFlag    = "version"
+	versioniPaaSFlag       = "version-ipaas"
+	mavenRepoFlag          = "maven-repo"
+	dockerRegistryFlag     = "docker-registry"
+	archFlag               = "arch"
+	pvFlag                 = "pv"
+	updateFlag             = "update"
+	packageFlag            = "package"
+	legacyFlag             = "legacy"
+	exposerFlag            = "exposer"
+	githubClientSecretFlag = "github-client-secret"
+	githubClientIDFlag     = "github-client-id"
 
+	systemPackage   = "system"
 	platformPackage = "platform"
 	consolePackage  = "console"
 	iPaaSPackage    = "ipaas"
@@ -129,22 +136,27 @@ type Metadata struct {
 
 // Fabric8Deployment structure to work with the fabric8 deploy command
 type DefaultFabric8Deployment struct {
-	domain          string
-	apiserver       string
-	dockerRegistry  string
-	arch            string
-	mavenRepo       string
-	appToRun        string
-	packageName     string
-	templates       bool
-	pv              bool
-	deployConsole   bool
-	useIngress      bool
-	useLoadbalancer bool
-	versionPlatform string
-	versioniPaaS    string
-	yes             bool
-	openConsole     bool
+	domain             string
+	apiserver          string
+	dockerRegistry     string
+	arch               string
+	mavenRepo          string
+	appToRun           string
+	packageName        string
+	namespace          string
+	exposer            string
+	githubClientSecret string
+	githubClientID     string
+	templates          bool
+	pv                 bool
+	deployConsole      bool
+	useIngress         bool
+	useLoadbalancer    bool
+	versionPlatform    string
+	versioniPaaS       string
+	yes                bool
+	openConsole        bool
+	legacyFlag         bool
 }
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
@@ -159,12 +171,17 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			d := DefaultFabric8Deployment{
-				domain:          cmd.Flags().Lookup(domainFlag).Value.String(),
-				apiserver:       cmd.Flags().Lookup(apiServerFlag).Value.String(),
-				arch:            cmd.Flags().Lookup(archFlag).Value.String(),
-				mavenRepo:       cmd.Flags().Lookup(mavenRepoFlag).Value.String(),
-				appToRun:        cmd.Flags().Lookup(runFlag).Value.String(),
-				packageName:     cmd.Flags().Lookup(packageFlag).Value.String(),
+				domain:             cmd.Flags().Lookup(domainFlag).Value.String(),
+				apiserver:          cmd.Flags().Lookup(apiServerFlag).Value.String(),
+				arch:               cmd.Flags().Lookup(archFlag).Value.String(),
+				mavenRepo:          cmd.Flags().Lookup(mavenRepoFlag).Value.String(),
+				appToRun:           cmd.Flags().Lookup(runFlag).Value.String(),
+				namespace:          cmd.Flags().Lookup(namespaceFlag).Value.String(),
+				packageName:        cmd.Flags().Lookup(packageFlag).Value.String(),
+				exposer:            cmd.Flags().Lookup(exposerFlag).Value.String(),
+				githubClientSecret: cmd.Flags().Lookup(githubClientSecretFlag).Value.String(),
+				githubClientID:     cmd.Flags().Lookup(githubClientIDFlag).Value.String(),
+
 				deployConsole:   cmd.Flags().Lookup(consoleFlag).Value.String() == "true",
 				dockerRegistry:  cmd.Flags().Lookup(dockerRegistryFlag).Value.String(),
 				useIngress:      cmd.Flags().Lookup(useIngressFlag).Value.String() == "true",
@@ -175,11 +192,13 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				pv:              cmd.Flags().Lookup(pvFlag).Value.String() == "true",
 				yes:             cmd.Flags().Lookup(yesFlag).Value.String() == "false",
 				openConsole:     cmd.Flags().Lookup(openConsoleFlag).Value.String() == "true",
+				legacyFlag:      cmd.Flags().Lookup(legacyFlag).Value.String() == "true",
 			}
 			deploy(f, d)
 		},
 	}
 	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
+	cmd.PersistentFlags().StringP(namespaceFlag, "n", "", "The namespace to deploy to (which is lazly created). Defaults to the current naemspace")
 	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")
 	cmd.PersistentFlags().String(archFlag, goruntime.GOARCH, "CPU architecture for referencing Docker images with this as a name suffix")
 	cmd.PersistentFlags().String(versionPlatformFlag, "latest", "The version to use for the Fabric8 Platform packages")
@@ -187,13 +206,18 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(mavenRepoFlag, mavenRepoDefault, "The maven repo used to find releases of fabric8")
 	cmd.PersistentFlags().String(dockerRegistryFlag, "", "The docker registry used to download fabric8 images. Typically used to point to a staging registry")
 	cmd.PersistentFlags().String(runFlag, "", "(Deprecated) The name of the fabric8 app to startup. e.g. use `--app=cd-pipeline` to run the main CI/CD pipeline app")
-	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
+	cmd.PersistentFlags().String(exposerFlag, "", "The exposecontroller strategy such as Ingress, Router, NodePort, LoadBalancer")
+	cmd.PersistentFlags().String(githubClientIDFlag, "", "The github OAuth Application Client ID. Defaults to $GITHUB_OAUTH_CLIENT_ID if not specified")
+	cmd.PersistentFlags().String(githubClientSecretFlag, "", "The github OAuth Application Client Secret. Defaults to $GITHUB_OAUTH_CLIENT_SECRET if not specified")
+	cmd.PersistentFlags().String(packageFlag, systemPackage, "The name of the package to startup such as 'service', 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
+
 	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
 	cmd.PersistentFlags().Bool(openConsoleFlag, true, "Should we wait an open the console?")
+	cmd.PersistentFlags().Bool(legacyFlag, false, "Should we use the legacy installation mode for versions before 4.x of fabric8?")
 	return cmd
 }
 
@@ -210,7 +234,7 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 	d.deployConsole = true
 	d.useLoadbalancer = false
 	d.openConsole = false
-	d.packageName = platformPackage
+	d.packageName = systemPackage
 	return d
 }
 
@@ -232,6 +256,9 @@ func initSchema() {
 func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
+	if len(d.namespace) > 0 {
+		ns = d.namespace
+	}
 
 	domain := d.domain
 	dockerRegistry := d.dockerRegistry
@@ -309,10 +336,17 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		ensureNamespaceExists(c, oc, ns)
 
+		legacyPackage := d.legacyFlag
+
 		versionPlatform := ""
 		baseUri := ""
 		switch packageName {
 		case "":
+		case systemPackage:
+			legacyPackage = false
+			baseUri = systemPackageUrlPrefix
+			versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, systemMetadataUrl))
+			logPackageVersion(packageName, versionPlatform)
 		case platformPackage:
 			baseUri = platformPackageUrlPrefix
 			versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, platformMetadataUrl))
@@ -351,40 +385,53 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				uri = "file://" + absFile
 			}
 		}
+		mini, _ := util.IsMini()
 
 		if typeOfMaster == util.Kubernetes {
 			if !strings.HasPrefix(uri, "file://") {
-				uri += "kubernetes.yml"
+				if legacyPackage {
+					uri += "kubernetes.yml"
+				} else {
+					uri += "k8s-template.yml"
+				}
+			}
+
+			if mini {
+				waitForStorageClass(c)
 			}
 		} else {
 			if !strings.HasPrefix(uri, "file://") {
 				uri += "openshift.yml"
 			}
 
-			r, err := verifyRestrictedSecurityContextConstraints(c, f)
-			printResult("SecurityContextConstraints restricted", r, err)
-			r, err = deployFabric8SecurityContextConstraints(c, f, ns)
-			printResult("SecurityContextConstraints fabric8", r, err)
-			r, err = deployFabric8SASSecurityContextConstraints(c, f, ns)
-			printResult("SecurityContextConstraints "+Fabric8SASSCC, r, err)
+			if legacyPackage {
+				r, err := verifyRestrictedSecurityContextConstraints(c, f)
+				printResult("SecurityContextConstraints restricted", r, err)
+				r, err = deployFabric8SecurityContextConstraints(c, f, ns)
+				printResult("SecurityContextConstraints fabric8", r, err)
+				r, err = deployFabric8SASSecurityContextConstraints(c, f, ns)
+				printResult("SecurityContextConstraints "+Fabric8SASSCC, r, err)
 
-			printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
+				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":fabric8")
 
-			// TODO replace all of this with the necessary RoleBindings inside the OpenShift YAML...
-			printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
+				// TODO replace all of this with the necessary RoleBindings inside the OpenShift YAML...
+				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":jenkins")
 
-			printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":configmapcontroller")
-			printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":exposecontroller")
+				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":configmapcontroller")
+				printAddClusterRoleToUser(oc, f, "cluster-admin", "system:serviceaccount:"+ns+":exposecontroller")
 
-			printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
-			printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
+				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":metrics")
+				printAddClusterRoleToUser(oc, f, "cluster-reader", "system:serviceaccount:"+ns+":fluentd")
 
-			printAddClusterRoleToGroup(oc, f, "cluster-reader", "system:serviceaccounts")
+				printAddClusterRoleToGroup(oc, f, "cluster-reader", "system:serviceaccounts")
 
-			printAddServiceAccount(c, f, "fluentd")
-			printAddServiceAccount(c, f, "registry")
-			printAddServiceAccount(c, f, "router")
+				printAddServiceAccount(c, f, "fluentd")
+				printAddServiceAccount(c, f, "registry")
+				printAddServiceAccount(c, f, "router")
+			}
 		}
+
+		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns)
 
 		// now lets apply this template
 		util.Infof("Now about to install package %s\n", uri)
@@ -412,30 +459,71 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
 			}
 		}
-		createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv, true)
+		createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv, true, params)
 
-		externalNodeName := ""
-		if typeOfMaster == util.Kubernetes {
-			if !mini && d.useIngress {
-				ensureNamespaceExists(c, oc, fabric8SystemNamespace)
-				util.Infof("ns is %s\n", ns)
-				runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv, true)
-				externalNodeName = addIngressInfraLabel(c, ns)
+		if legacyPackage {
+			externalNodeName := ""
+			if typeOfMaster == util.Kubernetes {
+				if !mini && d.useIngress {
+					ensureNamespaceExists(c, oc, fabric8SystemNamespace)
+					util.Infof("ns is %s\n", ns)
+					runTemplate(c, oc, "ingress-nginx", ns, domain, apiserver, d.pv, true, params)
+					externalNodeName = addIngressInfraLabel(c, ns)
+				}
 			}
+
+			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
+
+			/*
+				mini, _ := util.IsMini()
+				if mini {
+					createMissingPVs(c, ns)
+				}
+			*/
+
+			printSummary(typeOfMaster, externalNodeName, ns, domain, c)
 		}
+		keycloakUrl := strings.TrimSuffix(FindServiceURL(ns, "keycloak", c, true), "/")
+		if len(keycloakUrl) == 0 {
+			util.Warn("\nCould not find keycloak service yet!\n")
+		} else {
+			clientID := params["GITHUB_OAUTH_CLIENT_ID"]
+			callbackURL := keycloakUrl + "/auth/realms/fabric8/broker/github/endpoint"
 
-		updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
-
-		mini, _ := util.IsMini()
-		if mini {
-			createMissingPVs(c, ns)
+			util.Info("\nPlease make sure your github OAuth Application Client ID: ")
+			util.Success(clientID)
+			util.Info(" points to the\nAuthorization callback URL: ")
+			util.Success(callbackURL)
+			util.Info("\n\n")
 		}
-
-		printSummary(typeOfMaster, externalNodeName, ns, domain, c)
 		if d.openConsole {
 			openService(ns, "fabric8", c, false, true)
 		}
+
+		if !legacyPackage && typeOfMaster != util.Kubernetes {
+			util.Info("\n\nPlease can you invoke the following commands as a cluster admin\n\n")
+			if mini {
+				util.Infof("oc login -u system:admin\n")
+			}
+			util.Infof(`cat <<EOF | oc create -f -
+kind: OAuthClient
+apiVersion: v1
+metadata:
+  name: fabric8-online-platform
+secret: fabric8
+redirectURIs:
+- "http://%s/auth/realms/fabric8/broker/openshift-v3/endpoint"
+grantMethod: prompt
+EOF
+oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:init-tenant
+
+`, keycloakUrl, ns)
+		}
 	}
+}
+
+func waitForStorageClass(c *k8sclient.Client) {
+	// TODO
 }
 
 func logPackageVersion(packageName string, version string) {
@@ -600,7 +688,7 @@ func hasExistingLabel(nodes *api.NodeList, label string) (bool, string) {
 	return false, ""
 }
 
-func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, pv bool, create bool) {
+func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, pv bool, create bool, params map[string]string) {
 	util.Info("\n\nInstalling: ")
 	util.Successf("%s\n\n", appToRun)
 	typeOfMaster := util.TypeOfMaster(c)
@@ -609,14 +697,14 @@ func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns st
 		if err != nil {
 			printError("Failed to load app "+appToRun, err)
 		}
-		createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc, pv, true)
+		createTemplate(jsonData, format, appToRun, ns, domain, apiserver, c, oc, pv, true, params)
 	} else {
 		tmpl, err := oc.Templates(ns).Get(appToRun)
 		if err != nil {
 			printError("Failed to load template "+appToRun, err)
 		}
 		util.Infof("Loaded template with %d objects", len(tmpl.Objects))
-		processTemplate(tmpl, ns, domain, apiserver)
+		processTemplate(tmpl, ns, domain, apiserver, params)
 
 		objectCount := len(tmpl.Objects)
 
@@ -655,7 +743,7 @@ func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *o
 	}
 }
 
-func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client, pv bool, create bool) {
+func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client, pv bool, create bool, params map[string]string) {
 	var v1tmpl tapiv1.Template
 	var err error
 	if format == "yaml" {
@@ -673,7 +761,7 @@ func createTemplate(jsonData []byte, format string, templateName string, ns stri
 		util.Fatalf("Cannot convert %s template to deploy: %v", templateName, err)
 	}
 
-	processTemplate(&tmpl, ns, domain, apiserver)
+	processTemplate(&tmpl, ns, domain, apiserver, params)
 
 	objectCount := len(tmpl.Objects)
 
@@ -746,7 +834,7 @@ func getName(o runtime.Object) (string, error) {
 	return linker.Name(o)
 }
 
-func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver string) {
+func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver string, params map[string]string) {
 	generators := map[string]generator.Generator{
 		"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
 	}
@@ -757,25 +845,36 @@ func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver st
 		util.Fatalf("%s", err)
 	}
 
-	namespaceIdx := -1
-	for i, param := range tmpl.Parameters {
-		if param.Name == "NAMESPACE" {
-			namespaceIdx = i
+	if len(domain) == 0 {
+		domain = ip + ".nip.io"
+	}
+	params["NAMESPACE"] = ns
+	params["APISERVER_HOSTPORT"] = apiserver
+	params["APISERVER"] = ip
+	params["NODE_IP"] = ip
+	params["OAUTH_AUTHORIZE_PORT"] = port
+	params["DOMAIN"] = domain
+
+	for k, v := range params {
+		found := false
+		for i, param := range tmpl.Parameters {
+			if param.Name == k {
+				tmpl.Parameters[i].Value = v
+				found = true
+				break
+			}
+
+		}
+		if !found {
+			tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
+				Name:  k,
+				Value: v,
+			})
 		}
 	}
-	if namespaceIdx >= 0 {
-		tmpl.Parameters[namespaceIdx].Value = ns
+	for _, param := range tmpl.Parameters {
+		util.Infof("Template %s = %s\n", param.Name, param.Value)
 	}
-	tmpl.Parameters = append(tmpl.Parameters, tapi.Parameter{
-		Name:  "DOMAIN",
-		Value: ns + "." + domain,
-	}, tapi.Parameter{
-		Name:  "APISERVER",
-		Value: ip,
-	}, tapi.Parameter{
-		Name:  "OAUTH_AUTHORIZE_PORT",
-		Value: port,
-	})
 
 	errorList := p.Process(tmpl)
 	for _, errInfo := range errorList {

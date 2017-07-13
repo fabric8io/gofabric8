@@ -59,6 +59,11 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 			if len(apiserver) == 0 {
 				apiserver = domain
 			}
+			exposer := cmd.Flags().Lookup(exposerFlag).Value.String()
+			githubClientID := cmd.Flags().Lookup(githubClientIDFlag).Value.String()
+			githubClientSecret := cmd.Flags().Lookup(githubClientSecretFlag).Value.String()
+
+			params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns)
 
 			yes := cmd.Flags().Lookup(yesFlag).Value.String() == "false"
 			if strings.Contains(domain, "=") {
@@ -69,13 +74,16 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 				initSchema()
 
 				for _, app := range args {
-					runTemplate(c, oc, app, ns, domain, apiserver, pv, create)
+					runTemplate(c, oc, app, ns, domain, apiserver, pv, create, params)
 				}
 			}
 		},
 	}
 	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")
+	cmd.PersistentFlags().String(exposerFlag, "", "The exposecontroller strategy such as Ingress, Router, NodePort, LoadBalancer")
+	cmd.PersistentFlags().String(githubClientIDFlag, "", "The github OAuth Application Client ID. Defaults to $GITHUB_OAUTH_CLIENT_ID if not specified")
+	cmd.PersistentFlags().String(githubClientSecretFlag, "", "The github OAuth Application Client Secret. Defaults to $GITHUB_OAUTH_CLIENT_SECRET if not specified")
 	cmd.PersistentFlags().Bool(pvFlag, true, "Enable the use of persistence (enabling the PersistentVolumeClaims)?")
 	cmd.PersistentFlags().Bool(updateFlag, false, "Enable update mode which updates any existing resources?")
 	return cmd
