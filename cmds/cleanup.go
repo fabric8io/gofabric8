@@ -33,8 +33,6 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 )
 
-const ()
-
 // NewCmdCleanUp delete all fabric8 apps, environments and configurations
 func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -43,14 +41,19 @@ func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 		Long:  `Hard delete all fabric8 apps, environments and configurations`,
 
 		Run: func(cmd *cobra.Command, args []string) {
-			currentContext, err := util.GetCurrentContext()
-			if err != nil {
-				util.Fatalf("%s", err)
-			}
-			fmt.Fprintf(os.Stdout, `WARNING this is destructive and will remove ALL fabric8 apps, environments and configuration from cluster %s.  Continue? [y/N] `, currentContext)
 
 			var confirm string
-			fmt.Scanln(&confirm)
+			if cmd.Flags().Lookup(yesFlag).Value.String() == "true" {
+				confirm = "y"
+			} else {
+				currentContext, err := util.GetCurrentContext()
+				if err != nil {
+					util.Fatalf("%s", err)
+				}
+				fmt.Fprintf(os.Stdout, `WARNING this is destructive and will remove ALL fabric8 apps, environments and configuration from cluster %s.  Continue? [y/N] `, currentContext)
+
+				fmt.Scanln(&confirm)
+			}
 
 			if confirm == "y" {
 				util.Info("Removing...\n")
