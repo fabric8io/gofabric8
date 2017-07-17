@@ -64,6 +64,8 @@ func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 }
 
 func deleteSystem(f *cmdutil.Factory) error {
+	var oc *oclient.Client
+
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	typeOfMaster := util.TypeOfMaster(c)
@@ -72,10 +74,18 @@ func deleteSystem(f *cmdutil.Factory) error {
 		return err
 	}
 
-	deletePersistentVolumeClaims(c, ns, selector)
 	if typeOfMaster == util.OpenShift {
-		oc, _ := client.NewOpenShiftClient(cfg)
+		oc, _ = client.NewOpenShiftClient(cfg)
 		initSchema()
+		projects, err := oc.Projects().List(api.ListOptions{})
+		cmdutil.CheckErr(err)
+
+		ns = detectCurrentUserProject(ns, projects.Items, c)
+	}
+
+	deletePersistentVolumeClaims(c, ns, selector)
+
+	if typeOfMaster == util.OpenShift {
 		err = deleteProjects(oc)
 	} else {
 		err = deleteNamespaces(c, selector)
