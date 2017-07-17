@@ -152,7 +152,7 @@ func deleteDeployments(c *k8sclient.Client, ns string, selector labels.Selector)
 }
 
 func deletePersistentVolumeClaims(c *k8sclient.Client, ns string, selector labels.Selector) (err error) {
-	pvcs, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{})
+	pvcs, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{LabelSelector: selector})
 	if pvcs == nil {
 		return
 	}
