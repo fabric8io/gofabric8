@@ -33,8 +33,6 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 )
 
-const ()
-
 // NewCmdCleanUp delete all fabric8 apps, environments and configurations
 func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -43,14 +41,19 @@ func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 		Long:  `Hard delete all fabric8 apps, environments and configurations`,
 
 		Run: func(cmd *cobra.Command, args []string) {
-			currentContext, err := util.GetCurrentContext()
-			if err != nil {
-				util.Fatalf("%s", err)
-			}
-			fmt.Fprintf(os.Stdout, `WARNING this is destructive and will remove ALL fabric8 apps, environments and configuration from cluster %s.  Continue? [y/N] `, currentContext)
 
 			var confirm string
-			fmt.Scanln(&confirm)
+			if cmd.Flags().Lookup(yesFlag).Value.String() == "true" {
+				confirm = "y"
+			} else {
+				currentContext, err := util.GetCurrentContext()
+				if err != nil {
+					util.Fatalf("%s", err)
+				}
+				fmt.Fprintf(os.Stdout, `WARNING this is destructive and will remove ALL fabric8 apps, environments and configuration from cluster %s.  Continue? [y/N] `, currentContext)
+
+				fmt.Scanln(&confirm)
+			}
 
 			if confirm == "y" {
 				util.Info("Removing...\n")
@@ -64,6 +67,8 @@ func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 }
 
 func deleteSystem(f *cmdutil.Factory) error {
+	var oc *oclient.Client
+
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	typeOfMaster := util.TypeOfMaster(c)
@@ -72,10 +77,18 @@ func deleteSystem(f *cmdutil.Factory) error {
 		return err
 	}
 
-	deletePersistentVolumeClaims(c, ns, selector)
 	if typeOfMaster == util.OpenShift {
-		oc, _ := client.NewOpenShiftClient(cfg)
+		oc, _ = client.NewOpenShiftClient(cfg)
 		initSchema()
+		projects, err := oc.Projects().List(api.ListOptions{})
+		cmdutil.CheckErr(err)
+
+		ns = detectCurrentUserProject(ns, projects.Items, c)
+	}
+
+	deletePersistentVolumeClaims(c, ns, selector)
+
+	if typeOfMaster == util.OpenShift {
 		err = deleteProjects(oc)
 	} else {
 		err = deleteNamespaces(c, selector)
@@ -152,7 +165,7 @@ func deleteDeployments(c *k8sclient.Client, ns string, selector labels.Selector)
 }
 
 func deletePersistentVolumeClaims(c *k8sclient.Client, ns string, selector labels.Selector) (err error) {
-	pvcs, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{})
+	pvcs, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{LabelSelector: selector})
 	if pvcs == nil {
 		return
 	}
