@@ -188,7 +188,7 @@ func defaultParameters(c *k8client.Client, exposer string, githubClientID string
 		if typeOfMaster == util.Kubernetes {
 			exposer = "Ingress"
 		} else {
-			exposer = "Router"
+			exposer = "Route"
 		}
 	}
 	if len(githubClientID) == 0 {
