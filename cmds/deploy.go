@@ -541,11 +541,12 @@ func waitForStorageClass() {
 
 	err := RetryAfter(retry, func() (err error) {
 		strToLookFor := "standard (default)"
-		err = errors.New(strToLookFor)
 		cmd := exec.Command("kubectl", "get", "StorageClass")
 		found, err := waitCmdForText(cmd, strToLookFor)
 		if found {
 			err = nil
+		} else {
+			err = errors.New(strToLookFor)
 		}
 		return
 	}, 5)
