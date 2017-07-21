@@ -16,6 +16,8 @@
 package cmds
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -26,6 +28,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -55,6 +58,7 @@ import (
 	tapiv1 "github.com/openshift/origin/pkg/template/api/v1"
 	"github.com/openshift/origin/pkg/template/generator"
 	"github.com/spf13/cobra"
+
 	"k8s.io/kubernetes/pkg/api"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
@@ -407,7 +411,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				addIngressInfraLabel(c, ns)
 				// TODO output wildcard DNS information here?
 
-				waitForStorageClass(c)
+				waitForStorageClass()
 			}
 		} else {
 			if !strings.HasPrefix(uri, "file://") {
@@ -532,8 +536,23 @@ oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:in
 	}
 }
 
-func waitForStorageClass(c *k8sclient.Client) {
-	// TODO
+func waitForStorageClass() {
+	retry := 50
+
+	err := RetryAfter(retry, func() (err error) {
+		strToLookFor := "standard (default)"
+		err = errors.New(strToLookFor)
+		cmd := exec.Command("kubectl", "get", "StorageClass")
+		found, err := waitCmdForText(cmd, strToLookFor)
+		if found {
+			err = nil
+		}
+		return
+	}, 5)
+
+	if err != nil {
+		util.Fatalf("Cannot get default storageclass: %s", err)
+	}
 }
 
 func validateSystemKubernetesVersion(c *k8sclient.Client) error {
@@ -1722,4 +1741,26 @@ func checkIfPVCsPending(c *k8sclient.Client, ns string) (bool, error) {
 			// retry
 		}
 	}
+}
+
+func waitCmdForText(cmd *exec.Cmd, str string) (ret bool, err error) {
+	// NOTE(chmou): Make sure the process is not stuck
+	timer := time.AfterFunc(90*time.Second, func() {
+		cmd.Process.Kill()
+	})
+
+	raw, err := cmd.Output()
+	if err != nil {
+		return
+	}
+
+	s := bufio.NewScanner(bytes.NewReader(raw))
+	for s.Scan() {
+		if strings.HasPrefix(s.Text(), str) {
+			ret = true
+		}
+	}
+
+	timer.Stop()
+	return
 }
