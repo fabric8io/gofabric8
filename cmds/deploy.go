@@ -30,6 +30,7 @@ import (
 	"reflect"
 	"regexp"
 	goruntime "runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -397,6 +398,15 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			}
 
 			if mini {
+				if packageName == systemPackage {
+					err = validateSystemKubernetesVersion(c)
+					if err != nil {
+						util.Fatalf("Incompatible Kubernetes version: %v\n\n", err)
+					}
+				}
+				addIngressInfraLabel(c, ns)
+				// TODO output wildcard DNS information here?
+
 				waitForStorageClass(c)
 			}
 		} else {
@@ -524,6 +534,36 @@ oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:in
 
 func waitForStorageClass(c *k8sclient.Client) {
 	// TODO
+}
+
+func validateSystemKubernetesVersion(c *k8sclient.Client) error {
+	info, err := c.ServerVersion()
+	if err != nil {
+		return fmt.Errorf("Could not load the ServerVersion due to %v", err)
+	}
+	minMajor := 1
+	minMinor := 7
+	majorText := info.Major
+	minorText := info.Minor
+	major, err := strconv.Atoi(majorText)
+	if err != nil {
+		util.Warnf("Could not parse major version text %s due to %v", majorText, err)
+		util.Warnf("We require kubernetes %d.%d or later - will assume its OK!", minMajor, minMinor)
+		return nil
+	}
+	minor, err := strconv.Atoi(minorText)
+	if err != nil {
+		util.Warnf("Could not parse major version text %s due to %v", minorText, err)
+		util.Warnf("We require kubernetes %d.%d or later - will assume its OK!", minMajor, minMinor)
+		return nil
+	}
+	util.Info("Kubernetes server version is: ")
+	util.Successf("%d.%d\n\n", major, minor)
+
+	if major > minMajor || (major == minMajor && minor >= minMinor) {
+		return nil
+	}
+	return fmt.Errorf("Kubernetes Server version %d.%d is too old. We require version %d.%d or later", major, minor, minMajor, minMinor)
 }
 
 func logPackageVersion(packageName string, version string) {
@@ -1129,7 +1169,8 @@ func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns strin
 		paths = []string{"oapi", "v1", kinds}
 	} else if kind == "Namespace" {
 		paths = []string{"api", "v1", "namespaces"}
-
+	} else if kind == "CustomResourceDefinition" {
+		paths = []string{"apis", "apiextensions.k8s.io", "v1beta1", "customresourcedefinitions"}
 	} else {
 		paths = []string{"api", "v1", "namespaces", ns, kinds}
 	}
