@@ -103,6 +103,7 @@ const (
 	exposerFlag            = "exposer"
 	githubClientSecretFlag = "github-client-secret"
 	githubClientIDFlag     = "github-client-id"
+	storageclassWaitFlag   = "wait-storageclass"
 
 	systemPackage   = "system"
 	platformPackage = "platform"
@@ -162,9 +163,18 @@ type DefaultFabric8Deployment struct {
 	yes                bool
 	openConsole        bool
 	legacyFlag         bool
+	storageclassWait   bool
 }
 
 type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
+
+func isFlag(cmd *cobra.Command, name string) bool {
+	flag := cmd.Flags().Lookup(name)
+	if flag != nil {
+		return flag.Value.String() == "true"
+	}
+	return false
+}
 
 func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -187,17 +197,18 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				githubClientSecret: cmd.Flags().Lookup(githubClientSecretFlag).Value.String(),
 				githubClientID:     cmd.Flags().Lookup(githubClientIDFlag).Value.String(),
 
-				deployConsole:   cmd.Flags().Lookup(consoleFlag).Value.String() == "true",
-				dockerRegistry:  cmd.Flags().Lookup(dockerRegistryFlag).Value.String(),
-				useIngress:      cmd.Flags().Lookup(useIngressFlag).Value.String() == "true",
-				templates:       cmd.Flags().Lookup(templatesFlag).Value.String() == "true",
-				versionPlatform: cmd.Flags().Lookup(versionPlatformFlag).Value.String(),
-				versioniPaaS:    cmd.Flags().Lookup(versioniPaaSFlag).Value.String(),
-				useLoadbalancer: cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true",
-				pv:              cmd.Flags().Lookup(pvFlag).Value.String() == "true",
-				yes:             cmd.Flags().Lookup(yesFlag).Value.String() == "false",
-				openConsole:     cmd.Flags().Lookup(openConsoleFlag).Value.String() == "true",
-				legacyFlag:      cmd.Flags().Lookup(legacyFlag).Value.String() == "true",
+				deployConsole:    cmd.Flags().Lookup(consoleFlag).Value.String() == "true",
+				dockerRegistry:   cmd.Flags().Lookup(dockerRegistryFlag).Value.String(),
+				useIngress:       cmd.Flags().Lookup(useIngressFlag).Value.String() == "true",
+				templates:        cmd.Flags().Lookup(templatesFlag).Value.String() == "true",
+				versionPlatform:  cmd.Flags().Lookup(versionPlatformFlag).Value.String(),
+				versioniPaaS:     cmd.Flags().Lookup(versioniPaaSFlag).Value.String(),
+				useLoadbalancer:  cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true",
+				pv:               cmd.Flags().Lookup(pvFlag).Value.String() == "true",
+				yes:              cmd.Flags().Lookup(yesFlag).Value.String() == "false",
+				openConsole:      cmd.Flags().Lookup(openConsoleFlag).Value.String() == "true",
+				legacyFlag:       cmd.Flags().Lookup(legacyFlag).Value.String() == "true",
+				storageclassWait: isFlag(cmd, storageclassWaitFlag),
 			}
 			deploy(f, d)
 		},
@@ -223,6 +234,8 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
 	cmd.PersistentFlags().Bool(openConsoleFlag, true, "Should we wait an open the console?")
 	cmd.PersistentFlags().Bool(legacyFlag, false, "Should we use the legacy installation mode for versions before 4.x of fabric8?")
+	cmd.PersistentFlags().Bool(storageclassWaitFlag, true, "Should we wait for the storageclass resource to be ready on minikube before deploying?")
+
 	return cmd
 }
 
@@ -240,6 +253,7 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 	d.useLoadbalancer = false
 	d.openConsole = false
 	d.packageName = systemPackage
+	d.storageclassWait = true
 	return d
 }
 
@@ -411,7 +425,9 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				addIngressInfraLabel(c, ns)
 				// TODO output wildcard DNS information here?
 
-				waitForStorageClass()
+				if d.storageclassWait {
+					waitForStorageClass()
+				}
 			}
 		} else {
 			if !strings.HasPrefix(uri, "file://") {
@@ -537,7 +553,9 @@ oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:in
 }
 
 func waitForStorageClass() {
-	retry := 50
+	retry := 200
+
+	util.Infof("Waiting for the default storageclass\n")
 
 	err := RetryAfter(retry, func() (err error) {
 		strToLookFor := "standard (default)"
@@ -546,13 +564,13 @@ func waitForStorageClass() {
 		if found {
 			err = nil
 		} else {
-			err = errors.New(strToLookFor)
+			err = fmt.Errorf("No default storage class found yet")
 		}
 		return
-	}, 5)
+	}, time.Second*2)
 
 	if err != nil {
-		util.Fatalf("Cannot get default storageclass: %s", err)
+		util.Fatalf("No default storageclass found! Please try again later\n")
 	}
 }
 
@@ -717,22 +735,32 @@ func addIngressInfraLabel(c *k8sclient.Client, ns string) string {
 	if externalNodeName != "" {
 		return externalNodeName
 	}
+	firstNodeName := ""
 	if !hasExistingExposeIPLabel && len(nodes.Items) > 0 {
 		for _, node := range nodes.Items {
-			if !node.Spec.Unschedulable {
-				changed = addLabelIfNotExist(&node.ObjectMeta, externalIPLabel, "true")
-				if changed {
-					_, err = nodeClient.Update(&node)
-					if err != nil {
-						printError("Failed to label node with ", err)
-					}
-					return node.Name
+
+			changed = addLabelIfNotExist(&node.ObjectMeta, externalIPLabel, "true")
+			if changed {
+				_, err = nodeClient.Update(&node)
+				if err != nil {
+					printError("Failed to label node with ", err)
 				}
+				return node.Name
+			}
+			if len(firstNodeName) == 0 {
+				firstNodeName = node.Name
 			}
 		}
 	}
 	if !changed && !hasExistingExposeIPLabel {
-		util.Warnf("Unable to add label for ingress controller to run on a specific node, please add manually: kubectl label node [your node name] %s=true", externalIPLabel)
+		if len(firstNodeName) > 0 {
+			// lets try using kubectl
+			cmd := exec.Command("kubectl", "label", "node", firstNodeName, "fabric8.io/externalIP=true", "--overwrite")
+			if err := cmd.Run(); err == nil {
+				return firstNodeName
+			}
+			util.Warnf("Unable to add label for ingress controller to run on a specific node, please add manually: kubectl label node [your node name] %s=true\n\n", externalIPLabel)
+		}
 	}
 	return ""
 }
