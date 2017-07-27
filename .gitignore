@@ -3,4 +3,6 @@ gofabric8
 /release
 *.iml
 .idea
+.settings
+.project
 .DS_Store

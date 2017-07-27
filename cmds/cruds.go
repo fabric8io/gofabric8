@@ -49,8 +49,21 @@ func NewCmdDelete(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 
 	cmd.AddCommand(NewCmdDeleteCluster(f))
 	cmd.AddCommand(NewCmdDeleteEnviron(f))
-	cmd.AddCommand(NewCmdCleanUpSystem(f))
+	return cmd
+}
+
+func NewCmdCleanUp(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "clean",
+		Short: "Clean up a resource type without deleting it",
+		Long:  longhelp,
+	}
+
 	cmd.AddCommand(NewCmdCleanUpApp(f))
+	cmd.AddCommand(NewCmdCleanUpContentRepository(f))
+	cmd.AddCommand(NewCmdCleanUpJenkins(f))
+	cmd.AddCommand(NewCmdCleanUpSystem(f))
+	cmd.AddCommand(NewCmdCleanUpTenant(f))
 	return cmd
 }
 

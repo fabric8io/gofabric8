@@ -17,18 +17,21 @@ package cmds
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/daviddengcn/go-colortext"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 
-	"io/ioutil"
-
+	oclient "github.com/openshift/origin/pkg/client"
 	osapi "github.com/openshift/origin/pkg/project/api"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	k8api "k8s.io/kubernetes/pkg/api/unversioned"
 	k8client "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -80,13 +83,139 @@ func defaultNamespace(cmd *cobra.Command, f *cmdutil.Factory) (string, error) {
 	return ns, err
 }
 
-// currentProject ...
+// ensureDeploymentOrDCHasReplicas ensures that the given Deployment or DeploymentConfig has at least the right number
+// of replicas
+func ensureDeploymentOrDCHasReplicas(c *k8client.Client, oc *oclient.Client, ns string, name string, minRelicas int32) error {
+	typeOfMaster := util.TypeOfMaster(c)
+	if typeOfMaster == util.OpenShift {
+		dc, err := oc.DeploymentConfigs(ns).Get(name)
+		if err == nil && dc != nil {
+			if dc.Spec.Replicas >= minRelicas {
+				return nil
+			}
+			dc.Spec.Replicas = minRelicas
+			util.Infof("Scaling DeploymentConfig %s in namespace %s to %d\n", name, ns, minRelicas)
+			_, err = oc.DeploymentConfigs(ns).Update(dc)
+			return err
+		}
+	}
+	deployment, err := c.Extensions().Deployments(ns).Get(name)
+	if err != nil || deployment == nil {
+		return fmt.Errorf("Could not find a Deployment or DeploymentConfig called %s in namespace %s due to %v", name, ns, err)
+	}
+	if deployment.Spec.Replicas >= minRelicas {
+		return nil
+	}
+	deployment.Spec.Replicas = minRelicas
+	util.Infof("Scaling Deployment %s in namespace %s to %d\n", name, ns, minRelicas)
+	_, err = c.Extensions().Deployments(ns).Update(deployment)
+	return err
+}
+
+// waitForReadyPodForDeploymentOrDC waits for a ready pod in a Deployment or DeploymentConfig
+// in the given namespace with the given name
+func waitForReadyPodForDeploymentOrDC(c *k8client.Client, oc *oclient.Client, ns string, name string) (string, error) {
+	typeOfMaster := util.TypeOfMaster(c)
+	if typeOfMaster == util.OpenShift {
+		dc, err := oc.DeploymentConfigs(ns).Get(name)
+		if err == nil && dc != nil {
+			selector := dc.Spec.Selector
+			if selector == nil {
+				return "", fmt.Errorf("No selector defined on Deployment %s in namespace %s", name, ns)
+			}
+			return waitForReadyPodForSelector(c, oc, ns, selector)
+		}
+	}
+	deployment, err := c.Extensions().Deployments(ns).Get(name)
+	if err != nil || deployment == nil {
+		return "", fmt.Errorf("Could not find a Deployment or DeploymentConfig called %s in namespace %s due to %v", name, ns, err)
+	}
+	selector := deployment.Spec.Selector
+	if selector == nil {
+		return "", fmt.Errorf("No selector defined on Deployment %s in namespace %s", name, ns)
+	}
+	labels := selector.MatchLabels
+	if labels == nil {
+		return "", fmt.Errorf("No MatchLabels defined on the Selector of Deployment %s in namespace %s", name, ns)
+	}
+	return waitForReadyPodForSelector(c, oc, ns, labels)
+}
+
+func waitForReadyPodForSelector(c *k8client.Client, oc *oclient.Client, ns string, labels map[string]string) (string, error) {
+	selector, err := unversioned.LabelSelectorAsSelector(&unversioned.LabelSelector{MatchLabels: labels})
+	if err != nil {
+		return "", err
+	}
+	util.Infof("Waiting for a running pod in namespace %s with labels %v\n", ns, labels)
+	for {
+		pods, err := c.Pods(ns).List(api.ListOptions{
+			LabelSelector: selector,
+		})
+		if err != nil {
+			return "", err
+		}
+		name := ""
+		lastTime := time.Time{}
+		for _, pod := range pods.Items {
+			phase := pod.Status.Phase
+			if phase == api.PodRunning {
+				created := pod.CreationTimestamp
+				if name == "" || created.After(lastTime) {
+					lastTime = created.Time
+					name = pod.Name
+				}
+			}
+		}
+		if name != "" {
+			util.Info("Found newest pod: ")
+			util.Successf("%s\n", name)
+			return name, nil
+		}
+
+		// TODO replace with a watch flavour
+		time.Sleep(time.Second)
+	}
+}
+
+func detectCurrentUserNamespace(ns string, c *k8client.Client, oc *oclient.Client) (string, error) {
+	typeOfMaster := util.TypeOfMaster(c)
+	if typeOfMaster == util.OpenShift {
+		projects, err := oc.Projects().List(api.ListOptions{})
+		if err != nil {
+			return "", err
+		}
+		return detectCurrentUserProject(ns, projects.Items, c), nil
+	} else {
+		namespaces, err := c.Namespaces().List(api.ListOptions{})
+		if err != nil {
+			return "", err
+		}
+		return detectCurrentUserNamespaceFromNamespaces(ns, namespaces.Items, c), nil
+	}
+}
+
+// detectCurrentUserProject finds the user namespace name from the given current projects
+func detectCurrentUserNamespaceFromNamespaces(current string, items []api.Namespace, c *k8client.Client) (chosenone string) {
+	names := []string{}
+	for _, p := range items {
+		names = append(names, p.Name)
+	}
+	return detectCurrentUserNamespaceFromNames(current, names, c)
+}
+
 func detectCurrentUserProject(current string, items []osapi.Project, c *k8client.Client) (chosenone string) {
+	names := []string{}
+	for _, p := range items {
+		names = append(names, p.Name)
+	}
+	return detectCurrentUserNamespaceFromNames(current, names, c)
+}
+
+func detectCurrentUserNamespaceFromNames(current string, items []string, c *k8client.Client) (chosenone string) {
 	var detected []string
 	var prefixes = []string{"che", "jenkins", "run", "stage"}
 
-	for _, p := range items {
-		name := p.Name
+	for _, name := range items {
 		// NB(chmou): if we find a che suffix then store it, we are using the
 		// project prefixes as create from init-tenant. this probably need to be
 		// updated to be future proof.
@@ -126,20 +255,33 @@ func detectCurrentUserProject(current string, items []osapi.Project, c *k8client
 	cmdutil.CheckErr(err)
 
 	// Make sure after all it exists
-	for _, p := range items {
-		if p.Name == chosenone {
-			cfgmap, err := c.ConfigMaps(p.Name).List(api.ListOptions{LabelSelector: selector})
+	for _, name := range items {
+		if name == chosenone {
+			cfgmap, err := c.ConfigMaps(name).List(api.ListOptions{LabelSelector: selector})
 			cmdutil.CheckErr(err)
 			if len(cfgmap.Items) == 0 {
 				//TODO: add command line switch to specify the environment if we can't detect it.
-				util.Fatalf("Could not autodetect your environment, there is no configmaps environment in the `%s` project.\n", p.Name)
+				util.Fatalf("Could not autodetect your environment, there is no configmaps environment in the `%s` namespace.\n", name)
 			}
 			return
 		}
 	}
 
-	util.Errorf("Cannot find parent project for: %s\n", current)
+	util.Errorf("Cannot find parent namespace for: %s\n", current)
 	return ""
+}
+
+// runCommand runs the given command on the command line and returns an error if it fails
+func runCommand(prog string, args ...string) error {
+	cmd := exec.Command(prog, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		text := prog + " " + strings.Join(args, " ")
+		return fmt.Errorf("Failed to run command %s due to error %v", text, err)
+	}
+	return nil
 }
 
 func defaultDomain() string {
