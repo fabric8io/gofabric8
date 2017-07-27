@@ -155,9 +155,9 @@ func createEnviron(cmd *cobra.Command, args []string, detectedNS string, c *k8cl
 // NewCmdDeleteEnviron is a command to delete an environ using: gofabric8 delete environ abcd
 func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "environ",
+		Use:     "env",
 		Short:   "Delete environment from fabric8-environments configmap",
-		Aliases: []string{"env"},
+		Aliases: []string{"environ", "enviroment"},
 		Run: func(cmd *cobra.Command, args []string) {
 			wp := cmd.Flags().Lookup("work-project").Value.String()
 			detectedNS, c, _ := getOpenShiftClient(f, wp)
