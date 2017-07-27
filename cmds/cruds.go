@@ -59,10 +59,11 @@ func NewCmdCleanUp(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 		Long:  longhelp,
 	}
 
-	cmd.AddCommand(NewCmdCleanUpSystem(f))
-	cmd.AddCommand(NewCmdCleanUpTenant(f))
 	cmd.AddCommand(NewCmdCleanUpApp(f))
 	cmd.AddCommand(NewCmdCleanUpContentRepository(f))
+	cmd.AddCommand(NewCmdCleanUpJenkins(f))
+	cmd.AddCommand(NewCmdCleanUpSystem(f))
+	cmd.AddCommand(NewCmdCleanUpTenant(f))
 	return cmd
 }
 
