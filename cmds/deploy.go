@@ -42,6 +42,8 @@ import (
 	"github.com/ghodss/yaml"
 	aapi "github.com/openshift/origin/pkg/authorization/api"
 	aapiv1 "github.com/openshift/origin/pkg/authorization/api/v1"
+	buildapi "github.com/openshift/origin/pkg/build/api"
+	buildapiv1 "github.com/openshift/origin/pkg/build/api/v1"
 	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
@@ -262,6 +264,8 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 func initSchema() {
 	aapi.AddToScheme(api.Scheme)
 	aapiv1.AddToScheme(api.Scheme)
+	buildapi.AddToScheme(api.Scheme)
+	buildapiv1.AddToScheme(api.Scheme)
 	tapi.AddToScheme(api.Scheme)
 	tapiv1.AddToScheme(api.Scheme)
 	projectapi.AddToScheme(api.Scheme)
