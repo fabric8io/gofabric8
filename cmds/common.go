@@ -315,6 +315,9 @@ func confirmAction(yes bool) bool {
 	return true
 }
 
+func isVersion3Package(appName string) bool {
+	return appName == platformPackage || appName == consolePackage || appName == iPaaSPackage
+}
 func showBanner() {
 	if runtime.GOOS == "windows" {
 		return
@@ -333,7 +336,7 @@ func defaultParameters(c *k8client.Client, exposer string, githubClientID string
 			exposer = "Route"
 		}
 	}
-	if appName == platformPackage || appName == consolePackage || appName == iPaaSPackage {
+	if isVersion3Package(appName) {
 		return map[string]string{
 			"NAMESPACE": ns,
 			"EXPOSER":   exposer,
