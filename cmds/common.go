@@ -324,13 +324,19 @@ func showBanner() {
 	ct.ResetColor()
 }
 
-func defaultParameters(c *k8client.Client, exposer string, githubClientID string, githubClientSecret string, ns string) map[string]string {
+func defaultParameters(c *k8client.Client, exposer string, githubClientID string, githubClientSecret string, ns string, appName string) map[string]string {
 	if len(exposer) == 0 {
 		typeOfMaster := util.TypeOfMaster(c)
 		if typeOfMaster == util.Kubernetes {
 			exposer = "Ingress"
 		} else {
 			exposer = "Route"
+		}
+	}
+	if appName == platformPackage || appName == consolePackage || appName == iPaaSPackage {
+		return map[string]string{
+			"NAMESPACE": ns,
+			"EXPOSER":   exposer,
 		}
 	}
 	if len(githubClientID) == 0 {
