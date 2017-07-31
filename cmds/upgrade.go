@@ -103,9 +103,7 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 				githubClientID := cmd.Flags().Lookup(githubClientIDFlag).Value.String()
 				githubClientSecret := cmd.Flags().Lookup(githubClientSecretFlag).Value.String()
 
-				params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns)
-
-				err = upgradePackages(ns, c, ocl, args, all, version, domain, apiserver, pv, params)
+				err = upgradePackages(ns, c, ocl, args, all, version, domain, apiserver, pv, exposer, githubClientID, githubClientSecret)
 				if err != nil {
 					util.Failuref("%v", err)
 					util.Blank()
@@ -127,7 +125,7 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv bool, params map[string]string) error {
+func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv bool, exposer string, githubClientID string, githubClientSecret string) error {
 	selector, err := createPackageSelector()
 	if err != nil {
 		return err
@@ -143,6 +141,9 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 	found := false
 	for _, p := range list.Items {
 		name := p.Name
+
+		params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name)
+
 		include := all
 		if !all {
 			for _, arg := range args {
@@ -189,6 +190,8 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 			util.Infof("No packages found. Have you installed a recent fabric8 package yet?\nYou could try passing `fabric8-console` or `fabric8-platform` as a command line argument instead of the `--all` flag?\n")
 		} else {
 			for _, name := range args {
+				params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name)
+
 				if name == platformPackage || name == "fabric8-platform" || name == "fabric8-platform-package" {
 					metadataUrl := urlJoin(mavenPrefix, platformMetadataUrl)
 					packageUrlPrefix := urlJoin(mavenPrefix, platformPackageUrlPrefix)

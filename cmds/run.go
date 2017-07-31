@@ -63,8 +63,6 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 			githubClientID := cmd.Flags().Lookup(githubClientIDFlag).Value.String()
 			githubClientSecret := cmd.Flags().Lookup(githubClientSecretFlag).Value.String()
 
-			params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns)
-
 			yes := cmd.Flags().Lookup(yesFlag).Value.String() == "false"
 			if strings.Contains(domain, "=") {
 				util.Warnf("\nInvalid domain: %s\n\n", domain)
@@ -74,6 +72,8 @@ func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
 				initSchema()
 
 				for _, app := range args {
+					params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, app)
+
 					runTemplate(c, oc, app, ns, domain, apiserver, pv, create, params)
 				}
 			}

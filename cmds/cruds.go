@@ -63,7 +63,9 @@ func NewCmdCleanUp(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd.AddCommand(NewCmdCleanUpContentRepository(f))
 	cmd.AddCommand(NewCmdCleanUpJenkins(f))
 	cmd.AddCommand(NewCmdCleanUpSystem(f))
-	cmd.AddCommand(NewCmdCleanUpTenant(f))
+
+	// TODO
+	// cmd.AddCommand(NewCmdCleanUpTenant(f))
 	return cmd
 }
 

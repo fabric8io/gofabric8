@@ -463,7 +463,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			}
 		}
 
-		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns)
+		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns, packageName)
 
 		// now lets apply this template
 		util.Infof("Now about to install package %s\n", uri)
