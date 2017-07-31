@@ -357,7 +357,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		ensureNamespaceExists(c, oc, ns)
 
-		legacyPackage := d.legacyFlag
+		legacyPackage := d.legacyFlag || isVersion3Package(packageName)
 
 		versionPlatform := ""
 		baseUri := ""
