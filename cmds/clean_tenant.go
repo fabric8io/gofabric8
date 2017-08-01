@@ -77,6 +77,12 @@ func (p *cleanUpTenantFlags) cleanTenant(f *cmdutil.Factory) error {
 		}
 	}
 
+  err = (&cleanUpAppsFlags{
+ 		confirm: true,
+ 	}).cleanApps(f)
+ 	if err != nil {
+ 		return err
+ 	}
 	err = (&cleanUpMavenLocalRepoFlags{
 		confirm: true,
 	}).cleanMavenLocalRepo(f)
@@ -101,12 +107,6 @@ func (p *cleanUpTenantFlags) cleanTenant(f *cmdutil.Factory) error {
 	}
 	fmt.Println("")
 
-	err = (&cleanUpAppsFlags{
-		confirm: true,
-	}).cleanApps(f)
-	if err != nil {
-		return err
-	}
 	util.Info("\n\nCompleted cleaning the tenant resource\n")
 	return nil
 }
