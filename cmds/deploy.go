@@ -431,7 +431,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				addIngressInfraLabel(c, ns)
 				// TODO output wildcard DNS information here?
 
-				if d.storageclassWait {
+				if d.storageclassWait && !legacyPackage {
 					waitForStorageClass()
 				}
 			}
