@@ -99,38 +99,6 @@ func NewCmdCleanUpApp(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func NewCmdCleanUpTenant(f *cmdutil.Factory) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "tenant",
-		Short: "Hard delete your tenant removing all pipelines, apps, jobs and releases",
-
-		Run: func(cmd *cobra.Command, args []string) {
-			var confirm string
-			if cmd.Flags().Lookup(yesFlag).Value.String() == "true" {
-				confirm = "y"
-			} else {
-				fmt.Fprintf(os.Stdout, `WARNING this is destructive and will remove all your pipelines, apps, jobs and releases. Continue? [y/N] `)
-				fmt.Scanln(&confirm)
-			}
-
-			if confirm == "y" {
-				util.Info("Removing all tenant pipelines...\n")
-				err := cleanUpTenant(f)
-				if err != nil {
-					util.Fatalf("Failed to remove tenant %v", err)
-				}
-				return
-			}
-			util.Info("Cancelled")
-		},
-	}
-	return cmd
-}
-
-func cleanUpTenant(f *cmdutil.Factory) error {
-	return nil
-}
-
 func deleteSystem(f *cmdutil.Factory) error {
 	var oc *oclient.Client
 

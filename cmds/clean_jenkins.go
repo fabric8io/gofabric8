@@ -24,24 +24,24 @@ import (
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-type cleanUpContentRepoFlags struct {
+type cleanUpJenkinsFlags struct {
 	confirm bool
 }
 
-// NewCmdCleanUpContentRepository delete files in the tenants content repository
-func NewCmdCleanUpContentRepository(f *cmdutil.Factory) *cobra.Command {
+// NewCmdCleanUpJenkins delete files in the tenants content repository
+func NewCmdCleanUpJenkins(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "content-repo",
-		Short:   "Hard delete all fabric8 apps, environments and configurations",
-		Long:    `Hard delete all fabric8 apps, environments and configurations`,
+		Use:     "jenkins",
+		Short:   "Deletes all the jenkins jobs in your tenant Jenkins service",
+		Long:    `Deletes all the jenkins jobs in your tenant Jenkins service`,
 		Aliases: []string{"content-repository"},
 
 		Run: func(cmd *cobra.Command, args []string) {
-			p := cleanUpContentRepoFlags{}
+			p := cleanUpJenkinsFlags{}
 			if cmd.Flags().Lookup(yesFlag).Value.String() == "true" {
 				p.confirm = true
 			}
-			err := p.cleanContentRepo(f)
+			err := p.cleanUpJenkins(f)
 			if err != nil {
 				util.Fatalf("%s", err)
 			}
@@ -51,7 +51,7 @@ func NewCmdCleanUpContentRepository(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *cleanUpContentRepoFlags) cleanContentRepo(f *cmdutil.Factory) error {
+func (p *cleanUpJenkinsFlags) cleanUpJenkins(f *cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)
@@ -65,7 +65,7 @@ func (p *cleanUpContentRepoFlags) cleanContentRepo(f *cmdutil.Factory) error {
 
 	if !p.confirm {
 		confirm := ""
-		util.Warn("WARNING this is destructive and will remove ALL of the releases in your content-repository\n")
+		util.Warn("WARNING this is destructive and will remove ALL of the jenkins jobs\n")
 		util.Info("for your tenant: ")
 		util.Successf("%s", userNS)
 		util.Info(" running in namespace: ")
@@ -77,30 +77,44 @@ func (p *cleanUpContentRepoFlags) cleanContentRepo(f *cmdutil.Factory) error {
 			return nil
 		}
 	}
-	util.Info("Cleaning content-repository for tenant: ")
+	util.Info("Cleaning jenkins for tenant: ")
 	util.Successf("%s", userNS)
 	util.Info(" running in namespace: ")
 	util.Successf("%s\n", jenkinsNS)
 
-	err = ensureDeploymentOrDCHasReplicas(c, oc, jenkinsNS, "content-repository", 1)
+	err = ensureDeploymentOrDCHasReplicas(c, oc, jenkinsNS, "jenkins", 1)
 	if err != nil {
 		return err
 	}
-	pod, err := waitForReadyPodForDeploymentOrDC(c, oc, jenkinsNS, "content-repository")
+	pod, err := waitForReadyPodForDeploymentOrDC(c, oc, jenkinsNS, "jenkins")
 	if err != nil {
 		return err
 	}
-	util.Infof("Found running content-repository pod %s\n", pod)
+	util.Infof("Found running jenkins pod %s\n", pod)
 
 	kubeCLI := "kubectl"
-	err = runCommand(kubeCLI, "exec", "-it", pod, "-n", jenkinsNS, "--", "rm", "-rf", "/var/www/html/content/repositories")
+	err = runCommand(kubeCLI, "exec", "-it", pod, "-n", jenkinsNS, "--", "bash", "-c", "rm -rf /var/lib/jenkins/jobs/*")
 	if err != nil {
 		return err
 	}
-	err = runCommand(kubeCLI, "exec", "-it", pod, "-n", jenkinsNS, "--", "du", "-hc", "/var/www/html/content")
+	err = runCommand(kubeCLI, "delete", "pod", pod, "-n", jenkinsNS)
 	if err != nil {
 		return err
 	}
+
+	// now lets remove the Jenkins Job ConfigMaps
+	err = runCommand("oc", "delete", "configmap", "-l", "openshift.io/jenkins=job", "-n", userNS)
+	if err != nil {
+		return err
+	}
+
+	// now lets remove the BuildConfigs and Builds
+	err = runCommand("oc", "delete", "buildconfig", "--all", "-n", userNS)
+	if err != nil {
+		return err
+	}
+	err = runCommand("oc", "delete", "build", "--all", "-n", userNS)
+
 	if err == nil {
 		util.Info("Completed!\n")
 	}
