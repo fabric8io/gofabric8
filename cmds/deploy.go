@@ -42,6 +42,8 @@ import (
 	"github.com/ghodss/yaml"
 	aapi "github.com/openshift/origin/pkg/authorization/api"
 	aapiv1 "github.com/openshift/origin/pkg/authorization/api/v1"
+	buildapi "github.com/openshift/origin/pkg/build/api"
+	buildapiv1 "github.com/openshift/origin/pkg/build/api/v1"
 	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
@@ -262,6 +264,8 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 func initSchema() {
 	aapi.AddToScheme(api.Scheme)
 	aapiv1.AddToScheme(api.Scheme)
+	buildapi.AddToScheme(api.Scheme)
+	buildapiv1.AddToScheme(api.Scheme)
 	tapi.AddToScheme(api.Scheme)
 	tapiv1.AddToScheme(api.Scheme)
 	projectapi.AddToScheme(api.Scheme)
@@ -528,28 +532,47 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			util.Success(callbackURL)
 			util.Info("\n\n")
 		}
-		if d.openConsole {
-			openService(ns, "fabric8", c, false, true)
-		}
-
 		if !legacyPackage && typeOfMaster != util.Kubernetes {
-			util.Info("\n\nPlease can you invoke the following commands as a cluster admin\n\n")
 			if mini {
-				util.Infof("oc login -u system:admin\n")
-			}
-			util.Infof(`cat <<EOF | oc create -f -
+				util.Info("\n\nCreating OAuthClient and adding role to fabric8-tenant\n")
+
+				err = runCommand("bash", "-c", fmt.Sprintf(`cat <<EOF | oc create --as system:admin -f -
 kind: OAuthClient
 apiVersion: v1
 metadata:
   name: fabric8-online-platform
 secret: fabric8
 redirectURIs:
-- "http://%s/auth/realms/fabric8/broker/openshift-v3/endpoint"
+- "%s/auth/realms/fabric8/broker/openshift-v3/endpoint"
+grantMethod: prompt
+EOF`, keycloakUrl))
+				if err != nil {
+					util.Fatalf("%s", err)
+				}
+				err = runCommand("oc", "adm", "policy", "add-cluster-role-to-user", "cluster-admin", fmt.Sprintf("system:serviceaccount:%s:init-tenant", ns), "--as", "system:admin")
+				if err != nil {
+					util.Fatalf("%s", err)
+				}
+			} else {
+				util.Info("\n\nPlease can you invoke the following commands as a cluster admin\n\n")
+				util.Infof(`cat <<EOF | oc create -f -
+kind: OAuthClient
+apiVersion: v1
+metadata:
+  name: fabric8-online-platform
+secret: fabric8
+redirectURIs:
+- "%s/auth/realms/fabric8/broker/openshift-v3/endpoint"
 grantMethod: prompt
 EOF
 oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:init-tenant
 
 `, keycloakUrl, ns)
+			}
+		}
+
+		if d.openConsole {
+			openService(ns, "fabric8", c, false, true)
 		}
 	}
 }
