@@ -548,7 +548,7 @@ metadata:
   name: fabric8-online-platform
 secret: fabric8
 redirectURIs:
-- "http://%s/auth/realms/fabric8/broker/openshift-v3/endpoint"
+- "%s/auth/realms/fabric8/broker/openshift-v3/endpoint"
 grantMethod: prompt
 EOF
 oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:init-tenant
