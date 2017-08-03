@@ -109,7 +109,7 @@ func NewCmdWaitFor(f *cmdutil.Factory) *cobra.Command {
 
 func handleError(err error) {
 	if err != nil {
-		util.Fatalf("Failed to wait %v\n", err)
+		util.Fatalf("%v\n", err)
 	}
 }
 
