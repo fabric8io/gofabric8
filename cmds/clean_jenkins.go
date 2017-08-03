@@ -92,7 +92,7 @@ func (p *cleanUpJenkinsFlags) cleanUpJenkins(f *cmdutil.Factory) error {
 	}
 	util.Infof("Found running jenkins pod %s\n", pod)
 
-	kubeCLI := "kubectl"
+	kubeCLI := "oc"        
 	err = runCommand(kubeCLI, "exec", "-it", pod, "-n", jenkinsNS, "--", "bash", "-c", "rm -rf /var/lib/jenkins/jobs/*")
 	if err != nil {
 		return err
