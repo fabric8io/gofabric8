@@ -16,6 +16,7 @@
 package cmds
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -344,6 +345,24 @@ func runCommand(prog string, args ...string) error {
 		return fmt.Errorf("Failed to run command %s due to error %v", text, err)
 	}
 	return nil
+}
+
+// runCommandWithOutput runs the given command on the command line and returns the output as a string or an error if it fails
+func runCommandWithOutput(prog string, args ...string) (string, error) {
+	cmd := exec.Command(prog, args...)
+	var outb, errb bytes.Buffer
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = &outb
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		text := prog + " " + strings.Join(args, " ")
+		return "", fmt.Errorf("Failed to run command %s due to error %v", text, err)
+	}
+	answer := outb.String()
+	if len(answer) == 0 {
+		answer = errb.String()
+	}
+	return answer, nil
 }
 
 func defaultDomain() string {

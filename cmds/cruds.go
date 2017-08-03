@@ -49,6 +49,10 @@ func NewCmdDelete(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 
 	cmd.AddCommand(NewCmdDeleteCluster(f))
 	cmd.AddCommand(NewCmdDeleteEnviron(f))
+
+	deleteCmd := NewCmdTenantDelete(f)
+	deleteCmd.Use = "tenant"
+	cmd.AddCommand(deleteCmd)
 	return cmd
 }
 
