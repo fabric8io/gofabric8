@@ -43,7 +43,7 @@ func NewCmdCleanUpJenkins(f *cmdutil.Factory) *cobra.Command {
 			}
 			err := p.cleanUpJenkins(f)
 			if err != nil {
-				util.Fatalf("%s", err)
+				util.Fatalf("%s\n", err)
 			}
 			return
 		},

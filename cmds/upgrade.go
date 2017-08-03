@@ -72,12 +72,12 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 				// extract the ip address from the URL
 				u, err := url.Parse(cfg.Host)
 				if err != nil {
-					util.Fatalf("%s", err)
+					util.Fatalf("%s\n", err)
 				}
 
 				ip, _, err := net.SplitHostPort(u.Host)
 				if err != nil && !strings.Contains(err.Error(), "missing port in address") {
-					util.Fatalf("%s", err)
+					util.Fatalf("%s\n", err)
 				}
 				mini, err := util.IsMini()
 				if err != nil {

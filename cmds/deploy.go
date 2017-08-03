@@ -303,12 +303,12 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	// extract the ip address from the URL
 	u, err := url.Parse(cfg.Host)
 	if err != nil {
-		util.Fatalf("%s", err)
+		util.Fatalf("%s\n", err)
 	}
 
 	ip, _, err := net.SplitHostPort(u.Host)
 	if err != nil && !strings.Contains(err.Error(), "missing port in address") {
-		util.Fatalf("%s", err)
+		util.Fatalf("%s\n", err)
 	}
 
 	// default nip domain if local deployment incase users deploy ingress controller or router
@@ -547,11 +547,11 @@ redirectURIs:
 grantMethod: prompt
 EOF`, keycloakUrl))
 				if err != nil {
-					util.Fatalf("%s", err)
+					util.Fatalf("%s\n", err)
 				}
 				err = runCommand("oc", "adm", "policy", "add-cluster-role-to-user", "cluster-admin", fmt.Sprintf("system:serviceaccount:%s:init-tenant", ns), "--as", "system:admin")
 				if err != nil {
-					util.Fatalf("%s", err)
+					util.Fatalf("%s\n", err)
 				}
 			} else {
 				util.Info("\n\nPlease can you invoke the following commands as a cluster admin\n\n")
@@ -955,7 +955,7 @@ func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver st
 
 	ip, port, err := net.SplitHostPort(apiserver)
 	if err != nil && !strings.Contains(err.Error(), "missing port in address") {
-		util.Fatalf("%s", err)
+		util.Fatalf("%s\n", err)
 	}
 
 	if len(domain) == 0 {

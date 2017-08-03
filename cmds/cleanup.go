@@ -48,7 +48,7 @@ func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 			} else {
 				currentContext, err := util.GetCurrentContext()
 				if err != nil {
-					util.Fatalf("%s", err)
+					util.Fatalf("%s\n", err)
 				}
 				fmt.Fprintf(os.Stdout, `WARNING this is destructive and will remove ALL fabric8 apps, environments and configuration from cluster %s.  Continue? [y/N] `, currentContext)
 

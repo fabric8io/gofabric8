@@ -43,7 +43,7 @@ func NewCmdCleanUpContentRepository(f *cmdutil.Factory) *cobra.Command {
 			}
 			err := p.cleanContentRepo(f)
 			if err != nil {
-				util.Fatalf("%s", err)
+				util.Fatalf("%s\n", err)
 			}
 			return
 		},

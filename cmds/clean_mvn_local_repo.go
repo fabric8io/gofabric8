@@ -17,6 +17,7 @@ package cmds
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -45,7 +46,7 @@ func NewCmdCleanUpMavenLocalRepo(f *cmdutil.Factory) *cobra.Command {
 			}
 			err := p.cleanMavenLocalRepo(f)
 			if err != nil {
-				util.Fatalf("%s", err)
+				util.Fatalf("%s\n", err)
 			}
 			return
 		},
@@ -89,7 +90,7 @@ func (p *cleanUpMavenLocalRepoFlags) cleanMavenLocalRepo(f *cmdutil.Factory) err
 		return err
 	}
 
-	cleanMavenLocalRepoJob := "internal-clean-mvn-local-repo"
+	cleanMavenLocalRepoJob := "clean-mvn-local-repo-" + fmt.Sprintf("%x", time.Now().Unix())
 
 	// lets check if we have a ConfigMap for the jenkins job
 	buildConfigSpec := buildapi.BuildConfigSpec{
@@ -113,28 +114,31 @@ func (p *cleanUpMavenLocalRepoFlags) cleanMavenLocalRepo(f *cmdutil.Factory) err
 		},
 	}
 	create := false
-	operation := "update"
 	bc, err := oc.BuildConfigs(userNS).Get(cleanMavenLocalRepoJob)
 	if err != nil {
-		bc = &buildapi.BuildConfig{
+		create = true
+	}
+	if create {
+		newBC := buildapi.BuildConfig{
 			ObjectMeta: api.ObjectMeta{
 				Namespace: userNS,
 				Name:      cleanMavenLocalRepoJob,
 			},
 			Spec: buildConfigSpec,
 		}
-		create = true
-		operation = "create"
-	}
-	if create {
-		_, err = oc.BuildConfigs(userNS).Create(bc)
+		_, err = oc.BuildConfigs(userNS).Create(&newBC)
+		if err != nil {
+			return fmt.Errorf("Failed to create BuildConfig %s in namespace %s due to: %s", cleanMavenLocalRepoJob, userNS, err)
+		}
 	} else {
 		bc.Spec = buildConfigSpec
 		_, err = oc.BuildConfigs(userNS).Update(bc)
+		if err != nil {
+			util.Infof("Failed to update BuildConfig %s in namespace %s due to: %s\n", cleanMavenLocalRepoJob, userNS, err)
+		}
 	}
-	if err != nil {
-		return fmt.Errorf("Failed to %s BuildConfig %s in namespace %s due to: %s", operation, cleanMavenLocalRepoJob, userNS, err)
-	}
+	time.Sleep(time.Second * 2)
+
 	request := buildapi.BuildRequest{
 		ObjectMeta: api.ObjectMeta{
 			Name: cleanMavenLocalRepoJob,
@@ -146,5 +150,11 @@ func (p *cleanUpMavenLocalRepoFlags) cleanMavenLocalRepo(f *cmdutil.Factory) err
 	}
 	util.Info("Started build to clear down the local maven repository in the OpenShift Build: ")
 	util.Successf("%s\n", build.Name)
+	err = watchAndWaitForBuild(oc, userNS, build.Name, time.Minute*15)
+
+	runCommand("oc", "delete", "bc", cleanMavenLocalRepoJob, "-n", userNS, "--cascade=true", "--grace-period=-10")
+	if err != nil {
+		return fmt.Errorf("Failed to complete build in 15 minutes due to %s", err)
+	}
 	return nil
 }

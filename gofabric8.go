@@ -122,6 +122,7 @@ func NewGoFabric8Command(f *cmdutil.Factory, in io.Reader, out, err io.Writer) *
 	cmds.AddCommand(commands.NewCmdStart(f))
 	cmds.AddCommand(commands.NewCmdStatus(f))
 	cmds.AddCommand(commands.NewCmdStop(f))
+	cmds.AddCommand(commands.NewCmdTest(f))
 	cmds.AddCommand(commands.NewCmdValidate(f))
 	cmds.AddCommand(commands.NewCmdUpgrade(f))
 	cmds.AddCommand(commands.NewCmdVersion())
