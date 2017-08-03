@@ -28,10 +28,13 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 
-	oclient "github.com/openshift/origin/pkg/client"
-	osapi "github.com/openshift/origin/pkg/project/api"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/watch"
+
+	buildapi "github.com/openshift/origin/pkg/build/api"
+	oclient "github.com/openshift/origin/pkg/client"
+	osapi "github.com/openshift/origin/pkg/project/api"
 	k8api "k8s.io/kubernetes/pkg/api/unversioned"
 	k8client "k8s.io/kubernetes/pkg/client/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -141,6 +144,23 @@ func waitForReadyPodForDeploymentOrDC(c *k8client.Client, oc *oclient.Client, ns
 	return waitForReadyPodForSelector(c, oc, ns, labels)
 }
 
+// waitForBCDeleted waits for the given BC to be deleted
+func waitForBCDeleted(c *oclient.Client, ns string, name string) {
+	first := true
+	for {
+		_, err := c.BuildConfigs(ns).Get(name)
+		time.Sleep(time.Second * 2)
+		if err != nil {
+			//util.Infof("can't get %s/%s due to %s\n", ns, name, err)
+			return
+		}
+		if first {
+			first = false
+			util.Infof("Waiting for BuildConfig %s to be deleted\n", name)
+		}
+	}
+}
+
 func waitForReadyPodForSelector(c *k8client.Client, oc *oclient.Client, ns string, labels map[string]string) (string, error) {
 	selector, err := unversioned.LabelSelectorAsSelector(&unversioned.LabelSelector{MatchLabels: labels})
 	if err != nil {
@@ -175,6 +195,48 @@ func waitForReadyPodForSelector(c *k8client.Client, oc *oclient.Client, ns strin
 		// TODO replace with a watch flavour
 		time.Sleep(time.Second)
 	}
+}
+
+// watchAndWaitForBuild waits for the given build to complete
+func watchAndWaitForBuild(c *oclient.Client, ns string, name string, timeout time.Duration) error {
+	_, err := c.Builds(ns).Get(name)
+	if err != nil {
+		return fmt.Errorf("Failed to find Build %s/%s due to %s", ns, name, err)
+	}
+	// TODO we may wanna add a field selector on the name
+	lastPhase := buildapi.BuildPhaseNew
+	w, err := c.Builds(ns).Watch(api.ListOptions{})
+	if err != nil {
+		return err
+	}
+	_, err = watch.Until(timeout, w, func(e watch.Event) (bool, error) {
+		if e.Type == watch.Error {
+			return false, fmt.Errorf("encountered error while watching Builds: %v", e.Object)
+		}
+		obj, ok := e.Object.(*buildapi.Build)
+		if !ok {
+			return false, fmt.Errorf("received unknown object while watching for Builds: %v", obj)
+		}
+		build := obj
+		if build.Name == name {
+			phase := build.Status.Phase
+			if phase != lastPhase {
+				util.Infof("Build %s is %s\n", name, phase)
+				lastPhase = phase
+			}
+			if phase == buildapi.BuildPhaseComplete {
+				return true, nil
+			}
+			if phase == buildapi.BuildPhaseFailed || phase == buildapi.BuildPhaseError || phase == buildapi.BuildPhaseCancelled {
+				return false, fmt.Errorf("Build %s has %s", name, phase)
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func detectCurrentUserNamespace(ns string, c *k8client.Client, oc *oclient.Client) (string, error) {
