@@ -42,7 +42,7 @@ func NewCmdCleanUpTenant(f *cmdutil.Factory) *cobra.Command {
 			}
 			err := p.cleanTenant(f)
 			if err != nil {
-				util.Fatalf("%s", err)
+				util.Fatalf("%s\n", err)
 			}
 			return
 		},
@@ -77,12 +77,12 @@ func (p *cleanUpTenantFlags) cleanTenant(f *cmdutil.Factory) error {
 		}
 	}
 
-  err = (&cleanUpAppsFlags{
- 		confirm: true,
- 	}).cleanApps(f)
- 	if err != nil {
- 		return err
- 	}
+	err = (&cleanUpAppsFlags{
+		confirm: true,
+	}).cleanApps(f)
+	if err != nil {
+		return err
+	}
 	err = (&cleanUpMavenLocalRepoFlags{
 		confirm: true,
 	}).cleanMavenLocalRepo(f)

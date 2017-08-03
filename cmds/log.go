@@ -39,7 +39,7 @@ func NewCmdLog(f *cmdutil.Factory) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			err := p.tailLog(f, args)
 			if err != nil {
-				util.Fatalf("%s", err)
+				util.Fatalf("%s\n", err)
 			}
 			return
 		},

@@ -44,7 +44,7 @@ func NewCmdCleanUpApps(f *cmdutil.Factory) *cobra.Command {
 			}
 			err := p.cleanApps(f)
 			if err != nil {
-				util.Fatalf("%s", err)
+				util.Fatalf("%s\n", err)
 			}
 			return
 		},
@@ -108,42 +108,42 @@ func (p *cleanUpAppsFlags) cleanApps(f *cmdutil.Factory) error {
 
 func cleanUpAllOpenshiftResources(c *k8sclient.Client, oc *oclient.Client, ns string) error {
 	ocCmd := "oc"
-	err := runCommand(ocCmd, "delete", "dc", "--all", "-n", ns)
+	err := runCommand(ocCmd, "delete", "dc", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
 		return err
 	}
-	err = runCommand(ocCmd, "delete", "bc", "--all", "-n", ns)
+	err = runCommand(ocCmd, "delete", "bc", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
 		return err
 	}
-	err = runCommand(ocCmd, "delete", "build", "--all", "-n", ns)
+	err = runCommand(ocCmd, "delete", "build", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
 		return err
 	}
-	err = runCommand(ocCmd, "delete", "route", "--all", "-n", ns)
+	err = runCommand(ocCmd, "delete", "route", "--all", "--ignore-not-found=true", "-n", ns)
 	return err
 }
 
 func cleanUpAllKubernetesResources(c *k8sclient.Client, ns string, openshift bool, isUserNS bool) error {
 	ocCmd := "oc"
-	err := runCommand(ocCmd, "delete", "deployment", "--all", "-n", ns)
+	err := runCommand(ocCmd, "delete", "deployment", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
 		return err
 	}
-	err = runCommand(ocCmd, "delete", "rs", "--all", "-n", ns)
+	err = runCommand(ocCmd, "delete", "rs", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
 		return err
 	}
-	err = runCommand(ocCmd, "delete", "rc", "--all", "-n", ns)
+	err = runCommand(ocCmd, "delete", "rc", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
 		return err
 	}
-	err = runCommand(ocCmd, "delete", "pod", "--all", "-n", ns)
+	err = runCommand(ocCmd, "delete", "pod", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
 		return err
 	}
 	if !openshift {
-		err = runCommand(ocCmd, "delete", "ingress", "--all", "-n", ns)
+		err = runCommand(ocCmd, "delete", "ingress", "--all", "--ignore-not-found=true", "-n", ns)
 		if err != nil {
 			return err
 		}
@@ -151,23 +151,23 @@ func cleanUpAllKubernetesResources(c *k8sclient.Client, ns string, openshift boo
 	if isUserNS {
 		return err
 	}
-	err = runCommand(ocCmd, "delete", "cm", "--all", "-n", ns)
+	err = runCommand(ocCmd, "delete", "cm", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
 		return err
 	}
 
-	err = runCommand(ocCmd, "delete", "service", "--all", "-n", ns)
+	err = runCommand(ocCmd, "delete", "service", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
 		return err
 	}
 	/*
 		TODO lets not delete secrets or SAs for now to avoid removing tenant stuff like SAs: builder, default & deployer
 
-		err = runCommand(ocCmd, "delete", "secret", "--all", "-n", ns)
+		err = runCommand(ocCmd, "delete", "secret", "--all", "--ignore-not-found=true", "-n", ns)
 		if err != nil {
 			return err
 		}
-		err = runCommand(ocCmd, "delete", "sa", "--all", "-n", ns)
+		err = runCommand(ocCmd, "delete", "sa", "--all", "--ignore-not-found=true", "-n", ns)
 		if err != nil {
 			return err
 		}
