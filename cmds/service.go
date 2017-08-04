@@ -176,6 +176,32 @@ func CheckEndpointReady(endpoint *kubeApi.Endpoints) error {
 	return nil
 }
 
+//WaitForExternalIPAddress will wait for loadbalancers to update the service and return it's external ip address
+func WaitForExternalIPAddress(ns string, serviceName string, c *k8sclient.Client) (address string, err error) {
+
+	if err := RetryAfter(1200, func() error { return HasExternalIP(ns, serviceName, c) }, 10*time.Second); err != nil {
+		util.Errorf("Could not find external IP for %s: %v", serviceName, err)
+		os.Exit(1)
+	}
+	svc, err := c.Services(ns).Get(serviceName)
+	if err != nil {
+		return "", err
+	}
+	return svc.Status.LoadBalancer.Ingress[0].IP, nil
+}
+
+//HasExternalIP checks if a service has an external ip address
+func HasExternalIP(ns string, serviceName string, c *k8sclient.Client) error {
+	svc, err := c.Services(ns).Get(serviceName)
+	if err != nil {
+		return err
+	}
+	if len(svc.Status.LoadBalancer.Ingress) > 0 && svc.Status.LoadBalancer.Ingress[0].IP != "" {
+		return nil
+	}
+	return fmt.Errorf("Service has no external ip yet\n")
+}
+
 func Retry(attempts int, callback func() error) (err error) {
 	return RetryAfter(attempts, callback, 0)
 }

@@ -328,8 +328,8 @@ func showBanner() {
 }
 
 func defaultParameters(c *k8client.Client, exposer string, githubClientID string, githubClientSecret string, ns string, appName string) map[string]string {
+	typeOfMaster := util.TypeOfMaster(c)
 	if len(exposer) == 0 {
-		typeOfMaster := util.TypeOfMaster(c)
 		if typeOfMaster == util.Kubernetes {
 			exposer = "Ingress"
 		} else {
@@ -355,11 +355,41 @@ func defaultParameters(c *k8client.Client, exposer string, githubClientID string
 	if len(githubClientSecret) == 0 {
 		util.Fatalf("No --%s flag was specified or $GITHUB_OAUTH_CLIENT_SECRET environment variable supplied!\n", githubClientSecretFlag)
 	}
+
+	mini, err := util.IsMini()
+	if err != nil {
+		util.Failuref("error checking if minikube or minishift %v", err)
+	}
+	http := "false"
+	tlsAcme := "false"
+	if mini {
+		// default to generating http routes when running locally
+		http = "true"
+	} else if typeOfMaster == util.Kubernetes {
+		// this tells exposecontroller to annotate each ingress rule so that kube-lego generates signed certs
+		tlsAcme = "true"
+	}
 	return map[string]string{
 		"NAMESPACE":                  ns,
 		"EXPOSER":                    exposer,
 		"GITHUB_OAUTH_CLIENT_SECRET": githubClientSecret,
 		"GITHUB_OAUTH_CLIENT_ID":     githubClientID,
+		"HTTP":     http,
+		"TLS_ACME": tlsAcme,
+	}
+}
+
+func getTLSAcmeEmail(c *k8client.Client, tlsAcmeEmail string) map[string]string {
+	if len(tlsAcmeEmail) == 0 {
+		tlsAcmeEmail = os.Getenv("TLS_ACME_EMAIL")
+	}
+
+	if len(tlsAcmeEmail) == 0 {
+		util.Fatalf("No --%s flag was specified or $TLS_ACME_EMAIL environment variable supplied!\n", tlsAcmeEmailFlag)
+	}
+
+	return map[string]string{
+		"TLS_ACME_EMAIL": tlsAcmeEmail,
 	}
 }
 
