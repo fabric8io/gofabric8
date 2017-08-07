@@ -96,6 +96,18 @@ func (p *tenantDeleteFlags) tenantDelete(f *cmdutil.Factory) error {
 	if err != nil {
 		return nil
 	}
+	err = runCommand(ocCLI, "delete", "cm", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	if err != nil {
+		return nil
+	}
+	err = runCommand(ocCLI, "delete", "sa", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	if err != nil {
+		return nil
+	}
+	err = runCommand(ocCLI, "delete", "secret", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	if err != nil {
+		return nil
+	}
 
 	// zap other projects
 	projectsToRemove := []string{stageNS, runNS, cheNS, userNS}
