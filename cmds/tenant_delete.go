@@ -87,8 +87,24 @@ func (p *tenantDeleteFlags) tenantDelete(f *cmdutil.Factory) error {
 	jenkinsNS := fmt.Sprintf("%s-jenkins", userNS)
 
 	// zap jenkins resources
-	util.Infof("Removing jenkins namespace resources in %s", jenkinsNS)
+	util.Infof("Removing jenkins namespace resources in %s\n", jenkinsNS)
 	err = runCommand(ocCLI, "delete", "all", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	if err != nil {
+		return nil
+	}
+	err = runCommand(ocCLI, "delete", "pvc", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	if err != nil {
+		return nil
+	}
+	err = runCommand(ocCLI, "delete", "cm", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	if err != nil {
+		return nil
+	}
+	err = runCommand(ocCLI, "delete", "sa", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	if err != nil {
+		return nil
+	}
+	err = runCommand(ocCLI, "delete", "secret", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
 	if err != nil {
 		return nil
 	}
@@ -96,7 +112,7 @@ func (p *tenantDeleteFlags) tenantDelete(f *cmdutil.Factory) error {
 	// zap other projects
 	projectsToRemove := []string{stageNS, runNS, cheNS, userNS}
 	for _, ns := range projectsToRemove {
-		util.Infof("Removing project %s", ns)
+		util.Infof("Removing project %s\n", ns)
 		err = runCommand(ocCLI, "delete", "project", ns, "--cascade=true", "--grace-period=-50")
 		if err != nil {
 			return nil
