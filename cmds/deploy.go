@@ -455,12 +455,16 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			}
 
 			if d.useTLSAcme {
-				// deploy kube-lego
-				kubeLegoParams := getTLSAcmeEmail(c, d.tlsAcmeEmail)
-				_, err = deployPackage(kubeLegoApp, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "kube-lego", c, oc, kubeLegoParams)
+				_, err := c.Deployments("kube-lego").Get("kube-lego")
 				if err != nil {
-					util.Fatalf("unable to deploy %s %v\n", "kube-lego", err)
+					// deploy kube-lego
+					kubeLegoParams := getTLSAcmeEmail(c, d.tlsAcmeEmail)
+					_, err = deployPackage(kubeLegoApp, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "kube-lego", c, oc, kubeLegoParams)
+					if err != nil {
+						util.Fatalf("unable to deploy %s %v\n", "kube-lego", err)
+					}
 				}
+
 			}
 		}
 
