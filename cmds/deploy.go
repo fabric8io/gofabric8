@@ -83,8 +83,9 @@ const (
 	platformPackageUrlPrefix  = "io/fabric8/platform/packages/fabric8-platform/%[1]s/fabric8-platform-%[1]s-"
 	consolePackageUrlPrefix   = "io/fabric8/platform/packages/console/%[1]s/console-%[1]s-"
 	consolePackageMetadataUrl = "io/fabric8/platform/packages/console/maven-metadata.xml"
-
-	ipaasPackageUrlPrefix = "io/fabric8/ipaas/platform/packages/ipaas-platform/%[1]s/ipaas-platform-%[1]s-"
+	ingressPackageUrlPrefix   = "io/fabric8/platform/packages/ingress/%[1]s/ingress-%[1]s-"
+	kubelegoAppUrlPrefix      = "io/fabric8/platform/apps/kube-lego/%[1]s/kube-lego-%[1]s-"
+	ipaasPackageUrlPrefix     = "io/fabric8/ipaas/platform/packages/ipaas-platform/%[1]s/ipaas-platform-%[1]s-"
 
 	Fabric8SCC    = "fabric8"
 	Fabric8SASSCC = "fabric8-sa-group"
@@ -92,6 +93,7 @@ const (
 
 	runFlag                = "app"
 	useIngressFlag         = "ingress"
+	useTLSAcmeFlag         = "tls-acme"
 	useLoadbalancerFlag    = "loadbalancer"
 	versionPlatformFlag    = "version"
 	versioniPaaSFlag       = "version-ipaas"
@@ -105,12 +107,15 @@ const (
 	exposerFlag            = "exposer"
 	githubClientSecretFlag = "github-client-secret"
 	githubClientIDFlag     = "github-client-id"
+	tlsAcmeEmailFlag       = "tls-acme-email"
 	storageclassWaitFlag   = "wait-storageclass"
 
 	systemPackage   = "system"
 	platformPackage = "platform"
 	consolePackage  = "console"
 	iPaaSPackage    = "ipaas"
+	ingressPackage  = "ingress"
+	kubeLegoApp     = "kube-lego"
 
 	fabric8Environments = "fabric8-environments"
 	exposecontrollerCM  = "exposecontroller"
@@ -155,10 +160,12 @@ type DefaultFabric8Deployment struct {
 	exposer            string
 	githubClientSecret string
 	githubClientID     string
+	tlsAcmeEmail       string
 	templates          bool
 	pv                 bool
 	deployConsole      bool
 	useIngress         bool
+	useTLSAcme         bool
 	useLoadbalancer    bool
 	versionPlatform    string
 	versioniPaaS       string
@@ -198,10 +205,12 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				exposer:            cmd.Flags().Lookup(exposerFlag).Value.String(),
 				githubClientSecret: cmd.Flags().Lookup(githubClientSecretFlag).Value.String(),
 				githubClientID:     cmd.Flags().Lookup(githubClientIDFlag).Value.String(),
+				tlsAcmeEmail:       cmd.Flags().Lookup(tlsAcmeEmailFlag).Value.String(),
 
 				deployConsole:    cmd.Flags().Lookup(consoleFlag).Value.String() == "true",
 				dockerRegistry:   cmd.Flags().Lookup(dockerRegistryFlag).Value.String(),
 				useIngress:       cmd.Flags().Lookup(useIngressFlag).Value.String() == "true",
+				useTLSAcme:       cmd.Flags().Lookup(useTLSAcmeFlag).Value.String() == "false",
 				templates:        cmd.Flags().Lookup(templatesFlag).Value.String() == "true",
 				versionPlatform:  cmd.Flags().Lookup(versionPlatformFlag).Value.String(),
 				versioniPaaS:     cmd.Flags().Lookup(versioniPaaSFlag).Value.String(),
@@ -227,6 +236,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(exposerFlag, "", "The exposecontroller strategy such as Ingress, Router, NodePort, LoadBalancer")
 	cmd.PersistentFlags().String(githubClientIDFlag, "", "The github OAuth Application Client ID. Defaults to $GITHUB_OAUTH_CLIENT_ID if not specified")
 	cmd.PersistentFlags().String(githubClientSecretFlag, "", "The github OAuth Application Client Secret. Defaults to $GITHUB_OAUTH_CLIENT_SECRET if not specified")
+	cmd.PersistentFlags().String(tlsAcmeEmailFlag, "", "Email address used to register and work with CertBot for automated signed cert ingress rules. Defaults to $TLS_ACME_EMAIL if not specified")
 	// TODO re-enable when we're ready for 4.x
 	//cmd.PersistentFlags().String(packageFlag, systemPackage, "The name of the package to startup such as 'system' for the 4.x version of fabric8 or 'platform' for 3.x. Otherwise specify a URL or local file of the YAML to install")
 	cmd.PersistentFlags().String(packageFlag, platformPackage, "The name of the package to startup such as 'system' for the 4.x version of fabric8 or 'platform' for 3.x. Otherwise specify a URL or local file of the YAML to install")
@@ -235,6 +245,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
+	cmd.PersistentFlags().Bool(useTLSAcmeFlag, true, "Deploy TLS Acme impl kube-lego to auto generate signed certs for public ingress rules.  Requires tls-acme-email flag also. ")
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
 	cmd.PersistentFlags().Bool(openConsoleFlag, true, "Should we wait an open the console?")
 	cmd.PersistentFlags().Bool(legacyFlag, false, "Should we use the legacy installation mode for versions before 4.x of fabric8?")
@@ -363,83 +374,12 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		legacyPackage := d.legacyFlag || isVersion3Package(packageName)
 
-		versionPlatform := ""
-		baseUri := ""
-		switch packageName {
-		case "":
-		case systemPackage:
-			legacyPackage = false
-			baseUri = systemPackageUrlPrefix
-			versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, systemMetadataUrl))
-			logPackageVersion(packageName, versionPlatform)
-		case platformPackage:
-			baseUri = platformPackageUrlPrefix
-			versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, platformMetadataUrl))
-			logPackageVersion(packageName, versionPlatform)
-		case consolePackage:
-			baseUri = consolePackageUrlPrefix
-			versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, consolePackageMetadataUrl))
-			logPackageVersion(packageName, versionPlatform)
-		case iPaaSPackage:
-			baseUri = ipaasPackageUrlPrefix
-			versionPlatform = versionForUrl(d.versioniPaaS, urlJoin(mavenRepo, ipaasMetadataUrl))
-			logPackageVersion(packageName, versionPlatform)
-		default:
-			baseUri = ""
+		_, legacyPackage, err := getTemplateURI(packageName, mavenRepo, legacyPackage, d, typeOfMaster)
+		if err != nil {
+			util.Fatalf("Error getting URI for %s: %v\n\n", packageName, err)
 		}
-		uri := ""
-		if len(baseUri) > 0 {
-			uri = fmt.Sprintf(urlJoin(mavenRepo, baseUri), versionPlatform)
 
-		} else {
-			// lets assume the package is a file or a uri already
-			if strings.Contains(packageName, "://") {
-				uri = packageName
-			} else {
-				d, err := os.Stat(packageName)
-				if err != nil {
-					util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
-				}
-				if m := d.Mode(); m.IsDir() {
-					util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
-				}
-				absFile, err := filepath.Abs(packageName)
-				if err != nil {
-					util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
-				}
-				uri = "file://" + absFile
-			}
-		}
-		mini, _ := util.IsMini()
-
-		if typeOfMaster == util.Kubernetes {
-			if !strings.HasPrefix(uri, "file://") {
-				if legacyPackage {
-					uri += "kubernetes.yml"
-				} else {
-					uri += "k8s-template.yml"
-				}
-			}
-
-			if mini {
-				if packageName == systemPackage {
-					err = validateSystemKubernetesVersion(c)
-					if err != nil {
-						util.Fatalf("Incompatible Kubernetes version: %v\n\n", err)
-					}
-				}
-				addIngressInfraLabel(c, ns)
-				// TODO output wildcard DNS information here?
-
-				if d.storageclassWait && !legacyPackage {
-					waitForStorageClass()
-				}
-			}
-		} else {
-			if !strings.HasPrefix(uri, "file://") {
-				uri += "openshift.yml"
-			}
-
+		if typeOfMaster == util.OpenShift {
 			if legacyPackage {
 				r, err := verifyRestrictedSecurityContextConstraints(c, f)
 				printResult("SecurityContextConstraints restricted", r, err)
@@ -465,37 +405,67 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 				printAddServiceAccount(c, f, "registry")
 				printAddServiceAccount(c, f, "router")
 			}
-		}
-
-		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns, packageName)
-
-		// now lets apply this template
-		util.Infof("Now about to install package %s\n", uri)
-
-		yamlData := []byte{}
-		format := "yaml"
-
-		if strings.HasPrefix(uri, "file://") {
-			fileName := strings.TrimPrefix(uri, "file://")
-			if strings.HasSuffix(fileName, ".json") {
-				format = "json"
-			}
-			yamlData, err = ioutil.ReadFile(fileName)
-			if err != nil {
-				util.Fatalf("Cannot load file %s got: %v", fileName, err)
-			}
 		} else {
-			resp, err := http.Get(uri)
-			if err != nil {
-				util.Fatalf("Cannot load YAML package at %s got: %v", uri, err)
-			}
-			defer resp.Body.Close()
-			yamlData, err = ioutil.ReadAll(resp.Body)
-			if err != nil {
-				util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
+			if mini {
+				if packageName == systemPackage {
+					err = validateSystemKubernetesVersion(c)
+					if err != nil {
+						util.Fatalf("Incompatible Kubernetes version: %v\n\n", err)
+					}
+				}
+				addIngressInfraLabel(c, ns)
+				// TODO output wildcard DNS information here?
+
+				if d.storageclassWait && !legacyPackage {
+					waitForStorageClass()
+				}
 			}
 		}
-		createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv, true, params)
+
+		if typeOfMaster == util.Kubernetes && !mini {
+			// deploy ingress controller
+			if d.useIngress {
+				ingressParams := make(map[string]string)
+				_, err = deployPackage(ingressPackage, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "nginx-ingress", c, oc, ingressParams)
+				if err != nil {
+					util.Fatalf("unable to deploy %s %v\n", "ingress", err)
+				}
+				// wait for an external LoadBalancer IP to give exposecontroller
+				externalIP, err := WaitForExternalIPAddress("nginx-ingress", "nginx-ingress", c)
+				if err != nil {
+					util.Failuref("error getting external ip address for ingress service %v", err)
+				}
+				if d.domain == "" {
+					domain = externalIP + ".nip.io"
+				} else {
+					util.Info("\n")
+					util.Warnf("-------------------------\n")
+					util.Info("\n")
+					util.Warnf("Please configure your wildcard DNS for domain %s to point at external IP %s\n", d.domain, externalIP)
+					util.Info("\n")
+					util.Warnf("-------------------------\n")
+					reader := bufio.NewReader(os.Stdin)
+					fmt.Print("Enter to continue: ")
+					reader.ReadString('\n')
+				}
+			}
+
+			if d.useTLSAcme {
+				// deploy kube-lego
+				kubeLegoParams := getTLSAcmeEmail(c, d.tlsAcmeEmail)
+				_, err = deployPackage(kubeLegoApp, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "kube-lego", c, oc, kubeLegoParams)
+				if err != nil {
+					util.Fatalf("unable to deploy %s %v\n", "kube-lego", err)
+				}
+			}
+		}
+
+		// deploy the main package
+		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns, packageName)
+		legacyPackage, err = deployPackage(packageName, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, ns, c, oc, params)
+		if err != nil {
+			util.Fatalf("unable to deploy %s %v\n", packageName, err)
+		}
 
 		if legacyPackage {
 			externalNodeName := ""
@@ -509,13 +479,6 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			}
 
 			updateExposeControllerConfig(c, ns, apiserver, domain, mini, d.useLoadbalancer)
-
-			/*
-				mini, _ := util.IsMini()
-				if mini {
-					createMissingPVs(c, ns)
-				}
-			*/
 
 			printSummary(typeOfMaster, externalNodeName, ns, domain, c)
 		}
@@ -575,6 +538,121 @@ oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:in
 			openService(ns, "fabric8", c, false, true)
 		}
 	}
+}
+
+func deployPackage(packageName, mavenRepo, domain, apiserver string, legacyPackage bool, d DefaultFabric8Deployment, typeOfMaster util.MasterType, ns string, c *k8sclient.Client, oc *oclient.Client, params map[string]string) (bool, error) {
+
+	uri, legacyPackage, err := getTemplateURI(packageName, mavenRepo, legacyPackage, d, typeOfMaster)
+	if err != nil {
+		util.Fatalf("Error getting URI for %s: %v\n\n", packageName, err)
+	}
+	yamlData, format, err := getYAMLData(uri)
+	if err != nil {
+		util.Fatalf("unable to get yaml data for URI %s %v\n", uri, err)
+	}
+
+	createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv, true, params)
+	return legacyPackage, nil
+}
+
+func getTemplateURI(packageName, mavenRepo string, legacyPackage bool, d DefaultFabric8Deployment, typeOfMaster util.MasterType) (string, bool, error) {
+	versionPlatform := ""
+	baseUri := ""
+	switch packageName {
+	case "":
+	case systemPackage:
+		legacyPackage = false
+		baseUri = systemPackageUrlPrefix
+		versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, systemMetadataUrl))
+		logPackageVersion(packageName, versionPlatform)
+	case platformPackage:
+		baseUri = platformPackageUrlPrefix
+		versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, platformMetadataUrl))
+		logPackageVersion(packageName, versionPlatform)
+	case consolePackage:
+		baseUri = consolePackageUrlPrefix
+		versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, consolePackageMetadataUrl))
+		logPackageVersion(packageName, versionPlatform)
+	case iPaaSPackage:
+		baseUri = ipaasPackageUrlPrefix
+		versionPlatform = versionForUrl(d.versioniPaaS, urlJoin(mavenRepo, ipaasMetadataUrl))
+		logPackageVersion(packageName, versionPlatform)
+	case ingressPackage:
+		baseUri = ingressPackageUrlPrefix
+		versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, systemMetadataUrl))
+		logPackageVersion(packageName, versionPlatform)
+	case kubeLegoApp:
+		baseUri = kubelegoAppUrlPrefix
+		versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, systemMetadataUrl))
+		logPackageVersion(packageName, versionPlatform)
+	default:
+		baseUri = ""
+	}
+	uri := ""
+	if len(baseUri) > 0 {
+		uri = fmt.Sprintf(urlJoin(mavenRepo, baseUri), versionPlatform)
+
+	} else {
+		// lets assume the package is a file or a uri already
+		if strings.Contains(packageName, "://") {
+			uri = packageName
+		} else {
+			d, err := os.Stat(packageName)
+			if err != nil {
+				util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
+			}
+			if m := d.Mode(); m.IsDir() {
+				util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
+			}
+			absFile, err := filepath.Abs(packageName)
+			if err != nil {
+				util.Fatalf("package %s not recognised and is not a local file %s\n", packageName, err)
+			}
+			uri = "file://" + absFile
+		}
+	}
+
+	if typeOfMaster == util.Kubernetes {
+		if !strings.HasPrefix(uri, "file://") {
+			if legacyPackage {
+				uri += "kubernetes.yml"
+			} else {
+				uri += "k8s-template.yml"
+			}
+		}
+
+	} else {
+		if !strings.HasPrefix(uri, "file://") {
+			uri += "openshift.yml"
+		}
+	}
+	return uri, legacyPackage, nil
+}
+
+func getYAMLData(uri string) ([]byte, string, error) {
+	yamlData := []byte{}
+	format := "yaml"
+	if strings.HasPrefix(uri, "file://") {
+		fileName := strings.TrimPrefix(uri, "file://")
+		if strings.HasSuffix(fileName, ".json") {
+			format = "json"
+		}
+		yamlData, err := ioutil.ReadFile(fileName)
+		if err != nil {
+			util.Fatalf("Cannot load file %s got: %v", fileName, err)
+		}
+		return yamlData, format, nil
+	}
+	resp, err := http.Get(uri)
+	if err != nil {
+		util.Fatalf("Cannot load YAML package at %s got: %v", uri, err)
+	}
+	defer resp.Body.Close()
+	yamlData, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		util.Fatalf("Cannot load YAML from %s got: %v", uri, err)
+	}
+	return yamlData, format, nil
 }
 
 func waitForStorageClass() {
@@ -856,7 +934,7 @@ func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *o
 	}
 }
 
-func createTemplate(jsonData []byte, format string, templateName string, ns string, domain string, apiserver string, c *k8sclient.Client, oc *oclient.Client, pv bool, create bool, params map[string]string) {
+func createTemplate(jsonData []byte, format, templateName, ns, domain, apiserver string, c *k8sclient.Client, oc *oclient.Client, pv bool, create bool, params map[string]string) {
 	var v1tmpl tapiv1.Template
 	var err error
 	if format == "yaml" {
@@ -947,7 +1025,7 @@ func getName(o runtime.Object) (string, error) {
 	return linker.Name(o)
 }
 
-func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver string, params map[string]string) {
+func processTemplate(tmpl *tapi.Template, ns, domain, apiserver string, params map[string]string) {
 	generators := map[string]generator.Generator{
 		"expression": generator.NewExpressionValueGenerator(rand.New(rand.NewSource(time.Now().UnixNano()))),
 	}
@@ -961,6 +1039,7 @@ func processTemplate(tmpl *tapi.Template, ns string, domain string, apiserver st
 	if len(domain) == 0 {
 		domain = ip + ".nip.io"
 	}
+
 	params["NAMESPACE"] = ns
 	params["APISERVER_HOSTPORT"] = apiserver
 	params["APISERVER"] = ip
@@ -1136,26 +1215,26 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 		metadata := data["metadata"]
 		switch metadata := metadata.(type) {
 		case map[string]interface{}:
-			namespace := metadata["namespace"]
-			switch namespace := namespace.(type) {
-			case string:
-				//util.Infof("Custom namespace '%s'\n", namespace)
-				if len(namespace) <= 0 {
-					// TODO why is the namespace empty?
-					// lets default the namespace to the default gogs namespace
-					namespace = "user-secrets-source-admin"
-					if metadata["name"] == "ingress-nginx" || metadata["name"] == "nginx-config" {
-						namespace = fabric8SystemNamespace
-					}
-				}
-				ns = namespace
+			// namespace := metadata["namespace"]
+			// switch namespace := namespace.(type) {
+			// case string:
+			// 	//util.Infof("Custom namespace '%s'\n", namespace)
+			// 	if len(namespace) <= 0 {
+			// 		// TODO why is the namespace empty?
+			// 		// lets default the namespace to the default gogs namespace
+			// 		namespace = "user-secrets-source-admin"
+			// 		if metadata["name"] == "ingress-nginx" || metadata["name"] == "nginx-config" {
+			// 			namespace = fabric8SystemNamespace
+			// 		}
+			// 	}
+			// 	ns = namespace
 
-				// lets check that this new namespace exists
-				err := ensureNamespaceExists(c, oc, ns)
-				if err != nil {
-					printErr(err)
-				}
-			}
+			// 	// lets check that this new namespace exists
+			// 	err := ensureNamespaceExists(c, oc, ns)
+			// 	if err != nil {
+			// 		printErr(err)
+			// 	}
+			// }
 			n := metadata["name"]
 			switch n := n.(type) {
 			case string:
