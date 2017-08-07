@@ -210,7 +210,7 @@ func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
 				deployConsole:    cmd.Flags().Lookup(consoleFlag).Value.String() == "true",
 				dockerRegistry:   cmd.Flags().Lookup(dockerRegistryFlag).Value.String(),
 				useIngress:       cmd.Flags().Lookup(useIngressFlag).Value.String() == "true",
-				useTLSAcme:       cmd.Flags().Lookup(useTLSAcmeFlag).Value.String() == "false",
+				useTLSAcme:       cmd.Flags().Lookup(useTLSAcmeFlag).Value.String() == "true",
 				templates:        cmd.Flags().Lookup(templatesFlag).Value.String() == "true",
 				versionPlatform:  cmd.Flags().Lookup(versionPlatformFlag).Value.String(),
 				versioniPaaS:     cmd.Flags().Lookup(versioniPaaSFlag).Value.String(),
@@ -314,12 +314,12 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 	// extract the ip address from the URL
 	u, err := url.Parse(cfg.Host)
 	if err != nil {
-		util.Fatalf("%s\n", err)
+		util.Fatalf("%s", err)
 	}
 
 	ip, _, err := net.SplitHostPort(u.Host)
 	if err != nil && !strings.Contains(err.Error(), "missing port in address") {
-		util.Fatalf("%s\n", err)
+		util.Fatalf("%s", err)
 	}
 
 	// default nip domain if local deployment incase users deploy ingress controller or router
@@ -425,10 +425,14 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 		if typeOfMaster == util.Kubernetes && !mini {
 			// deploy ingress controller
 			if d.useIngress {
-				ingressParams := make(map[string]string)
-				_, err = deployPackage(ingressPackage, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "nginx-ingress", c, oc, ingressParams)
+				// check if we already have an ingress controller running running
+				CheckService("nginx-ingress", "nginx-ingress", c)
 				if err != nil {
-					util.Fatalf("unable to deploy %s %v\n", "ingress", err)
+					ingressParams := make(map[string]string)
+					_, err = deployPackage(ingressPackage, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "nginx-ingress", c, oc, ingressParams)
+					if err != nil {
+						util.Fatalf("unable to deploy %s %v\n", "ingress", err)
+					}
 				}
 				// wait for an external LoadBalancer IP to give exposecontroller
 				externalIP, err := WaitForExternalIPAddress("nginx-ingress", "nginx-ingress", c)
@@ -510,11 +514,11 @@ redirectURIs:
 grantMethod: prompt
 EOF`, keycloakUrl))
 				if err != nil {
-					util.Fatalf("%s\n", err)
+					util.Fatalf("%s", err)
 				}
 				err = runCommand("oc", "adm", "policy", "add-cluster-role-to-user", "cluster-admin", fmt.Sprintf("system:serviceaccount:%s:init-tenant", ns), "--as", "system:admin")
 				if err != nil {
-					util.Fatalf("%s\n", err)
+					util.Fatalf("%s", err)
 				}
 			} else {
 				util.Info("\n\nPlease can you invoke the following commands as a cluster admin\n\n")
@@ -1033,7 +1037,7 @@ func processTemplate(tmpl *tapi.Template, ns, domain, apiserver string, params m
 
 	ip, port, err := net.SplitHostPort(apiserver)
 	if err != nil && !strings.Contains(err.Error(), "missing port in address") {
-		util.Fatalf("%s\n", err)
+		util.Fatalf("%s", err)
 	}
 
 	if len(domain) == 0 {
