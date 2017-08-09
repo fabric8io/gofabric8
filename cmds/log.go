@@ -25,16 +25,18 @@ import (
 )
 
 type logFlags struct {
-	name string
+	name      string
+	namespace string
 }
 
 // NewCmdLog tails the log of the newest pod for a Deployment or DeploymentConfig
 func NewCmdLog(f *cmdutil.Factory) *cobra.Command {
 	p := &logFlags{}
 	cmd := &cobra.Command{
-		Use:   "log",
-		Short: "Tails the log of the newest pod for the given named Deployment or DeploymentConfig",
-		Long:  `Tails the log of the newest pod for the given named Deployment or DeploymentConfig`,
+		Use:     "log",
+		Short:   "Tails the log of the newest pod for the given named Deployment or DeploymentConfig",
+		Long:    `Tails the log of the newest pod for the given named Deployment or DeploymentConfig`,
+		Aliases: []string{"logs"},
 
 		Run: func(cmd *cobra.Command, args []string) {
 			err := p.tailLog(f, args)
@@ -45,7 +47,7 @@ func NewCmdLog(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVarP(&p.name, "name", "n", "", "the name of the Deployment or DeploymentConfig to log")
+	flags.StringVarP(&p.namespace, "namespace", "n", "", "the namespace to look for the Deployment or DeploymentConfig. Defaults to the current namespace")
 	return cmd
 }
 
@@ -54,10 +56,13 @@ func (p *logFlags) tailLog(f *cmdutil.Factory, args []string) error {
 		return fmt.Errorf("Must specify a Deployment/DeploymentConfig name argument!")
 	}
 	p.name = args[0]
+	ns := p.namespace
 	c, cfg := client.NewClient(f)
-	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)
 	initSchema()
+	if len(ns) == 0 {
+		ns, _, _ = f.DefaultNamespace()
+	}
 
 	for {
 		pod, err := waitForReadyPodForDeploymentOrDC(c, oc, ns, p.name)
@@ -65,9 +70,9 @@ func (p *logFlags) tailLog(f *cmdutil.Factory, args []string) error {
 			return err
 		}
 		if pod == "" {
-			return fmt.Errorf("No pod found for ")
+			return fmt.Errorf("No pod found for namespace %s with name %s", ns, p.name)
 		}
-		err = runCommand("kubectl", "logs", "-f", pod)
+		err = runCommand("kubectl", "logs", "-n", ns, "-f", pod)
 		if err != nil {
 			return nil
 		}
