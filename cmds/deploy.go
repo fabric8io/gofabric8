@@ -422,7 +422,7 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 			}
 		}
 
-		if typeOfMaster == util.Kubernetes && !mini {
+		if typeOfMaster == util.Kubernetes && !mini && !legacyPackage {
 			// deploy ingress controller
 			if d.useIngress {
 				// check if we already have an ingress controller running running
@@ -464,7 +464,6 @@ func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
 						util.Fatalf("unable to deploy %s %v\n", "kube-lego", err)
 					}
 				}
-
 			}
 		}
 
