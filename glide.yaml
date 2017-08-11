@@ -29,6 +29,8 @@ import:
 - package: github.com/jimmidyson/go-download
 - package: github.com/spf13/cobra
   version: 9c28e4bbd74e5c3ed7aacbc552b2cab7cfdfe744
+- package: github.com/davecgh/go-spew
+  version: 346938d642f2ec3594ed81d874461961cd0faa76
 -ignore:
   - github.com/goadesign/goa
 testImport:

@@ -1,1 +1,0 @@
-ALTER TABLE spaces ADD owner_id uuid;
