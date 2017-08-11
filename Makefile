@@ -44,7 +44,7 @@ GO_BINDATA_DIR=$(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata/
 GO_BINDATA_ASSETFS_BIN=$(VENDOR_DIR)/github.com/elazarl/go-bindata-assetfs/go-bindata-assetfs/go-bindata-assetfs
 TEAM_VERSION=$(shell cat TEAM_VERSION)
 
-all: $(GO_BINDATA_BIN) bindata build test
+all: $(GO_BINDATA_BIN) build test
  
 build: *.go */*.go fmt
 	rm -rf build
