@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubernetes Proposal - Admission Control
 
 **Related PR:**
@@ -75,6 +70,17 @@ func init() {
 }
 ```
 
+A **plug-in** must be added to the imports in [plugins.go](../../cmd/kube-apiserver/app/plugins.go)
+
+```go
+  // Admission policies
+  _ "k8s.io/kubernetes/plugin/pkg/admission/admit"
+  _ "k8s.io/kubernetes/plugin/pkg/admission/alwayspullimages"
+  _ "k8s.io/kubernetes/plugin/pkg/admission/antiaffinity"
+  ...
+  _ "<YOUR NEW PLUGIN>"
+```
+
 Invocation of admission control is handled by the **APIServer** and not
 individual **RESTStorage** implementations.
 
@@ -93,13 +99,6 @@ following:
    - If operation=connect, exec
 
 If at any step, there is an error, the request is canceled.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

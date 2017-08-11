@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ ep: ep.go
 	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w' ./ep.go
 
 image: ep
-	sudo docker build -t $(PREFIX)/eptest:$(TAG) .
+	sudo docker build --pull -t $(PREFIX)/eptest:$(TAG) .
 
 push: image
 	sudo docker push $(PREFIX)/eptest:$(TAG)

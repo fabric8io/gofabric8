@@ -14,39 +14,40 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
-const (
-	buildHookLong = `
-Set or remove a build hook on a build config
+var (
+	buildHookLong = templates.LongDesc(`
+		Set or remove a build hook on a build config
 
-Build hooks allow behavior to be injected into the build process.
+		Build hooks allow behavior to be injected into the build process.
 
-A post-commit build hook is executed after a build has committed an image but before the
-image has been pushed to a registry. It can be used to execute tests on the image and verify
-it before it is made available in a registry or for any other logic that is needed to execute
-before the image is pushed to the registry. A new container with the recently built image is
-launched with the build hook command. If the command or script run by the build hook returns a
-non-zero exit code, the resulting image will not be pushed to the registry.
+		A post-commit build hook is executed after a build has committed an image but before the
+		image has been pushed to a registry. It can be used to execute tests on the image and verify
+		it before it is made available in a registry or for any other logic that is needed to execute
+		before the image is pushed to the registry. A new container with the recently built image is
+		launched with the build hook command. If the command or script run by the build hook returns a
+		non-zero exit code, the resulting image will not be pushed to the registry.
 
-The command for a build hook may be specified as a shell script (with the --script argument),
-as a new entrypoint command on the image with the --command argument, or as a set of
-arguments to the image's entrypoint (default).
-`
+		The command for a build hook may be specified as a shell script (with the --script argument),
+		as a new entrypoint command on the image with the --command argument, or as a set of
+		arguments to the image's entrypoint (default).`)
 
-	buildHookExample = `  # Clear post-commit hook on a build config
-  %[1]s build-hook bc/mybuild --post-commit --remove
+	buildHookExample = templates.Examples(`  
+		# Clear post-commit hook on a build config
+	  %[1]s build-hook bc/mybuild --post-commit --remove
 
-  # Set the post-commit hook to execute a test suite using a new entrypoint
-  %[1]s build-hook bc/mybuild --post-commit --command -- /bin/bash -c /var/lib/test-image.sh
+	  # Set the post-commit hook to execute a test suite using a new entrypoint
+	  %[1]s build-hook bc/mybuild --post-commit --command -- /bin/bash -c /var/lib/test-image.sh
 
-  # Set the post-commit hook to execute a shell script
-  %[1]s build-hook bc/mybuild --post-commit --script="/var/lib/test-image.sh param1 param2 && /var/lib/done.sh"
+	  # Set the post-commit hook to execute a shell script
+	  %[1]s build-hook bc/mybuild --post-commit --script="/var/lib/test-image.sh param1 param2 && /var/lib/done.sh"
 
-  # Set the post-commit hook as a set of arguments to the default image entrypoint
-  %[1]s build-hook bc/mybuild --post-commit  -- arg1 arg2`
+	  # Set the post-commit hook as a set of arguments to the default image entrypoint
+	  %[1]s build-hook bc/mybuild --post-commit  -- arg1 arg2`)
 )
 
 type BuildHookOptions struct {
@@ -66,7 +67,7 @@ type BuildHookOptions struct {
 	ShortOutput bool
 	Mapper      meta.RESTMapper
 
-	PrintObject func(runtime.Object) error
+	PrintObject func([]*resource.Info) error
 
 	Script     string
 	Entrypoint bool
@@ -91,7 +92,7 @@ func NewCmdBuildHook(fullName string, f *clientcmd.Factory, out, errOut io.Write
 			kcmdutil.CheckErr(options.Complete(f, cmd, args))
 			kcmdutil.CheckErr(options.Validate())
 			if err := options.Run(); err != nil {
-				// TODO: move met to kcmdutil
+				// TODO: move me to kcmdutil
 				if err == cmdutil.ErrExit {
 					os.Exit(1)
 				}
@@ -102,7 +103,7 @@ func NewCmdBuildHook(fullName string, f *clientcmd.Factory, out, errOut io.Write
 
 	kcmdutil.AddPrinterFlags(cmd)
 	cmd.Flags().StringVarP(&options.Selector, "selector", "l", options.Selector, "Selector (label query) to filter build configs")
-	cmd.Flags().BoolVar(&options.All, "all", options.All, "Select all build configs in the namespace")
+	cmd.Flags().BoolVar(&options.All, "all", options.All, "If true, select all build configs in the namespace")
 	cmd.Flags().StringSliceVarP(&options.Filenames, "filename", "f", options.Filenames, "Filename, directory, or URL to file to use to edit the resource.")
 
 	cmd.Flags().BoolVar(&options.PostCommit, "post-commit", options.PostCommit, "If true, set the post-commit build hook on a build config")
@@ -138,11 +139,11 @@ func (o *BuildHookOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, ar
 		return err
 	}
 
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 	o.Builder = resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder()).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(explicit, false, o.Filenames...).
+		FilenameParam(explicit, &resource.FilenameOptions{Recursive: false, Filenames: o.Filenames}).
 		SelectorParam(o.Selector).
 		ResourceNames("buildconfigs", resources...).
 		Flatten()
@@ -153,7 +154,9 @@ func (o *BuildHookOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, ar
 
 	output := kcmdutil.GetFlagString(cmd, "output")
 	if len(output) != 0 {
-		o.PrintObject = func(obj runtime.Object) error { return f.PrintObject(cmd, mapper, obj, o.Out) }
+		o.PrintObject = func(infos []*resource.Info) error {
+			return f.PrintResourceInfos(cmd, infos, o.Out)
+		}
 	}
 
 	o.Encoder = f.JSONEncoder()
@@ -192,9 +195,9 @@ func (o *BuildHookOptions) Validate() error {
 
 func (o *BuildHookOptions) Run() error {
 	infos := o.Infos
-	singular := len(o.Infos) <= 1
+	singleItemImplied := len(o.Infos) <= 1
 	if o.Builder != nil {
-		loaded, err := o.Builder.Do().IntoSingular(&singular).Infos()
+		loaded, err := o.Builder.Do().IntoSingleItemImplied(&singleItemImplied).Infos()
 		if err != nil {
 			return err
 		}
@@ -210,16 +213,12 @@ func (o *BuildHookOptions) Run() error {
 		return true, nil
 	})
 
-	if singular && len(patches) == 0 {
+	if singleItemImplied && len(patches) == 0 {
 		return fmt.Errorf("%s/%s is not a build config", infos[0].Mapping.Resource, infos[0].Name)
 	}
 
 	if o.PrintObject != nil {
-		object, err := resource.AsVersionedObject(infos, !singular, o.OutputVersion, kapi.Codecs.LegacyCodec(o.OutputVersion))
-		if err != nil {
-			return err
-		}
-		return o.PrintObject(object)
+		return o.PrintObject(infos)
 	}
 
 	failed := false
@@ -243,7 +242,7 @@ func (o *BuildHookOptions) Run() error {
 		}
 
 		info.Refresh(obj, true)
-		kcmdutil.PrintSuccess(o.Mapper, o.ShortOutput, o.Out, info.Mapping.Resource, info.Name, "updated")
+		kcmdutil.PrintSuccess(o.Mapper, o.ShortOutput, o.Out, info.Mapping.Resource, info.Name, false, "updated")
 	}
 	if failed {
 		return cmdutil.ErrExit

@@ -4,8 +4,8 @@ trap os::test::junit::reconcile_output EXIT
 
 # This test validates the diagnostics command
 
-# available diagnostics (2016-04-24):
-# AnalyzeLogs ClusterRegistry ClusterRoleBindings ClusterRoles ClusterRouter ConfigContexts DiagnosticPod MasterConfigCheck MasterNode NodeConfigCheck NodeDefinitions UnitStatus MetricsApiProxy ServiceExternalIPs
+# available diagnostics (2016-09-01):
+# AnalyzeLogs ClusterRegistry ClusterRoleBindings ClusterRoles ClusterRouter ConfigContexts DiagnosticPod MasterConfigCheck MasterNode NetworkCheck NodeConfigCheck NodeDefinitions UnitStatus MetricsApiProxy ServiceExternalIPs
 # Without things feeding into systemd, AnalyzeLogs and UnitStatus are irrelevant.
 # The rest should be included in some fashion.
 
@@ -23,6 +23,8 @@ cp "${NODE_CONFIG_DIR}/node-config.yaml" "${BASETMPDIR}/node-config-broken.yaml"
 os::util::sed '5,10d' "${BASETMPDIR}/node-config-broken.yaml"
 os::cmd::expect_failure_and_text "oadm diagnostics NodeConfigCheck --node-config='${BASETMPDIR}/node-config-broken.yaml'" 'ERROR'
 
+os::cmd::expect_success 'oadm policy reconcile-cluster-roles --additive-only=false --confirm'
+
 os::cmd::expect_success 'oadm diagnostics ClusterRoleBindings ClusterRoles ConfigContexts '
 # DiagnosticPod can't run without Docker, would just time out. Exercise flags instead.
 os::cmd::expect_success "oadm diagnostics DiagnosticPod --prevent-modification --images=foo"
@@ -37,6 +39,7 @@ os::cmd::expect_failure 'oadm diagnostics NodeDefinitions'
 os::cmd::expect_failure_and_text 'oadm diagnostics FakeDiagnostic AlsoMissing' 'No requested diagnostics are available: requested=FakeDiagnostic AlsoMissing'
 os::cmd::expect_failure_and_text 'oadm diagnostics AnalyzeLogs AlsoMissing' 'Not all requested diagnostics are available: missing=AlsoMissing requested=AnalyzeLogs AlsoMissing available='
 os::cmd::expect_success_and_text 'oadm diagnostics MetricsApiProxy'  'Skipping diagnostic: MetricsApiProxy'
+os::cmd::expect_success_and_text 'oadm diagnostics NetworkCheck --prevent-modification' 'Skipping diagnostic: NetworkCheck'
 
 # openshift ex diagnostics is deprecated but not removed. Make sure it works until we consciously remove it.
 os::cmd::expect_success 'openshift ex diagnostics ClusterRoleBindings ClusterRoles ConfigContexts '

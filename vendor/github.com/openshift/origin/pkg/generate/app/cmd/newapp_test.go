@@ -9,12 +9,14 @@ import (
 	"testing"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
+	"k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	client "github.com/openshift/origin/pkg/client/testclient"
+	"github.com/openshift/origin/pkg/generate"
 	"github.com/openshift/origin/pkg/generate/app"
 	image "github.com/openshift/origin/pkg/image/api"
 	templateapi "github.com/openshift/origin/pkg/template/api"
@@ -29,6 +31,7 @@ func TestValidate(t *testing.T) {
 		componentValues     []string
 		sourceRepoLocations []string
 		env                 map[string]string
+		buildEnv            map[string]string
 		parms               map[string]string
 	}{
 		"components": {
@@ -40,6 +43,7 @@ func TestValidate(t *testing.T) {
 			componentValues:     []string{"one", "two", "three/four"},
 			sourceRepoLocations: []string{},
 			env:                 map[string]string{},
+			buildEnv:            map[string]string{},
 			parms:               map[string]string{},
 		},
 		"envs": {
@@ -51,6 +55,19 @@ func TestValidate(t *testing.T) {
 			componentValues:     []string{},
 			sourceRepoLocations: []string{},
 			env:                 map[string]string{"one": "first", "two": "second", "three": "third"},
+			buildEnv:            map[string]string{},
+			parms:               map[string]string{},
+		},
+		"build-envs": {
+			cfg: AppConfig{
+				GenerationInputs: GenerationInputs{
+					BuildEnvironment: []string{"one=first", "two=second", "three=third"},
+				},
+			},
+			componentValues:     []string{},
+			sourceRepoLocations: []string{},
+			env:                 map[string]string{},
+			buildEnv:            map[string]string{"one": "first", "two": "second", "three": "third"},
 			parms:               map[string]string{},
 		},
 		"component+source": {
@@ -62,6 +79,7 @@ func TestValidate(t *testing.T) {
 			componentValues:     []string{"one"},
 			sourceRepoLocations: []string{"https://server/repo.git"},
 			env:                 map[string]string{},
+			buildEnv:            map[string]string{},
 			parms:               map[string]string{},
 		},
 		"components+source": {
@@ -73,6 +91,7 @@ func TestValidate(t *testing.T) {
 			componentValues:     []string{"mysql", "ruby"},
 			sourceRepoLocations: []string{"git://github.com/namespace/repo.git"},
 			env:                 map[string]string{},
+			buildEnv:            map[string]string{},
 			parms:               map[string]string{},
 		},
 		"components+parms": {
@@ -87,15 +106,13 @@ func TestValidate(t *testing.T) {
 			componentValues:     []string{"ruby-helloworld-sample"},
 			sourceRepoLocations: []string{},
 			env:                 map[string]string{},
-			parms: map[string]string{
-				"one": "first",
-				"two": "second",
-			},
+			buildEnv:            map[string]string{},
+			parms:               map[string]string{"one": "first", "two": "second"},
 		},
 	}
 	for n, c := range tests {
 		b := &app.ReferenceBuilder{}
-		env, parms, err := c.cfg.validate()
+		env, buildEnv, parms, err := c.cfg.validate()
 		if err != nil {
 			t.Errorf("%s: Unexpected error: %v", n, err)
 			continue
@@ -127,6 +144,15 @@ func TestValidate(t *testing.T) {
 				break
 			}
 		}
+		if len(buildEnv) != len(c.buildEnv) {
+			t.Errorf("%s: Environment variables don't match. Expected: %v, Got: %v", n, c.buildEnv, buildEnv)
+		}
+		for e, v := range buildEnv {
+			if c.buildEnv[e] != v {
+				t.Errorf("%s: Environment variables don't match. Expected: %v, Got: %v", n, c.buildEnv, buildEnv)
+				break
+			}
+		}
 		if len(parms) != len(c.parms) {
 			t.Errorf("%s: Template parameters don't match. Expected: %v, Got: %v", n, c.parms, parms)
 		}
@@ -155,7 +181,7 @@ func TestBuildTemplates(t *testing.T) {
 		appCfg := AppConfig{}
 		appCfg.Out = &bytes.Buffer{}
 		appCfg.SetOpenShiftClient(&client.Fake{}, c.namespace, nil)
-		appCfg.KubeClient = ktestclient.NewSimpleFake()
+		appCfg.KubeClient = fake.NewSimpleClientset()
 		appCfg.TemplateSearcher = fakeTemplateSearcher()
 		appCfg.AddArguments([]string{c.templateName})
 		appCfg.TemplateParameters = []string{}
@@ -163,7 +189,7 @@ func TestBuildTemplates(t *testing.T) {
 			appCfg.TemplateParameters = append(appCfg.TemplateParameters, fmt.Sprintf("%v=%v", k, v))
 		}
 
-		_, parms, err := appCfg.validate()
+		_, _, parms, err := appCfg.validate()
 		if err != nil {
 			t.Errorf("%s: Unexpected error: %v", n, err)
 			continue
@@ -181,7 +207,7 @@ func TestBuildTemplates(t *testing.T) {
 			t.Errorf("%s: Unexpected error: %v", n, err)
 			continue
 		}
-		_, _, err = appCfg.buildTemplates(components, app.Environment(parms))
+		_, _, err = appCfg.buildTemplates(components, app.Environment(parms), app.Environment(map[string]string{}))
 		if err != nil {
 			t.Errorf("%s: Unexpected error: %v", n, err)
 		}
@@ -208,7 +234,7 @@ func TestBuildTemplates(t *testing.T) {
 
 func fakeTemplateSearcher() app.Searcher {
 	client := &client.Fake{}
-	client.AddReactor("list", "templates", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	client.AddReactor("list", "templates", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		return true, templateList(), nil
 	})
 	return app.TemplateSearcher{
@@ -339,7 +365,7 @@ func mockSourceRepositories(t *testing.T, file string) []*app.SourceRepository {
 		"https://github.com/openshift/ruby-hello-world.git",
 		file,
 	} {
-		s, err := app.NewSourceRepository(location)
+		s, err := app.NewSourceRepository(location, generate.StrategySource)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -356,11 +382,10 @@ func TestBuildPipelinesWithUnresolvedImage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sourceRepo, err := app.NewSourceRepository("https://github.com/foo/bar.git")
+	sourceRepo, err := app.NewSourceRepository("https://github.com/foo/bar.git", generate.StrategyDocker)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceRepo.BuildWithDocker()
 	sourceRepo.SetInfo(&app.SourceRepositoryInfo{
 		Dockerfile: dockerFile,
 	})
@@ -504,5 +529,75 @@ func TestBuildOutputCycleWithFollowingTag(t *testing.T) {
 	err := config.checkCircularReferences([]runtime.Object{followingTagCycleBC, mockIS})
 	if err == nil || err.Error() != expected {
 		t.Errorf("Expected error from followRefToDockerImage: got \"%v\" versus expected %q", err, expected)
+	}
+}
+
+func TestAllowedNonNumericExposedPorts(t *testing.T) {
+	tests := []struct {
+		strategy             generate.Strategy
+		allowNonNumericPorts bool
+	}{
+		{
+			strategy:             generate.StrategyUnspecified,
+			allowNonNumericPorts: true,
+		},
+		{
+			strategy:             generate.StrategySource,
+			allowNonNumericPorts: false,
+		},
+	}
+
+	for _, test := range tests {
+		config := &AppConfig{}
+		config.Strategy = test.strategy
+		config.AllowNonNumericExposedPorts = test.allowNonNumericPorts
+
+		repo, err := app.NewSourceRepositoryForDockerfile("FROM centos\nARG PORT=80\nEXPOSE $PORT")
+		if err != nil {
+			t.Errorf("Unexpected error during setup: %v", err)
+			continue
+		}
+		repos := app.SourceRepositories{repo}
+
+		err = optionallyValidateExposedPorts(config, repos)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+	}
+}
+
+func TestDisallowedNonNumericExposedPorts(t *testing.T) {
+	tests := []struct {
+		strategy             generate.Strategy
+		allowNonNumericPorts bool
+	}{
+		{
+			strategy:             generate.StrategyUnspecified,
+			allowNonNumericPorts: false,
+		},
+		{
+			strategy:             generate.StrategyDocker,
+			allowNonNumericPorts: false,
+		},
+	}
+
+	for _, test := range tests {
+		config := &AppConfig{}
+		config.Strategy = test.strategy
+		config.AllowNonNumericExposedPorts = test.allowNonNumericPorts
+
+		repo, err := app.NewSourceRepositoryForDockerfile("FROM centos\nARG PORT=80\nEXPOSE 8080 $PORT")
+		if err != nil {
+			t.Fatalf("Unexpected error during setup: %v", err)
+		}
+		repos := app.SourceRepositories{repo}
+
+		err = optionallyValidateExposedPorts(config, repos)
+		if err == nil {
+			t.Error("Expected error wasn't returned")
+
+		} else if !strings.Contains(err.Error(), "invalid EXPOSE") || !strings.Contains(err.Error(), "must be numeric") {
+			t.Errorf("Unexpected error: %v", err)
+		}
 	}
 }

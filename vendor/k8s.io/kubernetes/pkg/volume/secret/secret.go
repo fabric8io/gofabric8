@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package secret
 
 import (
 	"fmt"
+	"path/filepath"
+	"runtime"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
@@ -110,6 +112,18 @@ func (plugin *secretPlugin) NewUnmounter(volName string, podUID types.UID) (volu
 	}, nil
 }
 
+func (plugin *secretPlugin) ConstructVolumeSpec(volName, mountPath string) (*volume.Spec, error) {
+	secretVolume := &api.Volume{
+		Name: volName,
+		VolumeSource: api.VolumeSource{
+			Secret: &api.SecretVolumeSource{
+				SecretName: volName,
+			},
+		},
+	}
+	return volume.NewSpecFromVolume(secretVolume), nil
+}
+
 type secretVolume struct {
 	volName string
 	podUID  types.UID
@@ -144,8 +158,21 @@ func (sv *secretVolume) GetAttributes() volume.Attributes {
 		SupportsSELinux: true,
 	}
 }
+
+// Checks prior to mount operations to verify that the required components (binaries, etc.)
+// to mount the volume are available on the underlying node.
+// If not, it returns an error
+func (b *secretVolumeMounter) CanMount() error {
+	return nil
+}
+
 func (b *secretVolumeMounter) SetUp(fsGroup *int64) error {
-	return b.SetUpAt(b.GetPath(), fsGroup)
+	// Update each Slash "/" character for Windows with seperator character
+	dir := b.GetPath()
+	if runtime.GOOS == "windows" {
+		dir = filepath.FromSlash(dir)
+	}
+	return b.SetUpAt(dir, fsGroup)
 }
 
 func (b *secretVolumeMounter) SetUpAt(dir string, fsGroup *int64) error {
@@ -178,7 +205,7 @@ func (b *secretVolumeMounter) SetUpAt(dir string, fsGroup *int64) error {
 		len(secret.Data),
 		totalBytes)
 
-	payload, err := makePayload(b.source.Items, secret)
+	payload, err := makePayload(b.source.Items, secret, b.source.DefaultMode)
 	if err != nil {
 		return err
 	}
@@ -205,25 +232,38 @@ func (b *secretVolumeMounter) SetUpAt(dir string, fsGroup *int64) error {
 	return nil
 }
 
-func makePayload(mappings []api.KeyToPath, secret *api.Secret) (map[string][]byte, error) {
-	payload := make(map[string][]byte, len(secret.Data))
+func makePayload(mappings []api.KeyToPath, secret *api.Secret, defaultMode *int32) (map[string]volumeutil.FileProjection, error) {
+	if defaultMode == nil {
+		return nil, fmt.Errorf("No defaultMode used, not even the default value for it")
+	}
+
+	payload := make(map[string]volumeutil.FileProjection, len(secret.Data))
+	var fileProjection volumeutil.FileProjection
 
 	if len(mappings) == 0 {
 		for name, data := range secret.Data {
-			payload[name] = []byte(data)
+			fileProjection.Data = []byte(data)
+			fileProjection.Mode = *defaultMode
+			payload[name] = fileProjection
 		}
 	} else {
 		for _, ktp := range mappings {
 			content, ok := secret.Data[ktp.Key]
 			if !ok {
-				glog.Errorf("references non-existent secret key")
-				return nil, fmt.Errorf("references non-existent secret key")
+				err_msg := "references non-existent secret key"
+				glog.Errorf(err_msg)
+				return nil, fmt.Errorf(err_msg)
 			}
 
-			payload[ktp.Path] = []byte(content)
+			fileProjection.Data = []byte(content)
+			if ktp.Mode != nil {
+				fileProjection.Mode = *ktp.Mode
+			} else {
+				fileProjection.Mode = *defaultMode
+			}
+			payload[ktp.Path] = fileProjection
 		}
 	}
-
 	return payload, nil
 }
 
@@ -244,18 +284,16 @@ type secretVolumeUnmounter struct {
 var _ volume.Unmounter = &secretVolumeUnmounter{}
 
 func (c *secretVolumeUnmounter) TearDown() error {
-	return c.TearDownAt(c.GetPath())
+	// Update each Slash "/" character for Windows with seperator character
+	dir := c.GetPath()
+	if runtime.GOOS == "windows" {
+		dir = filepath.FromSlash(dir)
+	}
+	return c.TearDownAt(dir)
 }
 
 func (c *secretVolumeUnmounter) TearDownAt(dir string) error {
-	glog.V(3).Infof("Tearing down volume %v for pod %v at %v", c.volName, c.podUID, dir)
-
-	// Wrap EmptyDir, let it do the teardown.
-	wrapped, err := c.plugin.host.NewWrapperUnmounter(c.volName, wrappedVolumeSpec(), c.podUID)
-	if err != nil {
-		return err
-	}
-	return wrapped.TearDownAt(dir)
+	return volume.UnmountViaEmptyDir(dir, c.plugin.host, c.volName, wrappedVolumeSpec(), c.podUID)
 }
 
 func getVolumeSource(spec *volume.Spec) (*api.SecretVolumeSource, bool) {

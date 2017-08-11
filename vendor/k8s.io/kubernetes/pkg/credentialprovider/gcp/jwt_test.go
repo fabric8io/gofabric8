@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,8 +83,9 @@ func TestJwtProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating temp file: %v", err)
 	}
-
 	filename := file.Name()
+	defer os.Remove(filename)
+
 	_, err = file.WriteString(jsonKey)
 	if err != nil {
 		t.Fatalf("Error writing temp file: %v", err)

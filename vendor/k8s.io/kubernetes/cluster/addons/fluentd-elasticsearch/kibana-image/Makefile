@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,10 +14,11 @@
 
 .PHONY:	build push
 
-TAG = 1.3
+TAG = v4.6.1
+PREFIX = gcr.io/google_containers
 
 build:
-	docker build -t gcr.io/google_containers/kibana:$(TAG) .
+	docker build --pull -t $(PREFIX)/kibana:$(TAG) .
 
 push:
-	gcloud docker push gcr.io/google_containers/kibana:$(TAG)
+	gcloud docker -- push $(PREFIX)/kibana:$(TAG)

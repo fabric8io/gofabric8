@@ -18,6 +18,8 @@
 		OAuthClientAuthorization
 		OAuthClientAuthorizationList
 		OAuthClientList
+		OAuthRedirectReference
+		RedirectReference
 		ScopeRestriction
 */
 package v1
@@ -26,6 +28,9 @@ import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
 
+import strings "strings"
+import reflect "reflect"
+
 import io "io"
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -33,45 +38,63 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-func (m *ClusterRoleScopeRestriction) Reset()         { *m = ClusterRoleScopeRestriction{} }
-func (m *ClusterRoleScopeRestriction) String() string { return proto.CompactTextString(m) }
-func (*ClusterRoleScopeRestriction) ProtoMessage()    {}
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+const _ = proto.GoGoProtoPackageIsVersion1
 
-func (m *OAuthAccessToken) Reset()         { *m = OAuthAccessToken{} }
-func (m *OAuthAccessToken) String() string { return proto.CompactTextString(m) }
-func (*OAuthAccessToken) ProtoMessage()    {}
+func (m *ClusterRoleScopeRestriction) Reset()      { *m = ClusterRoleScopeRestriction{} }
+func (*ClusterRoleScopeRestriction) ProtoMessage() {}
+func (*ClusterRoleScopeRestriction) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{0}
+}
 
-func (m *OAuthAccessTokenList) Reset()         { *m = OAuthAccessTokenList{} }
-func (m *OAuthAccessTokenList) String() string { return proto.CompactTextString(m) }
-func (*OAuthAccessTokenList) ProtoMessage()    {}
+func (m *OAuthAccessToken) Reset()                    { *m = OAuthAccessToken{} }
+func (*OAuthAccessToken) ProtoMessage()               {}
+func (*OAuthAccessToken) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{1} }
 
-func (m *OAuthAuthorizeToken) Reset()         { *m = OAuthAuthorizeToken{} }
-func (m *OAuthAuthorizeToken) String() string { return proto.CompactTextString(m) }
-func (*OAuthAuthorizeToken) ProtoMessage()    {}
+func (m *OAuthAccessTokenList) Reset()                    { *m = OAuthAccessTokenList{} }
+func (*OAuthAccessTokenList) ProtoMessage()               {}
+func (*OAuthAccessTokenList) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{2} }
 
-func (m *OAuthAuthorizeTokenList) Reset()         { *m = OAuthAuthorizeTokenList{} }
-func (m *OAuthAuthorizeTokenList) String() string { return proto.CompactTextString(m) }
-func (*OAuthAuthorizeTokenList) ProtoMessage()    {}
+func (m *OAuthAuthorizeToken) Reset()                    { *m = OAuthAuthorizeToken{} }
+func (*OAuthAuthorizeToken) ProtoMessage()               {}
+func (*OAuthAuthorizeToken) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{3} }
 
-func (m *OAuthClient) Reset()         { *m = OAuthClient{} }
-func (m *OAuthClient) String() string { return proto.CompactTextString(m) }
-func (*OAuthClient) ProtoMessage()    {}
+func (m *OAuthAuthorizeTokenList) Reset()                    { *m = OAuthAuthorizeTokenList{} }
+func (*OAuthAuthorizeTokenList) ProtoMessage()               {}
+func (*OAuthAuthorizeTokenList) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{4} }
 
-func (m *OAuthClientAuthorization) Reset()         { *m = OAuthClientAuthorization{} }
-func (m *OAuthClientAuthorization) String() string { return proto.CompactTextString(m) }
-func (*OAuthClientAuthorization) ProtoMessage()    {}
+func (m *OAuthClient) Reset()                    { *m = OAuthClient{} }
+func (*OAuthClient) ProtoMessage()               {}
+func (*OAuthClient) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{5} }
 
-func (m *OAuthClientAuthorizationList) Reset()         { *m = OAuthClientAuthorizationList{} }
-func (m *OAuthClientAuthorizationList) String() string { return proto.CompactTextString(m) }
-func (*OAuthClientAuthorizationList) ProtoMessage()    {}
+func (m *OAuthClientAuthorization) Reset()      { *m = OAuthClientAuthorization{} }
+func (*OAuthClientAuthorization) ProtoMessage() {}
+func (*OAuthClientAuthorization) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{6}
+}
 
-func (m *OAuthClientList) Reset()         { *m = OAuthClientList{} }
-func (m *OAuthClientList) String() string { return proto.CompactTextString(m) }
-func (*OAuthClientList) ProtoMessage()    {}
+func (m *OAuthClientAuthorizationList) Reset()      { *m = OAuthClientAuthorizationList{} }
+func (*OAuthClientAuthorizationList) ProtoMessage() {}
+func (*OAuthClientAuthorizationList) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{7}
+}
 
-func (m *ScopeRestriction) Reset()         { *m = ScopeRestriction{} }
-func (m *ScopeRestriction) String() string { return proto.CompactTextString(m) }
-func (*ScopeRestriction) ProtoMessage()    {}
+func (m *OAuthClientList) Reset()                    { *m = OAuthClientList{} }
+func (*OAuthClientList) ProtoMessage()               {}
+func (*OAuthClientList) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{8} }
+
+func (m *OAuthRedirectReference) Reset()                    { *m = OAuthRedirectReference{} }
+func (*OAuthRedirectReference) ProtoMessage()               {}
+func (*OAuthRedirectReference) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{9} }
+
+func (m *RedirectReference) Reset()                    { *m = RedirectReference{} }
+func (*RedirectReference) ProtoMessage()               {}
+func (*RedirectReference) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{10} }
+
+func (m *ScopeRestriction) Reset()                    { *m = ScopeRestriction{} }
+func (*ScopeRestriction) ProtoMessage()               {}
+func (*ScopeRestriction) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{11} }
 
 func init() {
 	proto.RegisterType((*ClusterRoleScopeRestriction)(nil), "github.com.openshift.origin.pkg.oauth.api.v1.ClusterRoleScopeRestriction")
@@ -83,6 +106,8 @@ func init() {
 	proto.RegisterType((*OAuthClientAuthorization)(nil), "github.com.openshift.origin.pkg.oauth.api.v1.OAuthClientAuthorization")
 	proto.RegisterType((*OAuthClientAuthorizationList)(nil), "github.com.openshift.origin.pkg.oauth.api.v1.OAuthClientAuthorizationList")
 	proto.RegisterType((*OAuthClientList)(nil), "github.com.openshift.origin.pkg.oauth.api.v1.OAuthClientList")
+	proto.RegisterType((*OAuthRedirectReference)(nil), "github.com.openshift.origin.pkg.oauth.api.v1.OAuthRedirectReference")
+	proto.RegisterType((*RedirectReference)(nil), "github.com.openshift.origin.pkg.oauth.api.v1.RedirectReference")
 	proto.RegisterType((*ScopeRestriction)(nil), "github.com.openshift.origin.pkg.oauth.api.v1.ScopeRestriction")
 }
 func (m *ClusterRoleScopeRestriction) Marshal() (data []byte, err error) {
@@ -308,6 +333,14 @@ func (m *OAuthAuthorizeToken) MarshalTo(data []byte) (int, error) {
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.UserUID)))
 	i += copy(data[i:], m.UserUID)
+	data[i] = 0x4a
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.CodeChallenge)))
+	i += copy(data[i:], m.CodeChallenge)
+	data[i] = 0x52
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.CodeChallengeMethod)))
+	i += copy(data[i:], m.CodeChallengeMethod)
 	return i, nil
 }
 
@@ -562,6 +595,70 @@ func (m *OAuthClientList) MarshalTo(data []byte) (int, error) {
 	return i, nil
 }
 
+func (m *OAuthRedirectReference) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *OAuthRedirectReference) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	data[i] = 0xa
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.ObjectMeta.Size()))
+	n9, err := m.ObjectMeta.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n9
+	data[i] = 0x12
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.Reference.Size()))
+	n10, err := m.Reference.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n10
+	return i, nil
+}
+
+func (m *RedirectReference) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *RedirectReference) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	data[i] = 0xa
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Group)))
+	i += copy(data[i:], m.Group)
+	data[i] = 0x12
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Kind)))
+	i += copy(data[i:], m.Kind)
+	data[i] = 0x1a
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Name)))
+	i += copy(data[i:], m.Name)
+	return i, nil
+}
+
 func (m *ScopeRestriction) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
@@ -596,11 +693,11 @@ func (m *ScopeRestriction) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.ClusterRole.Size()))
-		n9, err := m.ClusterRole.MarshalTo(data[i:])
+		n11, err := m.ClusterRole.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n9
+		i += n11
 	}
 	return i, nil
 }
@@ -714,6 +811,10 @@ func (m *OAuthAuthorizeToken) Size() (n int) {
 	n += 1 + l + sovGenerated(uint64(l))
 	l = len(m.UserUID)
 	n += 1 + l + sovGenerated(uint64(l))
+	l = len(m.CodeChallenge)
+	n += 1 + l + sovGenerated(uint64(l))
+	l = len(m.CodeChallengeMethod)
+	n += 1 + l + sovGenerated(uint64(l))
 	return n
 }
 
@@ -810,6 +911,28 @@ func (m *OAuthClientList) Size() (n int) {
 	return n
 }
 
+func (m *OAuthRedirectReference) Size() (n int) {
+	var l int
+	_ = l
+	l = m.ObjectMeta.Size()
+	n += 1 + l + sovGenerated(uint64(l))
+	l = m.Reference.Size()
+	n += 1 + l + sovGenerated(uint64(l))
+	return n
+}
+
+func (m *RedirectReference) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Group)
+	n += 1 + l + sovGenerated(uint64(l))
+	l = len(m.Kind)
+	n += 1 + l + sovGenerated(uint64(l))
+	l = len(m.Name)
+	n += 1 + l + sovGenerated(uint64(l))
+	return n
+}
+
 func (m *ScopeRestriction) Size() (n int) {
 	var l int
 	_ = l
@@ -838,6 +961,171 @@ func sovGenerated(x uint64) (n int) {
 }
 func sozGenerated(x uint64) (n int) {
 	return sovGenerated(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (this *ClusterRoleScopeRestriction) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ClusterRoleScopeRestriction{`,
+		`RoleNames:` + fmt.Sprintf("%v", this.RoleNames) + `,`,
+		`Namespaces:` + fmt.Sprintf("%v", this.Namespaces) + `,`,
+		`AllowEscalation:` + fmt.Sprintf("%v", this.AllowEscalation) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *OAuthAccessToken) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&OAuthAccessToken{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`ClientName:` + fmt.Sprintf("%v", this.ClientName) + `,`,
+		`ExpiresIn:` + fmt.Sprintf("%v", this.ExpiresIn) + `,`,
+		`Scopes:` + fmt.Sprintf("%v", this.Scopes) + `,`,
+		`RedirectURI:` + fmt.Sprintf("%v", this.RedirectURI) + `,`,
+		`UserName:` + fmt.Sprintf("%v", this.UserName) + `,`,
+		`UserUID:` + fmt.Sprintf("%v", this.UserUID) + `,`,
+		`AuthorizeToken:` + fmt.Sprintf("%v", this.AuthorizeToken) + `,`,
+		`RefreshToken:` + fmt.Sprintf("%v", this.RefreshToken) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *OAuthAccessTokenList) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&OAuthAccessTokenList{`,
+		`ListMeta:` + strings.Replace(strings.Replace(this.ListMeta.String(), "ListMeta", "k8s_io_kubernetes_pkg_api_unversioned.ListMeta", 1), `&`, ``, 1) + `,`,
+		`Items:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Items), "OAuthAccessToken", "OAuthAccessToken", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *OAuthAuthorizeToken) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&OAuthAuthorizeToken{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`ClientName:` + fmt.Sprintf("%v", this.ClientName) + `,`,
+		`ExpiresIn:` + fmt.Sprintf("%v", this.ExpiresIn) + `,`,
+		`Scopes:` + fmt.Sprintf("%v", this.Scopes) + `,`,
+		`RedirectURI:` + fmt.Sprintf("%v", this.RedirectURI) + `,`,
+		`State:` + fmt.Sprintf("%v", this.State) + `,`,
+		`UserName:` + fmt.Sprintf("%v", this.UserName) + `,`,
+		`UserUID:` + fmt.Sprintf("%v", this.UserUID) + `,`,
+		`CodeChallenge:` + fmt.Sprintf("%v", this.CodeChallenge) + `,`,
+		`CodeChallengeMethod:` + fmt.Sprintf("%v", this.CodeChallengeMethod) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *OAuthAuthorizeTokenList) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&OAuthAuthorizeTokenList{`,
+		`ListMeta:` + strings.Replace(strings.Replace(this.ListMeta.String(), "ListMeta", "k8s_io_kubernetes_pkg_api_unversioned.ListMeta", 1), `&`, ``, 1) + `,`,
+		`Items:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Items), "OAuthAuthorizeToken", "OAuthAuthorizeToken", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *OAuthClient) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&OAuthClient{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`Secret:` + fmt.Sprintf("%v", this.Secret) + `,`,
+		`AdditionalSecrets:` + fmt.Sprintf("%v", this.AdditionalSecrets) + `,`,
+		`RespondWithChallenges:` + fmt.Sprintf("%v", this.RespondWithChallenges) + `,`,
+		`RedirectURIs:` + fmt.Sprintf("%v", this.RedirectURIs) + `,`,
+		`GrantMethod:` + fmt.Sprintf("%v", this.GrantMethod) + `,`,
+		`ScopeRestrictions:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ScopeRestrictions), "ScopeRestriction", "ScopeRestriction", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *OAuthClientAuthorization) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&OAuthClientAuthorization{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`ClientName:` + fmt.Sprintf("%v", this.ClientName) + `,`,
+		`UserName:` + fmt.Sprintf("%v", this.UserName) + `,`,
+		`UserUID:` + fmt.Sprintf("%v", this.UserUID) + `,`,
+		`Scopes:` + fmt.Sprintf("%v", this.Scopes) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *OAuthClientAuthorizationList) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&OAuthClientAuthorizationList{`,
+		`ListMeta:` + strings.Replace(strings.Replace(this.ListMeta.String(), "ListMeta", "k8s_io_kubernetes_pkg_api_unversioned.ListMeta", 1), `&`, ``, 1) + `,`,
+		`Items:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Items), "OAuthClientAuthorization", "OAuthClientAuthorization", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *OAuthClientList) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&OAuthClientList{`,
+		`ListMeta:` + strings.Replace(strings.Replace(this.ListMeta.String(), "ListMeta", "k8s_io_kubernetes_pkg_api_unversioned.ListMeta", 1), `&`, ``, 1) + `,`,
+		`Items:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Items), "OAuthClient", "OAuthClient", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *OAuthRedirectReference) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&OAuthRedirectReference{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`Reference:` + strings.Replace(strings.Replace(this.Reference.String(), "RedirectReference", "RedirectReference", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *RedirectReference) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&RedirectReference{`,
+		`Group:` + fmt.Sprintf("%v", this.Group) + `,`,
+		`Kind:` + fmt.Sprintf("%v", this.Kind) + `,`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ScopeRestriction) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ScopeRestriction{`,
+		`ExactValues:` + fmt.Sprintf("%v", this.ExactValues) + `,`,
+		`ClusterRole:` + strings.Replace(fmt.Sprintf("%v", this.ClusterRole), "ClusterRoleScopeRestriction", "ClusterRoleScopeRestriction", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func valueToStringGenerated(v interface{}) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("*%v", pv)
 }
 func (m *ClusterRoleScopeRestriction) Unmarshal(data []byte) error {
 	l := len(data)
@@ -1631,6 +1919,64 @@ func (m *OAuthAuthorizeToken) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.UserUID = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CodeChallenge", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CodeChallenge = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CodeChallengeMethod", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CodeChallengeMethod = string(data[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -2429,6 +2775,253 @@ func (m *OAuthClientList) Unmarshal(data []byte) error {
 	}
 	return nil
 }
+func (m *OAuthRedirectReference) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: OAuthRedirectReference: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: OAuthRedirectReference: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ObjectMeta", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.ObjectMeta.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reference", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Reference.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RedirectReference) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RedirectReference: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RedirectReference: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Group", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Group = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Kind", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Kind = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *ScopeRestriction) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
@@ -2645,3 +3238,80 @@ var (
 	ErrInvalidLengthGenerated = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowGenerated   = fmt.Errorf("proto: integer overflow")
 )
+
+var fileDescriptorGenerated = []byte{
+	// 1165 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xec, 0x57, 0x4f, 0x6f, 0x1b, 0x45,
+	0x14, 0xcf, 0xc6, 0x76, 0x62, 0x8f, 0xf3, 0xcf, 0x93, 0xa6, 0x5d, 0x52, 0xb0, 0x23, 0x17, 0x41,
+	0x10, 0xe9, 0xae, 0x12, 0x51, 0xa9, 0x08, 0x54, 0x64, 0x9b, 0x50, 0x2c, 0x48, 0x2b, 0x4d, 0x1a,
+	0x40, 0x48, 0x20, 0x6d, 0x76, 0x5f, 0xec, 0xc1, 0x9b, 0xdd, 0xd5, 0xcc, 0x6c, 0x28, 0xa8, 0x07,
+	0x6e, 0x5c, 0xf9, 0x12, 0x7c, 0x03, 0x2e, 0x1c, 0xb8, 0xe7, 0x98, 0x23, 0xe2, 0x60, 0x35, 0x86,
+	0x13, 0x1f, 0x81, 0x0b, 0x68, 0x67, 0xd7, 0xfb, 0xc7, 0x7f, 0x5a, 0x25, 0x52, 0x23, 0x0e, 0xbd,
+	0x79, 0xdf, 0xfb, 0xfd, 0xe6, 0xbd, 0x37, 0xf3, 0x7e, 0xcf, 0x33, 0xe8, 0xfd, 0x0e, 0x15, 0x5d,
+	0xff, 0x50, 0x33, 0xdd, 0x63, 0xdd, 0xf5, 0xc0, 0xe1, 0x5d, 0x7a, 0x24, 0x74, 0x97, 0xd1, 0x0e,
+	0x75, 0x74, 0xaf, 0xd7, 0xd1, 0x5d, 0xc3, 0x17, 0x5d, 0xdd, 0xf0, 0xa8, 0x7e, 0xb2, 0xad, 0x77,
+	0xc0, 0x01, 0x66, 0x08, 0xb0, 0x34, 0x8f, 0xb9, 0xc2, 0xc5, 0x5b, 0x09, 0x5b, 0x8b, 0xd9, 0x5a,
+	0xc8, 0xd6, 0xbc, 0x5e, 0x47, 0x93, 0x6c, 0xcd, 0xf0, 0xa8, 0x76, 0xb2, 0xbd, 0x7e, 0x3b, 0x15,
+	0xab, 0xe3, 0x76, 0x5c, 0x5d, 0x2e, 0x72, 0xe8, 0x1f, 0xc9, 0x2f, 0xf9, 0x21, 0x7f, 0x85, 0x8b,
+	0xaf, 0xdf, 0xe9, 0xdd, 0xe5, 0x1a, 0x75, 0xf5, 0x9e, 0x7f, 0x08, 0xcc, 0x01, 0x01, 0x5c, 0x26,
+	0x14, 0xa4, 0xe2, 0x3b, 0x27, 0xc0, 0x38, 0x75, 0x1d, 0xb0, 0x46, 0x73, 0x5a, 0xdf, 0x9a, 0x4e,
+	0x1b, 0xaf, 0x60, 0xfd, 0xf6, 0x64, 0x34, 0xf3, 0x1d, 0x41, 0x8f, 0x61, 0x0c, 0xbe, 0x3d, 0x19,
+	0xee, 0x0b, 0x6a, 0xeb, 0xd4, 0x11, 0x5c, 0xb0, 0x51, 0x4a, 0xfd, 0x37, 0x05, 0xdd, 0x6c, 0xd9,
+	0x3e, 0x17, 0xc0, 0x88, 0x6b, 0xc3, 0xbe, 0xe9, 0x7a, 0x40, 0x80, 0x0b, 0x46, 0x4d, 0x41, 0x5d,
+	0x07, 0xbf, 0x8d, 0x4a, 0xcc, 0xb5, 0xe1, 0x81, 0x71, 0x0c, 0x5c, 0x55, 0x36, 0x72, 0x9b, 0xa5,
+	0xe6, 0xe2, 0xa0, 0x5f, 0x2b, 0x91, 0xa1, 0x91, 0x24, 0x7e, 0xac, 0x21, 0xe4, 0x04, 0x3f, 0x3c,
+	0xc3, 0x04, 0xae, 0xce, 0x4a, 0xf4, 0xd2, 0xa0, 0x5f, 0x43, 0x0f, 0x62, 0x2b, 0x49, 0x21, 0x70,
+	0x03, 0x2d, 0x1b, 0xb6, 0xed, 0x7e, 0xbb, 0xcb, 0x4d, 0xc3, 0x36, 0x82, 0x78, 0x6a, 0x6e, 0x43,
+	0xd9, 0x2c, 0x36, 0x6f, 0x9c, 0xf6, 0x6b, 0x33, 0x83, 0x7e, 0x6d, 0xb9, 0x91, 0x75, 0x93, 0x51,
+	0x7c, 0xfd, 0xdf, 0x1c, 0x5a, 0x79, 0xd8, 0xf0, 0x45, 0xb7, 0x61, 0x9a, 0xc0, 0xf9, 0x23, 0xb7,
+	0x07, 0x0e, 0xfe, 0x02, 0x15, 0x8f, 0x41, 0x18, 0x96, 0x21, 0x0c, 0x55, 0xd9, 0x50, 0x36, 0xcb,
+	0x3b, 0x9b, 0x5a, 0xb8, 0x35, 0x5a, 0xb2, 0x35, 0xb2, 0x03, 0xc2, 0xb3, 0xd7, 0x1e, 0x1e, 0x7e,
+	0x03, 0xa6, 0xd8, 0x03, 0x61, 0x34, 0x71, 0x14, 0x1a, 0x25, 0x36, 0x12, 0xaf, 0x86, 0x77, 0x10,
+	0x32, 0x6d, 0x0a, 0x8e, 0x08, 0x2a, 0x52, 0x67, 0x37, 0x94, 0xcd, 0x52, 0xc2, 0x68, 0xc5, 0x1e,
+	0x92, 0x42, 0x61, 0x1d, 0x95, 0xe0, 0xb1, 0x47, 0x19, 0xf0, 0x76, 0x58, 0x5f, 0xae, 0x59, 0x89,
+	0x28, 0xa5, 0xdd, 0xa1, 0x83, 0x24, 0x18, 0x5c, 0x47, 0x73, 0x3c, 0x38, 0x07, 0xae, 0xe6, 0xe5,
+	0x16, 0xa2, 0x41, 0xbf, 0x36, 0x27, 0x4f, 0x86, 0x93, 0xc8, 0x83, 0xef, 0xa0, 0x32, 0x03, 0x8b,
+	0x32, 0x30, 0xc5, 0x01, 0x69, 0xab, 0x05, 0x99, 0xc9, 0x6a, 0xb4, 0x6c, 0x99, 0x24, 0x2e, 0x92,
+	0xc6, 0xe1, 0x2d, 0x54, 0xf4, 0x39, 0x30, 0x99, 0xfd, 0x9c, 0xe4, 0xac, 0x44, 0x9c, 0xe2, 0x41,
+	0x64, 0x27, 0x31, 0x02, 0xbf, 0x85, 0xe6, 0x83, 0xdf, 0x07, 0xed, 0x0f, 0xd5, 0x79, 0x09, 0x5e,
+	0x8e, 0xc0, 0xf3, 0x07, 0xa1, 0x99, 0x0c, 0xfd, 0xf8, 0x1e, 0x5a, 0x0a, 0xc4, 0xe4, 0x32, 0xfa,
+	0x3d, 0xc8, 0x43, 0x50, 0x8b, 0x92, 0x71, 0x3d, 0x62, 0x2c, 0x35, 0x32, 0x5e, 0x32, 0x82, 0xc6,
+	0x77, 0xd1, 0x02, 0x83, 0x23, 0x06, 0xbc, 0x1b, 0xb2, 0x4b, 0x92, 0x7d, 0x2d, 0x62, 0x2f, 0x90,
+	0x94, 0x8f, 0x64, 0x90, 0xf5, 0x3f, 0x14, 0x74, 0x6d, 0xb4, 0x03, 0x3e, 0xa5, 0x5c, 0xe0, 0xaf,
+	0xc6, 0xba, 0x40, 0x7f, 0x46, 0x17, 0xa4, 0x44, 0xab, 0x05, 0x74, 0xd9, 0x0c, 0xf1, 0xe6, 0x0c,
+	0x2d, 0xa9, 0x56, 0x30, 0x51, 0x81, 0x0a, 0x38, 0x0e, 0xfb, 0xbc, 0xbc, 0x73, 0x4f, 0xbb, 0xc8,
+	0xb4, 0xd1, 0x46, 0x33, 0x6e, 0x2e, 0x46, 0xa1, 0x0a, 0xed, 0x60, 0x51, 0x12, 0xae, 0x5d, 0xff,
+	0x35, 0x8f, 0x56, 0x43, 0x68, 0x76, 0xbb, 0x5e, 0x76, 0xf8, 0xb4, 0x0e, 0xbf, 0x85, 0x0a, 0x5c,
+	0x18, 0x62, 0xd8, 0xde, 0xf1, 0xb6, 0xee, 0x07, 0x46, 0x12, 0xfa, 0x32, 0x32, 0x98, 0xbf, 0x88,
+	0x0c, 0x8a, 0xcf, 0x91, 0xc1, 0x7b, 0x68, 0xd1, 0x74, 0x2d, 0x68, 0x75, 0x0d, 0xdb, 0x06, 0xa7,
+	0x03, 0x51, 0x1f, 0xaf, 0x45, 0x84, 0xc5, 0x56, 0xda, 0x49, 0xb2, 0x58, 0xbc, 0x87, 0x56, 0x33,
+	0x86, 0x3d, 0x10, 0x5d, 0xd7, 0x52, 0x91, 0x5c, 0xe2, 0x66, 0xb4, 0xc4, 0x6a, 0x6b, 0x1c, 0x42,
+	0x26, 0xf1, 0xea, 0x4f, 0x15, 0x74, 0x63, 0x42, 0xef, 0x5c, 0x85, 0x36, 0x8e, 0xb2, 0xda, 0x68,
+	0x5c, 0x46, 0x1b, 0x99, 0xa4, 0xa7, 0xc8, 0xe3, 0x97, 0x3c, 0x2a, 0x4b, 0x74, 0xd8, 0x98, 0x2f,
+	0x50, 0x16, 0x6f, 0xa0, 0x39, 0x0e, 0x26, 0x03, 0x11, 0x49, 0x62, 0x29, 0x42, 0xcf, 0xed, 0x4b,
+	0x2b, 0x89, 0xbc, 0xb8, 0x85, 0x2a, 0x86, 0x65, 0xd1, 0xe0, 0xbf, 0xc9, 0xb0, 0x43, 0x1f, 0x57,
+	0x73, 0xb2, 0xc9, 0xd7, 0x06, 0xfd, 0x5a, 0xa5, 0x31, 0xea, 0x24, 0xe3, 0x78, 0xbc, 0x8f, 0xd6,
+	0x18, 0x70, 0xcf, 0x75, 0xac, 0xcf, 0xa9, 0xe8, 0xc6, 0xe7, 0x1a, 0xa8, 0x25, 0xf8, 0x77, 0x7c,
+	0x2d, 0x8a, 0xbd, 0x46, 0x26, 0x81, 0xc8, 0x64, 0x2e, 0x7e, 0x27, 0x98, 0xb0, 0xb1, 0x4e, 0xb8,
+	0x5a, 0x90, 0x49, 0xad, 0x84, 0xd3, 0x35, 0xb1, 0x93, 0x0c, 0x0a, 0xb7, 0x51, 0xb9, 0xc3, 0x0c,
+	0x47, 0x44, 0xbd, 0x18, 0x8a, 0xea, 0xcd, 0xa1, 0x0a, 0xef, 0x27, 0xae, 0x7f, 0xfa, 0xb5, 0x15,
+	0xf9, 0xf9, 0xb1, 0xe1, 0x58, 0x36, 0xb0, 0x47, 0xdf, 0x79, 0x40, 0xd2, 0x5c, 0xfc, 0xa3, 0x82,
+	0x2a, 0x7c, 0xe4, 0x7e, 0xc1, 0xd5, 0xf9, 0xcb, 0x4c, 0xcf, 0xd1, 0x6b, 0x4a, 0xf3, 0x95, 0x28,
+	0xa3, 0xca, 0xa8, 0x87, 0x93, 0xf1, 0x98, 0xf5, 0x9f, 0x67, 0x91, 0x9a, 0x6a, 0x9b, 0x61, 0xab,
+	0xc9, 0x1b, 0xc5, 0xff, 0x6c, 0xb4, 0xa6, 0x27, 0x55, 0xee, 0x22, 0x93, 0x2a, 0xff, 0x9c, 0x49,
+	0x95, 0x8c, 0xe0, 0xc2, 0xb4, 0x11, 0x5c, 0xff, 0x5b, 0x41, 0xaf, 0x4e, 0xdb, 0xa7, 0xab, 0x18,
+	0x23, 0xbd, 0xec, 0x18, 0xf9, 0xe8, 0x12, 0x63, 0x64, 0x42, 0xe6, 0x53, 0x66, 0xc9, 0x99, 0x82,
+	0x96, 0x53, 0x94, 0xab, 0xa8, 0xef, 0xeb, 0x6c, 0x7d, 0xef, 0x5e, 0xba, 0xbe, 0x29, 0x25, 0xfd,
+	0xa5, 0xa0, 0xeb, 0x12, 0x35, 0x14, 0x38, 0x81, 0x23, 0x60, 0xe0, 0x98, 0xf0, 0x02, 0xbb, 0xdc,
+	0x43, 0x25, 0x36, 0x0c, 0x23, 0x9b, 0xbc, 0xbc, 0xf3, 0xc1, 0xc5, 0x0a, 0x1b, 0xcb, 0x36, 0xb9,
+	0x4d, 0xc4, 0x26, 0x92, 0x04, 0xa9, 0x3f, 0x41, 0x95, 0xf1, 0x02, 0x6f, 0xa1, 0x42, 0x87, 0xb9,
+	0xbe, 0x27, 0xab, 0x4b, 0xdd, 0x03, 0xee, 0x07, 0x46, 0x12, 0xfa, 0xf0, 0x06, 0xca, 0xf7, 0xa8,
+	0x63, 0x45, 0x5a, 0x5c, 0x88, 0x30, 0xf9, 0x4f, 0xa8, 0x63, 0x11, 0xe9, 0x09, 0x10, 0x4e, 0xa2,
+	0xbd, 0x18, 0x21, 0x75, 0x27, 0x3d, 0xc1, 0x0b, 0x6a, 0x65, 0xc2, 0xb3, 0xa9, 0x68, 0x53, 0x01,
+	0xcc, 0xb0, 0x87, 0xaf, 0xa6, 0xe5, 0x60, 0x5e, 0xee, 0x3e, 0x36, 0x4c, 0xf1, 0x99, 0x61, 0xfb,
+	0xc0, 0x49, 0x0c, 0xc0, 0x4f, 0x50, 0xd9, 0x4c, 0x9e, 0x60, 0xd1, 0x9e, 0xb5, 0x2f, 0xb6, 0x67,
+	0xcf, 0x78, 0xc3, 0x85, 0xa1, 0x53, 0x00, 0x92, 0x0e, 0xd7, 0x7c, 0xfd, 0xf4, 0xbc, 0x3a, 0x73,
+	0x76, 0x5e, 0x9d, 0xf9, 0xfd, 0xbc, 0x3a, 0xf3, 0xc3, 0xa0, 0xaa, 0x9c, 0x0e, 0xaa, 0xca, 0xd9,
+	0xa0, 0xaa, 0x3c, 0x1d, 0x54, 0x95, 0x9f, 0xfe, 0xac, 0xce, 0x7c, 0x39, 0x7b, 0xb2, 0xfd, 0x5f,
+	0x00, 0x00, 0x00, 0xff, 0xff, 0xf8, 0x84, 0x39, 0xf5, 0x8a, 0x0f, 0x00, 0x00,
+}

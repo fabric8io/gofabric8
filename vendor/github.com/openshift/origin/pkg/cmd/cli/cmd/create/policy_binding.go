@@ -12,17 +12,18 @@ import (
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	"github.com/openshift/origin/pkg/client"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
-const (
-	PolicyBindingRecommendedName = "policybinding"
+const PolicyBindingRecommendedName = "policybinding"
 
-	policyBindingLong = `
-Create a policy binding that references the policy in the targetted namespace.`
+var (
+	policyBindingLong = templates.LongDesc(`Create a policy binding that references the policy in the targeted namespace.`)
 
-	policyBindingExample = `  # Create a policy binding in namespace "foo" that references the policy in namespace "bar"
-  %[1]s bar -n foo`
+	policyBindingExample = templates.Examples(`
+		# Create a policy binding in namespace "foo" that references the policy in namespace "bar"
+  	%[1]s bar -n foo`)
 )
 
 type CreatePolicyBindingOptions struct {
@@ -39,13 +40,13 @@ type CreatePolicyBindingOptions struct {
 
 type ObjectPrinter func(runtime.Object, io.Writer) error
 
-// NewCmdCreateServiceAccount is a macro command to create a new service account
+// NewCmdCreatePolicyBinding is a macro command to create a new policy binding.
 func NewCmdCreatePolicyBinding(name, fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
 	o := &CreatePolicyBindingOptions{Out: out}
 
 	cmd := &cobra.Command{
 		Use:     name + " TARGET_POLICY_NAMESPACE",
-		Short:   "Create a policy binding that references the policy in the targetted namespace.",
+		Short:   "Create a policy binding that references the policy in the targeted namespace.",
 		Long:    policyBindingLong,
 		Example: fmt.Sprintf(policyBindingExample, fullName),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -76,7 +77,7 @@ func (o *CreatePolicyBindingOptions) Complete(cmd *cobra.Command, f *clientcmd.F
 	}
 	o.BindingClient = client
 
-	o.Mapper, _ = f.Object(false)
+	o.Mapper, _ = f.Object()
 	o.OutputFormat = cmdutil.GetFlagString(cmd, "output")
 
 	o.Printer = func(obj runtime.Object, out io.Writer) error {
@@ -121,7 +122,7 @@ func (o *CreatePolicyBindingOptions) Run() error {
 	}
 
 	if useShortOutput := o.OutputFormat == "name"; useShortOutput || len(o.OutputFormat) == 0 {
-		cmdutil.PrintSuccess(o.Mapper, useShortOutput, o.Out, "policybinding", actualBinding.Name, "created")
+		cmdutil.PrintSuccess(o.Mapper, useShortOutput, o.Out, "policybinding", actualBinding.Name, false, "created")
 		return nil
 	}
 

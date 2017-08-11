@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Pod initialization
 
 @smarterclayton
@@ -442,13 +437,6 @@ master and Kubelet is tracked in issue [#4855](https://github.com/kubernetes/kub
 
 * Unify pod QoS class with init containers
 * Implement container / image volumes to make composition of runtime from images efficient
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+kind: Template
+metadata:
+  name: fabric8-kubernetes-user-sa
+objects:
+- apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    annotations:
+      openshift.io/description: Service account used to create a user specific token to access Kubernetes
+      openshift.io/display-name: User Service Account
+      openshift.io/requester: fabric8-init-tenant
+    labels:
+      provider: fabric8
+      app: fabric8-init-tenant
+    name: ${NAME}
+parameters:
+- name: NAME

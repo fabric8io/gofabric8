@@ -1,0 +1,51 @@
+{
+  "data": {
+    "attributes": {
+      "created-at": "0001-01-01T00:00:00Z",
+      "description": "Specify that one bug blocks another one.",
+      "forward_name": "forward name string for type1 cd2ac1b0-8eb6-4cb1-bb2a-46bba96005ba",
+      "name": "type1 cd2ac1b0-8eb6-4cb1-bb2a-46bba96005ba",
+      "reverse_name": "reverse name string for type1 cd2ac1b0-8eb6-4cb1-bb2a-46bba96005ba",
+      "topology": "network",
+      "updated-at": "0001-01-01T00:00:00Z",
+      "version": 0
+    },
+    "id": "cd2ac1b0-8eb6-4cb1-bb2a-46bba96005ba",
+    "links": {
+      "self": "http:///api/spaces/26efe317-fbc2-4b4b-8369-bf5cf2325424/workitemlinktypes/cd2ac1b0-8eb6-4cb1-bb2a-46bba96005ba",
+      "typeCombinations": "http:///api/spaces/26efe317-fbc2-4b4b-8369-bf5cf2325424/workitemlinktypes/cd2ac1b0-8eb6-4cb1-bb2a-46bba96005ba/typeCombinations"
+    },
+    "relationships": {
+      "link_category": {
+        "data": {
+          "id": "cca21f05-48e8-45be-b506-a7ddfd3bf520",
+          "type": "workitemlinkcategories"
+        },
+        "links": {
+          "self": "http:///api/workitemlinkcategories/cca21f05-48e8-45be-b506-a7ddfd3bf520"
+        }
+      },
+      "space": {
+        "data": {
+          "id": "26efe317-fbc2-4b4b-8369-bf5cf2325424",
+          "type": "spaces"
+        },
+        "links": {
+          "self": "http:///api/spaces/26efe317-fbc2-4b4b-8369-bf5cf2325424"
+        }
+      }
+    },
+    "type": "workitemlinktypes"
+  },
+  "included": [
+    {
+      "attributes": {
+        "description": "This work item link category is managed by an admin user.",
+        "name": "link category cca21f05-48e8-45be-b506-a7ddfd3bf520",
+        "version": 0
+      },
+      "id": "cca21f05-48e8-45be-b506-a7ddfd3bf520",
+      "type": "workitemlinkcategories"
+    }
+  ]
+}

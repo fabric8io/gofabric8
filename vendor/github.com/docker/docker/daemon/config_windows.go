@@ -7,20 +7,22 @@ import (
 )
 
 var (
-	defaultPidFile = os.Getenv("programdata") + string(os.PathSeparator) + "docker.pid"
-	defaultGraph   = os.Getenv("programdata") + string(os.PathSeparator) + "docker"
-	defaultExec    = "windows"
+	defaultPidFile  = os.Getenv("programdata") + string(os.PathSeparator) + "docker.pid"
+	defaultGraph    = os.Getenv("programdata") + string(os.PathSeparator) + "docker"
+	defaultExecRoot = defaultGraph
 )
 
 // bridgeConfig stores all the bridge driver specific
 // configuration.
 type bridgeConfig struct {
-	VirtualSwitchName string
+	FixedCIDR   string
+	NetworkMode string
+	Iface       string `json:"bridge,omitempty"`
 }
 
 // Config defines the configuration of a docker daemon.
 // These are the configuration settings that you pass
-// to the docker daemon when you launch it with say: `docker -d -e windows`
+// to the docker daemon when you launch it with say: `docker daemon -e windows`
 type Config struct {
 	CommonConfig
 
@@ -32,10 +34,12 @@ type Config struct {
 // the current process.
 // Subsequent calls to `flag.Parse` will populate config with values parsed
 // from the command-line.
-func (config *Config) InstallFlags() {
+func (config *Config) InstallFlags(cmd *flag.FlagSet, usageFn func(string) string) {
 	// First handle install flags which are consistent cross-platform
-	config.InstallCommonFlags()
+	config.InstallCommonFlags(cmd, usageFn)
 
 	// Then platform-specific install flags.
-	flag.StringVar(&config.Bridge.VirtualSwitchName, []string{"b", "-bridge"}, "", "Attach containers to a virtual switch")
+	cmd.StringVar(&config.bridgeConfig.FixedCIDR, []string{"-fixed-cidr"}, "", usageFn("IPv4 subnet for fixed IPs"))
+	cmd.StringVar(&config.bridgeConfig.Iface, []string{"b", "-bridge"}, "", "Attach containers to a virtual switch")
+	cmd.StringVar(&config.SocketGroup, []string{"G", "-group"}, "", usageFn("Users or groups that can access the named pipe"))
 }

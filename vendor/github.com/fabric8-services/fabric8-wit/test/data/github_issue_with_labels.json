@@ -1,0 +1,52 @@
+{
+  "url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/3",
+  "repository_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit",
+  "labels_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/3/labels{/name}",
+  "comments_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/3/comments",
+  "events_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/3/events",
+  "html_url": "https://github.com/fabric8-wit-test/fabric8-wit-test-unit/issues/3",
+  "id": 188194489,
+  "number": 3,
+  "title": "map flatten: test case: with labels",
+  "user": {
+    "login": "Ritsyy",
+    "id": 6918358,
+    "avatar_url": "https://avatars.githubusercontent.com/u/6918358?v=3",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/Ritsyy",
+    "html_url": "https://github.com/Ritsyy",
+    "followers_url": "https://api.github.com/users/Ritsyy/followers",
+    "following_url": "https://api.github.com/users/Ritsyy/following{/other_user}",
+    "gists_url": "https://api.github.com/users/Ritsyy/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/Ritsyy/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/Ritsyy/subscriptions",
+    "organizations_url": "https://api.github.com/users/Ritsyy/orgs",
+    "repos_url": "https://api.github.com/users/Ritsyy/repos",
+    "events_url": "https://api.github.com/users/Ritsyy/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/Ritsyy/received_events",
+    "type": "User",
+    "site_admin": false
+  },
+  "labels": [
+    {
+      "id": 441665449,
+      "url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/labels/bug",
+      "name": "bug",
+      "color": "ee0701",
+      "default": true
+    }
+  ],
+  "state": "open",
+  "locked": false,
+  "assignee": null,
+  "assignees": [
+
+  ],
+  "milestone": null,
+  "comments": 0,
+  "created_at": "2016-11-09T08:55:11Z",
+  "updated_at": "2016-11-09T09:01:29Z",
+  "closed_at": null,
+  "body": "sample description",
+  "closed_by": null
+}

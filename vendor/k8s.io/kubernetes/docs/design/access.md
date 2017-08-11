@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # K8s Identity and Access Management Sketch
 
 This document suggests a direction for identity and access management in the
@@ -225,7 +220,7 @@ In the Enterprise Profile:
 In the Simple Profile:
    - There is a single `namespace` used by the single user.
 
-Namespaces versus userAccount vs Labels:
+Namespaces versus userAccount vs. Labels:
 - `userAccount`s are intended for audit logging (both name and UID should be
 logged), and to define who has access to `namespace`s.
 - `labels` (see [docs/user-guide/labels.md](../../docs/user-guide/labels.md))
@@ -374,13 +369,6 @@ Improvements:
 - API server does logging instead.
 - Policies to drop logging for high rate trusted API calls, or by users
 performing audit or other sensitive functions.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

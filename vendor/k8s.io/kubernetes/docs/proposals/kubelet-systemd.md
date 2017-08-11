@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubelet and systemd interaction
 
 **Author**: Derek Carr (@derekwaynecarr)
@@ -336,7 +331,7 @@ The `kubelet` will set the following:
 The `kubelet` at bootstrapping will set the `oom_score_adj` value for Kubernetes
 daemons, and any dependent container-runtime daemons.
 
-If `container-runtime` is set to `docker`, then set its `oom_score_adj=-900`
+If `container-runtime` is set to `docker`, then set its `oom_score_adj=-999`
 
 ## Implementation concerns
 
@@ -405,13 +400,6 @@ this can be revisited if/when the project adopts docker 1.10.
 Some OS distributions will fix this bug in versions of docker <= 1.0.9, so operators should
 be aware of how their version of `docker` was packaged when using this feature.
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

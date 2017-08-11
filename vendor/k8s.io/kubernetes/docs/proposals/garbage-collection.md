@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 **Table of Contents**
 
 - [Overview](#overview)
@@ -355,13 +350,6 @@ In case the garbage collector is mistakenly deleting objects, we should provide 
     * Add a `kubectl restore` command, which takes a resource/name pair as input, creates the object with the spec stored in the /archive, and deletes the archived object.
 
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,20 @@ import (
 	"reflect"
 	"testing"
 )
+
+func TestDefaultStacktracePred(t *testing.T) {
+	for _, x := range []int{101, 200, 204, 302, 400, 404} {
+		if DefaultStacktracePred(x) {
+			t.Fatalf("should not log on %v by default", x)
+		}
+	}
+
+	for _, x := range []int{500, 100} {
+		if !DefaultStacktracePred(x) {
+			t.Fatalf("should log on %v by default", x)
+		}
+	}
+}
 
 func TestHandler(t *testing.T) {
 	want := &httptest.ResponseRecorder{

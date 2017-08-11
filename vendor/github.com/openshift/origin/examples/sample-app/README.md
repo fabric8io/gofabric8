@@ -58,7 +58,7 @@ First, you'll need to configure the Docker daemon on your host to trust the Dock
 
 To do this, you need to add "--insecure-registry 172.30.0.0/16" to the Docker daemon invocation, eg:
 
-    $ docker -d --insecure-registry 172.30.0.0/16
+    $ docker daemon --insecure-registry 172.30.0.0/16
 
 Note that you need to have installed Docker 1.3.2 or higher in order to use the `--insecure-registry` flag.
 
@@ -228,7 +228,7 @@ This section covers how to perform all the steps of building, deploying, and upd
 
 11. Edit application-template-stibuild.json which will define the sample application
 
- * Update the BuildConfig's sourceURI (git://github.com/openshift/ruby-hello-world.git) to point to your forked repository.
+ * Update the BuildConfig's sourceURI (https://github.com/openshift/ruby-hello-world.git) to point to your forked repository.
    *Note:* You can skip this step if you did not create a forked repository.
 
 
@@ -243,8 +243,6 @@ This section covers how to perform all the steps of building, deploying, and upd
              This example shows how to create a simple ruby application in openshift origin v3
 
              * With parameters:
-                * ADMIN_USERNAME=adminDWD # generated
-                * ADMIN_PASSWORD=1jL5uGrT # generated
                 * MYSQL_USER=userPJJ # generated
                 * MYSQL_PASSWORD=cJHNK3se # generated
                 * MYSQL_DATABASE=root

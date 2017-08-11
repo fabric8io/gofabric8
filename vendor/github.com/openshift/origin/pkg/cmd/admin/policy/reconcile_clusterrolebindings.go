@@ -17,8 +17,10 @@ import (
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+
 	uservalidation "github.com/openshift/origin/pkg/user/api/validation"
 )
 
@@ -43,30 +45,31 @@ type ReconcileClusterRoleBindingsOptions struct {
 	RoleBindingClient client.ClusterRoleBindingInterface
 }
 
-const (
-	reconcileBindingsLong = `
-Update cluster role bindings to match the recommended bootstrap policy
+var (
+	reconcileBindingsLong = templates.LongDesc(`
+		Update cluster role bindings to match the recommended bootstrap policy
 
-This command will inspect the cluster role bindings against the recommended bootstrap policy.
-Any cluster role binding that does not match will be replaced by the recommended bootstrap role binding.
-This command will not remove any additional cluster role bindings.
+		This command will inspect the cluster role bindings against the recommended bootstrap policy.
+		Any cluster role binding that does not match will be replaced by the recommended bootstrap role binding.
+		This command will not remove any additional cluster role bindings.
 
-You can see which recommended cluster role bindings have changed by choosing an output type.`
+		You can see which recommended cluster role bindings have changed by choosing an output type.`)
 
-	reconcileBindingsExample = `  # Display the names of cluster role bindings that would be modified
-  %[1]s -o name
+	reconcileBindingsExample = templates.Examples(`
+		# Display the names of cluster role bindings that would be modified
+	  %[1]s -o name
 
-  # Display the cluster role bindings that would be modified, removing any extra subjects
-  %[1]s --additive-only=false
+	  # Display the cluster role bindings that would be modified, removing any extra subjects
+	  %[1]s --additive-only=false
 
-  # Update cluster role bindings that don't match the current defaults
-  %[1]s --confirm
+	  # Update cluster role bindings that don't match the current defaults
+	  %[1]s --confirm
 
-  # Update cluster role bindings that don't match the current defaults, avoid adding roles to the system:authenticated group
-  %[1]s --confirm --exclude-groups=system:authenticated
+	  # Update cluster role bindings that don't match the current defaults, avoid adding roles to the system:authenticated group
+	  %[1]s --confirm --exclude-groups=system:authenticated
 
-  # Update cluster role bindings that don't match the current defaults, removing any extra subjects from the binding
-  %[1]s --confirm --additive-only=false`
+	  # Update cluster role bindings that don't match the current defaults, removing any extra subjects from the binding
+	  %[1]s --confirm --additive-only=false`)
 )
 
 // NewCmdReconcileClusterRoleBindings implements the OpenShift cli reconcile-cluster-role-bindings command
@@ -100,8 +103,8 @@ func NewCmdReconcileClusterRoleBindings(name, fullName string, f *clientcmd.Fact
 		},
 	}
 
-	cmd.Flags().BoolVar(&o.Confirmed, "confirm", o.Confirmed, "Specify that cluster role bindings should be modified. Defaults to false, displaying what would be replaced but not actually replacing anything.")
-	cmd.Flags().BoolVar(&o.Union, "additive-only", o.Union, "Preserves extra subjects in cluster role bindings.")
+	cmd.Flags().BoolVar(&o.Confirmed, "confirm", o.Confirmed, "If true, specify that cluster role bindings should be modified. Defaults to false, displaying what would be replaced but not actually replacing anything.")
+	cmd.Flags().BoolVar(&o.Union, "additive-only", o.Union, "If true, preserves extra subjects in cluster role bindings.")
 	cmd.Flags().StringSliceVar(&excludeUsers, "exclude-users", excludeUsers, "Do not add cluster role bindings for these user names.")
 	cmd.Flags().StringSliceVar(&excludeGroups, "exclude-groups", excludeGroups, "Do not add cluster role bindings for these group names.")
 	kcmdutil.AddPrinterFlags(cmd)
@@ -122,7 +125,7 @@ func (o *ReconcileClusterRoleBindingsOptions) Complete(cmd *cobra.Command, f *cl
 
 	o.ExcludeSubjects = authorizationapi.BuildSubjects(excludeUsers, excludeGroups, uservalidation.ValidateUserName, uservalidation.ValidateGroupName)
 
-	mapper, _ := f.Object(false)
+	mapper, _ := f.Object()
 	for _, resourceString := range args {
 		resource, name, err := cmdutil.ResolveResource(authorizationapi.Resource("clusterroles"), resourceString, mapper)
 		if err != nil {
@@ -169,7 +172,7 @@ func (o *ReconcileClusterRoleBindingsOptions) RunReconcileClusterRoleBindings(cm
 		for _, item := range changedClusterRoleBindings {
 			list.Items = append(list.Items, item)
 		}
-		mapper, _ := f.Object(false)
+		mapper, _ := f.Object()
 		fn := cmdutil.VersionedPrintObject(f.PrintObject, cmd, mapper, o.Out)
 		if err := fn(list); err != nil {
 			errs = append(errs, err)

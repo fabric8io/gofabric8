@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -179,6 +179,18 @@ func (plugin *flexVolumePlugin) newUnmounterInternal(volName string, podUID type
 	}, nil
 }
 
+func (plugin *flexVolumePlugin) ConstructVolumeSpec(volumeName, sourceName string) (*volume.Spec, error) {
+	flexVolume := &api.Volume{
+		Name: volumeName,
+		VolumeSource: api.VolumeSource{
+			FlexVolume: &api.FlexVolumeSource{
+				Driver: sourceName,
+			},
+		},
+	}
+	return volume.NewSpecFromVolume(flexVolume), nil
+}
+
 // flexVolume is the disk resource provided by this plugin.
 type flexVolumeDisk struct {
 	// podUID is the UID of the pod.
@@ -246,6 +258,13 @@ func (f flexVolumeMounter) GetAttributes() volume.Attributes {
 		Managed:         false,
 		SupportsSELinux: false,
 	}
+}
+
+// Checks prior to mount operations to verify that the required components (binaries, etc.)
+// to mount the volume are available on the underlying node.
+// If not, it returns an error
+func (f *flexVolumeMounter) CanMount() error {
+	return nil
 }
 
 // flexVolumeManager is the abstract interface to flex volume ops.

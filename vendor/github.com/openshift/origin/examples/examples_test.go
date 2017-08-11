@@ -21,6 +21,7 @@ import (
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	projectapi "github.com/openshift/origin/pkg/project/api"
 	routeapi "github.com/openshift/origin/pkg/route/api"
+	sdnapi "github.com/openshift/origin/pkg/sdn/api"
 	templateapi "github.com/openshift/origin/pkg/template/api"
 
 	// install all APIs
@@ -101,10 +102,12 @@ func TestExampleObjectSchemas(t *testing.T) {
 			"postgresql-persistent-template": &templateapi.Template{},
 			"mongodb-persistent-template":    &templateapi.Template{},
 			"mariadb-persistent-template":    &templateapi.Template{},
+			"redis-persistent-template":      &templateapi.Template{},
 			"mysql-ephemeral-template":       &templateapi.Template{},
 			"postgresql-ephemeral-template":  &templateapi.Template{},
 			"mongodb-ephemeral-template":     &templateapi.Template{},
 			"mariadb-ephemeral-template":     &templateapi.Template{},
+			"redis-ephemeral-template":       &templateapi.Template{},
 		},
 		"../test/extended/testdata/ldap": {
 			"ldapserver-buildconfig":         &buildapi.BuildConfig{},
@@ -125,6 +128,7 @@ func TestExampleObjectSchemas(t *testing.T) {
 			"test-service-with-finalizer":         &kapi.Service{},
 			"test-buildcli":                       &kapi.List{},
 			"test-buildcli-beta2":                 &kapi.List{},
+			"test-egress-network-policy":          &sdnapi.EgressNetworkPolicy{},
 		},
 		"../test/templates/testdata": {
 			"crunchydata-pod": nil, // Explicitly fails validation, but should pass transformation

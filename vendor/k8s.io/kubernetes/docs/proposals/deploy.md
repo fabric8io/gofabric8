@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 <!-- BEGIN MUNGE: GENERATED_TOC -->
 
 - [Deploy through CLI](#deploy-through-cli)
@@ -146,13 +141,6 @@ Users sometimes need to temporarily disable a deployment. See issue [#14516](htt
 ### Perm-failed Deployments
 
 The deployment could be marked as "permanently failed" for a given spec hash so that the system won't continue thrashing on a doomed deployment. The users can retry a failed deployment with `kubectl rollout retry`. See issue [#14519](https://github.com/kubernetes/kubernetes/issues/14519).
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/proposals/deploy.md?pixel)]()

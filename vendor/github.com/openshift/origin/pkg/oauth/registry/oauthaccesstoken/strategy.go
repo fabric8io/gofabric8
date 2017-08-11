@@ -7,8 +7,8 @@ import (
 	"k8s.io/kubernetes/pkg/api/rest"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/registry/generic"
 	"k8s.io/kubernetes/pkg/runtime"
+	kstorage "k8s.io/kubernetes/pkg/storage"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
 	scopeauthorizer "github.com/openshift/origin/pkg/authorization/authorizer/scope"
@@ -31,7 +31,7 @@ func NewStrategy(clientGetter oauthclient.Getter) strategy {
 	return strategy{ObjectTyper: kapi.Scheme, clientGetter: clientGetter}
 }
 
-func (strategy) PrepareForUpdate(obj, old runtime.Object) {}
+func (strategy) PrepareForUpdate(ctx kapi.Context, obj, old runtime.Object) {}
 
 // NamespaceScoped is false for OAuth objects
 func (strategy) NamespaceScoped() bool {
@@ -42,7 +42,7 @@ func (strategy) GenerateName(base string) string {
 	return base
 }
 
-func (strategy) PrepareForCreate(obj runtime.Object) {
+func (strategy) PrepareForCreate(ctx kapi.Context, obj runtime.Object) {
 }
 
 // Validate validates a new token
@@ -81,14 +81,22 @@ func (strategy) AllowUnconditionalUpdate() bool {
 func (strategy) Canonicalize(obj runtime.Object) {
 }
 
-// Matchtoken returns a generic matcher for a given label and field selector.
-func Matcher(label labels.Selector, field fields.Selector) generic.Matcher {
-	return generic.MatcherFunc(func(obj runtime.Object) (bool, error) {
-		tokenObj, ok := obj.(*api.OAuthAccessToken)
-		if !ok {
-			return false, fmt.Errorf("not a token")
-		}
-		fields := api.OAuthAccessTokenToSelectableFields(tokenObj)
-		return label.Matches(labels.Set(tokenObj.Labels)) && field.Matches(fields), nil
-	})
+// Matcher returns a generic matcher for a given label and field selector.
+func Matcher(label labels.Selector, field fields.Selector) kstorage.SelectionPredicate {
+	return kstorage.SelectionPredicate{
+		Label: label,
+		Field: field,
+		GetAttrs: func(o runtime.Object) (labels.Set, fields.Set, error) {
+			obj, ok := o.(*api.OAuthAccessToken)
+			if !ok {
+				return nil, nil, fmt.Errorf("not an OAuthAccessToken")
+			}
+			return labels.Set(obj.Labels), SelectableFields(obj), nil
+		},
+	}
+}
+
+// SelectableFields returns a field set that can be used for filter selection
+func SelectableFields(obj *api.OAuthAccessToken) fields.Set {
+	return api.OAuthAccessTokenToSelectableFields(obj)
 }

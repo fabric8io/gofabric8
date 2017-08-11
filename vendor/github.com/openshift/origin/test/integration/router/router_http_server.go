@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/golang/glog"
 	"golang.org/x/net/websocket"
@@ -18,6 +19,9 @@ import (
 // to itself) if the actual default local address cannot be determined.
 func GetDefaultLocalAddress() string {
 	addr := "0.0.0.0"
+	if a := os.Getenv("OPENSHIFT_ROUTER_SERVER_ADDRESS"); len(a) > 0 {
+		return a
+	}
 	ip, err := util.DefaultLocalIP4()
 	if err == nil {
 		addr = ip.String()
@@ -26,12 +30,20 @@ func GetDefaultLocalAddress() string {
 	return addr
 }
 
+func NewTestHttpService() *TestHttpService {
+	return NewTestHttpServiceExtended("")
+}
+
 // NewTestHttpServer creates a new TestHttpService using default locations for listening address
 // as well as default certificates.  New channels will be initialized which can be used by test clients
 // to feed events through the server to anything listening.
-func NewTestHttpService() *TestHttpService {
+func NewTestHttpServiceExtended(namespaceListResponse string) *TestHttpService {
 	endpointChannel := make(chan string)
 	routeChannel := make(chan string)
+	ingressChannel := make(chan string)
+	secretChannel := make(chan string)
+	nodeChannel := make(chan string)
+	svcChannel := make(chan string)
 
 	addr := GetDefaultLocalAddress()
 
@@ -40,17 +52,27 @@ func NewTestHttpService() *TestHttpService {
 	alternatePodHttpAddr := fmt.Sprintf("%s:8889", addr)
 	podHttpsAddr := fmt.Sprintf("%s:8443", addr)
 
+	// Ensure an empty namespace response is valid json
+	if namespaceListResponse == "" {
+		namespaceListResponse = "{}"
+	}
+
 	return &TestHttpService{
-		MasterHttpAddr:       masterHttpAddr,
-		PodHttpAddr:          podHttpAddr,
-		AlternatePodHttpAddr: alternatePodHttpAddr,
-		PodHttpsAddr:         podHttpsAddr,
-		PodTestPath:          "test",
-		PodHttpsCert:         []byte(Example2Cert),
-		PodHttpsKey:          []byte(Example2Key),
-		PodHttpsCaCert:       []byte(ExampleCACert),
-		EndpointChannel:      endpointChannel,
-		RouteChannel:         routeChannel,
+		MasterHttpAddr:        masterHttpAddr,
+		PodHttpAddr:           podHttpAddr,
+		AlternatePodHttpAddr:  alternatePodHttpAddr,
+		PodHttpsAddr:          podHttpsAddr,
+		PodTestPath:           "test",
+		PodHttpsCert:          []byte(Example2Cert),
+		PodHttpsKey:           []byte(Example2Key),
+		PodHttpsCaCert:        []byte(ExampleCACert),
+		EndpointChannel:       endpointChannel,
+		RouteChannel:          routeChannel,
+		IngressChannel:        ingressChannel,
+		SecretChannel:         secretChannel,
+		NodeChannel:           nodeChannel,
+		SvcChannel:            svcChannel,
+		NamespaceListResponse: namespaceListResponse,
 	}
 }
 
@@ -73,6 +95,12 @@ type TestHttpService struct {
 	PodTestPath          string
 	EndpointChannel      chan string
 	RouteChannel         chan string
+	IngressChannel       chan string
+	SecretChannel        chan string
+	NodeChannel          chan string
+	SvcChannel           chan string
+
+	NamespaceListResponse string
 
 	listeners []net.Listener
 }
@@ -127,6 +155,38 @@ func (s *TestHttpService) handleHelloPodTestSecure(w http.ResponseWriter, r *htt
 	fmt.Fprint(w, HelloPodPathSecure)
 }
 
+// handleNamespaceList handles calls to /api/v1/namespaces/* and returns a canned response
+func (s *TestHttpService) handleNamespaceList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	glog.Errorf("Returning response: %s", s.NamespaceListResponse)
+
+	fmt.Fprint(w, s.NamespaceListResponse)
+}
+
+// handleSvcList handles calls to /api/v1beta1/services and always returns empty data
+func (s *TestHttpService) handleSvcList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, "{}")
+}
+
+// handleSvcWatch handles calls to /api/v1beta1/watch/services and uses the svc channel to simulate watch events
+func (s *TestHttpService) handleSvcWatch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	io.WriteString(w, <-s.SvcChannel)
+}
+
+// handleNodeList handles calls to /api/v1beta1/nodes and always returns empty data
+func (s *TestHttpService) handleNodeList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, "{}")
+}
+
+// handleNodeWatch handles calls to /api/v1beta1/watch/nodes and uses the node channel to simulate watch events
+func (s *TestHttpService) handleNodeWatch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	io.WriteString(w, <-s.NodeChannel)
+}
+
 // handleRouteWatch handles calls to /osapi/v1beta1/watch/routes and uses the route channel to simulate watch events
 func (s *TestHttpService) handleRouteWatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -153,6 +213,30 @@ func (s *TestHttpService) handleEndpointWatch(w http.ResponseWriter, r *http.Req
 
 // handleEndpointList handles calls to /api/v1beta1/endpoints and always returns empty data
 func (s *TestHttpService) handleEndpointList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, "{}")
+}
+
+// handleIngressWatch handles calls to /api/extensions/v1beta1/watch/ingresses and uses the ingress channel to simulate watch events
+func (s *TestHttpService) handleIngressWatch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	io.WriteString(w, <-s.IngressChannel)
+}
+
+// handleIngressList handles calls to /api/extensions/v1beta1/ingresses and always returns empty data
+func (s *TestHttpService) handleIngressList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, "{}")
+}
+
+// handleSecretWatch handles calls to /api/v1/watch/secrets and uses the endpoint channel to simulate watch events
+func (s *TestHttpService) handleSecretWatch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	io.WriteString(w, <-s.SecretChannel)
+}
+
+// handleSecretList handles calls to /api/v1/secrets and always returns empty data
+func (s *TestHttpService) handleSecretList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, "{}")
 }
@@ -199,12 +283,21 @@ func (s *TestHttpService) startMaster() error {
 	apis := []string{"v1"}
 
 	for _, version := range apis {
+		masterServer.HandleFunc(fmt.Sprintf("/api/%s/namespaces/", version), s.handleNamespaceList)
 		masterServer.HandleFunc(fmt.Sprintf("/api/%s/endpoints", version), s.handleEndpointList)
 		masterServer.HandleFunc(fmt.Sprintf("/api/%s/watch/endpoints", version), s.handleEndpointWatch)
 		masterServer.HandleFunc(fmt.Sprintf("/oapi/%s/routes", version), s.handleRouteList)
 		masterServer.HandleFunc(fmt.Sprintf("/oapi/%s/namespaces/", version), s.handleRouteCalls)
 		masterServer.HandleFunc(fmt.Sprintf("/oapi/%s/watch/routes", version), s.handleRouteWatch)
+		masterServer.HandleFunc(fmt.Sprintf("/api/%s/nodes", version), s.handleNodeList)
+		masterServer.HandleFunc(fmt.Sprintf("/api/%s/watch/nodes", version), s.handleNodeWatch)
+		masterServer.HandleFunc(fmt.Sprintf("/api/%s/services", version), s.handleSvcList)
+		masterServer.HandleFunc(fmt.Sprintf("/api/%s/watch/services", version), s.handleSvcWatch)
+		masterServer.HandleFunc(fmt.Sprintf("/api/%s/secrets", version), s.handleSecretList)
+		masterServer.HandleFunc(fmt.Sprintf("/api/%s/watch/secrets", version), s.handleSecretWatch)
 	}
+	masterServer.HandleFunc("/apis/extensions/v1beta1/ingresses", s.handleIngressList)
+	masterServer.HandleFunc("/apis/extensions/v1beta1/watch/ingresses", s.handleIngressWatch)
 
 	if err := s.startServing(s.MasterHttpAddr, http.Handler(masterServer)); err != nil {
 		return err

@@ -1,0 +1,31 @@
+= Setting up your IDE for Fabric8-wit Development
+:toc:
+:toc-placement!:
+:sectnums:
+:experimental:
+
+toc::[]
+
+== Visual Studio Code [[vscode]]
+
+=== Installation [[vscodeinstallation]]
+
+Download and install the appropriate distribution of Visual Studio Code from link:https://code.visualstudio.com/download[Visual Studio Code Download site]
+
+=== Configuration [[vscodeconfiguration]]
+
+. Ensure your `GOPATH` environment variable is correctly set.
+. Install `gometalinter`
+.. Run `go get -u github.com/alecthomas/gometalinter` in your terminal
+.. Run `gometalinter --install`
++
+[NOTE]
+====
+If you are on Windows, `gometalinter --install` may fail. with a lot of erros about `cannot find package`. If this happens, use the File Explorer to navigate to the `src/github.com/alecthomas/gometalinter/vendor`. Delete the `src` file, and create a new folder called `src`. Copy the other folders in the `vendor` folder in to the `src` folder. Rerun `gometalinter --install` in the terminal window.
+====
+. Launch Visual Studio Code from a location where your `GOPATH` is correctly set. We recommend changing to the `src\github.com\fabric8-services\fabric8-wit` directory, and executing `code .` which will launch VS Code, with the FABRIC8-WIT project open.
+. Open any `.go` file by clicking on it. An info dialog box will open at the top of the screen. Click on _Show Recommendations_ and click on the green _Install_ button next to the _Go_ extension from `lukehoban`.
+. Click the blue _Enable_ button, and then ok to restart Visual Studio Code.
+. On restart, you will notice that a Yellow  _Analysis Tools Missing_ warning appears in the status bar. Click it, and then click /Install/ to install the Go tools that Visual Studio Code calls out to in order to provide actions such as refactoring, autocomplete etc.
+
+If you want to read more about using Go with VS Code, check out the link:https://github.com/Microsoft/vscode-go[plugin README].

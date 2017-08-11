@@ -1,0 +1,263 @@
+{
+    "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+    "id": "10142",
+    "self": "https://jira.atlassian.com/rest/api/latest/issue/10142",
+    "key": "JRA-3",
+    "fields": {
+        "customfield_12130": null,
+        "customfield_16732": null,
+        "customfield_12131": null,
+        "customfield_10230": null,
+        "customfield_14430": null,
+        "customfield_16730": null,
+        "fixVersions": [
+            {
+                "self": "https://jira.atlassian.com/rest/api/2/version/10131",
+                "id": "10131",
+                "name": "0.7",
+                "archived": true,
+                "released": true
+            }
+        ],
+        "resolution": {
+            "self": "https://jira.atlassian.com/rest/api/2/resolution/1",
+            "id": "1",
+            "description": "A fix for this issue is checked into the tree and tested.",
+            "name": "Fixed"
+        },
+        "customfield_12531": "Not Started",
+        "customfield_12930": null,
+        "customfield_16733": null,
+        "customfield_11436": "59431",
+        "customfield_11435": "59423",
+        "customfield_11437": "59563",
+        "customfield_17130": null,
+        "lastViewed": null,
+        "customfield_10180": null,
+        "customfield_17531": null,
+        "customfield_17530": null,
+        "priority": {
+            "self": "https://jira.atlassian.com/rest/api/2/priority/3",
+            "iconUrl": "https://jira.atlassian.com/images/icons/priorities/minor.svg",
+            "name": "Medium",
+            "id": "3"
+        },
+        "customfield_11431": "94045",
+        "customfield_13730": null,
+        "customfield_11434": "59422",
+        "customfield_11433": "74080",
+        "labels": [],
+        "customfield_10610": null,
+        "aggregatetimeoriginalestimate": null,
+        "timeestimate": null,
+        "versions": [
+            {
+                "self": "https://jira.atlassian.com/rest/api/2/version/10130",
+                "id": "10130",
+                "name": "0.6.8",
+                "archived": true,
+                "released": true
+            }
+        ],
+        "issuelinks": [],
+        "assignee": {
+            "self": "https://jira.atlassian.com/rest/api/2/user?username=mike%40atlassian.com",
+            "name": "mike@atlassian.com",
+            "key": "mike@atlassian.com",
+            "emailAddress": "mike at atlassian dot com",
+            "avatarUrls": {
+                "48x48": "https://jira.atlassian.com/secure/useravatar?avatarId=10612",
+                "24x24": "https://jira.atlassian.com/secure/useravatar?size=small&avatarId=10612",
+                "16x16": "https://jira.atlassian.com/secure/useravatar?size=xsmall&avatarId=10612",
+                "32x32": "https://jira.atlassian.com/secure/useravatar?size=medium&avatarId=10612"
+            },
+            "displayName": "Mike Cannon-Brookes",
+            "active": true,
+            "timeZone": "Australia/Sydney"
+        },
+        "status": {
+            "self": "https://jira.atlassian.com/rest/api/2/status/5",
+            "description": "This issue has been rolled out to our Cloud instances, and also fixed in a Server release. \nPlease look at the Transitions tab to get to know when it was deployed to Cloud, and to the Fix Version field to find out when it was resolved in a Server release.",
+            "iconUrl": "https://jira.atlassian.com/images/icons/statuses/resolved.png",
+            "name": "Resolved",
+            "id": "5",
+            "statusCategory": {
+                "self": "https://jira.atlassian.com/rest/api/2/statuscategory/3",
+                "id": 3,
+                "key": "done",
+                "colorName": "green",
+                "name": "Done"
+            }
+        },
+        "customfield_16030": null,
+        "components": [],
+        "customfield_14130": null,
+        "customfield_14532": null,
+        "customfield_10571": null,
+        "customfield_12630": null,
+        "customfield_10575": null,
+        "customfield_11930": null,
+        "customfield_10723": null,
+        "aggregatetimeestimate": null,
+        "customfield_17230": null,
+        "creator": {
+            "self": "https://jira.atlassian.com/rest/api/2/user?username=mike%40atlassian.com",
+            "name": "mike@atlassian.com",
+            "key": "mike@atlassian.com",
+            "emailAddress": "mike at atlassian dot com",
+            "avatarUrls": {
+                "48x48": "https://jira.atlassian.com/secure/useravatar?avatarId=10612",
+                "24x24": "https://jira.atlassian.com/secure/useravatar?size=small&avatarId=10612",
+                "16x16": "https://jira.atlassian.com/secure/useravatar?size=xsmall&avatarId=10612",
+                "32x32": "https://jira.atlassian.com/secure/useravatar?size=medium&avatarId=10612"
+            },
+            "displayName": "Mike Cannon-Brookes",
+            "active": true,
+            "timeZone": "Australia/Sydney"
+        },
+        "customfield_15331": null,
+        "subtasks": [],
+        "customfield_10160": "466646400",
+        "customfield_10161": "true",
+        "customfield_11130": "47009",
+        "customfield_13430": null,
+        "customfield_10680": null,
+        "reporter": {
+            "self": "https://jira.atlassian.com/rest/api/2/user?username=mike%40atlassian.com",
+            "name": "mike@atlassian.com",
+            "key": "mike@atlassian.com",
+            "emailAddress": "mike at atlassian dot com",
+            "avatarUrls": {
+                "48x48": "https://jira.atlassian.com/secure/useravatar?avatarId=10612",
+                "24x24": "https://jira.atlassian.com/secure/useravatar?size=small&avatarId=10612",
+                "16x16": "https://jira.atlassian.com/secure/useravatar?size=xsmall&avatarId=10612",
+                "32x32": "https://jira.atlassian.com/secure/useravatar?size=medium&avatarId=10612"
+            },
+            "displayName": "Mike Cannon-Brookes",
+            "active": true,
+            "timeZone": "Australia/Sydney"
+        },
+        "aggregateprogress": {
+            "progress": 0,
+            "total": 0
+        },
+        "progress": {
+            "progress": 0,
+            "total": 0
+        },
+        "votes": {
+            "self": "https://jira.atlassian.com/rest/api/2/issue/JRA-3/votes",
+            "votes": 0,
+            "hasVoted": false
+        },
+        "worklog": {
+            "startAt": 0,
+            "maxResults": 20,
+            "total": 0,
+            "worklogs": []
+        },
+        "issuetype": {
+            "self": "https://jira.atlassian.com/rest/api/2/issuetype/1",
+            "id": "1",
+            "description": "A problem which impairs or prevents the functions of the product.",
+            "iconUrl": "https://jira.atlassian.com/secure/viewavatar?size=xsmall&avatarId=51493&avatarType=issuetype",
+            "name": "Bug",
+            "subtask": false,
+            "avatarId": 51493
+        },
+        "customfield_16530": null,
+        "timespent": null,
+        "customfield_10150": [
+            "mike@atlassian.com(mike@atlassian.com)"
+        ],
+        "customfield_16930": null,
+        "project": {
+            "self": "https://jira.atlassian.com/rest/api/2/project/10240",
+            "id": "10240",
+            "key": "JRA",
+            "name": "JIRA (including JIRA Core)",
+            "avatarUrls": {
+                "48x48": "https://jira.atlassian.com/secure/projectavatar?pid=10240&avatarId=17294",
+                "24x24": "https://jira.atlassian.com/secure/projectavatar?size=small&pid=10240&avatarId=17294",
+                "16x16": "https://jira.atlassian.com/secure/projectavatar?size=xsmall&pid=10240&avatarId=17294",
+                "32x32": "https://jira.atlassian.com/secure/projectavatar?size=medium&pid=10240&avatarId=17294"
+            },
+            "projectCategory": {
+                "self": "https://jira.atlassian.com/rest/api/2/projectCategory/10031",
+                "id": "10031",
+                "description": "",
+                "name": "Atlassian Products"
+            }
+        },
+        "customfield_16532": null,
+        "customfield_16531": null,
+        "customfield_12730": null,
+        "aggregatetimespent": null,
+        "customfield_16933": null,
+        "customfield_16932": null,
+        "customfield_16535": null,
+        "resolutiondate": "2002-02-08T04:45:00.000+0000",
+        "workratio": -1,
+        "watches": {
+            "self": "https://jira.atlassian.com/rest/api/2/issue/JRA-3/watchers",
+            "watchCount": 0,
+            "isWatching": false
+        },
+        "customfield_17333": null,
+        "customfield_15430": null,
+        "created": "2002-02-08T04:45:00.000+0000",
+        "customfield_15830": null,
+        "customfield_17335": null,
+        "customfield_17334": null,
+        "customfield_11631": null,
+        "customfield_12833": null,
+        "customfield_12832": null,
+        "customfield_14735": "0|10a6uo:",
+        "updated": "2016-06-30T06:07:25.343+0000",
+        "customfield_14330": null,
+        "timeoriginalestimate": null,
+        "customfield_10250": "<div class=\"aui-message aui-message-info\">\r\n<b>Help us fix bugs faster</b>\r\n<br>\r\n<br>To help us get the right details and fix bugs as quickly as possible, submit your bug report in our <a href=\"http://support.atlassian.com/\" class=\"bugfix-support\">support system</a>.\r\n<br>\r\n<br>You can still view, watch, comment on, and vote for existing bugs by\r\n  \r\n<a href=\"https://jira.atlassian.com/issues/?jql=issuetype%20%3D%20Bug\" class=\"bugfix-search\">searching</a> for them in this project.\r\n<br><br>\r\n<a class=\"aui-button aui-button-primary bugfix-support\" href=\"https://support.atlassian.com/help/#/jiracore\">Report a new bug</a> <a class=\"aui-button bugfix-search\" href=\"https://jira.atlassian.com/issues/?jql=issuetype=Bug+AND+project=JRA\">Search for an existing bug</a>\r\n<br>\r\n</div>",
+        "description": "\"when you 'edit' an issue, and it doesn't have a version number or the version number is updated to none, upon 'saving' the form we get an exception\"  ",
+        "customfield_16632": null,
+        "customfield_12431": null,
+        "customfield_12430": null,
+        "customfield_16630": null,
+        "customfield_14733": "1|hyigwn:",
+        "customfield_12433": null,
+        "customfield_10650": null,
+        "customfield_10651": null,
+        "customfield_14734": "0|10a7o0:",
+        "customfield_12432": null,
+        "customfield_12831": null,
+        "customfield_12435": null,
+        "customfield_14731": "2|hz2cmv:",
+        "timetracking": {},
+        "customfield_12830": null,
+        "customfield_10653": null,
+        "customfield_12434": null,
+        "customfield_14732": "0|10cp0o:",
+        "customfield_10401": null,
+        "attachment": [],
+        "summary": "ObjectNotFoundException editing issue version",
+        "customfield_17432": null,
+        "customfield_17431": null,
+        "customfield_13230": null,
+        "customfield_15532": null,
+        "customfield_13231": null,
+        "customfield_15530": null,
+        "customfield_17433": null,
+        "customfield_15932": null,
+        "customfield_15930": null,
+        "customfield_11730": null,
+        "customfield_15931": null,
+        "customfield_12931": null,
+        "environment": null,
+        "duedate": null,
+        "comment": {
+            "comments": [],
+            "maxResults": 0,
+            "total": 0,
+            "startAt": 0
+        }
+    }
+}

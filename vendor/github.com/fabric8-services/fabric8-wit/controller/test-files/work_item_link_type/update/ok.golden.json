@@ -1,0 +1,51 @@
+{
+  "data": {
+    "attributes": {
+      "created-at": "0001-01-01T00:00:00Z",
+      "description": "Lalala this is a new description for the work item type",
+      "forward_name": "forward name string for link type 7c3b29a8-8d70-42f1-9a19-4358e4e22705",
+      "name": "link type 7c3b29a8-8d70-42f1-9a19-4358e4e22705",
+      "reverse_name": "reverse name string for link type 7c3b29a8-8d70-42f1-9a19-4358e4e22705",
+      "topology": "network",
+      "updated-at": "0001-01-01T00:00:00Z",
+      "version": 1
+    },
+    "id": "7c3b29a8-8d70-42f1-9a19-4358e4e22705",
+    "links": {
+      "self": "http:///api/spaces/26efe317-fbc2-4b4b-8369-bf5cf2325424/workitemlinktypes/7c3b29a8-8d70-42f1-9a19-4358e4e22705",
+      "typeCombinations": "http:///api/spaces/26efe317-fbc2-4b4b-8369-bf5cf2325424/workitemlinktypes/7c3b29a8-8d70-42f1-9a19-4358e4e22705/typeCombinations"
+    },
+    "relationships": {
+      "link_category": {
+        "data": {
+          "id": "cca21f05-48e8-45be-b506-a7ddfd3bf520",
+          "type": "workitemlinkcategories"
+        },
+        "links": {
+          "self": "http:///api/workitemlinkcategories/cca21f05-48e8-45be-b506-a7ddfd3bf520"
+        }
+      },
+      "space": {
+        "data": {
+          "id": "26efe317-fbc2-4b4b-8369-bf5cf2325424",
+          "type": "spaces"
+        },
+        "links": {
+          "self": "http:///api/spaces/26efe317-fbc2-4b4b-8369-bf5cf2325424"
+        }
+      }
+    },
+    "type": "workitemlinktypes"
+  },
+  "included": [
+    {
+      "attributes": {
+        "description": "This work item link category is managed by an admin user.",
+        "name": "link category cca21f05-48e8-45be-b506-a7ddfd3bf520",
+        "version": 0
+      },
+      "id": "cca21f05-48e8-45be-b506-a7ddfd3bf520",
+      "type": "workitemlinkcategories"
+    }
+  ]
+}

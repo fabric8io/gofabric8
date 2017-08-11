@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "code": "version_conflict",
+      "detail": "version conflict",
+      "status": "409",
+      "title": "Version conflict error"
+    }
+  ]
+}

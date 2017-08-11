@@ -36,18 +36,19 @@ type plugin struct {
 	Secret, Path string
 	Err          error
 	Env          []kapi.EnvVar
+	Proceed      bool
 }
 
 func (p *plugin) Extract(buildCfg *api.BuildConfig, secret, path string, req *http.Request) (*api.SourceRevision, []kapi.EnvVar, bool, error) {
 	p.Secret, p.Path = secret, path
-	return nil, p.Env, true, p.Err
+	return nil, p.Env, p.Proceed, p.Err
 }
 
 func newStorage() (*rest.WebHook, *buildConfigInstantiator, *test.BuildConfigRegistry) {
 	mockRegistry := &test.BuildConfigRegistry{}
 	bci := &buildConfigInstantiator{}
 	hook := NewWebHookREST(mockRegistry, bci, map[string]webhook.Plugin{
-		"ok": &plugin{},
+		"ok": &plugin{Proceed: true},
 		"okenv": &plugin{
 			Env: []kapi.EnvVar{
 				{
@@ -55,6 +56,7 @@ func newStorage() (*rest.WebHook, *buildConfigInstantiator, *test.BuildConfigReg
 					Value: "bar",
 				},
 			},
+			Proceed: true,
 		},
 		"errsecret": &plugin{Err: webhook.ErrSecretMismatch},
 		"errhook":   &plugin{Err: webhook.ErrHookNotEnabled},
@@ -239,7 +241,7 @@ func (p *pathPlugin) Extract(buildCfg *api.BuildConfig, secret, path string, req
 type errPlugin struct{}
 
 func (*errPlugin) Extract(buildCfg *api.BuildConfig, secret, path string, req *http.Request) (*api.SourceRevision, []kapi.EnvVar, bool, error) {
-	return nil, []kapi.EnvVar{}, true, errors.New("Plugin error!")
+	return nil, []kapi.EnvVar{}, false, errors.New("Plugin error!")
 }
 
 var testBuildConfig = &api.BuildConfig{
@@ -424,7 +426,7 @@ func TestGeneratedBuildTriggerInfoGenericWebHook(t *testing.T) {
 		if cause.GenericWebHook.Secret != hiddenSecret {
 			t.Errorf("Expected obfuscated secret to be: %s", hiddenSecret)
 		}
-		if cause.Message != "Generic WebHook" {
+		if cause.Message != api.BuildTriggerCauseGenericMsg {
 			t.Errorf("Expected build reason to be 'Generic WebHook, go %s'", cause.Message)
 		}
 	}
@@ -454,7 +456,7 @@ func TestGeneratedBuildTriggerInfoGitHubWebHook(t *testing.T) {
 		if cause.GitHubWebHook.Secret != hiddenSecret {
 			t.Errorf("Expected obfuscated secret to be: %s", hiddenSecret)
 		}
-		if cause.Message != "GitHub WebHook" {
+		if cause.Message != api.BuildTriggerCauseGithubMsg {
 			t.Errorf("Expected build reason to be 'GitHub WebHook, go %s'", cause.Message)
 		}
 	}

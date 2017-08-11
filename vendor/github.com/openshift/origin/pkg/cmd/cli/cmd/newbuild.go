@@ -15,6 +15,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/errors"
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	configcmd "github.com/openshift/origin/pkg/config/cmd"
@@ -22,56 +23,59 @@ import (
 	newcmd "github.com/openshift/origin/pkg/generate/app/cmd"
 )
 
-const (
-	newBuildLong = `
-Create a new build by specifying source code
+// NewBuildRecommendedCommandName is the recommended command name.
+const NewBuildRecommendedCommandName = "new-build"
 
-This command will try to create a build configuration for your application using images and
-code that has a public repository. It will lookup the images on the local Docker installation
-(if available), a Docker registry, or an image stream.
+var (
+	newBuildLong = templates.LongDesc(`
+		Create a new build by specifying source code
 
-If you specify a source code URL, it will set up a build that takes your source code and converts
-it into an image that can run inside of a pod. Local source must be in a git repository that has a
-remote repository that the server can see.
+		This command will try to create a build configuration for your application using images and
+		code that has a public repository. It will lookup the images on the local Docker installation
+		(if available), a Docker registry, or an image stream.
 
-Once the build configuration is created a new build will be automatically triggered.
-You can use '%[1]s status' to check the progress.`
+		If you specify a source code URL, it will set up a build that takes your source code and converts
+		it into an image that can run inside of a pod. Local source must be in a git repository that has a
+		remote repository that the server can see.
 
-	newBuildExample = `
-  # Create a build config based on the source code in the current git repository (with a public
-  # remote) and a Docker image
-  %[1]s new-build . --docker-image=repo/langimage
+		Once the build configuration is created a new build will be automatically triggered.
+		You can use '%[1]s status' to check the progress.`)
 
-  # Create a NodeJS build config based on the provided [image]~[source code] combination
-  %[1]s new-build openshift/nodejs-010-centos7~https://github.com/openshift/nodejs-ex.git
+	newBuildExample = templates.Examples(`
+	  # Create a build config based on the source code in the current git repository (with a public
+	  # remote) and a Docker image
+	  %[1]s %[2]s . --docker-image=repo/langimage
 
-  # Create a build config from a remote repository using its beta2 branch
-  %[1]s new-build https://github.com/openshift/ruby-hello-world#beta2
+	  # Create a NodeJS build config based on the provided [image]~[source code] combination
+	  %[1]s %[2]s openshift/nodejs-010-centos7~https://github.com/openshift/nodejs-ex.git
 
-  # Create a build config using a Dockerfile specified as an argument
-  %[1]s new-build -D $'FROM centos:7\nRUN yum install -y httpd'
+	  # Create a build config from a remote repository using its beta2 branch
+	  %[1]s %[2]s https://github.com/openshift/ruby-hello-world#beta2
 
-  # Create a build config from a remote repository and add custom environment variables
-  %[1]s new-build https://github.com/openshift/ruby-hello-world RACK_ENV=development
+	  # Create a build config using a Dockerfile specified as an argument
+	  %[1]s %[2]s -D $'FROM centos:7\nRUN yum install -y httpd'
 
-  # Create a build config from a remote repository and inject the npmrc into a build
-  %[1]s new-build https://github.com/openshift/ruby-hello-world --build-secret npmrc:.npmrc
+	  # Create a build config from a remote repository and add custom environment variables
+	  %[1]s %[2]s https://github.com/openshift/ruby-hello-world RACK_ENV=development
 
-  # Create a build config that gets its input from a remote repository and another Docker image
-  %[1]s new-build https://github.com/openshift/ruby-hello-world --source-image=openshift/jenkins-1-centos7 --source-image-path=/var/lib/jenkins:tmp`
+	  # Create a build config from a remote repository and inject the npmrc into a build
+	  %[1]s %[2]s https://github.com/openshift/ruby-hello-world --build-secret npmrc:.npmrc
+
+	  # Create a build config that gets its input from a remote repository and another Docker image
+	  %[1]s %[2]s https://github.com/openshift/ruby-hello-world --source-image=openshift/jenkins-1-centos7 --source-image-path=/var/lib/jenkins:tmp`)
 
 	newBuildNoInput = `You must specify one or more images, image streams, or source code locations to create a build.
 
 To build from an existing image stream tag or Docker image, provide the name of the image and
 the source code location:
 
-  %[1]s new-build openshift/nodejs-010-centos7~https://github.com/openshift/nodejs-ex.git
+  %[1]s %[2]s openshift/nodejs-010-centos7~https://github.com/openshift/nodejs-ex.git
 
 If you only specify the source repository location (local or remote), the command will look at
 the repo to determine the type, and then look for a matching image on your server or on the
 default Docker registry.
 
-  %[1]s new-build https://github.com/openshift/nodejs-ex.git
+  %[1]s %[2]s https://github.com/openshift/nodejs-ex.git
 
 will look for an image called "nodejs" in your current project, the 'openshift' project, or
 on the Docker Hub.
@@ -82,9 +86,11 @@ type NewBuildOptions struct {
 	Action configcmd.BulkAction
 	Config *newcmd.AppConfig
 
+	BaseName    string
 	CommandPath string
 	CommandName string
 
+	In            io.Reader
 	Out, ErrOut   io.Writer
 	Output        string
 	PrintObject   func(obj runtime.Object) error
@@ -92,21 +98,20 @@ type NewBuildOptions struct {
 }
 
 // NewCmdNewBuild implements the OpenShift cli new-build command
-func NewCmdNewBuild(fullName string, f *clientcmd.Factory, in io.Reader, out io.Writer) *cobra.Command {
+func NewCmdNewBuild(name, baseName string, f *clientcmd.Factory, in io.Reader, out, errout io.Writer) *cobra.Command {
 	config := newcmd.NewAppConfig()
 	config.ExpectToBuild = true
-	config.AddEnvironmentToBuild = true
-	options := &NewBuildOptions{Config: config}
+	o := &NewBuildOptions{Config: config}
 
 	cmd := &cobra.Command{
-		Use:        "new-build (IMAGE | IMAGESTREAM | PATH | URL ...)",
+		Use:        fmt.Sprintf("%s (IMAGE | IMAGESTREAM | PATH | URL ...)", name),
 		Short:      "Create a new build configuration",
-		Long:       fmt.Sprintf(newBuildLong, fullName),
-		Example:    fmt.Sprintf(newBuildExample, fullName),
+		Long:       fmt.Sprintf(newBuildLong, baseName, name),
+		Example:    fmt.Sprintf(newBuildExample, baseName, name),
 		SuggestFor: []string{"build", "builds"},
 		Run: func(c *cobra.Command, args []string) {
-			kcmdutil.CheckErr(options.Complete(fullName, f, c, args, out, in))
-			err := options.Run()
+			kcmdutil.CheckErr(o.Complete(baseName, name, f, c, args, in, out, errout))
+			err := o.RunNewBuild()
 			if err == cmdutil.ErrExit {
 				os.Exit(1)
 			}
@@ -122,9 +127,16 @@ func NewCmdNewBuild(fullName string, f *clientcmd.Factory, in io.Reader, out io.
 	cmd.Flags().StringSliceVar(&config.Secrets, "build-secret", config.Secrets, "Secret and destination to use as an input for the build.")
 	cmd.Flags().StringVar(&config.Name, "name", "", "Set name to use for generated build artifacts.")
 	cmd.Flags().StringVar(&config.To, "to", "", "Push built images to this image stream tag (or Docker image repository if --to-docker is set).")
-	cmd.Flags().BoolVar(&config.OutputDocker, "to-docker", false, "Have the build output push to a Docker repository.")
-	cmd.Flags().StringSliceVarP(&config.Environment, "env", "e", config.Environment, "Specify key value pairs of environment variables to set into resulting image.")
-	cmd.Flags().StringVar(&config.Strategy, "strategy", "", "Specify the build strategy to use if you don't want to detect (docker|source).")
+	cmd.Flags().BoolVar(&config.OutputDocker, "to-docker", false, "If true, have the build output push to a Docker repository.")
+	cmd.Flags().StringArrayVar(&config.BuildEnvironment, "build-env", config.BuildEnvironment, "Specify a key-value pair for an environment variable to set into resulting image.")
+	cmd.Flags().MarkHidden("build-env")
+	cmd.Flags().StringArrayVarP(&config.BuildEnvironment, "env", "e", config.BuildEnvironment, "Specify a key-value pair for an environment variable to set into resulting image.")
+	cmd.Flags().StringArrayVar(&config.BuildEnvironmentFiles, "build-env-file", config.BuildEnvironmentFiles, "File containing key-value pairs of environment variables to set into each container.")
+	cmd.MarkFlagFilename("build-env-file")
+	cmd.Flags().MarkHidden("build-env-file")
+	cmd.Flags().StringArrayVar(&config.BuildEnvironmentFiles, "env-file", config.BuildEnvironmentFiles, "File containing key-value pairs of environment variables to set into each container.")
+	cmd.MarkFlagFilename("env-file")
+	cmd.Flags().Var(&config.Strategy, "strategy", "Specify the build strategy to use if you don't want to detect (docker|pipeline|source).")
 	cmd.Flags().StringVarP(&config.Dockerfile, "dockerfile", "D", "", "Specify the contents of a Dockerfile to build directly, implies --strategy=docker. Pass '-' to read from STDIN.")
 	cmd.Flags().BoolVar(&config.BinaryBuild, "binary", false, "Instead of expecting a source URL, set the build to expect binary contents. Will disable triggers.")
 	cmd.Flags().StringP("labels", "l", "", "Label to set in all generated resources.")
@@ -135,19 +147,21 @@ func NewCmdNewBuild(fullName string, f *clientcmd.Factory, in io.Reader, out io.
 	cmd.Flags().StringVar(&config.SourceImage, "source-image", "", "Specify an image to use as source for the build.  You must also specify --source-image-path.")
 	cmd.Flags().StringVar(&config.SourceImagePath, "source-image-path", "", "Specify the file or directory to copy from the source image and its destination in the build directory. Format: [source]:[destination-dir].")
 
-	options.Action.BindForOutput(cmd.Flags())
+	o.Action.BindForOutput(cmd.Flags())
 	cmd.Flags().String("output-version", "", "The preferred API versions of the output objects")
 
 	return cmd
 }
 
 // Complete sets any default behavior for the command
-func (o *NewBuildOptions) Complete(fullName string, f *clientcmd.Factory, c *cobra.Command, args []string, out io.Writer, in io.Reader) error {
+func (o *NewBuildOptions) Complete(baseName, commandName string, f *clientcmd.Factory, c *cobra.Command, args []string, in io.Reader, out, errout io.Writer) error {
+	o.In = in
 	o.Out = out
-	o.ErrOut = c.OutOrStderr()
+	o.ErrOut = errout
 	o.Output = kcmdutil.GetFlagString(c, "output")
 	// Only output="" should print descriptions of intermediate steps. Everything
 	// else should print only some specific output (json, yaml, go-template, ...)
+	o.Config.In = in
 	if len(o.Output) == 0 {
 		o.Config.Out = o.Out
 	} else {
@@ -163,10 +177,20 @@ func (o *NewBuildOptions) Complete(fullName string, f *clientcmd.Factory, c *cob
 	o.Action.Bulk.Retry = retryBuildConfig
 
 	o.Config.DryRun = o.Action.DryRun
+	o.Config.AllowNonNumericExposedPorts = true
 
+	o.BaseName = baseName
 	o.CommandPath = c.CommandPath()
-	o.CommandName = fullName
-	mapper, _ := f.Object(false)
+	o.CommandName = commandName
+
+	if o.Output == "wide" {
+		return kcmdutil.UsageError(c, "wide mode is not a compatible output format")
+	}
+
+	cmdutil.WarnAboutCommaSeparation(o.ErrOut, o.Config.Environment, "--env")
+	cmdutil.WarnAboutCommaSeparation(o.ErrOut, o.Config.BuildEnvironment, "--build-env")
+
+	mapper, _ := f.Object()
 	o.PrintObject = cmdutil.VersionedPrintObject(f.PrintObject, c, mapper, out)
 	o.LogsForObject = f.LogsForObject
 	if err := CompleteAppConfig(o.Config, f, c, args); err != nil {
@@ -185,8 +209,8 @@ func (o *NewBuildOptions) Complete(fullName string, f *clientcmd.Factory, c *cob
 	return nil
 }
 
-// Run contains all the necessary functionality for the OpenShift cli new-build command
-func (o *NewBuildOptions) Run() error {
+// RunNewBuild contains all the necessary functionality for the OpenShift cli new-build command
+func (o *NewBuildOptions) RunNewBuild() error {
 	config := o.Config
 	out := o.Out
 
@@ -194,14 +218,14 @@ func (o *NewBuildOptions) Run() error {
 
 	result, err := config.Run()
 	if err != nil {
-		return handleBuildError(err, o.CommandName, o.CommandPath)
+		return handleBuildError(err, o.BaseName, o.CommandName, o.CommandPath)
 	}
 
 	if len(config.Labels) == 0 && len(result.Name) > 0 {
 		config.Labels = map[string]string{"build": result.Name}
 	}
 
-	if err := setLabels(config.Labels, result, false); err != nil {
+	if err := setLabels(config.Labels, result); err != nil {
 		return err
 	}
 	if err := setAnnotations(map[string]string{newcmd.GeneratedByNamespace: newcmd.GeneratedByNewBuild}, result); err != nil {
@@ -226,7 +250,7 @@ func (o *NewBuildOptions) Run() error {
 		case *buildapi.BuildConfig:
 			if len(t.Spec.Triggers) > 0 && t.Spec.Source.Binary == nil {
 				fmt.Fprintf(out, "%sBuild configuration %q created and build triggered.\n", indent, t.Name)
-				fmt.Fprintf(out, "%sRun '%s logs -f bc/%s' to stream the build progress.\n", indent, o.CommandName, t.Name)
+				fmt.Fprintf(out, "%sRun '%s logs -f bc/%s' to stream the build progress.\n", indent, o.BaseName, t.Name)
 			}
 		}
 	}
@@ -234,7 +258,7 @@ func (o *NewBuildOptions) Run() error {
 	return nil
 }
 
-func handleBuildError(err error, fullName, commandPath string) error {
+func handleBuildError(err error, baseName, commandName, commandPath string) error {
 	if err == nil {
 		return nil
 	}
@@ -244,7 +268,7 @@ func handleBuildError(err error, fullName, commandPath string) error {
 	}
 	groups := errorGroups{}
 	for _, err := range errs {
-		transformBuildError(err, fullName, commandPath, groups)
+		transformBuildError(err, baseName, commandName, commandPath, groups)
 	}
 	buf := &bytes.Buffer{}
 	for _, group := range groups {
@@ -257,7 +281,7 @@ func handleBuildError(err error, fullName, commandPath string) error {
 	return fmt.Errorf(buf.String())
 }
 
-func transformBuildError(err error, fullName, commandPath string, groups errorGroups) {
+func transformBuildError(err error, baseName, commandName, commandPath string, groups errorGroups) {
 	switch t := err.(type) {
 	case newapp.ErrNoMatch:
 		groups.Add(
@@ -279,5 +303,10 @@ func transformBuildError(err error, fullName, commandPath string, groups errorGr
 		)
 		return
 	}
-	transformError(err, fullName, commandPath, groups)
+	switch err {
+	case newcmd.ErrNoInputs:
+		groups.Add("", "", usageError(commandPath, newBuildNoInput, baseName, commandName))
+		return
+	}
+	transformError(err, baseName, commandName, commandPath, groups)
 }

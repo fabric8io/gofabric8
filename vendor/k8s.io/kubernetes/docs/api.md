@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # The Kubernetes API
 
 Primary system and API concepts are documented in the [User guide](user-guide/README.md).
@@ -34,7 +29,7 @@ The criteria for inclusion are as follows:
 specification, whereas there are countless different systems for definition workflows of dependent actions (e.g. Celery et al.).
    * The API object is expected to be generally useful to greater than 50% of the Kubernetes users.  This is to ensure that we don't build up a collection of niche APIs
 that users rarely need.
-   * There is general consensus in the Kubernetes community that the API object is in the "Kubernetes layer".  See ["What is Kubernetes?"](whatisk8s.md) for a detailed
+   * There is general consensus in the Kubernetes community that the API object is in the "Kubernetes layer".  See ["What is Kubernetes?"](http://kubernetes.io/docs/whatisk8s/) for a detailed
 explanation of what we believe the "Kubernetes layer" to be.
 
 Of course for every set of rules, we need to ensure that we are not hamstrung or limited by slavish devotion to those rules. Thus we also introduce two exceptions
@@ -105,10 +100,10 @@ Currently there are two API groups in use:
   This holds types which will probably move to another API group eventually.
 1. the "componentconfig" and "metrics" API groups.
 
-
-In the future we expect that there will be more API groups, all at REST path `/apis/$API_GROUP` and
-using `apiVersion: $API_GROUP/$VERSION`.  We expect that there will be a way for [third parties to
-create their own API groups](design/extending-api.md), and to avoid naming collisions.
+In the future we expect that there will be more API groups, all at REST path `/apis/$API_GROUP` and using `apiVersion: $API_GROUP/$VERSION`.
+We expect that there will be a way for [third parties to create their own API groups](design/extending-api.md).
+To avoid naming collisions, third-party API groups must be a DNS name at least three segments long.
+New Kubernetes API groups are suffixed with `.k8s.io` (e.g. `storage.k8s.io`, `rbac.authorization.k8s.io`).
 
 ## Enabling resources in the extensions group
 
@@ -147,7 +142,7 @@ Some important differences between v1beta1/2 and v1beta3:
 * The resource `id` is now called `name`.
 * `name`, `labels`, `annotations`, and other metadata are now nested in a map called `metadata`
 * `desiredState` is now called `spec`, and `currentState` is now called `status`
-* `/minions` has been moved to `/nodes`, and the resource has kind `Node`
+* `/nodes` has been moved to `/nodes`, and the resource has kind `Node`
 * The namespace is required (for all namespaced resources) and has moved from a URL parameter to the path: `/api/v1beta3/namespaces/{namespace}/{resource_collection}/{resource_name}`. If you were not using a namespace before, use `default` here.
 * The names of all resource collections are now lower cased - instead of `replicationControllers`, use `replicationcontrollers`.
 * To watch for changes to a resource, open an HTTP or Websocket connection to the collection query and provide the `?watch=true` query parameter along with the desired `resourceVersion` parameter to watch from.
@@ -159,13 +154,6 @@ Some important differences between v1beta1/2 and v1beta3:
 * Pull policies changed from `PullAlways`, `PullNever`, and `PullIfNotPresent` to `Always`, `Never`, and `IfNotPresent`.
 * The volume `source` is inlined into `volume` rather than nested.
 * Host volumes have been changed from `hostDir` to `hostPath` to better reflect that they can be files or directories.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

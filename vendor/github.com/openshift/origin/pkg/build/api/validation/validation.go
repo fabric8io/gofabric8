@@ -9,14 +9,15 @@ import (
 
 	"github.com/golang/glog"
 
+	"github.com/openshift/origin/pkg/util/labelselector"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/validation"
+	kpath "k8s.io/kubernetes/pkg/api/validation/path"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/strategicpatch"
 	kvalidation "k8s.io/kubernetes/pkg/util/validation"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
-	oapi "github.com/openshift/origin/pkg/api"
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	"github.com/openshift/origin/pkg/build/api/v1"
 	buildutil "github.com/openshift/origin/pkg/build/util"
@@ -29,6 +30,32 @@ func ValidateBuild(build *buildapi.Build) field.ErrorList {
 	allErrs := field.ErrorList{}
 	allErrs = append(allErrs, validation.ValidateObjectMeta(&build.ObjectMeta, true, validation.NameIsDNSSubdomain, field.NewPath("metadata"))...)
 	allErrs = append(allErrs, validateCommonSpec(&build.Spec.CommonSpec, field.NewPath("spec"))...)
+
+	// Check that all source image references are of DockerImage kind.
+	strategyPath := field.NewPath("spec", "strategy")
+	switch {
+	case build.Spec.Strategy.SourceStrategy != nil:
+		allErrs = append(allErrs, validateBuildImageReference(&build.Spec.Strategy.SourceStrategy.From, strategyPath.Child("sourceStrategy").Child("from"))...)
+		allErrs = append(allErrs, validateBuildImageReference(build.Spec.Strategy.SourceStrategy.RuntimeImage, strategyPath.Child("sourceStrategy").Child("runtimeImage"))...)
+	case build.Spec.Strategy.DockerStrategy != nil:
+		allErrs = append(allErrs, validateBuildImageReference(build.Spec.Strategy.DockerStrategy.From, strategyPath.Child("dockerStrategy").Child("from"))...)
+	case build.Spec.Strategy.CustomStrategy != nil:
+		allErrs = append(allErrs, validateBuildImageReference(&build.Spec.Strategy.CustomStrategy.From, strategyPath.Child("customStrategy").Child("from"))...)
+	}
+
+	imagesPath := field.NewPath("spec", "source", "images")
+	for i, image := range build.Spec.Source.Images {
+		allErrs = append(allErrs, validateBuildImageReference(&image.From, imagesPath.Index(i).Child("from"))...)
+	}
+
+	return allErrs
+}
+
+func validateBuildImageReference(reference *kapi.ObjectReference, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if reference != nil && reference.Kind != "DockerImage" {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("kind"), reference.Kind, "only DockerImage references are supported for Builds"))
+	}
 	return allErrs
 }
 
@@ -135,7 +162,7 @@ func ValidateBuildConfigUpdate(config *buildapi.BuildConfig, older *buildapi.Bui
 
 // ValidateBuildRequest validates a BuildRequest object
 func ValidateBuildRequest(request *buildapi.BuildRequest) field.ErrorList {
-	return validation.ValidateObjectMeta(&request.ObjectMeta, true, oapi.MinimalNameRequirements, field.NewPath("metadata"))
+	return validation.ValidateObjectMeta(&request.ObjectMeta, true, kpath.ValidatePathSegmentName, field.NewPath("metadata"))
 }
 
 func validateCommonSpec(spec *buildapi.CommonSpec, fldPath *field.Path) field.ErrorList {
@@ -164,6 +191,7 @@ func validateCommonSpec(spec *buildapi.CommonSpec, fldPath *field.Path) field.Er
 	allErrs = append(allErrs, validateOutput(&spec.Output, fldPath.Child("output"))...)
 	allErrs = append(allErrs, validateStrategy(&spec.Strategy, fldPath.Child("strategy"))...)
 	allErrs = append(allErrs, validatePostCommit(spec.PostCommit, fldPath.Child("postCommit"))...)
+	allErrs = append(allErrs, ValidateNodeSelector(spec.NodeSelector, fldPath.Child("nodeSelector"))...)
 
 	// TODO: validate resource requirements (prereq: https://github.com/kubernetes/kubernetes/pull/7059)
 	return allErrs
@@ -173,10 +201,6 @@ const (
 	maxDockerfileLengthBytes  = 60 * 1000
 	maxJenkinsfileLengthBytes = 100 * 1000
 )
-
-func hasProxy(source *buildapi.GitBuildSource) bool {
-	return (source.HTTPProxy != nil && len(*source.HTTPProxy) > 0) || (source.HTTPSProxy != nil && len(*source.HTTPSProxy) > 0)
-}
 
 func validateSource(input *buildapi.BuildSource, isCustomStrategy, isDockerStrategy, isJenkinsPipelineStrategyFromRepo bool, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
@@ -245,14 +269,6 @@ func validateSecretRef(ref *kapi.LocalObjectReference, fldPath *field.Path) fiel
 	return allErrs
 }
 
-func isHTTPScheme(in string) bool {
-	u, err := url.Parse(in)
-	if err != nil {
-		return false
-	}
-	return u.Scheme == "http" || u.Scheme == "https"
-}
-
 func validateGitSource(git *buildapi.GitBuildSource, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if len(git.URI) == 0 {
@@ -265,9 +281,6 @@ func validateGitSource(git *buildapi.GitBuildSource, fldPath *field.Path) field.
 	}
 	if git.HTTPSProxy != nil && len(*git.HTTPSProxy) != 0 && !IsValidURL(*git.HTTPSProxy) {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("httpsproxy"), *git.HTTPSProxy, "proxy is not a valid url"))
-	}
-	if hasProxy(git) && !isHTTPScheme(git.URI) {
-		allErrs = append(allErrs, field.Invalid(fldPath.Child("uri"), git.URI, "only http:// and https:// GIT protocols are allowed with HTTP or HTTPS proxy set"))
 	}
 	return allErrs
 }
@@ -422,6 +435,7 @@ func validateOutput(output *buildapi.BuildOutput, fldPath *field.Path) field.Err
 	}
 
 	allErrs = append(allErrs, validateSecretRef(output.PushSecret, fldPath.Child("pushSecret"))...)
+	allErrs = append(allErrs, ValidateImageLabels(output.ImageLabels, fldPath.Child("imageLabels"))...)
 
 	return allErrs
 }
@@ -626,7 +640,7 @@ func ValidateBuildLogOptions(opts *buildapi.BuildLogOptions) field.ErrorList {
 	return allErrs
 }
 
-const cIdentifierErrorMsg string = `must be a C identifier (matching regex ` + kvalidation.CIdentifierFmt + `): e.g. "my_name" or "MyName"`
+var cIdentifierErrorMsg string = `must be a C identifier (mixed-case letters, numbers, and underscores): e.g. "my_name" or "MyName"`
 
 func ValidateStrategyEnv(vars []kapi.EnvVar, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
@@ -635,7 +649,7 @@ func ValidateStrategyEnv(vars []kapi.EnvVar, fldPath *field.Path) field.ErrorLis
 		idxPath := fldPath.Index(i)
 		if len(ev.Name) == 0 {
 			allErrs = append(allErrs, field.Required(idxPath.Child("name"), ""))
-		} else if !kvalidation.IsCIdentifier(ev.Name) {
+		} else if len(kvalidation.IsCIdentifier(ev.Name)) > 0 {
 			allErrs = append(allErrs, field.Invalid(idxPath.Child("name"), ev.Name, cIdentifierErrorMsg))
 		}
 		if ev.ValueFrom != nil {
@@ -669,4 +683,42 @@ func validateRuntimeImage(sourceStrategy *buildapi.SourceBuildStrategy, fldPath 
 		return append(allErrs, field.Invalid(fldPath, sourceStrategy.Incremental, "incremental cannot be set to true with extended builds"))
 	}
 	return
+}
+
+func ValidateImageLabels(labels []buildapi.ImageLabel, fldPath *field.Path) (allErrs field.ErrorList) {
+	for i, lbl := range labels {
+		idxPath := fldPath.Index(i)
+		if len(lbl.Name) == 0 {
+			allErrs = append(allErrs, field.Required(idxPath.Child("name"), ""))
+			continue
+		}
+		for _, msg := range kvalidation.IsConfigMapKey(lbl.Name) {
+			allErrs = append(allErrs, field.Invalid(idxPath.Child("name"), lbl.Name, msg))
+		}
+	}
+
+	// find duplicates
+	seen := make(map[string]bool)
+	for i, lbl := range labels {
+		idxPath := fldPath.Index(i)
+		if seen[lbl.Name] {
+			allErrs = append(allErrs, field.Invalid(idxPath.Child("name"), lbl.Name, "duplicate name"))
+			continue
+		}
+		seen[lbl.Name] = true
+	}
+
+	return
+}
+
+func ValidateNodeSelector(nodeSelector map[string]string, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	for k, v := range nodeSelector {
+		_, err := labelselector.Parse(fmt.Sprintf("%s=%s", k, v))
+		if err != nil {
+			allErrs = append(allErrs, field.Invalid(fldPath.Key(k),
+				nodeSelector[k], "must be a valid node selector"))
+		}
+	}
+	return allErrs
 }

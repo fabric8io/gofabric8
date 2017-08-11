@@ -10,17 +10,13 @@ test_name="test-extended/${project_name}"
 
 os::build::setup_env
 
+os::util::environment::use_sudo
 os::util::environment::setup_time_vars
 os::util::environment::setup_all_server_vars "${test_name}"
-os::util::environment::use_sudo
 
-os::log::start_system_logger
+os::log::system::start
 
-ensure_iptables_or_die
-reset_tmp_dir
-
-# TODO(skuznets): Fix vagrant openshift so env vars can be passed to this script
-JUNIT_REPORT=true
+os::util::ensure::iptables_privileges_exist
 
 # Allow setting $JUNIT_REPORT to toggle output behavior
 if [[ -n "${JUNIT_REPORT:-}" ]]; then
@@ -39,40 +35,14 @@ function cleanup() {
     set +e
     cleanup_openshift
 
-    # TODO(skuznets): un-hack this nonsense once traps are in a better state
-    if [[ -n "${JUNIT_REPORT_OUTPUT:-}" ]]; then
-      # get the jUnit output file into a workable state in case we crashed in the middle of testing something
-      os::test::junit::reconcile_output
-
-      # check that we didn't mangle jUnit output
-      os::test::junit::check_test_counters
-
-      # use the junitreport tool to generate us a report
-      "${OS_ROOT}/hack/build-go.sh" tools/junitreport
-      junitreport="$(os::build::find-binary junitreport)"
-
-      if [[ -z "${junitreport}" ]]; then
-          echo "It looks as if you don't have a compiled junitreport binary"
-          echo
-          echo "If you are running from a clone of the git repo, please run"
-          echo "'./hack/build-go.sh tools/junitreport'."
-          exit 1
-      fi
-
-      cat "${JUNIT_REPORT_OUTPUT}" "${junit_gssapi_output}"    \
-        | "${junitreport}" --type oscmd                        \
-                           --suites nested                     \
-                           --roots github.com/openshift/origin \
-                           --output "${ARTIFACT_DIR}/report.xml"
-      cat "${ARTIFACT_DIR}/report.xml" | "${junitreport}" summarize
-    fi
+    os::test::junit::generate_oscmd_report
 
     endtime=$(date +%s); echo "$0 took $((endtime - starttime)) seconds"
     exit $out
 }
 trap "cleanup" EXIT
 
-configure_os_server
+os::start::configure_server
 
 # set up env vars
 cp -R test/extended/testdata/gssapi "${BASETMPDIR}"
@@ -85,12 +55,17 @@ backend='https://openshift.default.svc.cluster.local:443'
 oauth_patch="$(sed "s/HOST_NAME/${host}/" "${test_data_location}/config/oauth_config.json")"
 cp "${SERVER_CONFIG_DIR}/master/master-config.yaml" "${SERVER_CONFIG_DIR}/master/master-config.tmp.yaml"
 openshift ex config patch "${SERVER_CONFIG_DIR}/master/master-config.tmp.yaml" --patch="${oauth_patch}" > "${SERVER_CONFIG_DIR}/master/master-config.yaml"
-start_os_server
+os::start::server
+
+# Allow setting $JUNIT_REPORT to toggle output behavior
+if [[ -n "${JUNIT_REPORT:-}" ]]; then
+	export JUNIT_REPORT_OUTPUT="${LOG_DIR}/raw_test_output.log"
+fi
 
 export KUBECONFIG="${ADMIN_KUBECONFIG}"
 
-install_registry
-wait_for_registry
+os::start::registry
+os::cmd::expect_success 'oc rollout status dc/docker-registry'
 
 os::cmd::expect_success 'oc login -u system:admin'
 os::cmd::expect_success "oc new-project ${project_name}"

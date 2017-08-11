@@ -1,0 +1,50 @@
+{
+  "data": {
+    "attributes": {
+      "created-at": "0001-01-01T00:00:00Z",
+      "description": "Description for 'animal'",
+      "fields": {
+        "animal_type": {
+          "description": "",
+          "label": "",
+          "required": true,
+          "type": {
+            "baseType": "string",
+            "kind": "enum",
+            "values": [
+              "elephant",
+              "blue whale",
+              "Tyrannosaurus rex"
+            ]
+          }
+        },
+        "color": {
+          "description": "",
+          "label": "",
+          "required": false,
+          "type": {
+            "kind": "string"
+          }
+        }
+      },
+      "icon": "fa-hand-lizard-o",
+      "name": "animal",
+      "updated-at": "0001-01-01T00:00:00Z",
+      "version": 0
+    },
+    "id": "729431f2-bca4-4062-9087-c751807b569f",
+    "relationships": {
+      "space": {
+        "data": {
+          "id": "2e0698d8-753e-4cef-bb7c-f027634824a2",
+          "type": "spaces"
+        },
+        "links": {
+          "related": "http:///api/spaces/2e0698d8-753e-4cef-bb7c-f027634824a2",
+          "self": "http:///api/spaces/2e0698d8-753e-4cef-bb7c-f027634824a2"
+        }
+      }
+    },
+    "type": "workitemtypes"
+  }
+}

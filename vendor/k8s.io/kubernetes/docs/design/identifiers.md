@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Identifiers and Names in Kubernetes
 
 A summarization of the goals and recommendations for identifiers in Kubernetes.
@@ -111,13 +106,6 @@ from whence it came.
    2. Each attempt to run a container is assigned a UID (a string) that is
 unique across time.
       1. This may correspond to Docker's container ID.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

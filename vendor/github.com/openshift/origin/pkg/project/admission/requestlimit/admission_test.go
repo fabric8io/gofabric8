@@ -8,7 +8,8 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/auth/user"
 	"k8s.io/kubernetes/pkg/client/cache"
-	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
+	"k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 
@@ -276,7 +277,7 @@ func TestAdmit(t *testing.T) {
 		}
 		reqLimit.(oadmission.WantsOpenshiftClient).SetOpenshiftClient(client)
 		reqLimit.(oadmission.WantsProjectCache).SetProjectCache(pCache)
-		if err = reqLimit.(oadmission.Validator).Validate(); err != nil {
+		if err = reqLimit.(admission.Validator).Validate(); err != nil {
 			t.Fatalf("validation error: %v", err)
 		}
 		err = reqLimit.Admit(admission.NewAttributesRecord(
@@ -362,8 +363,8 @@ type projectCount struct {
 }
 
 func fakeProjectCache(requesters map[string]projectCount) *projectcache.ProjectCache {
-	kclient := &ktestclient.Fake{}
-	pCache := projectcache.NewFake(kclient.Namespaces(), projectcache.NewCacheStore(cache.MetaNamespaceKeyFunc), "")
+	kclientset := &fake.Clientset{}
+	pCache := projectcache.NewFake(kclientset.Core().Namespaces(), projectcache.NewCacheStore(cache.MetaNamespaceKeyFunc), "")
 	for requester, count := range requesters {
 		for i := 0; i < count.active; i++ {
 			pCache.Store.Add(fakeNs(requester, false))
@@ -375,9 +376,9 @@ func fakeProjectCache(requesters map[string]projectCount) *projectcache.ProjectC
 	return pCache
 }
 
-func userFn(usersAndLabels map[string]labels.Set) ktestclient.ReactionFunc {
-	return func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
-		name := action.(ktestclient.GetAction).GetName()
+func userFn(usersAndLabels map[string]labels.Set) core.ReactionFunc {
+	return func(action core.Action) (handled bool, ret runtime.Object, err error) {
+		name := action.(core.GetAction).GetName()
 		return true, fakeUser(name, map[string]string(usersAndLabels[name])), nil
 	}
 }

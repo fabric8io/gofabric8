@@ -43,7 +43,7 @@ VM_NAME_PREFIX      = ENV['OPENSHIFT_VM_NAME_PREFIX'] || ""
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
-  # these are the default settings, overrides are in .vagrant-openshift.json
+  # These are the default settings, overrides are in .vagrant-openshift.json
   vagrant_openshift_config = {
     "instance_name"     => "origin-dev",
     "os"                => "fedora",
@@ -60,6 +60,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     "sync_folders_type" => nil,
     "master_ip"         => ENV['OPENSHIFT_MASTER_IP'] || "10.245.2.2",
     "minion_ip_base"    => ENV['OPENSHIFT_MINION_IP_BASE'] || "10.245.2.",
+    "hostmanager_enabled" => false,
+    "hostmanager_aliases" => [],
     "virtualbox"        => {
       "box_name" => "fedora_inst",
       "box_url" => "https://mirror.openshift.com/pub/vagrant/boxes/openshift3/fedora_virtualbox_inst.box"
@@ -89,7 +91,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     },
   }
 
-  # attempt to read config in this repo's .vagrant-openshift.json if present
+  # Attempt to read config in this repo's .vagrant-openshift.json if present
   if File.exist?('.vagrant-openshift.json')
     json = File.read('.vagrant-openshift.json')
     begin
@@ -188,7 +190,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     end
   else # Single VM dev environment
     ##########################
-    # define settings for the single VM being created.
+    # Define settings for the single VM being created.
     config.vm.define "#{VM_NAME_PREFIX}openshiftdev", primary: true do |config|
       if vagrant_openshift_config['rebuild_yum_cache']
         config.vm.provision "shell", inline: "yum clean all && yum makecache"
@@ -222,6 +224,15 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         config.vm.network "forwarded_port", guest: 8080, host: 8080
         config.vm.network "forwarded_port", guest: 8443, host: 8443
       end
+
+      if Vagrant.has_plugin?('vagrant-hostmanager')
+        config.hostmanager.aliases = vagrant_openshift_config['hostmanager_aliases']
+      end
+    end
+
+    if Vagrant.has_plugin?('vagrant-hostmanager')
+      config.hostmanager.enabled = vagrant_openshift_config['hostmanager_enabled']
+      config.hostmanager.manage_host = true
     end
 
   end # vm definition(s)
@@ -305,7 +316,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         override.vm.provision "setup", type: "shell", path: "contrib/vagrant/provision-full.sh", args: user
       end
 
-      # floating ip usually needed for accessing machines
+      # Floating ip usually needed for accessing machines
       floating_ip     = creds['OSFloatingIP'] || ENV['OS_FLOATING_IP']
       os.floating_ip  = floating_ip == ":auto" ? :auto : floating_ip
       floating_ip_pool = creds['OSFloatingIPPool'] || ENV['OS_FLOATING_IP_POOL']
@@ -340,7 +351,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         aws.instance_ready_timeout = 240
         aws.tags              = { "Name" => ENV['AWS_HOSTNAME'] || vagrant_openshift_config['instance_name'] }
         aws.user_data         = %{
-#cloud-config
+# cloud-config
 
 growpart:
   mode: auto
@@ -356,7 +367,7 @@ runcmd:
           },
           {
              "DeviceName" => "/dev/sdb",
-             "Ebs.VolumeSize" => vagrant_openshift_config['docker_volume_size'] || 20,
+             "Ebs.VolumeSize" => vagrant_openshift_config['docker_volume_size'] || 35,
              "Ebs.VolumeType" => "gp2"
           }
         ]

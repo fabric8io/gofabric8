@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
 
 const (
@@ -64,7 +64,7 @@ type LogSizeGatherer struct {
 // LogsSizeVerifier gathers data about log files sizes from master and node machines.
 // It oversees a <workersNo> workers which do the gathering.
 type LogsSizeVerifier struct {
-	client      *client.Client
+	client      clientset.Interface
 	stopChannel chan bool
 	// data stores LogSizeData groupped per IP and log_path
 	data          *LogsSizeData
@@ -142,7 +142,7 @@ func (d *LogsSizeData) AddNewData(ip, path string, timestamp time.Time, size int
 }
 
 // NewLogsVerifier creates a new LogsSizeVerifier which will stop when stopChannel is closed
-func NewLogsVerifier(c *client.Client, stopChannel chan bool) *LogsSizeVerifier {
+func NewLogsVerifier(c clientset.Interface, stopChannel chan bool) *LogsSizeVerifier {
 	nodeAddresses, err := NodeSSHHosts(c)
 	ExpectNoError(err)
 	masterAddress := GetMasterHost() + ":22"

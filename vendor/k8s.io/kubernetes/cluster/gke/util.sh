@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors All rights reserved.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,8 +16,7 @@
 
 # A library of helper functions and constant for the local config.
 
-# Use the config file specified in $KUBE_CONFIG_FILE, or default to
-# config-default.sh.
+# Uses the config file specified in $KUBE_CONFIG_FILE, or defaults to config-default.sh
 
 KUBE_PROMPT_FOR_UPDATE=y
 KUBE_SKIP_UPDATE=${KUBE_SKIP_UPDATE-"n"}
@@ -25,6 +24,25 @@ KUBE_ROOT=$(dirname "${BASH_SOURCE}")/../..
 source "${KUBE_ROOT}/cluster/gke/${KUBE_CONFIG_FILE:-config-default.sh}"
 source "${KUBE_ROOT}/cluster/common.sh"
 source "${KUBE_ROOT}/cluster/lib/util.sh"
+
+function with-retry() {
+  local retry_limit=$1
+  local cmd=("${@:2}")
+
+  local retry_count=0
+  local rc=0
+
+  until [[ ${retry_count} -ge ${retry_limit} ]]; do
+    ((retry_count+=1))
+    "${cmd[@]}" && rc=0 || rc=$?
+    if [[ ${rc} == 0 ]]; then
+      return 0
+    fi
+    sleep 3
+  done
+
+  return ${rc}
+}
 
 # Perform preparations required to run e2e tests
 #
@@ -63,10 +81,12 @@ function detect-project() {
 }
 
 # Execute prior to running tests to build a release if required for env.
+#
+# Assumed Vars:
+#   KUBE_ROOT
 function test-build-release() {
   echo "... in gke:test-build-release()" >&2
-  echo "... We currently use the Kubernetes version that GKE supports,"
-  echo "... not bleeding-edge builds."
+  "${KUBE_ROOT}/build/release.sh"
 }
 
 # Verify needed binaries exist.
@@ -139,7 +159,7 @@ function kube-up() {
   # Make the specified network if we need to.
   if ! "${GCLOUD}" compute networks --project "${PROJECT}" describe "${NETWORK}" &>/dev/null; then
     echo "Creating new network: ${NETWORK}" >&2
-    "${GCLOUD}" compute networks create "${NETWORK}" --project="${PROJECT}" --range "${NETWORK_RANGE}"
+    with-retry 3 "${GCLOUD}" compute networks create "${NETWORK}" --project="${PROJECT}" --range "${NETWORK_RANGE}"
   else
     echo "... Using network: ${NETWORK}" >&2
   fi
@@ -148,7 +168,7 @@ function kube-up() {
   # such a rule exists, only whether we've created this exact rule.
   if ! "${GCLOUD}" compute firewall-rules --project "${PROJECT}" describe "${FIREWALL_SSH}" &>/dev/null; then
     echo "Creating new firewall for SSH: ${FIREWALL_SSH}" >&2
-    "${GCLOUD}" compute firewall-rules create "${FIREWALL_SSH}" \
+    with-retry 3 "${GCLOUD}" compute firewall-rules create "${FIREWALL_SSH}" \
       --allow="tcp:22" \
       --network="${NETWORK}" \
       --project="${PROJECT}" \
@@ -225,14 +245,14 @@ function test-setup() {
   OLD_NODE_TAG="k8s-${CLUSTER_NAME}-node"
 
   # Open up port 80 & 8080 so common containers on minions can be reached.
-  "${GCLOUD}" compute firewall-rules create \
+  with-retry 3 "${GCLOUD}" compute firewall-rules create \
     "${CLUSTER_NAME}-http-alt" \
     --allow tcp:80,tcp:8080 \
     --project "${PROJECT}" \
     --target-tags "${NODE_TAG},${OLD_NODE_TAG}" \
     --network="${NETWORK}" &
 
-  "${GCLOUD}" compute firewall-rules create \
+  with-retry 3 "${GCLOUD}" compute firewall-rules create \
     "${CLUSTER_NAME}-nodeports" \
     --allow tcp:30000-32767,udp:30000-32767 \
     --project "${PROJECT}" \
@@ -318,7 +338,7 @@ function detect-node-instance-groups {
   ALL_INSTANCE_GROUP_URLS=${urls[*]}
   NODE_INSTANCE_GROUPS=()
   for url in "${urls[@]:-}"; do
-    local igm_zone=$(expr match ${url} '.*/zones/\([a-z0-9-]*\)/')
+    local igm_zone=$(expr ${url} : '.*/zones/\([a-z0-9-]*\)/')
     if [[ "${igm_zone}" == "${ZONE}" ]]; then
       NODE_INSTANCE_GROUPS+=("${url##*/}")
     fi
@@ -337,7 +357,7 @@ function ssh-to-node() {
   local node="$1"
   local cmd="$2"
   # Loop until we can successfully ssh into the box
-  for try in $(seq 1 5); do
+  for try in {1..5}; do
     if gcloud compute ssh --ssh-flag="-o LogLevel=quiet" --ssh-flag="-o ConnectTimeout=30" --project "${PROJECT}" --zone="${ZONE}" "${node}" --command "echo test > /dev/null"; then
       break
     fi
@@ -369,13 +389,26 @@ function test-teardown() {
   # instances, but we can safely delete the cluster before the firewall.
   #
   # NOTE: Keep in sync with names above in test-setup.
-  "${GCLOUD}" compute firewall-rules delete "${CLUSTER_NAME}-http-alt" \
-    --project="${PROJECT}" &
-  "${GCLOUD}" compute firewall-rules delete "${CLUSTER_NAME}-nodeports" \
-    --project="${PROJECT}" &
+  for fw in "${CLUSTER_NAME}-http-alt" "${CLUSTER_NAME}-nodeports" "${FIREWALL_SSH}"; do
+    if [[ -n $("${GCLOUD}" compute firewall-rules --project "${PROJECT}" describe "${fw}" --format='value(name)' 2>/dev/null || true) ]]; then
+      with-retry 3 "${GCLOUD}" compute firewall-rules delete "${fw}" --project="${PROJECT}" --quiet &
+    fi
+  done
 
   # Wait for firewall rule teardown.
   kube::util::wait-for-jobs || true
+
+  # It's unfortunate that the $FIREWALL_SSH rule and network are created in
+  # kube-up, but we can only really delete them in test-teardown. So much for
+  # symmetry.
+  if [[ "${KUBE_DELETE_NETWORK}" == "true" ]]; then
+    if [[ -n $("${GCLOUD}" compute networks --project "${PROJECT}" describe "${NETWORK}" --format='value(name)' 2>/dev/null || true) ]]; then
+      if ! with-retry 3 "${GCLOUD}" compute networks delete --project "${PROJECT}" --quiet "${NETWORK}"; then
+        echo "Failed to delete network '${NETWORK}'. Listing firewall-rules:"
+        "${GCLOUD}" compute firewall-rules --project "${PROJECT}" list --filter="network=${NETWORK}"
+      fi
+    fi
+  fi
 }
 
 # Actually take down the cluster. This is called from test-teardown.
@@ -387,6 +420,8 @@ function test-teardown() {
 function kube-down() {
   echo "... in gke:kube-down()" >&2
   detect-project >&2
-  "${GCLOUD}" ${CMD_GROUP:-} container clusters delete --project="${PROJECT}" \
-    --zone="${ZONE}" "${CLUSTER_NAME}" --quiet
+  if "${GCLOUD}" ${CMD_GROUP:-} container clusters describe --project="${PROJECT}" --zone="${ZONE}" "${CLUSTER_NAME}" --quiet &>/dev/null; then
+    with-retry 3 "${GCLOUD}" ${CMD_GROUP:-} container clusters delete --project="${PROJECT}" \
+      --zone="${ZONE}" "${CLUSTER_NAME}" --quiet
+  fi
 }

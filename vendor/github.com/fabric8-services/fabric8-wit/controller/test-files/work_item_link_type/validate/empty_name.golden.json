@@ -1,0 +1,14 @@
+{
+  "id": "IGNOREME",
+  "code": "invalid_request",
+  "status": 400,
+  "detail": "response.name must match the regexp \"^[^_|-].*\" but got value \"\"; length of response.name must be greater than or equal to than 1 but got value \"\" (len=0)",
+  "meta": {
+    "attribute": "response.name",
+    "comp": "greater than or equal to",
+    "expected": 1,
+    "len": 0,
+    "regexp": "^[^_|-].*",
+    "value": ""
+  }
+}

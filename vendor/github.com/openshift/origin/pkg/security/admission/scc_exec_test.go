@@ -10,7 +10,6 @@ import (
 	clientsetfake "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
 	testingcore "k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/watch"
 
 	oscache "github.com/openshift/origin/pkg/client/cache"
 )
@@ -20,6 +19,9 @@ import (
 func TestExecAdmit(t *testing.T) {
 	goodPod := func() *kapi.Pod {
 		return &kapi.Pod{
+			ObjectMeta: kapi.ObjectMeta{
+				Namespace: "default",
+			},
 			Spec: kapi.PodSpec{
 				ServiceAccountName: "default",
 				Containers: []kapi.Container{
@@ -87,7 +89,6 @@ func TestExecAdmit(t *testing.T) {
 		tc.PrependReactor("get", "pods", func(action testingcore.Action) (handled bool, ret runtime.Object, err error) {
 			return true, v.pod, nil
 		})
-		tc.AddWatchReactor("*", testingcore.DefaultWatchReactor(watch.NewFake(), nil))
 
 		// create the admission plugin
 		p := NewSCCExecRestrictions(tc)

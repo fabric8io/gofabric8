@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package hostport
 import (
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -52,11 +53,11 @@ type ruleMatch struct {
 }
 
 func TestOpenPodHostports(t *testing.T) {
-	fakeIptables := NewFakeIptables()
+	fakeIPTables := NewFakeIPTables()
 
 	h := &handler{
 		hostPortMap: make(map[hostport]closeable),
-		iptables:    fakeIptables,
+		iptables:    fakeIPTables,
 		portOpener:  openFakeSocket,
 	}
 
@@ -158,7 +159,7 @@ func TestOpenPodHostports(t *testing.T) {
 		},
 	}
 
-	runningPods := make([]*RunningPod, 0)
+	activePods := make([]*ActivePod, 0)
 
 	// Fill in any match rules missing chain names
 	for _, test := range tests {
@@ -179,13 +180,24 @@ func TestOpenPodHostports(t *testing.T) {
 				}
 			}
 		}
-		runningPods = append(runningPods, &RunningPod{
+		activePods = append(activePods, &ActivePod{
 			Pod: test.pod,
 			IP:  net.ParseIP(test.ip),
 		})
 	}
 
-	err := h.OpenPodHostportsAndSync(&RunningPod{Pod: tests[0].pod, IP: net.ParseIP(tests[0].ip)}, "br0", runningPods)
+	// Already running pod's host port
+	hp := hostport{
+		tests[1].pod.Spec.Containers[0].Ports[0].HostPort,
+		strings.ToLower(string(tests[1].pod.Spec.Containers[0].Ports[0].Protocol)),
+	}
+	h.hostPortMap[hp] = &fakeSocket{
+		tests[1].pod.Spec.Containers[0].Ports[0].HostPort,
+		strings.ToLower(string(tests[1].pod.Spec.Containers[0].Ports[0].Protocol)),
+		false,
+	}
+
+	err := h.OpenPodHostportsAndSync(&ActivePod{Pod: tests[0].pod, IP: net.ParseIP(tests[0].ip)}, "br0", activePods)
 	if err != nil {
 		t.Fatalf("Failed to OpenPodHostportsAndSync: %v", err)
 	}
@@ -198,7 +210,7 @@ func TestOpenPodHostports(t *testing.T) {
 	}
 
 	for _, rule := range genericRules {
-		_, chain, err := fakeIptables.getChain(utiliptables.TableNAT, utiliptables.Chain(rule.chain))
+		_, chain, err := fakeIPTables.getChain(utiliptables.TableNAT, utiliptables.Chain(rule.chain))
 		if err != nil {
 			t.Fatalf("Expected NAT chain %s did not exist", rule.chain)
 		}
@@ -211,7 +223,7 @@ func TestOpenPodHostports(t *testing.T) {
 	for _, test := range tests {
 		for _, match := range test.matches {
 			// Ensure chain exists
-			_, chain, err := fakeIptables.getChain(utiliptables.TableNAT, utiliptables.Chain(match.chain))
+			_, chain, err := fakeIPTables.getChain(utiliptables.TableNAT, utiliptables.Chain(match.chain))
 			if err != nil {
 				t.Fatalf("Expected NAT chain %s did not exist", match.chain)
 			}
@@ -219,6 +231,16 @@ func TestOpenPodHostports(t *testing.T) {
 				t.Fatalf("Expected NAT chain %s rule containing '%s' not found", match.chain, match.match)
 			}
 		}
+	}
+
+	// Socket
+	hostPortMap := map[hostport]closeable{
+		hostport{123, "tcp"}:  &fakeSocket{123, "tcp", false},
+		hostport{4567, "tcp"}: &fakeSocket{4567, "tcp", false},
+		hostport{5678, "udp"}: &fakeSocket{5678, "udp", false},
+	}
+	if !reflect.DeepEqual(hostPortMap, h.hostPortMap) {
+		t.Fatalf("Mismatch in expected hostPortMap. Expected '%v', got '%v'", hostPortMap, h.hostPortMap)
 	}
 }
 

@@ -10,8 +10,9 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrs "k8s.io/kubernetes/pkg/api/errors"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	"k8s.io/kubernetes/pkg/client/restclient"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/quota"
 	"k8s.io/kubernetes/pkg/util/wait"
@@ -35,7 +36,7 @@ func KubeConfigPath() string {
 	return filepath.Join(GetBaseDir(), "openshift.local.config", "master", "admin.kubeconfig")
 }
 
-func GetClusterAdminKubeClient(adminKubeConfigFile string) (*kclient.Client, error) {
+func GetClusterAdminKubeClient(adminKubeConfigFile string) (*kclientset.Clientset, error) {
 	c, _, err := configapi.GetKubeClient(adminKubeConfigFile, nil)
 	if err != nil {
 		return nil, err
@@ -63,7 +64,7 @@ func GetClusterAdminClientConfig(adminKubeConfigFile string) (*restclient.Config
 	return conf, nil
 }
 
-func GetClientForUser(clientConfig restclient.Config, username string) (*client.Client, *kclient.Client, *restclient.Config, error) {
+func GetClientForUser(clientConfig restclient.Config, username string) (*client.Client, kclientset.Interface, *restclient.Config, error) {
 	token, err := tokencmd.RequestToken(&clientConfig, nil, username, "password")
 	if err != nil {
 		return nil, nil, nil, err
@@ -72,7 +73,7 @@ func GetClientForUser(clientConfig restclient.Config, username string) (*client.
 	userClientConfig := clientcmd.AnonymousClientConfig(&clientConfig)
 	userClientConfig.BearerToken = token
 
-	kubeClient, err := kclient.New(&userClientConfig)
+	kubeClientset, err := kclientset.NewForConfig(&userClientConfig)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -82,10 +83,10 @@ func GetClientForUser(clientConfig restclient.Config, username string) (*client.
 		return nil, nil, nil, err
 	}
 
-	return osClient, kubeClient, &userClientConfig, nil
+	return osClient, kubeClientset, &userClientConfig, nil
 }
 
-func GetScopedClientForUser(adminClient *client.Client, clientConfig restclient.Config, username string, scopes []string) (*client.Client, *kclient.Client, *restclient.Config, error) {
+func GetScopedClientForUser(adminClient *client.Client, clientConfig restclient.Config, username string, scopes []string) (*client.Client, kclientset.Interface, *restclient.Config, error) {
 	// make sure the user exists
 	if _, _, _, err := GetClientForUser(clientConfig, username); err != nil {
 		return nil, nil, nil, err
@@ -110,7 +111,7 @@ func GetScopedClientForUser(adminClient *client.Client, clientConfig restclient.
 
 	scopedConfig := clientcmd.AnonymousClientConfig(&clientConfig)
 	scopedConfig.BearerToken = token.Name
-	kubeClient, err := kclient.New(&scopedConfig)
+	kubeClient, err := kclientset.NewForConfig(&scopedConfig)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -121,15 +122,15 @@ func GetScopedClientForUser(adminClient *client.Client, clientConfig restclient.
 	return osClient, kubeClient, &scopedConfig, nil
 }
 
-func GetClientForServiceAccount(adminClient *kclient.Client, clientConfig restclient.Config, namespace, name string) (*client.Client, *kclient.Client, *restclient.Config, error) {
-	_, err := adminClient.Namespaces().Create(&kapi.Namespace{ObjectMeta: kapi.ObjectMeta{Name: namespace}})
+func GetClientForServiceAccount(adminClient *kclientset.Clientset, clientConfig restclient.Config, namespace, name string) (*client.Client, *kclientset.Clientset, *restclient.Config, error) {
+	_, err := adminClient.Core().Namespaces().Create(&kapi.Namespace{ObjectMeta: kapi.ObjectMeta{Name: namespace}})
 	if err != nil && !kerrs.IsAlreadyExists(err) {
 		return nil, nil, nil, err
 	}
 
-	sa, err := adminClient.ServiceAccounts(namespace).Create(&kapi.ServiceAccount{ObjectMeta: kapi.ObjectMeta{Name: name}})
+	sa, err := adminClient.Core().ServiceAccounts(namespace).Create(&kapi.ServiceAccount{ObjectMeta: kapi.ObjectMeta{Name: name}})
 	if kerrs.IsAlreadyExists(err) {
-		sa, err = adminClient.ServiceAccounts(namespace).Get(name)
+		sa, err = adminClient.Core().ServiceAccounts(namespace).Get(name)
 	}
 	if err != nil {
 		return nil, nil, nil, err
@@ -138,7 +139,7 @@ func GetClientForServiceAccount(adminClient *kclient.Client, clientConfig restcl
 	token := ""
 	err = wait.Poll(time.Second, 30*time.Second, func() (bool, error) {
 		selector := fields.OneTermEqualSelector(kapi.SecretTypeField, string(kapi.SecretTypeServiceAccountToken))
-		secrets, err := adminClient.Secrets(namespace).List(kapi.ListOptions{FieldSelector: selector})
+		secrets, err := adminClient.Core().Secrets(namespace).List(kapi.ListOptions{FieldSelector: selector})
 		if err != nil {
 			return false, err
 		}
@@ -157,7 +158,7 @@ func GetClientForServiceAccount(adminClient *kclient.Client, clientConfig restcl
 	saClientConfig := clientcmd.AnonymousClientConfig(&clientConfig)
 	saClientConfig.BearerToken = token
 
-	kubeClient, err := kclient.New(&saClientConfig)
+	kubeClientset, err := kclientset.NewForConfig(&saClientConfig)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -167,13 +168,13 @@ func GetClientForServiceAccount(adminClient *kclient.Client, clientConfig restcl
 		return nil, nil, nil, err
 	}
 
-	return osClient, kubeClient, &saClientConfig, nil
+	return osClient, kubeClientset, &saClientConfig, nil
 }
 
 // WaitForResourceQuotaSync watches given resource quota until its hard limit is updated to match the desired
 // spec or timeout occurs.
 func WaitForResourceQuotaLimitSync(
-	client kclient.ResourceQuotaInterface,
+	client kcoreclient.ResourceQuotaInterface,
 	name string,
 	hardLimit kapi.ResourceList,
 	timeout time.Duration,

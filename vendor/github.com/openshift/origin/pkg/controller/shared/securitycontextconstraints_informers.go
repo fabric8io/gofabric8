@@ -5,7 +5,6 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 
@@ -13,7 +12,7 @@ import (
 )
 
 type SecurityContextConstraintsInformer interface {
-	Informer() framework.SharedIndexInformer
+	Informer() cache.SharedIndexInformer
 	Indexer() cache.Indexer
 	Lister() *oscache.IndexerToSecurityContextConstraintsLister
 }
@@ -22,7 +21,7 @@ type securityContextConstraintsInformer struct {
 	*sharedInformerFactory
 }
 
-func (s *securityContextConstraintsInformer) Informer() framework.SharedIndexInformer {
+func (s *securityContextConstraintsInformer) Informer() cache.SharedIndexInformer {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -33,13 +32,13 @@ func (s *securityContextConstraintsInformer) Informer() framework.SharedIndexInf
 		return informer
 	}
 
-	informer = framework.NewSharedIndexInformer(
+	informer = cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options kapi.ListOptions) (runtime.Object, error) {
-				return s.kubeClient.SecurityContextConstraints().List(options)
+				return s.kubeClient.Core().SecurityContextConstraints().List(options)
 			},
 			WatchFunc: func(options kapi.ListOptions) (watch.Interface, error) {
-				return s.kubeClient.SecurityContextConstraints().Watch(options)
+				return s.kubeClient.Core().SecurityContextConstraints().Watch(options)
 			},
 		},
 		informerObj,

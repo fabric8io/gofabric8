@@ -41,23 +41,6 @@ func GetInputReference(strategy buildapi.BuildStrategy) *kapi.ObjectReference {
 	}
 }
 
-// NameFromImageStream returns a concatenated name representing an ImageStream[Tag/Image]
-// reference.  If the reference does not contain a Namespace, the namespace parameter
-// is used instead.
-func NameFromImageStream(namespace string, ref *kapi.ObjectReference, tag string) string {
-	var ret string
-	if ref.Namespace == "" {
-		ret = namespace
-	} else {
-		ret = ref.Namespace
-	}
-	ret = ret + "/" + ref.Name
-	if tag != "" && strings.Index(ref.Name, ":") == -1 && strings.Index(ref.Name, "@") == -1 {
-		ret = ret + ":" + tag
-	}
-	return ret
-}
-
 // IsBuildComplete returns whether the provided build is complete or not
 func IsBuildComplete(build *buildapi.Build) bool {
 	return build.Status.Phase != buildapi.BuildPhaseRunning && build.Status.Phase != buildapi.BuildPhasePending && build.Status.Phase != buildapi.BuildPhaseNew
@@ -91,7 +74,7 @@ func BuildRunPolicy(build *buildapi.Build) buildapi.BuildRunPolicy {
 			return buildapi.BuildRunPolicySerialLatestOnly
 		}
 	}
-	glog.V(5).Infof("Build %s/%s does not have start policy label set, using default (Serial)")
+	glog.V(5).Infof("Build %s/%s does not have start policy label set, using default (Serial)", build.Namespace, build.Name)
 	return buildapi.BuildRunPolicySerial
 }
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,53 +26,50 @@ import (
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/kubectl"
+	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/runtime"
 	utilerrors "k8s.io/kubernetes/pkg/util/errors"
+	"k8s.io/kubernetes/pkg/util/sets"
 )
 
-// DescribeOptions is the start of the data required to perform the operation.  As new fields are added, add them here instead of
-// referencing the cmd.Flags()
-type DescribeOptions struct {
-	Filenames []string
-	Recursive bool
-}
+var (
+	describe_long = templates.LongDesc(`
+		Show details of a specific resource or group of resources.
+		This command joins many API calls together to form a detailed description of a
+		given resource or group of resources.
 
-const (
-	describe_long = `Show details of a specific resource or group of resources.
+		    $ kubectl describe TYPE NAME_PREFIX
 
-This command joins many API calls together to form a detailed description of a
-given resource or group of resources.
+		will first check for an exact match on TYPE and NAME_PREFIX. If no such resource
+		exists, it will output details for every resource that has a name prefixed with NAME_PREFIX.
 
-$ kubectl describe TYPE NAME_PREFIX
+		` + valid_resources)
 
-will first check for an exact match on TYPE and NAME_PREFIX. If no such resource
-exists, it will output details for every resource that has a name prefixed with NAME_PREFIX
+	describe_example = templates.Examples(`
+		# Describe a node
+		kubectl describe nodes kubernetes-node-emt8.c.myproject.internal
 
-` + kubectl.PossibleResourceTypes
-	describe_example = `# Describe a node
-kubectl describe nodes kubernetes-minion-emt8.c.myproject.internal
+		# Describe a pod
+		kubectl describe pods/nginx
 
-# Describe a pod
-kubectl describe pods/nginx
+		# Describe a pod identified by type and name in "pod.json"
+		kubectl describe -f pod.json
 
-# Describe a pod identified by type and name in "pod.json"
-kubectl describe -f pod.json
+		# Describe all pods
+		kubectl describe pods
 
-# Describe all pods
-kubectl describe pods
+		# Describe pods by label name=myLabel
+		kubectl describe po -l name=myLabel
 
-# Describe pods by label name=myLabel
-kubectl describe po -l name=myLabel
-
-# Describe all pods managed by the 'frontend' replication controller (rc-created pods
-# get the name of the rc as a prefix in the pod the name).
-kubectl describe pods frontend`
+		# Describe all pods managed by the 'frontend' replication controller (rc-created pods
+		# get the name of the rc as a prefix in the pod the name).
+		kubectl describe pods frontend`)
 )
 
-func NewCmdDescribe(f *cmdutil.Factory, out io.Writer) *cobra.Command {
-	options := &DescribeOptions{}
+func NewCmdDescribe(f cmdutil.Factory, out, cmdErr io.Writer) *cobra.Command {
+	options := &resource.FilenameOptions{}
 	describerSettings := &kubectl.DescriberSettings{}
 
 	validArgs := kubectl.DescribableResources()
@@ -84,37 +81,41 @@ func NewCmdDescribe(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 		Long:    describe_long,
 		Example: describe_example,
 		Run: func(cmd *cobra.Command, args []string) {
-			err := RunDescribe(f, out, cmd, args, options, describerSettings)
+			err := RunDescribe(f, out, cmdErr, cmd, args, options, describerSettings)
 			cmdutil.CheckErr(err)
 		},
 		ValidArgs:  validArgs,
 		ArgAliases: argAliases,
 	}
-	usage := "Filename, directory, or URL to a file containing the resource to describe"
-	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
-	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
+	usage := "containing the resource to describe"
+	cmdutil.AddFilenameOptionFlags(cmd, options, usage)
 	cmd.Flags().StringP("selector", "l", "", "Selector (label query) to filter on")
+	cmd.Flags().Bool("all-namespaces", false, "If present, list the requested object(s) across all namespaces. Namespace in current context is ignored even if specified with --namespace.")
 	cmd.Flags().BoolVar(&describerSettings.ShowEvents, "show-events", true, "If true, display events related to the described object.")
 	cmdutil.AddInclude3rdPartyFlags(cmd)
 	return cmd
 }
 
-func RunDescribe(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []string, options *DescribeOptions, describerSettings *kubectl.DescriberSettings) error {
+func RunDescribe(f cmdutil.Factory, out, cmdErr io.Writer, cmd *cobra.Command, args []string, options *resource.FilenameOptions, describerSettings *kubectl.DescriberSettings) error {
 	selector := cmdutil.GetFlagString(cmd, "selector")
+	allNamespaces := cmdutil.GetFlagBool(cmd, "all-namespaces")
 	cmdNamespace, enforceNamespace, err := f.DefaultNamespace()
 	if err != nil {
 		return err
 	}
-	if len(args) == 0 && len(options.Filenames) == 0 {
-		fmt.Fprint(out, "You must specify the type of resource to describe. ", valid_resources)
+	if allNamespaces {
+		enforceNamespace = false
+	}
+	if len(args) == 0 && cmdutil.IsFilenameEmpty(options.Filenames) {
+		fmt.Fprint(cmdErr, "You must specify the type of resource to describe. ", valid_resources)
 		return cmdutil.UsageError(cmd, "Required resource not specified.")
 	}
 
-	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.Object()
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		ContinueOnError().
-		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(enforceNamespace, options.Recursive, options.Filenames...).
+		NamespaceParam(cmdNamespace).DefaultNamespace().AllNamespaces(allNamespaces).
+		FilenameParam(enforceNamespace, options).
 		SelectorParam(selector).
 		ResourceTypeOrNameArgs(true, args...).
 		Flatten().
@@ -133,31 +134,40 @@ func RunDescribe(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []s
 		allErrs = append(allErrs, err)
 	}
 
+	errs := sets.NewString()
 	first := true
 	for _, info := range infos {
 		mapping := info.ResourceMapping()
 		describer, err := f.Describer(mapping)
 		if err != nil {
+			if errs.Has(err.Error()) {
+				continue
+			}
 			allErrs = append(allErrs, err)
+			errs.Insert(err.Error())
 			continue
 		}
 		s, err := describer.Describe(info.Namespace, info.Name, *describerSettings)
 		if err != nil {
+			if errs.Has(err.Error()) {
+				continue
+			}
 			allErrs = append(allErrs, err)
+			errs.Insert(err.Error())
 			continue
 		}
 		if first {
 			first = false
+			fmt.Fprint(out, s)
 		} else {
-			fmt.Fprintf(out, "\n\n")
+			fmt.Fprintf(out, "\n\n%s", s)
 		}
-		fmt.Fprint(out, s)
 	}
 
 	return utilerrors.NewAggregate(allErrs)
 }
 
-func DescribeMatchingResources(mapper meta.RESTMapper, typer runtime.ObjectTyper, f *cmdutil.Factory, namespace, rsrc, prefix string, describerSettings *kubectl.DescriberSettings, out io.Writer, originalError error) error {
+func DescribeMatchingResources(mapper meta.RESTMapper, typer runtime.ObjectTyper, f cmdutil.Factory, namespace, rsrc, prefix string, describerSettings *kubectl.DescriberSettings, out io.Writer, originalError error) error {
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		NamespaceParam(namespace).DefaultNamespace().
 		ResourceTypeOrNameArgs(true, rsrc).

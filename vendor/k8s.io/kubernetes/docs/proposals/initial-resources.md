@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Abstract
 
 Initial Resources is a data-driven feature that based on historical data tries to estimate resource usage of a container without Resources specified
@@ -74,13 +69,6 @@ and should be introduced shortly after the first version is done:
 * dry mode, which allows to ask system for resource recommendation for a container without running it
 * add estimation as annotations for those containers that already has resources set
 * support for other data sources like [Hawkular](http://www.hawkular.org/)
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/proposals/initial-resources.md?pixel)]()

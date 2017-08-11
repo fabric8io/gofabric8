@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,55 +21,59 @@ import (
 	"io"
 
 	"k8s.io/kubernetes/pkg/kubectl"
+	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 
 	"github.com/spf13/cobra"
 )
 
-// HistoryOptions is the start of the data required to perform the operation.  As new fields are added, add them here instead of
-// referencing the cmd.Flags()
-type HistoryOptions struct {
-	Filenames []string
-	Recursive bool
-}
+var (
+	history_long = templates.LongDesc(`
+		View previous rollout revisions and configurations.`)
 
-const (
-	history_long    = `View previous rollout revisions and configurations.`
-	history_example = `# View the rollout history of a deployment
-kubectl rollout history deployment/abc
+	history_example = templates.Examples(`
+		# View the rollout history of a deployment
+		kubectl rollout history deployment/abc
 
-# View the details of deployment revision 3
-kubectl rollout history deployment/abc --revision=3`
+		# View the details of deployment revision 3
+		kubectl rollout history deployment/abc --revision=3`)
 )
 
-func NewCmdRolloutHistory(f *cmdutil.Factory, out io.Writer) *cobra.Command {
-	options := &HistoryOptions{}
+func NewCmdRolloutHistory(f cmdutil.Factory, out io.Writer) *cobra.Command {
+	options := &resource.FilenameOptions{}
+
+	validArgs := []string{"deployment"}
+	argAliases := kubectl.ResourceAliases(validArgs)
 
 	cmd := &cobra.Command{
 		Use:     "history (TYPE NAME | TYPE/NAME) [flags]",
-		Short:   "view rollout history",
+		Short:   "View rollout history",
 		Long:    history_long,
 		Example: history_example,
 		Run: func(cmd *cobra.Command, args []string) {
 			cmdutil.CheckErr(RunHistory(f, cmd, out, args, options))
 		},
+		ValidArgs:  validArgs,
+		ArgAliases: argAliases,
 	}
 
 	cmd.Flags().Int64("revision", 0, "See the details, including podTemplate of the revision specified")
-	usage := "Filename, directory, or URL to a file identifying the resource to get from a server."
-	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
-	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
+	usage := "identifying the resource to get from a server."
+	cmdutil.AddFilenameOptionFlags(cmd, options, usage)
 	return cmd
 }
 
-func RunHistory(f *cmdutil.Factory, cmd *cobra.Command, out io.Writer, args []string, options *HistoryOptions) error {
-	if len(args) == 0 && len(options.Filenames) == 0 {
+func RunHistory(f cmdutil.Factory, cmd *cobra.Command, out io.Writer, args []string, options *resource.FilenameOptions) error {
+	if len(args) == 0 && cmdutil.IsFilenameEmpty(options.Filenames) {
 		return cmdutil.UsageError(cmd, "Required resource not specified.")
 	}
 	revision := cmdutil.GetFlagInt64(cmd, "revision")
+	if revision < 0 {
+		return fmt.Errorf("revision must be a positive integer: %v", revision)
+	}
 
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 
 	cmdNamespace, enforceNamespace, err := f.DefaultNamespace()
 	if err != nil {
@@ -78,7 +82,7 @@ func RunHistory(f *cmdutil.Factory, cmd *cobra.Command, out io.Writer, args []st
 
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(enforceNamespace, options.Recursive, options.Filenames...).
+		FilenameParam(enforceNamespace, options).
 		ResourceTypeOrNameArgs(true, args...).
 		ContinueOnError().
 		Latest().
@@ -89,7 +93,7 @@ func RunHistory(f *cmdutil.Factory, cmd *cobra.Command, out io.Writer, args []st
 		return err
 	}
 
-	err = r.Visit(func(info *resource.Info, err error) error {
+	return r.Visit(func(info *resource.Info, err error) error {
 		if err != nil {
 			return err
 		}
@@ -103,14 +107,12 @@ func RunHistory(f *cmdutil.Factory, cmd *cobra.Command, out io.Writer, args []st
 			return err
 		}
 
-		header := fmt.Sprintf("%s %q history viewed", mapping.Resource, info.Name)
+		header := fmt.Sprintf("%s %q", mapping.Resource, info.Name)
 		if revision > 0 {
-			header = fmt.Sprintf("%s (revision: %d)", header, revision)
+			header = fmt.Sprintf("%s with revision #%d", header, revision)
 		}
 		fmt.Fprintf(out, "%s\n", header)
 		fmt.Fprintf(out, "%s\n", historyInfo)
 		return nil
 	})
-
-	return err
 }

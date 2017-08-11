@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ import (
 	proxyapp "k8s.io/kubernetes/cmd/kube-proxy/app"
 	"k8s.io/kubernetes/cmd/kube-proxy/app/options"
 	"k8s.io/kubernetes/pkg/api"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/record"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
 	proxyconfig "k8s.io/kubernetes/pkg/proxy/config"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util"
@@ -51,7 +51,7 @@ func (*FakeProxier) SyncLoop() {
 
 func NewHollowProxyOrDie(
 	nodeName string,
-	client *client.Client,
+	client clientset.Interface,
 	endpointsConfig *proxyconfig.EndpointsConfig,
 	serviceConfig *proxyconfig.ServiceConfig,
 	iptInterface utiliptables.Interface,
@@ -69,7 +69,7 @@ func NewHollowProxyOrDie(
 		Namespace: "",
 	}
 	proxyconfig.NewSourceAPI(
-		client,
+		client.Core().RESTClient(),
 		30*time.Second,
 		serviceConfig.Channel("api"),
 		endpointsConfig.Channel("api"),

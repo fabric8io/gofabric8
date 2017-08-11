@@ -1,0 +1,19 @@
+= SQL files
+:toc:
+:toc-placement: preamble
+:sectnums:
+:experimental:
+
+== Purpose
+
+The purpose of this directory is to store all files that are relevant for
+updating the database over time.
+
+The SQL files themselves are packaged into the wit core binary with
+link:https://github.com/jteeuwen/go-bindata[go-bindata].
+
+The filenames of the SQL files have no meaning but we prefix them with the
+version they stand for so it is easier to find out what's happening.
+The link:../migration.go[migration.go] file has the control over the
+updates and the SQL files are *not* blindly executed just because they exist.
+Instead we allow the developers to run Go code as well.

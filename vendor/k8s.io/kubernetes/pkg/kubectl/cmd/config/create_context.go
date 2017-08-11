@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,22 +25,28 @@ import (
 
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
+	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/util/flag"
 )
 
 type createContextOptions struct {
 	configAccess clientcmd.ConfigAccess
 	name         string
-	cluster      util.StringFlag
-	authInfo     util.StringFlag
-	namespace    util.StringFlag
+	cluster      flag.StringFlag
+	authInfo     flag.StringFlag
+	namespace    flag.StringFlag
 }
 
-const (
-	create_context_long = `Sets a context entry in kubeconfig
-Specifying a name that already exists will merge new fields on top of existing values for those fields.`
-	create_context_example = `# Set the user field on the gce context entry without touching other values
-kubectl config set-context gce --user=cluster-admin`
+var (
+	create_context_long = templates.LongDesc(`
+		Sets a context entry in kubeconfig
+
+		Specifying a name that already exists will merge new fields on top of existing values for those fields.`)
+
+	create_context_example = templates.Examples(`
+		# Set the user field on the gce context entry without touching other values
+		kubectl config set-context gce --user=cluster-admin`)
 )
 
 func NewCmdConfigSetContext(out io.Writer, configAccess clientcmd.ConfigAccess) *cobra.Command {
@@ -56,12 +62,8 @@ func NewCmdConfigSetContext(out io.Writer, configAccess clientcmd.ConfigAccess) 
 				return
 			}
 
-			err := options.run()
-			if err != nil {
-				fmt.Fprintf(out, "%v\n", err)
-			} else {
-				fmt.Fprintf(out, "context %q set.\n", options.name)
-			}
+			cmdutil.CheckErr(options.run())
+			fmt.Fprintf(out, "Context %q set.\n", options.name)
 		},
 	}
 

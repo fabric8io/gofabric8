@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,11 +36,13 @@ import (
 )
 
 func TestMakePayload(t *testing.T) {
+	caseMappingMode := int32(0400)
 	cases := []struct {
 		name      string
 		mappings  []api.KeyToPath
 		configMap *api.ConfigMap
-		payload   map[string][]byte
+		mode      int32
+		payload   map[string]util.FileProjection
 		success   bool
 	}{
 		{
@@ -51,9 +53,10 @@ func TestMakePayload(t *testing.T) {
 					"bar": "bar",
 				},
 			},
-			payload: map[string][]byte{
-				"foo": []byte("foo"),
-				"bar": []byte("bar"),
+			mode: 0644,
+			payload: map[string]util.FileProjection{
+				"foo": {Data: []byte("foo"), Mode: 0644},
+				"bar": {Data: []byte("bar"), Mode: 0644},
 			},
 			success: true,
 		},
@@ -71,8 +74,9 @@ func TestMakePayload(t *testing.T) {
 					"bar": "bar",
 				},
 			},
-			payload: map[string][]byte{
-				"path/to/foo.txt": []byte("foo"),
+			mode: 0644,
+			payload: map[string]util.FileProjection{
+				"path/to/foo.txt": {Data: []byte("foo"), Mode: 0644},
 			},
 			success: true,
 		},
@@ -90,8 +94,9 @@ func TestMakePayload(t *testing.T) {
 					"bar": "bar",
 				},
 			},
-			payload: map[string][]byte{
-				"path/to/1/2/3/foo.txt": []byte("foo"),
+			mode: 0644,
+			payload: map[string]util.FileProjection{
+				"path/to/1/2/3/foo.txt": {Data: []byte("foo"), Mode: 0644},
 			},
 			success: true,
 		},
@@ -109,8 +114,9 @@ func TestMakePayload(t *testing.T) {
 					"bar": "bar",
 				},
 			},
-			payload: map[string][]byte{
-				"path/to/1/2/3/foo.txt": []byte("foo"),
+			mode: 0644,
+			payload: map[string]util.FileProjection{
+				"path/to/1/2/3/foo.txt": {Data: []byte("foo"), Mode: 0644},
 			},
 			success: true,
 		},
@@ -132,9 +138,10 @@ func TestMakePayload(t *testing.T) {
 					"bar": "bar",
 				},
 			},
-			payload: map[string][]byte{
-				"path/to/1/2/3/foo.txt":                []byte("foo"),
-				"another/path/to/the/esteemed/bar.bin": []byte("bar"),
+			mode: 0644,
+			payload: map[string]util.FileProjection{
+				"path/to/1/2/3/foo.txt":                {Data: []byte("foo"), Mode: 0644},
+				"another/path/to/the/esteemed/bar.bin": {Data: []byte("bar"), Mode: 0644},
 			},
 			success: true,
 		},
@@ -152,12 +159,65 @@ func TestMakePayload(t *testing.T) {
 					"bar": "bar",
 				},
 			},
+			mode:    0644,
 			success: false,
+		},
+		{
+			name: "mapping with Mode",
+			mappings: []api.KeyToPath{
+				{
+					Key:  "foo",
+					Path: "foo.txt",
+					Mode: &caseMappingMode,
+				},
+				{
+					Key:  "bar",
+					Path: "bar.bin",
+					Mode: &caseMappingMode,
+				},
+			},
+			configMap: &api.ConfigMap{
+				Data: map[string]string{
+					"foo": "foo",
+					"bar": "bar",
+				},
+			},
+			mode: 0644,
+			payload: map[string]util.FileProjection{
+				"foo.txt": {Data: []byte("foo"), Mode: caseMappingMode},
+				"bar.bin": {Data: []byte("bar"), Mode: caseMappingMode},
+			},
+			success: true,
+		},
+		{
+			name: "mapping with defaultMode",
+			mappings: []api.KeyToPath{
+				{
+					Key:  "foo",
+					Path: "foo.txt",
+				},
+				{
+					Key:  "bar",
+					Path: "bar.bin",
+				},
+			},
+			configMap: &api.ConfigMap{
+				Data: map[string]string{
+					"foo": "foo",
+					"bar": "bar",
+				},
+			},
+			mode: 0644,
+			payload: map[string]util.FileProjection{
+				"foo.txt": {Data: []byte("foo"), Mode: 0644},
+				"bar.bin": {Data: []byte("bar"), Mode: 0644},
+			},
+			success: true,
 		},
 	}
 
 	for _, tc := range cases {
-		actualPayload, err := makePayload(tc.mappings, tc.configMap)
+		actualPayload, err := makePayload(tc.mappings, tc.configMap, &tc.mode)
 		if err != nil && tc.success {
 			t.Errorf("%v: unexpected failure making payload: %v", tc.name, err)
 			continue
@@ -184,12 +244,13 @@ func newTestHost(t *testing.T, clientset clientset.Interface) (string, volume.Vo
 		t.Fatalf("can't make a temp rootdir: %v", err)
 	}
 
-	return tempDir, volumetest.NewFakeVolumeHost(tempDir, clientset, empty_dir.ProbeVolumePlugins(), "" /* rootContext */)
+	return tempDir, volumetest.NewFakeVolumeHost(tempDir, clientset, empty_dir.ProbeVolumePlugins())
 }
 
 func TestCanSupport(t *testing.T) {
 	pluginMgr := volume.VolumePluginMgr{}
-	_, host := newTestHost(t, nil)
+	tempDir, host := newTestHost(t, nil)
+	defer os.RemoveAll(tempDir)
 	pluginMgr.InitPlugins(ProbeVolumePlugins(), host)
 
 	plugin, err := pluginMgr.FindPluginByName(configMapPluginName)
@@ -214,13 +275,14 @@ func TestPlugin(t *testing.T) {
 		testNamespace  = "test_configmap_namespace"
 		testName       = "test_configmap_name"
 
-		volumeSpec = volumeSpec(testVolumeName, testName)
-		configMap  = configMap(testNamespace, testName)
-		client     = fake.NewSimpleClientset(&configMap)
-		pluginMgr  = volume.VolumePluginMgr{}
-		_, host    = newTestHost(t, client)
+		volumeSpec    = volumeSpec(testVolumeName, testName, 0644)
+		configMap     = configMap(testNamespace, testName)
+		client        = fake.NewSimpleClientset(&configMap)
+		pluginMgr     = volume.VolumePluginMgr{}
+		tempDir, host = newTestHost(t, client)
 	)
 
+	defer os.RemoveAll(tempDir)
 	pluginMgr.InitPlugins(ProbeVolumePlugins(), host)
 
 	plugin, err := pluginMgr.FindPluginByName(configMapPluginName)
@@ -228,7 +290,7 @@ func TestPlugin(t *testing.T) {
 		t.Errorf("Can't find the plugin by name")
 	}
 
-	pod := &api.Pod{ObjectMeta: api.ObjectMeta{UID: testPodUID}}
+	pod := &api.Pod{ObjectMeta: api.ObjectMeta{Namespace: testNamespace, UID: testPodUID}}
 	mounter, err := plugin.NewMounter(volume.NewSpecFromVolume(volumeSpec), pod, volume.VolumeOptions{})
 	if err != nil {
 		t.Errorf("Failed to make a new Mounter: %v", err)
@@ -277,13 +339,14 @@ func TestPluginReboot(t *testing.T) {
 		testNamespace  = "test_configmap_namespace"
 		testName       = "test_configmap_name"
 
-		volumeSpec    = volumeSpec(testVolumeName, testName)
+		volumeSpec    = volumeSpec(testVolumeName, testName, 0644)
 		configMap     = configMap(testNamespace, testName)
 		client        = fake.NewSimpleClientset(&configMap)
 		pluginMgr     = volume.VolumePluginMgr{}
 		rootDir, host = newTestHost(t, client)
 	)
 
+	defer os.RemoveAll(rootDir)
 	pluginMgr.InitPlugins(ProbeVolumePlugins(), host)
 
 	plugin, err := pluginMgr.FindPluginByName(configMapPluginName)
@@ -291,7 +354,7 @@ func TestPluginReboot(t *testing.T) {
 		t.Errorf("Can't find the plugin by name")
 	}
 
-	pod := &api.Pod{ObjectMeta: api.ObjectMeta{UID: testPodUID}}
+	pod := &api.Pod{ObjectMeta: api.ObjectMeta{Namespace: testNamespace, UID: testPodUID}}
 	mounter, err := plugin.NewMounter(volume.NewSpecFromVolume(volumeSpec), pod, volume.VolumeOptions{})
 	if err != nil {
 		t.Errorf("Failed to make a new Mounter: %v", err)
@@ -324,7 +387,7 @@ func TestPluginReboot(t *testing.T) {
 	doTestCleanAndTeardown(plugin, testPodUID, testVolumeName, volumePath, t)
 }
 
-func volumeSpec(volumeName, configMapName string) *api.Volume {
+func volumeSpec(volumeName, configMapName string, defaultMode int32) *api.Volume {
 	return &api.Volume{
 		Name: volumeName,
 		VolumeSource: api.VolumeSource{
@@ -332,6 +395,7 @@ func volumeSpec(volumeName, configMapName string) *api.Volume {
 				LocalObjectReference: api.LocalObjectReference{
 					Name: configMapName,
 				},
+				DefaultMode: &defaultMode,
 			},
 		},
 	}

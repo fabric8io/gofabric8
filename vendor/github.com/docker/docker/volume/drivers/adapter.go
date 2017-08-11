@@ -1,6 +1,10 @@
 package volumedrivers
 
-import "github.com/docker/docker/volume"
+import (
+	"fmt"
+
+	"github.com/docker/docker/volume"
+)
 
 type volumeDriverAdapter struct {
 	name  string
@@ -11,19 +15,56 @@ func (a *volumeDriverAdapter) Name() string {
 	return a.name
 }
 
-func (a *volumeDriverAdapter) Create(name string) (volume.Volume, error) {
-	err := a.proxy.Create(name)
-	if err != nil {
+func (a *volumeDriverAdapter) Create(name string, opts map[string]string) (volume.Volume, error) {
+	if err := a.proxy.Create(name, opts); err != nil {
 		return nil, err
 	}
 	return &volumeAdapter{
 		proxy:      a.proxy,
 		name:       name,
-		driverName: a.name}, nil
+		driverName: a.name,
+	}, nil
 }
 
 func (a *volumeDriverAdapter) Remove(v volume.Volume) error {
 	return a.proxy.Remove(v.Name())
+}
+
+func (a *volumeDriverAdapter) List() ([]volume.Volume, error) {
+	ls, err := a.proxy.List()
+	if err != nil {
+		return nil, err
+	}
+
+	var out []volume.Volume
+	for _, vp := range ls {
+		out = append(out, &volumeAdapter{
+			proxy:      a.proxy,
+			name:       vp.Name,
+			driverName: a.name,
+			eMount:     vp.Mountpoint,
+		})
+	}
+	return out, nil
+}
+
+func (a *volumeDriverAdapter) Get(name string) (volume.Volume, error) {
+	v, err := a.proxy.Get(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// plugin may have returned no volume and no error
+	if v == nil {
+		return nil, fmt.Errorf("no such volume")
+	}
+
+	return &volumeAdapter{
+		proxy:      a.proxy,
+		name:       v.Name,
+		driverName: a.Name(),
+		eMount:     v.Mountpoint,
+	}, nil
 }
 
 type volumeAdapter struct {
@@ -31,6 +72,11 @@ type volumeAdapter struct {
 	name       string
 	driverName string
 	eMount     string // ephemeral host volume path
+}
+
+type proxyVolume struct {
+	Name       string
+	Mountpoint string
 }
 
 func (a *volumeAdapter) Name() string {

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Scheduler extender
 
 There are three ways to add new scheduling rules (predicates and priority
@@ -96,7 +91,7 @@ type ExtenderArgs struct {
 }
 ```
 
-The "filter" call returns a list of nodes (api.NodeList). The "prioritize" call
+The "filter" call returns a list of nodes (schedulerapi.ExtenderFilterResult). The "prioritize" call
 returns priorities for each node (schedulerapi.HostPriorityList).
 
 The "filter" call may prune the set of nodes based on its predicates. Scores
@@ -104,13 +99,6 @@ returned by the "prioritize" call are added to the k8s scores (computed through
 its priority functions) and used for final host selection.
 
 Multiple extenders can be configured in the scheduler policy.
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/design/scheduler_extender.md?pixel)]()

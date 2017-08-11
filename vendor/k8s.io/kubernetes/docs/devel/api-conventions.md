@@ -1,7 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
 API Conventions
 ===============
 
@@ -34,7 +30,7 @@ resources](../user-guide/working-with-resources.md).*
     - [List Operations](#list-operations)
     - [Map Operations](#map-operations)
   - [Idempotency](#idempotency)
-  - [Optional vs Required](#optional-vs-required)
+  - [Optional vs. Required](#optional-vs-required)
   - [Defaulting](#defaulting)
   - [Late Initialization](#late-initialization)
   - [Concurrency Control and Consistency](#concurrency-control-and-consistency)
@@ -105,8 +101,9 @@ specific actions that create, update, delete, or get.
 2. **Lists** are collections of **resources** of one (usually) or more
 (occasionally) kinds.
 
-   Lists have a limited set of common metadata. All lists use the "items" field
-to contain the array of objects they return.
+   The name of a list kind must end with "List". Lists have a limited set of
+common metadata. All lists use the required "items" field to contain the array
+of objects they return. Any kind that has the "items" field must be a list kind.
 
    Most objects defined in the system should have an endpoint that returns the
 full set of resources, as well as zero or more endpoints that return subsets of
@@ -628,7 +625,7 @@ exists - instead, it will either return 201 Created or 504 with Reason
 allotted, and the client should retry (optionally after the time indicated in
 the Retry-After header).
 
-## Optional vs Required
+## Optional vs. Required
 
 Fields must be either optional or required.
 
@@ -1152,7 +1149,7 @@ than capitalization of the initial letter, the two should almost always match.
 No underscores nor dashes in either.
 * Field and resource names should be declarative, not imperative (DoSomething,
 SomethingDoer, DoneBy, DoneAt).
-* `Minion` has been deprecated in favor of `Node`. Use `Node` where referring to
+* Use `Node` where referring to
 the node resource in the context of the cluster. Use `Host` where referring to
 properties of the individual physical/virtual system, such as `hostname`,
 `hostPath`, `hostNetwork`, etc.
@@ -1315,7 +1312,7 @@ encodes the stream before returning it to the client.
 
 Clients should use the SPDY protocols if their clients have native support, or
 WebSockets as a fallback. Note that WebSockets is susceptible to Head-of-Line
-blocking and so clients must read and process each message sequentionally. In
+blocking and so clients must read and process each message sequentially. In
 the future, an HTTP/2 implementation will be exposed that deprecates SPDY.
 
 
@@ -1347,13 +1344,6 @@ Example: "must be greater than `request`".
 be less than 256", "must be greater than or equal to 0".  Do not use words
 like "larger than", "bigger than", "more than", "higher than", etc.
 * When specifying numeric ranges, use inclusive ranges when possible.
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/devel/api-conventions.md?pixel)]()

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Performance Monitoring
 
 ## Reason for this document
@@ -53,7 +48,7 @@ Basic ideas:
 
 ### Logging monitoring
 
-Log spam is a serious problem and we need to keep it under control. Simplest way to check for regressions, suggested by @bredanburns, is to compute the rate in which log files
+Log spam is a serious problem and we need to keep it under control. Simplest way to check for regressions, suggested by @brendandburns, is to compute the rate in which log files
 grow in e2e tests.
 
 Basic ideas:
@@ -75,7 +70,7 @@ Basic ideas:
 Reverse of REST call monitoring done in the API server. We need to know when a given component increases a pressure it puts on the API server. As a proxy for number of
 requests sent we can track how saturated are rate limiters. This has additional advantage of giving us data needed to fine-tune rate limiter constants.
 
-Because we have rate limitting on both ends (client and API server) we should monitor number of inflight requests in API server and how it relates to `max-requests-inflight`.
+Because we have rate limiting on both ends (client and API server) we should monitor number of inflight requests in API server and how it relates to `max-requests-inflight`.
 
 Basic ideas:
 - percentage of used non-burst limit,
@@ -115,13 +110,6 @@ We should monitor other aspects of the system, which may indicate saturation of 
 Basic ideas:
 - queue length for queues in the system,
 - wait time for WaitGroups.
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/proposals/performance-related-monitoring.md?pixel)]()

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Writing good e2e tests for Kubernetes #
 
 ## Patterns and Anti-Patterns ##
@@ -233,13 +228,6 @@ Unreachable nodes are evacuated and then repopulated upon rejoining [Disruptive]
 
 Note that opening issues for specific better tooling is welcome, and
 code implementing that tooling is even more welcome :-).
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

@@ -8,12 +8,21 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/digest"
+	"github.com/docker/distribution/manifest/schema2"
 	"github.com/docker/distribution/registry/middleware/registry"
 	"github.com/docker/distribution/registry/storage"
 
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
 
 	imageapi "github.com/openshift/origin/pkg/image/api"
+)
+
+const (
+	// DigestSha256EmptyTar is the canonical sha256 digest of empty data
+	digestSha256EmptyTar = digest.Digest("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+
+	// digestSHA256GzippedEmptyTar is the canonical sha256 digest of gzippedEmptyTar
+	digestSHA256GzippedEmptyTar = digest.Digest("sha256:a3ed95caeb02ffe68cdd9fd84406680ae93d633cb16422d00e8a7c22955b46d4")
 )
 
 // ByGeneration allows for sorting tag events from latest to oldest.
@@ -44,6 +53,7 @@ type blobDescriptorService struct {
 // corresponding image stream. This method is invoked from inside of upstream's linkedBlobStore. It expects
 // a proper repository object to be set on given context by upper openshift middleware wrappers.
 func (bs *blobDescriptorService) Stat(ctx context.Context, dgst digest.Digest) (distribution.Descriptor, error) {
+	context.GetLogger(ctx).Debugf("(*blobDescriptorService).Stat: starting with digest=%s", dgst.String())
 	repo, found := RepositoryFrom(ctx)
 	if !found || repo == nil {
 		err := fmt.Errorf("failed to retrieve repository from context")
@@ -62,20 +72,30 @@ func (bs *blobDescriptorService) Stat(ctx context.Context, dgst digest.Digest) (
 		return desc, nil
 	}
 
-	context.GetLogger(ctx).Debugf("could not stat layer link %q in repository %q: %v", dgst.String(), repo.Named().Name(), err)
+	context.GetLogger(ctx).Debugf("(*blobDescriptorService).Stat: could not stat layer link %s in repository %s: %v", dgst.String(), repo.Named().Name(), err)
 
-	// verify the blob is stored locally
+	// First attempt: looking for the blob locally
 	desc, err = dockerRegistry.BlobStatter().Stat(ctx, dgst)
-	if err != nil {
-		return desc, err
-	}
-
-	// ensure it's referenced inside of corresponding image stream
-	if imageStreamHasBlob(repo, dgst) {
+	if err == nil {
+		context.GetLogger(ctx).Debugf("(*blobDescriptorService).Stat: blob %s exists in the global blob store", dgst.String())
+		// only non-empty layers is wise to check for existence in the image stream.
+		// schema v2 has no empty layers.
+		if !isEmptyDigest(dgst) {
+			// ensure it's referenced inside of corresponding image stream
+			if !imageStreamHasBlob(repo, dgst) {
+				context.GetLogger(ctx).Debugf("(*blobDescriptorService).Stat: blob %s is neither empty nor referenced in image stream %s", dgst.String(), repo.Named().Name())
+				return distribution.Descriptor{}, distribution.ErrBlobUnknown
+			}
+		}
 		return desc, nil
 	}
 
-	return distribution.Descriptor{}, distribution.ErrBlobUnknown
+	if err == distribution.ErrBlobUnknown && RemoteBlobAccessCheckEnabledFrom(ctx) {
+		// Second attempt: looking for the blob on a remote server
+		desc, err = repo.remoteBlobGetter.Stat(ctx, dgst)
+	}
+
+	return desc, err
 }
 
 func (bs *blobDescriptorService) Clear(ctx context.Context, dgst digest.Digest) error {
@@ -116,7 +136,7 @@ func imageStreamHasBlob(r *repository, dgst digest.Digest) bool {
 	}
 
 	// verify directly with etcd
-	is, err := r.getImageStream()
+	is, err := r.imageStreamGetter.get()
 	if err != nil {
 		context.GetLogger(r.ctx).Errorf("failed to get image stream: %v", err)
 		return logFound(false)
@@ -177,9 +197,15 @@ func imageHasBlob(
 
 	// in case of pullthrough disabled, client won't be able to download a blob belonging to not managed image
 	// (image stored in external registry), thus don't consider them as candidates
-	if managed := image.Annotations[imageapi.ManagedByOpenShiftAnnotation]; requireManaged && managed != "true" {
+	if requireManaged && !isImageManaged(image) {
 		context.GetLogger(r.ctx).Debugf("skipping not managed image")
 		return false
+	}
+
+	// someone asks for manifest
+	if imageName == blobDigest {
+		r.rememberLayersOfImage(image, cacheName)
+		return true
 	}
 
 	if len(image.DockerImageLayers) == 0 {
@@ -204,11 +230,16 @@ func imageHasBlob(
 	}
 
 	// only manifest V2 schema2 has docker image config filled where dockerImage.Metadata.id is its digest
-	if len(image.DockerImageConfig) > 0 && image.DockerImageMetadata.ID == blobDigest {
+	if image.DockerImageManifestMediaType == schema2.MediaTypeManifest &&
+		image.DockerImageMetadata.ID == blobDigest {
 		// remember manifest config reference of schema 2 as well
 		r.rememberLayersOfImage(image, cacheName)
 		return true
 	}
 
 	return false
+}
+
+func isEmptyDigest(dgst digest.Digest) bool {
+	return dgst == digestSha256EmptyTar || dgst == digestSHA256GzippedEmptyTar
 }

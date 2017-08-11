@@ -1,16 +1,19 @@
 package v1
 
 import (
+	"fmt"
+
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 )
 
-// Auth system gets identity name and provider
-// POST to UserIdentityMapping, get back error or a filled out UserIdentityMapping object
-
 // +genclient=true
 
-// User describes someone that makes requests to the API
+// Upon log in, every user of the system receives a User and Identity resource. Administrators
+// may directly manipulate the attributes of the users for their own tracking, or set groups
+// via the API. The user name is unique and is chosen based on the value provided by the
+// identity provider - if a user already exists with the incoming name, the user name may have
+// a number appended to it depending on the configuration of the system.
 type User struct {
 	unversioned.TypeMeta `json:",inline"`
 	// Standard object's metadata.
@@ -22,7 +25,9 @@ type User struct {
 	// Identities are the identities associated with this user
 	Identities []string `json:"identities" protobuf:"bytes,3,rep,name=identities"`
 
-	// Groups are the groups that this user is a member of
+	// Groups specifies group names this user is a member of.
+	// This field is deprecated and will be removed in a future release.
+	// Instead, create a Group object containing the name of this User.
 	Groups []string `json:"groups" protobuf:"bytes,4,rep,name=groups"`
 }
 
@@ -35,7 +40,11 @@ type UserList struct {
 	Items []User `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
 
-// Identity records a successful authentication of a user with an identity provider
+// Identity records a successful authentication of a user with an identity provider. The
+// information about the source of authentication is stored on the identity, and the identity
+// is then associated with a single user object. Multiple identities can reference a single
+// user. Information retrieved from the authentication provider is stored in the extra field
+// using a schema determined by the provider.
 type Identity struct {
 	unversioned.TypeMeta `json:",inline"`
 	// Standard object's metadata.
@@ -78,7 +87,12 @@ type UserIdentityMapping struct {
 
 // OptionalNames is an array that may also be left nil to distinguish between set and unset.
 // +protobuf.nullable=true
+// +protobuf.options.(gogoproto.goproto_stringer)=false
 type OptionalNames []string
+
+func (t OptionalNames) String() string {
+	return fmt.Sprintf("%v", []string(t))
+}
 
 // Group represents a referenceable set of Users
 type Group struct {

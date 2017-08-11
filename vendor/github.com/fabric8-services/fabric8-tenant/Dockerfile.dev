@@ -1,0 +1,4 @@
+FROM fabric8/fabric8-init-tenant:v7fe64fe
+
+COPY fabric8-tenant-linux /usr/local/fabric8-tenant/bin/fabric8-tenant
+RUN echo chmod +x /usr/local/fabric8-tenant/bin/fabric8-tenant

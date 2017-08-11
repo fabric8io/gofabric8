@@ -10,44 +10,57 @@ import (
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
-const (
-	exposeLong = `
-Expose containers internally as services or externally via routes
+var (
+	exposeLong = templates.LongDesc(`
+		Expose containers internally as services or externally via routes
 
-There is also the ability to expose a deployment configuration, replication controller, service, or pod
-as a new service on a specified port. If no labels are specified, the new object will re-use the
-labels from the object it exposes.`
+		There is also the ability to expose a deployment configuration, replication controller, service, or pod
+		as a new service on a specified port. If no labels are specified, the new object will re-use the
+		labels from the object it exposes.`)
 
-	exposeExample = `  # Create a route based on service nginx. The new route will re-use nginx's labels
-  %[1]s expose service nginx
+	exposeExample = templates.Examples(`
+		# Create a route based on service nginx. The new route will re-use nginx's labels
+	  %[1]s expose service nginx
 
-  # Create a route and specify your own label and route name
-  %[1]s expose service nginx -l name=myroute --name=fromdowntown
+	  # Create a route and specify your own label and route name
+	  %[1]s expose service nginx -l name=myroute --name=fromdowntown
 
-  # Create a route and specify a hostname
-  %[1]s expose service nginx --hostname=www.example.com
+	  # Create a route and specify a hostname
+	  %[1]s expose service nginx --hostname=www.example.com
 
-  # Expose a deployment configuration as a service and use the specified port
-  %[1]s expose dc ruby-hello-world --port=8080
+	  # Create a route with wildcard
+	  %[1]s expose service nginx --hostname=x.example.com --wildcard-policy=Subdomain
+	  This would be equivalent to *.example.com. NOTE: only hosts are matched by the wildcard, subdomains would not be included.
 
-  # Expose a service as a route in the specified path
-  %[1]s expose service nginx --path=/nginx`
+	  # Expose a deployment configuration as a service and use the specified port
+	  %[1]s expose dc ruby-hello-world --port=8080
+
+	  # Expose a service as a route in the specified path
+	  %[1]s expose service nginx --path=/nginx
+
+	  # Expose a service using different generators
+	  %[1]s expose service nginx --name=exposed-svc --port=12201 --protocol="TCP" --generator="service/v2"
+	  %[1]s expose service nginx --name=my-route --port=12201 --generator="route/v1"
+
+	  Exposing a service using the "route/v1" generator (default) will create a new exposed route with the "--name" provided
+	  (or the name of the service otherwise). You may not specify a "--protocol" or "--target-port" option when using this generator.`)
 )
 
 // NewCmdExpose is a wrapper for the Kubernetes cli expose command
 func NewCmdExpose(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
-	cmd := kcmd.NewCmdExposeService(f.Factory, out)
+	cmd := kcmd.NewCmdExposeService(f, out)
 	cmd.Short = "Expose a replicated application as a service or route"
 	cmd.Long = exposeLong
 	cmd.Example = fmt.Sprintf(exposeExample, fullName)
 	// Default generator to an empty string so we can get more flexibility
 	// when setting defaults based on input resources
 	cmd.Flags().Set("generator", "")
-	cmd.Flag("generator").Usage = "The name of the API generator to use."
+	cmd.Flag("generator").Usage = "The name of the API generator to use. Defaults to \"route/v1\". Available generators include \"service/v1\", \"service/v2\", and \"route/v1\". \"service/v1\" will automatically name the port \"default\", while \"service/v2\" will leave it unnamed."
 	cmd.Flag("generator").DefValue = ""
 	// Default protocol to an empty string so we can get more flexibility
 	// when validating the use of it (invalid for routes)
@@ -63,6 +76,7 @@ func NewCmdExpose(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.C
 	}
 	cmd.Flags().String("hostname", "", "Set a hostname for the new route")
 	cmd.Flags().String("path", "", "Set a path for the new route")
+	cmd.Flags().String("wildcard-policy", "", "Sets the WildcardPolicy for the hostname, the default is \"None\". Valid values are \"None\" and \"Subdomain\"")
 	return cmd
 }
 
@@ -79,18 +93,24 @@ func validate(cmd *cobra.Command, f *clientcmd.Factory, args []string) error {
 		return err
 	}
 
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder()).
 		ContinueOnError().
 		NamespaceParam(namespace).DefaultNamespace().
-		FilenameParam(enforceNamespace, false, kcmdutil.GetFlagStringSlice(cmd, "filename")...).
+		FilenameParam(enforceNamespace, &resource.FilenameOptions{Recursive: false, Filenames: kcmdutil.GetFlagStringSlice(cmd, "filename")}).
 		ResourceTypeOrNameArgs(false, args...).
 		Flatten().
 		Do()
 	infos, err := r.Infos()
 	if err != nil {
-		return err
+		return kcmdutil.UsageError(cmd, err.Error())
 	}
+
+	wildcardpolicy := kcmdutil.GetFlagString(cmd, "wildcard-policy")
+	if len(wildcardpolicy) > 0 && (wildcardpolicy != "Subdomain" && wildcardpolicy != "None") {
+		return fmt.Errorf("only \"Subdomain\" or \"None\" are supported for wildcard-policy")
+	}
+
 	if len(infos) > 1 {
 		return fmt.Errorf("multiple resources provided: %v", args)
 	}

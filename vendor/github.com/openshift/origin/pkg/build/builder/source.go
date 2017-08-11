@@ -13,6 +13,7 @@ import (
 	docker "github.com/fsouza/go-dockerclient"
 
 	s2igit "github.com/openshift/source-to-image/pkg/scm/git"
+	s2iutil "github.com/openshift/source-to-image/pkg/util"
 
 	"github.com/openshift/origin/pkg/build/api"
 	"github.com/openshift/origin/pkg/build/builder/cmd/dockercfg"
@@ -34,6 +35,7 @@ const (
 
 type gitAuthError string
 type gitNotFoundError string
+type contextDirNotFoundError string
 
 func (e gitAuthError) Error() string {
 	return fmt.Sprintf("failed to fetch requested repository %q with provided credentials", string(e))
@@ -41,6 +43,10 @@ func (e gitAuthError) Error() string {
 
 func (e gitNotFoundError) Error() string {
 	return fmt.Sprintf("requested repository %q not found", string(e))
+}
+
+func (e contextDirNotFoundError) Error() string {
+	return fmt.Sprintf("provided context directory does not exist: %s", string(e))
 }
 
 // fetchSource retrieves the inputs defined by the build source into the
@@ -88,6 +94,12 @@ func fetchSource(dockerClient DockerClient, dir string, build *api.Build, urlTim
 		err := extractSourceFromImage(dockerClient, image.From.Name, dir, imageSecretIndex, image.Paths, forcePull)
 		if err != nil {
 			return nil, err
+		}
+	}
+
+	if len(build.Spec.Source.ContextDir) > 0 {
+		if _, err := os.Stat(filepath.Join(dir, build.Spec.Source.ContextDir)); os.IsNotExist(err) {
+			return sourceInfo, contextDirNotFoundError(build.Spec.Source.ContextDir)
 		}
 	}
 
@@ -151,7 +163,7 @@ func checkRemoteGit(gitClient GitClient, url string, initialTimeout time.Duratio
 // checkSourceURI performs a check on the URI associated with the build
 // to make sure that it is valid.
 func checkSourceURI(gitClient GitClient, rawurl string, timeout time.Duration) error {
-	ok, err := s2igit.New().ValidCloneSpec(rawurl)
+	ok, err := s2igit.New(s2iutil.NewFileSystem()).ValidCloneSpec(rawurl)
 	if err != nil {
 		return fmt.Errorf("Invalid git source url %q: %v", rawurl, err)
 	}
@@ -188,9 +200,7 @@ func extractInputBinary(in io.Reader, source *api.BinaryBuildSource, dir string)
 
 	glog.V(0).Infof("Receiving source from STDIN as archive ...")
 
-	// use bsdtar to process the incoming archive and convert it to a tar stream (since bsdtar autodetects and handles various archive formats)
-	// use gnu tar to extract that tar stream to work around the bsdtar (libarchive) bug https://github.com/libarchive/libarchive/issues/746
-	cmd := exec.Command("sh", "-o", "pipefail", "-c", `bsdtar -cf - @- | tar xf - -m -C "$0"`, dir)
+	cmd := exec.Command("bsdtar", "-x", "-o", "-m", "-f", "-", "-C", dir)
 	cmd.Stdin = in
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -207,17 +217,29 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 
 	glog.V(0).Infof("Cloning %q ...", gitSource.URI)
 
-	// Check source URI, trying to connect to the server only if not using a proxy.
+	// Check source URI by trying to connect to the server
 	if err := checkSourceURI(gitClient, gitSource.URI, timeout); err != nil {
 		return true, err
 	}
 
+	cloneOptions := []string{}
+	usingRevision := revision != nil && revision.Git != nil && len(revision.Git.Commit) != 0
+	usingRef := len(gitSource.Ref) != 0 || usingRevision
+
 	// check if we specify a commit, ref, or branch to check out
-	usingRef := len(gitSource.Ref) != 0 || (revision != nil && revision.Git != nil && len(revision.Git.Commit) != 0)
+	// Recursive clone if we're not going to checkout a ref and submodule update later
+	if !usingRef {
+		cloneOptions = append(cloneOptions, "--recursive")
+		cloneOptions = append(cloneOptions, git.Shallow)
+	}
+
+	glog.V(3).Infof("Cloning source from %s", gitSource.URI)
 
 	// Only use the quiet flag if Verbosity is not 5 or greater
-	quiet := !glog.Is(5)
-	if err := gitClient.CloneWithOptions(dir, gitSource.URI, git.CloneOptions{Recursive: !usingRef, Quiet: quiet, Shallow: !usingRef}); err != nil {
+	if !glog.Is(5) {
+		cloneOptions = append(cloneOptions, "--quiet")
+	}
+	if err := gitClient.CloneWithOptions(dir, gitSource.URI, cloneOptions...); err != nil {
 		return true, err
 	}
 
@@ -225,7 +247,7 @@ func extractGitSource(gitClient GitClient, gitSource *api.GitBuildSource, revisi
 	if usingRef {
 		commit := gitSource.Ref
 
-		if revision != nil && revision.Git != nil && revision.Git.Commit != "" {
+		if usingRevision {
 			commit = revision.Git.Commit
 		}
 
@@ -325,7 +347,7 @@ func extractSourceFromImage(dockerClient DockerClient, image, buildDir string, i
 	exists := true
 	if !forcePull {
 		_, err := dockerClient.InspectImage(image)
-		if err != nil && err == docker.ErrNoSuchImage {
+		if err == docker.ErrNoSuchImage {
 			exists = false
 		} else if err != nil {
 			return err
@@ -356,7 +378,7 @@ func extractSourceFromImage(dockerClient DockerClient, image, buildDir string, i
 	}
 	defer dockerClient.RemoveContainer(docker.RemoveContainerOptions{ID: container.ID})
 
-	tarHelper := tar.New()
+	tarHelper := tar.New(s2iutil.NewFileSystem())
 	tarHelper.SetExclusionPattern(nil)
 
 	for _, path := range paths {

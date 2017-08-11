@@ -11,6 +11,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/admission"
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/quota"
 	utilwait "k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/plugin/pkg/admission/resourcequota"
@@ -35,7 +36,7 @@ type clusterQuotaAdmission struct {
 
 	// these are used to create the accessor
 	clusterQuotaLister *ocache.IndexerToClusterResourceQuotaLister
-	namespaceLister    *ocache.IndexerToNamespaceLister
+	namespaceLister    *cache.IndexerToNamespaceLister
 	clusterQuotaSynced func() bool
 	namespaceSynced    func() bool
 	clusterQuotaClient oclient.ClusterResourceQuotasInterface
@@ -53,7 +54,6 @@ type clusterQuotaAdmission struct {
 var _ oadmission.WantsInformers = &clusterQuotaAdmission{}
 var _ oadmission.WantsOpenshiftClient = &clusterQuotaAdmission{}
 var _ oadmission.WantsClusterQuotaMapper = &clusterQuotaAdmission{}
-var _ oadmission.Validator = &clusterQuotaAdmission{}
 
 const (
 	timeToWaitForCacheSync = 10 * time.Second
@@ -130,8 +130,8 @@ func (q *clusterQuotaAdmission) SetOriginQuotaRegistry(registry quota.Registry) 
 func (q *clusterQuotaAdmission) SetInformers(informers shared.InformerFactory) {
 	q.clusterQuotaLister = informers.ClusterResourceQuotas().Lister()
 	q.clusterQuotaSynced = informers.ClusterResourceQuotas().Informer().HasSynced
-	q.namespaceLister = informers.Namespaces().Lister()
-	q.namespaceSynced = informers.Namespaces().Informer().HasSynced
+	q.namespaceLister = informers.KubernetesInformers().Namespaces().Lister()
+	q.namespaceSynced = informers.KubernetesInformers().Namespaces().Informer().HasSynced
 }
 
 func (q *clusterQuotaAdmission) SetOpenshiftClient(client oclient.Interface) {

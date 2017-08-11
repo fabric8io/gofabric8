@@ -9,8 +9,8 @@ import (
 
 	apiserverapp "k8s.io/kubernetes/cmd/kube-apiserver/app"
 	apiserveroptions "k8s.io/kubernetes/cmd/kube-apiserver/app/options"
-	"k8s.io/kubernetes/pkg/util"
 	kflag "k8s.io/kubernetes/pkg/util/flag"
+	"k8s.io/kubernetes/pkg/util/logs"
 )
 
 const apiserverLong = `
@@ -20,7 +20,7 @@ This command launches an instance of the Kubernetes apiserver (kube-apiserver).`
 
 // NewAPIServerCommand provides a CLI handler for the 'apiserver' command
 func NewAPIServerCommand(name, fullName string, out io.Writer) *cobra.Command {
-	apiServerOptions := apiserveroptions.NewAPIServer()
+	apiServerOptions := apiserveroptions.NewServerRunOptions()
 
 	cmd := &cobra.Command{
 		Use:   name,
@@ -29,8 +29,8 @@ func NewAPIServerCommand(name, fullName string, out io.Writer) *cobra.Command {
 		Run: func(c *cobra.Command, args []string) {
 			startProfiler()
 
-			util.InitLogs()
-			defer util.FlushLogs()
+			logs.InitLogs()
+			defer logs.FlushLogs()
 
 			if err := apiserverapp.Run(apiServerOptions); err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)

@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -71,8 +71,8 @@ func TestDecodeSinglePod(t *testing.T) {
 	}
 
 	for _, gv := range registered.EnabledVersionsForGroup(api.GroupName) {
-		s, _ := api.Codecs.SerializerForFileExtension("yaml")
-		encoder := api.Codecs.EncoderForVersion(s, gv)
+		info, _ := runtime.SerializerInfoForMediaType(api.Codecs.SupportedMediaTypes(), "application/yaml")
+		encoder := api.Codecs.EncoderForVersion(info.Serializer, gv)
 		yaml, err := runtime.Encode(encoder, pod)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
@@ -134,8 +134,8 @@ func TestDecodePodList(t *testing.T) {
 	}
 
 	for _, gv := range registered.EnabledVersionsForGroup(api.GroupName) {
-		s, _ := api.Codecs.SerializerForFileExtension("yaml")
-		encoder := api.Codecs.EncoderForVersion(s, gv)
+		info, _ := runtime.SerializerInfoForMediaType(api.Codecs.SupportedMediaTypes(), "application/yaml")
+		encoder := api.Codecs.EncoderForVersion(info.Serializer, gv)
 		yaml, err := runtime.Encode(encoder, podList)
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Abstract
 
 PodSecurityPolicy allows cluster administrators to control the creation and validation of a security
@@ -131,39 +126,39 @@ type HostPortRange struct {
 // VolumeSecurityPolicy allows and disallows the use of different types of volume plugins.
 type VolumeSecurityPolicy struct {
 	// HostPath allows or disallows the use of the HostPath volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/docs/user-guide/volumes.md#hostpath
+	// More info: http://kubernetes.io/docs/user-guide/volumes#hostpath
 	HostPath bool `json:"hostPath,omitempty"`
 	// EmptyDir allows or disallows the use of the EmptyDir volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/docs/user-guide/volumes.md#emptydir
+	// More info: http://kubernetes.io/docs/user-guide/volumes#emptydir
 	EmptyDir bool `json:"emptyDir,omitempty"`
 	// GCEPersistentDisk allows or disallows the use of the GCEPersistentDisk volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/docs/user-guide/volumes.md#gcepersistentdisk
+	// More info: http://kubernetes.io/docs/user-guide/volumes#gcepersistentdisk
 	GCEPersistentDisk bool `json:"gcePersistentDisk,omitempty"`
 	// AWSElasticBlockStore allows or disallows the use of the AWSElasticBlockStore volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/docs/user-guide/volumes.md#awselasticblockstore
+	// More info: http://kubernetes.io/docs/user-guide/volumes#awselasticblockstore
 	AWSElasticBlockStore bool `json:"awsElasticBlockStore,omitempty"`
 	// GitRepo allows or disallows the use of the GitRepo volume plugin.
 	GitRepo bool `json:"gitRepo,omitempty"`
 	// Secret allows or disallows the use of the Secret volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/docs/user-guide/volumes.md#secrets
+	// More info: http://kubernetes.io/docs/user-guide/volumes#secrets
 	Secret bool `json:"secret,omitempty"`
 	// NFS allows or disallows the use of the NFS volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/docs/user-guide/volumes.md#nfs
+	// More info: http://kubernetes.io/docs/user-guide/volumes#nfs
 	NFS bool `json:"nfs,omitempty"`
 	// ISCSI allows or disallows the use of the ISCSI volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/examples/iscsi/README.md
+	// More info: http://releases.k8s.io/HEAD/examples/volumes/iscsi/README.md
 	ISCSI bool `json:"iscsi,omitempty"`
 	// Glusterfs allows or disallows the use of the Glusterfs volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/examples/glusterfs/README.md
+	// More info: http://releases.k8s.io/HEAD/examples/volumes/glusterfs/README.md
 	Glusterfs bool `json:"glusterfs,omitempty"`
 	// PersistentVolumeClaim allows or disallows the use of the PersistentVolumeClaim volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/docs/user-guide/persistent-volumes.md#persistentvolumeclaims
+	// More info: http://kubernetes.io/docs/user-guide/persistent-volumes#persistentvolumeclaims
 	PersistentVolumeClaim bool `json:"persistentVolumeClaim,omitempty"`
 	// RBD allows or disallows the use of the RBD volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/examples/rbd/README.md
+	// More info: http://releases.k8s.io/HEAD/examples/volumes/rbd/README.md
 	RBD bool `json:"rbd,omitempty"`
 	// Cinder allows or disallows the use of the Cinder volume plugin.
-	// More info: http://releases.k8s.io/release-1.3/examples/mysql-cinder-pd/README.md
+	// More info: http://releases.k8s.io/HEAD/examples/mysql-cinder-pd/README.md
 	Cinder bool `json:"cinder,omitempty"`
 	// CephFS allows or disallows the use of the CephFS volume plugin.
 	CephFS bool `json:"cephfs,omitempty"`
@@ -178,7 +173,7 @@ type SELinuxContextStrategyOptions struct {
 	// Type is the strategy that will dictate the allowable labels that may be set.
 	Type SELinuxContextStrategy `json:"type"`
 	// seLinuxOptions required to run as; required for MustRunAs
-	// More info: http://releases.k8s.io/release-1.3/docs/design/security_context.md#security-context
+	// More info: http://releases.k8s.io/HEAD/docs/design/security_context.md#security-context
 	SELinuxOptions *api.SELinuxOptions `json:"seLinuxOptions,omitempty"`
 }
 
@@ -346,13 +341,6 @@ it should still admit the pod and allow the Kubelet to ensure that the image doe
 `root` with the existing non-root checks.
 
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

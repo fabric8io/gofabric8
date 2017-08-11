@@ -29,6 +29,7 @@ type ProjectStatus struct {
 }
 
 // +genclient=true
+// +nonNamespaced=true
 
 // Project is a logical top-level container for a set of origin resources
 type Project struct {
@@ -48,10 +49,6 @@ type ProjectRequest struct {
 
 // These constants represent annotations keys affixed to projects
 const (
-	// ProjectDisplayName is an annotation that stores the name displayed when querying for projects
-	ProjectDisplayName = "openshift.io/display-name"
-	// ProjectDescription is an annotatoion that holds the description of the project
-	ProjectDescription = "openshift.io/description"
 	// ProjectNodeSelector is an annotation that holds the node selector;
 	// the node selector annotation determines which nodes will have pods from this project scheduled to them
 	ProjectNodeSelector = "openshift.io/node-selector"

@@ -6,8 +6,15 @@ oadm-ca-create-signer-cert.1
 oadm-ca-decrypt.1
 oadm-ca-encrypt.1
 oadm-ca.1
+oadm-certificate-approve.1
+oadm-certificate-deny.1
+oadm-certificate.1
 oadm-completion.1
 oadm-config-current-context.1
+oadm-config-delete-cluster.1
+oadm-config-delete-context.1
+oadm-config-get-clusters.1
+oadm-config-get-contexts.1
 oadm-config-set-cluster.1
 oadm-config-set-context.1
 oadm-config-set-credentials.1
@@ -66,6 +73,8 @@ oadm-policy-remove-role-from-user.1
 oadm-policy-remove-scc-from-group.1
 oadm-policy-remove-scc-from-user.1
 oadm-policy-remove-user.1
+oadm-policy-scc-review.1
+oadm-policy-scc-subject-review.1
 oadm-policy-who-can.1
 oadm-policy.1
 oadm-prune-builds.1
@@ -78,6 +87,8 @@ oadm-router.1
 oadm-taint.1
 oadm-top-images.1
 oadm-top-imagestreams.1
+oadm-top-node.1
+oadm-top-pod.1
 oadm-top.1
 oadm-uncordon.1
 oadm-version.1

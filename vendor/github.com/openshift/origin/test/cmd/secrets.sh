@@ -49,17 +49,26 @@ os::cmd::expect_success 'oc secrets add deployer dockercfg from-file --for=pull'
 # make sure we can add as as pull secret and mount secret at once
 os::cmd::expect_success 'oc secrets add serviceaccounts/deployer secrets/dockercfg secrets/from-file --for=pull,mount'
 
-GIT_CONFIG_PATH=$(create_gitconfig)
+GIT_CONFIG_PATH="${ARTIFACT_DIR}/.gitconfig"
+touch "${GIT_CONFIG_PATH}"
+git config --file "${GIT_CONFIG_PATH}" user.name sample-user
+git config --file "${GIT_CONFIG_PATH}" user.token password
+
+function create_valid_file() {
+	echo test_data > "${ARTIFACT_DIR}/${1}"
+	echo "${ARTIFACT_DIR}/${1}"
+}
+
 CA_CERT_PATH=$(create_valid_file ca.pem)
 PRIVATE_KEY_PATH=$(create_valid_file id_rsa)
 
-os::cmd::expect_success 'oc secrets new-basicauth basicauth --username=sample-user --password=sample-password --gitconfig=$GIT_CONFIG_PATH --ca-cert=$PRIVATE_KEY_PATH'
+os::cmd::expect_success "oc secrets new-basicauth basicauth --username=sample-user --password=sample-password --gitconfig='${GIT_CONFIG_PATH}' --ca-cert='${CA_CERT_PATH}'"
 # check to make sure two mutual exclusive flags return error as expected
 os::cmd::expect_failure_and_text 'oc secrets new-basicauth bad-file --password=sample-password --prompt' 'error: must provide either --prompt or --password flag'
 # check to make sure incorrect .gitconfig path fail as expected
 os::cmd::expect_failure_and_text 'oc secrets new-basicauth bad-file --username=user --gitconfig=/bad/path' 'error: open /bad/path: no such file or directory'
 
-os::cmd::expect_success 'oc secrets new-sshauth sshauth --ssh-privatekey=$PRIVATE_KEY_PATH --ca-cert=$PRIVATE_KEY_PATH'
+os::cmd::expect_success "oc secrets new-sshauth sshauth --ssh-privatekey='${PRIVATE_KEY_PATH}' --ca-cert='${CA_CERT_PATH}'"
 # check to make sure incorrect SSH private-key path fail as expected
 os::cmd::expect_failure_and_text 'oc secrets new-sshauth bad-file --ssh-privatekey=/bad/path' 'error: open /bad/path: no such file or directory'
 
@@ -96,16 +105,16 @@ os::cmd::expect_failure 'oc get serviceaccounts/deployer -o yaml |grep -q basica
 os::cmd::expect_success 'oc secrets link deployer basicauth'
 
 # Removing a non-existent secret should warn but succeed and change nothing
-os::cmd::expect_failure_and_text 'oc secrets unlink deployer foobar' 'secrets "foobar" not found'
+os::cmd::expect_failure_and_text 'oc secrets unlink deployer foobar' 'secret "foobar" not found'
 
 # Make sure that removing an existent and non-existent secret succeeds but warns about the non-existent one
-os::cmd::expect_failure_and_text 'oc secrets unlink deployer foobar basicauth' 'secrets "foobar" not found'
+os::cmd::expect_failure_and_text 'oc secrets unlink deployer foobar basicauth' 'secret "foobar" not found'
 # Make sure that the existing secret is removed
 os::cmd::expect_failure 'oc get serviceaccounts/deployer -o yaml |grep -q basicauth'
 
 # Make sure that removing a real but unlinked secret succeeds
 # https://github.com/openshift/origin/pull/9234#discussion_r70832486
-os::cmd::expect_success 'oc secrets unlink deployer basicauth'
+os::cmd::expect_failure_and_text 'oc secrets unlink deployer basicauth', 'No valid secrets found or secrets not linked to service account'
 
 # Make sure that it succeeds if *any* of the secrets are linked
 # https://github.com/openshift/origin/pull/9234#discussion_r70832486
@@ -125,4 +134,10 @@ os::cmd::expect_success 'oc secret link --help'
 os::cmd::expect_success 'oc secret unlink --help'
 
 echo "secrets: ok"
+os::test::junit::declare_suite_end
+
+os::test::junit::declare_suite_start "cmd/serviceaccounts-create-kubeconfig"
+os::cmd::expect_success "oc serviceaccounts create-kubeconfig default > '${BASETMPDIR}/generated_default.kubeconfig'"
+os::cmd::expect_success_and_text "KUBECONFIG='${BASETMPDIR}/generated_default.kubeconfig' oc whoami" "system:serviceaccount:$(oc project -q):default"
+echo "serviceaccounts: ok"
 os::test::junit::declare_suite_end

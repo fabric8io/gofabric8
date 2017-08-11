@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import (
 	"k8s.io/kubernetes/pkg/volume"
 
 	"github.com/golang/glog"
+	"k8s.io/kubernetes/pkg/volume/util"
 )
 
 // This is the primary entrypoint for volume plugins.
@@ -124,6 +125,19 @@ func (plugin *azureFilePlugin) newUnmounterInternal(volName string, podUID types
 	}}, nil
 }
 
+func (plugin *azureFilePlugin) ConstructVolumeSpec(volName, mountPath string) (*volume.Spec, error) {
+	azureVolume := &api.Volume{
+		Name: volName,
+		VolumeSource: api.VolumeSource{
+			AzureFile: &api.AzureFileVolumeSource{
+				SecretName: volName,
+				ShareName:  volName,
+			},
+		},
+	}
+	return volume.NewSpecFromVolume(azureVolume), nil
+}
+
 // azureFile volumes represent mount of an AzureFile share.
 type azureFile struct {
 	volName string
@@ -153,6 +167,13 @@ func (b *azureFileMounter) GetAttributes() volume.Attributes {
 		Managed:         !b.readOnly,
 		SupportsSELinux: false,
 	}
+}
+
+// Checks prior to mount operations to verify that the required components (binaries, etc.)
+// to mount the volume are available on the underlying node.
+// If not, it returns an error
+func (b *azureFileMounter) CanMount() error {
+	return nil
 }
 
 // SetUp attaches the disk and bind mounts to the volume path.
@@ -220,31 +241,7 @@ func (c *azureFileUnmounter) TearDown() error {
 }
 
 func (c *azureFileUnmounter) TearDownAt(dir string) error {
-	notMnt, err := c.mounter.IsLikelyNotMountPoint(dir)
-	if err != nil {
-		glog.Errorf("Error checking IsLikelyNotMountPoint: %v", err)
-		return err
-	}
-	if notMnt {
-		return os.Remove(dir)
-	}
-
-	if err := c.mounter.Unmount(dir); err != nil {
-		glog.Errorf("Unmounting failed: %v", err)
-		return err
-	}
-	notMnt, mntErr := c.mounter.IsLikelyNotMountPoint(dir)
-	if mntErr != nil {
-		glog.Errorf("IsLikelyNotMountPoint check failed: %v", mntErr)
-		return mntErr
-	}
-	if notMnt {
-		if err := os.Remove(dir); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return util.UnmountPath(dir, c.mounter)
 }
 
 func getVolumeSource(

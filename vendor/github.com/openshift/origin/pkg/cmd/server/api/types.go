@@ -16,6 +16,10 @@ const (
 	AllVersions = "*"
 )
 
+const (
+	DefaultIngressIPNetworkCIDR = "172.29.0.0/16"
+)
+
 var (
 	KnownKubernetesAPILevels   = []string{"v1beta1", "v1beta2", "v1beta3", "v1"}
 	KnownOpenShiftAPILevels    = []string{"v1beta1", "v1beta3", "v1"}
@@ -41,21 +45,26 @@ var (
 
 	APIGroupKube           = ""
 	APIGroupExtensions     = "extensions"
-	APIGroupAutoscaling    = "autoscaling"
-	APIGroupAuthentication = "authentication.k8s.io"
-	APIGroupBatch          = "batch"
-	APIGroupPolicy         = "policy"
 	APIGroupApps           = "apps"
+	APIGroupAuthentication = "authentication.k8s.io"
+	APIGroupAutoscaling    = "autoscaling"
+	APIGroupBatch          = "batch"
+	APIGroupCertificates   = "certificates.k8s.io"
 	APIGroupFederation     = "federation"
+	APIGroupPolicy         = "policy"
+	APIGroupStorage        = "storage.k8s.io"
 
 	// Map of group names to allowed REST API versions
 	KubeAPIGroupsToAllowedVersions = map[string][]string{
 		APIGroupKube:           {"v1"},
 		APIGroupExtensions:     {"v1beta1"},
-		APIGroupAutoscaling:    {"v1"},
+		APIGroupApps:           {"v1beta1"},
 		APIGroupAuthentication: {"v1beta1"},
+		APIGroupAutoscaling:    {"v1"},
 		APIGroupBatch:          {"v1", "v2alpha1"},
-		APIGroupApps:           {"v1alpha1"},
+		APIGroupCertificates:   {"v1alpha1"},
+		APIGroupPolicy:         {"v1beta1"},
+		APIGroupStorage:        {"v1beta1"},
 		// TODO: enable as part of a separate binary
 		//APIGroupFederation:  {"v1beta1"},
 	}
@@ -103,11 +112,29 @@ type NodeConfig struct {
 	// MasterClientConnectionOverrides provides overrides to the client connection used to connect to the master.
 	MasterClientConnectionOverrides *ClientConnectionOverrides
 
-	// DNSDomain holds the domain suffix
+	// DNSDomain holds the domain suffix that will be used for the DNS search path inside each container. Defaults to
+	// 'cluster.local'.
 	DNSDomain string
 
-	// DNSIP holds the IP
+	// DNSIP is the IP address that pods will use to access cluster DNS. Defaults to the service IP of the Kubernetes
+	// master. This IP must be listening on port 53 for compatibility with libc resolvers (which cannot be configured
+	// to resolve names from any other port). When running more complex local DNS configurations, this is often set
+	// to the local address of a DNS proxy like dnsmasq, which then will consult either the local DNS (see
+	// dnsBindAddress) or the master DNS.
 	DNSIP string
+
+	// DNSBindAddress is the ip:port to serve DNS on. If this is not set, the DNS server will not be started.
+	// Because most DNS resolvers will only listen on port 53, if you select an alternative port you will need
+	// a DNS proxy like dnsmasq to answer queries for containers. A common configuration is dnsmasq configured
+	// on a node IP listening on 53 and delegating queries for dnsDomain to this process, while sending other
+	// queries to the host environments nameservers.
+	DNSBindAddress string
+
+	// DNSNameservers is a list of ip:port values of recursive nameservers to forward queries to when running
+	// a local DNS server if dnsBindAddress is set. If this value is empty, the DNS server will default to
+	// the nameservers listed in /etc/resolv.conf. If you have configured dnsmasq or another DNS proxy on the
+	// system, this value should be set to the upstream nameservers dnsmasq resolves with.
+	DNSNameservers []string
 
 	// NetworkConfig provides network options for the node
 	NetworkConfig NodeNetworkConfig
@@ -320,13 +347,21 @@ type AuditConfig struct {
 	// If this flag is set, audit log will be printed in the logs.
 	// The logs contains, method, user and a requested URL.
 	Enabled bool
+	// All requests coming to the apiserver will be logged to this file.
+	AuditFilePath string
+	// Maximum number of days to retain old log files based on the timestamp encoded in their filename.
+	MaximumFileRetentionDays int
+	// Maximum number of old log files to retain.
+	MaximumRetainedFiles int
+	// Maximum size in megabytes of the log file before it gets rotated. Defaults to 100MB.
+	MaximumFileSizeMegabytes int
 }
 
 // JenkinsPipelineConfig holds configuration for the Jenkins pipeline strategy
 type JenkinsPipelineConfig struct {
 	// AutoProvisionEnabled determines whether a Jenkins server will be spawned from the provided
 	// template when the first build config in the project with type JenkinsPipeline
-	// is created. When not specified this option defaults to false.
+	// is created. When not specified this option defaults to true.
 	AutoProvisionEnabled *bool
 	// TemplateNamespace contains the namespace name where the Jenkins template is stored
 	TemplateNamespace string
@@ -524,6 +559,12 @@ type ServingInfo struct {
 	ClientCA string
 	// NamedCertificates is a list of certificates to use to secure requests to specific hostnames
 	NamedCertificates []NamedCertificate
+	// MinTLSVersion is the minimum TLS version supported.
+	// Values must match version names from https://golang.org/pkg/crypto/tls/#pkg-constants
+	MinTLSVersion string
+	// CipherSuites contains an overridden list of ciphers for the server to support.
+	// Values must match cipher suite IDs from https://golang.org/pkg/crypto/tls/#pkg-constants
+	CipherSuites []string
 }
 
 // NamedCertificate specifies a certificate/key, and the names it should be served for
@@ -630,7 +671,7 @@ type OAuthConfig struct {
 	// MasterURL is used for making server-to-server calls to exchange authorization codes for access tokens
 	MasterURL string
 
-	// MasterPublicURL is used for building valid client redirect URLs for external access
+	// MasterPublicURL is used for building valid client redirect URLs for internal and external access
 	MasterPublicURL string
 
 	// AssetPublicURL is used for building valid client redirect URLs for external access
@@ -851,6 +892,8 @@ type GitHubIdentityProvider struct {
 	ClientSecret StringSource
 	// Organizations optionally restricts which organizations are allowed to log in
 	Organizations []string
+	// Teams optionally restricts which teams are allowed to log in. Format is <org>/<team>.
+	Teams []string
 }
 
 type GitLabIdentityProvider struct {

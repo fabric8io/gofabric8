@@ -18,49 +18,51 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/intstr"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
-const (
-	probeLong = `
-Set or remove a liveness or readiness probe from a pod or pod template
+var (
+	probeLong = templates.LongDesc(`
+		Set or remove a liveness or readiness probe from a pod or pod template
 
-Each container in a pod may define one or more probes that are used for general health
-checking. A liveness probe is checked periodically to ensure the container is still healthy:
-if the probe fails, the container is restarted. Readiness probes set or clear the ready
-flag for each container, which controls whether the container's ports are included in the list
-of endpoints for a service and whether a deployment can proceed. A readiness check should
-indicate when your container is ready to accept incoming traffic or begin handling work.
-Setting both liveness and readiness probes for each container is highly recommended.
+		Each container in a pod may define one or more probes that are used for general health
+		checking. A liveness probe is checked periodically to ensure the container is still healthy:
+		if the probe fails, the container is restarted. Readiness probes set or clear the ready
+		flag for each container, which controls whether the container's ports are included in the list
+		of endpoints for a service and whether a deployment can proceed. A readiness check should
+		indicate when your container is ready to accept incoming traffic or begin handling work.
+		Setting both liveness and readiness probes for each container is highly recommended.
 
-The three probe types are:
+		The three probe types are:
 
-1. Open a TCP socket on the pod IP
-2. Perform an HTTP GET against a URL on a container that must return 200 OK
-3. Run a command in the container that must return exit code 0
+		1. Open a TCP socket on the pod IP
+		2. Perform an HTTP GET against a URL on a container that must return 200 OK
+		3. Run a command in the container that must return exit code 0
 
-Containers that take a variable amount of time to start should set generous
-initial-delay-seconds values, otherwise as your application evolves you may suddenly begin
-to fail.`
+		Containers that take a variable amount of time to start should set generous
+		initial-delay-seconds values, otherwise as your application evolves you may suddenly begin
+		to fail.`)
 
-	probeExample = `  # Clear both readiness and liveness probes off all containers
-  %[1]s probe dc/registry --remove --readiness --liveness
+	probeExample = templates.Examples(`
+		# Clear both readiness and liveness probes off all containers
+	  %[1]s probe dc/registry --remove --readiness --liveness
 
-  # Set an exec action as a liveness probe to run 'echo ok'
-  %[1]s probe dc/registry --liveness -- echo ok
+	  # Set an exec action as a liveness probe to run 'echo ok'
+	  %[1]s probe dc/registry --liveness -- echo ok
 
-  # Set a readiness probe to try to open a TCP socket on 3306
-  %[1]s probe rc/mysql --readiness --open-tcp=3306
+	  # Set a readiness probe to try to open a TCP socket on 3306
+	  %[1]s probe rc/mysql --readiness --open-tcp=3306
 
-  # Set an HTTP readiness probe for port 8080 and path /healthz over HTTP on the pod IP
-  %[1]s probe dc/webapp --readiness --get-url=http://:8080/healthz
+	  # Set an HTTP readiness probe for port 8080 and path /healthz over HTTP on the pod IP
+	  %[1]s probe dc/webapp --readiness --get-url=http://:8080/healthz
 
-  # Set an HTTP readiness probe over HTTPS on 127.0.0.1 for a hostNetwork pod
-  %[1]s probe dc/router --readiness --get-url=https://127.0.0.1:1936/stats
+	  # Set an HTTP readiness probe over HTTPS on 127.0.0.1 for a hostNetwork pod
+	  %[1]s probe dc/router --readiness --get-url=https://127.0.0.1:1936/stats
 
-  # Set only the initial-delay-seconds field on all deployments
-  %[1]s probe dc --all --readiness --initial-delay-seconds=30`
+	  # Set only the initial-delay-seconds field on all deployments
+	  %[1]s probe dc --all --readiness --initial-delay-seconds=30`)
 )
 
 type ProbeOptions struct {
@@ -81,7 +83,7 @@ type ProbeOptions struct {
 	Mapper        meta.RESTMapper
 	OutputVersion unversioned.GroupVersion
 
-	PrintObject            func(runtime.Object) error
+	PrintObject            func([]*resource.Info) error
 	UpdatePodSpecForObject func(runtime.Object, func(spec *kapi.PodSpec) error) (bool, error)
 
 	Readiness bool
@@ -125,7 +127,7 @@ func NewCmdProbe(fullName string, f *clientcmd.Factory, out, errOut io.Writer) *
 			kcmdutil.CheckErr(options.Complete(f, cmd, args))
 			kcmdutil.CheckErr(options.Validate())
 			if err := options.Run(); err != nil {
-				// TODO: move met to kcmdutil
+				// TODO: move me to kcmdutil
 				if err == cmdutil.ErrExit {
 					os.Exit(1)
 				}
@@ -137,7 +139,7 @@ func NewCmdProbe(fullName string, f *clientcmd.Factory, out, errOut io.Writer) *
 	kcmdutil.AddPrinterFlags(cmd)
 	cmd.Flags().StringVarP(&options.ContainerSelector, "containers", "c", options.ContainerSelector, "The names of containers in the selected pod templates to change - may use wildcards")
 	cmd.Flags().StringVarP(&options.Selector, "selector", "l", options.Selector, "Selector (label query) to filter on")
-	cmd.Flags().BoolVar(&options.All, "all", options.All, "Select all resources in the namespace of the specified resource types")
+	cmd.Flags().BoolVar(&options.All, "all", options.All, "If true, select all resources in the namespace of the specified resource types")
 	cmd.Flags().StringSliceVarP(&options.Filenames, "filename", "f", options.Filenames, "Filename, directory, or URL to file to use to edit the resource.")
 
 	cmd.Flags().BoolVar(&options.Remove, "remove", options.Remove, "If true, remove the specified probe(s).")
@@ -182,18 +184,20 @@ func (o *ProbeOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, args [
 		return err
 	}
 
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 	o.Builder = resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder()).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(explicit, false, o.Filenames...).
+		FilenameParam(explicit, &resource.FilenameOptions{Recursive: false, Filenames: o.Filenames}).
 		SelectorParam(o.Selector).
 		ResourceTypeOrNameArgs(o.All, resources...).
 		Flatten()
 
 	output := kcmdutil.GetFlagString(cmd, "output")
-	if len(output) != 0 {
-		o.PrintObject = func(obj runtime.Object) error { return f.PrintObject(cmd, mapper, obj, o.Out) }
+	if len(output) > 0 {
+		o.PrintObject = func(infos []*resource.Info) error {
+			return f.PrintResourceInfos(cmd, infos, o.Out)
+		}
 	}
 
 	o.Encoder = f.JSONEncoder()
@@ -285,9 +289,9 @@ func (o *ProbeOptions) Validate() error {
 
 func (o *ProbeOptions) Run() error {
 	infos := o.Infos
-	singular := len(o.Infos) <= 1
+	singleItemImplied := len(o.Infos) <= 1
 	if o.Builder != nil {
-		loaded, err := o.Builder.Do().IntoSingular(&singular).Infos()
+		loaded, err := o.Builder.Do().IntoSingleItemImplied(&singleItemImplied).Infos()
 		if err != nil {
 			return err
 		}
@@ -311,16 +315,12 @@ func (o *ProbeOptions) Run() error {
 		})
 		return transformed, err
 	})
-	if singular && len(patches) == 0 {
+	if singleItemImplied && len(patches) == 0 {
 		return fmt.Errorf("%s/%s is not a pod or does not have a pod template", infos[0].Mapping.Resource, infos[0].Name)
 	}
 
 	if o.PrintObject != nil {
-		object, err := resource.AsVersionedObject(infos, !singular, o.OutputVersion, kapi.Codecs.LegacyCodec(o.OutputVersion))
-		if err != nil {
-			return err
-		}
-		return o.PrintObject(object)
+		return o.PrintObject(infos)
 	}
 
 	failed := false
@@ -339,12 +339,17 @@ func (o *ProbeOptions) Run() error {
 		obj, err := resource.NewHelper(info.Client, info.Mapping).Patch(info.Namespace, info.Name, kapi.StrategicMergePatchType, patch.Patch)
 		if err != nil {
 			handlePodUpdateError(o.Err, err, "probes")
+
+			// if no port was specified, inform that one must be provided
+			if len(o.HTTPGet) > 0 && len(o.HTTPGetAction.Port.String()) == 0 {
+				fmt.Fprintf(o.Err, "\nA port must be specified as part of a url (http://127.0.0.1:3306).\nSee 'oc set probe -h' for help and examples.\n")
+			}
 			failed = true
 			continue
 		}
 
 		info.Refresh(obj, true)
-		kcmdutil.PrintSuccess(o.Mapper, o.ShortOutput, o.Out, info.Mapping.Resource, info.Name, "updated")
+		kcmdutil.PrintSuccess(o.Mapper, o.ShortOutput, o.Out, info.Mapping.Resource, info.Name, false, "updated")
 	}
 	if failed {
 		return cmdutil.ErrExit

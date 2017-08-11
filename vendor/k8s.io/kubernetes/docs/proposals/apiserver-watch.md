@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Abstract
 
 In the current system, most watch requests sent to apiserver are redirected to
@@ -70,13 +65,13 @@ to implement the proposal.
 1. Since we want the watch in apiserver to be optional for different resource
 types, this needs to be self-contained and hidden behind a well defined API.
 This should be a layer very close to etcd - in particular all registries:
-"pkg/registry/generic/etcd" should be built on top of it.
+"pkg/registry/generic/registry" should be built on top of it.
 We will solve it by turning tools.EtcdHelper by extracting its interface
 and treating this interface as this API - the whole watch mechanisms in
 apiserver will be hidden behind that interface.
 Thanks to it we will get an initial implementation for free and we will just
 need to reimplement few relevant functions (probably just Watch and List).
-Mover, this will not require any changes in other parts of the code.
+Moreover, this will not require any changes in other parts of the code.
 This step is about extracting the interface of tools.EtcdHelper.
 
 2. Create a FIFO cache with a given capacity. In its "rolling history window"
@@ -143,13 +138,6 @@ the same time, we can introduce an additional etcd event type:
   However, this might turn out to be unnecessary optimization if apiserver
   will always keep up (which is possible in the new design). We will work
   out all necessary details at that point.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

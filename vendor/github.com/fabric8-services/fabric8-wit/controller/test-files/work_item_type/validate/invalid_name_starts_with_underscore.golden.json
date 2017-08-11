@@ -1,0 +1,11 @@
+{
+  "id": "IGNORE_ME",
+  "code": "invalid_request",
+  "status": 400,
+  "detail": "response.name must match the regexp \"^[^_|-].*\" but got value \"_person\"",
+  "meta": {
+    "attribute": "response.name",
+    "regexp": "^[^_|-].*",
+    "value": "_person"
+  }
+}

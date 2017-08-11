@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -136,6 +136,11 @@ type ActualStateOfWorld interface {
 	// have no mountedPods. This list can be used to determine which volumes are
 	// no longer referenced and may be globally unmounted and detached.
 	GetUnmountedVolumes() []AttachedVolume
+
+	// GetPods generates and returns a map of pods in which map is indexed
+	// with pod's unique name. This map can be used to determine which pod is currently
+	// in actual state of world.
+	GetPods() map[volumetypes.UniquePodName]bool
 }
 
 // MountedVolume represents a volume that has successfully been mounted to a pod.
@@ -155,7 +160,7 @@ type AttachedVolume struct {
 
 // NewActualStateOfWorld returns a new instance of ActualStateOfWorld.
 func NewActualStateOfWorld(
-	nodeName string,
+	nodeName types.NodeName,
 	volumePluginMgr *volume.VolumePluginMgr) ActualStateOfWorld {
 	return &actualStateOfWorld{
 		nodeName:        nodeName,
@@ -180,7 +185,8 @@ func IsRemountRequiredError(err error) bool {
 
 type actualStateOfWorld struct {
 	// nodeName is the name of this node. This value is passed to Attach/Detach
-	nodeName string
+	nodeName types.NodeName
+
 	// attachedVolumes is a map containing the set of volumes the kubelet volume
 	// manager believes to be successfully attached to this node. Volume types
 	// that do not implement an attacher interface are assumed to be in this
@@ -188,6 +194,7 @@ type actualStateOfWorld struct {
 	// The key in this map is the name of the volume and the value is an object
 	// containing more information about the attached volume.
 	attachedVolumes map[api.UniqueVolumeName]attachedVolume
+
 	// volumePluginMgr is the volume plugin manager used to create volume
 	// plugin objects.
 	volumePluginMgr *volume.VolumePluginMgr
@@ -266,12 +273,12 @@ type mountedPod struct {
 }
 
 func (asw *actualStateOfWorld) MarkVolumeAsAttached(
-	volumeName api.UniqueVolumeName, volumeSpec *volume.Spec, _, devicePath string) error {
+	volumeName api.UniqueVolumeName, volumeSpec *volume.Spec, _ types.NodeName, devicePath string) error {
 	return asw.addVolume(volumeName, volumeSpec, devicePath)
 }
 
 func (asw *actualStateOfWorld) MarkVolumeAsDetached(
-	volumeName api.UniqueVolumeName, nodeName string) {
+	volumeName api.UniqueVolumeName, nodeName types.NodeName) {
 	asw.DeleteVolume(volumeName)
 }
 
@@ -289,6 +296,15 @@ func (asw *actualStateOfWorld) MarkVolumeAsMounted(
 		mounter,
 		outerVolumeSpecName,
 		volumeGidValue)
+}
+
+func (asw *actualStateOfWorld) AddVolumeToReportAsAttached(volumeName api.UniqueVolumeName, nodeName types.NodeName) {
+	// no operation for kubelet side
+}
+
+func (asw *actualStateOfWorld) RemoveVolumeFromReportAsAttached(volumeName api.UniqueVolumeName, nodeName types.NodeName) error {
+	// no operation for kubelet side
+	return nil
 }
 
 func (asw *actualStateOfWorld) MarkVolumeAsUnmounted(
@@ -352,8 +368,14 @@ func (asw *actualStateOfWorld) addVolume(
 			globallyMounted:    false,
 			devicePath:         devicePath,
 		}
-		asw.attachedVolumes[volumeName] = volumeObj
+	} else {
+		// If volume object already exists, update the fields such as device path
+		volumeObj.devicePath = devicePath
+		glog.V(2).Infof("Volume %q is already added to attachedVolume list, update device path %q",
+			volumeName,
+			devicePath)
 	}
+	asw.attachedVolumes[volumeName] = volumeObj
 
 	return nil
 }
@@ -573,6 +595,21 @@ func (asw *actualStateOfWorld) GetUnmountedVolumes() []AttachedVolume {
 	return unmountedVolumes
 }
 
+func (asw *actualStateOfWorld) GetPods() map[volumetypes.UniquePodName]bool {
+	asw.RLock()
+	defer asw.RUnlock()
+
+	podList := make(map[volumetypes.UniquePodName]bool)
+	for _, volumeObj := range asw.attachedVolumes {
+		for podName := range volumeObj.mountedPods {
+			if !podList[podName] {
+				podList[podName] = true
+			}
+		}
+	}
+	return podList
+}
+
 func (asw *actualStateOfWorld) newAttachedVolume(
 	attachedVolume *attachedVolume) AttachedVolume {
 	return AttachedVolume{
@@ -580,7 +617,8 @@ func (asw *actualStateOfWorld) newAttachedVolume(
 			VolumeName:         attachedVolume.volumeName,
 			VolumeSpec:         attachedVolume.spec,
 			NodeName:           asw.nodeName,
-			PluginIsAttachable: attachedVolume.pluginIsAttachable},
+			PluginIsAttachable: attachedVolume.pluginIsAttachable,
+			DevicePath:         attachedVolume.devicePath},
 		GloballyMounted: attachedVolume.globallyMounted}
 }
 

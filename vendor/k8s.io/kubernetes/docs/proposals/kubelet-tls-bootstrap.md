@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubelet TLS bootstrap
 
 Author: George Tankersley (george.tankersley@coreos.com)
@@ -58,7 +53,7 @@ type CertificateSigningRequest struct {
 	unversioned.TypeMeta `json:",inline"`
 	api.ObjectMeta       `json:"metadata,omitempty"`
 
-	// The certificate request itself and any additonal information.
+	// The certificate request itself and any additional information.
 	Spec CertificateSigningRequestSpec `json:"spec,omitempty"`
 
 	// Derived information about the request.
@@ -76,7 +71,7 @@ type CertificateSigningRequestSpec struct {
 
 // This information is derived from the request by Kubernetes and cannot be
 // modified by users. All information is optional since it might not be
-// available in the underlying request. This is intented to aid approval
+// available in the underlying request. This is intended to aid approval
 // decisions.
 type CertificateSigningRequestStatus struct {
 	// Information about the requesting user (if relevant)
@@ -241,13 +236,6 @@ auth.
 - revocation UI in kubectl and CRL support at the apiserver
 - supplemental policy (e.g. cluster CA only issues 30-day certs for hostnames *.k8s.example.com, each new cert must have fresh keys, ...)
 - fully automated provisioning (using a handshake protocol or external list of authorized machines)
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

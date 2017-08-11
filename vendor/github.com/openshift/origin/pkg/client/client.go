@@ -48,6 +48,7 @@ type Interface interface {
 	SubjectAccessReviews
 	LocalSubjectAccessReviewsNamespacer
 	SelfSubjectRulesReviewsNamespacer
+	SubjectRulesReviewsNamespacer
 	TemplatesNamespacer
 	TemplateConfigsNamespacer
 	OAuthClientsInterface
@@ -64,6 +65,7 @@ type Interface interface {
 	ClusterRoleBindingsInterface
 	ClusterResourceQuotasInterface
 	AppliedClusterResourceQuotasNamespacer
+	RoleBindingRestrictionsNamespacer
 }
 
 // Builds provides a REST client for Builds
@@ -245,6 +247,10 @@ func (c *Client) SelfSubjectRulesReviews(namespace string) SelfSubjectRulesRevie
 	return newSelfSubjectRulesReviews(c, namespace)
 }
 
+func (c *Client) SubjectRulesReviews(namespace string) SubjectRulesReviewInterface {
+	return newSubjectRulesReviews(c, namespace)
+}
+
 func (c *Client) OAuthClients() OAuthClientInterface {
 	return newOAuthClients(c)
 }
@@ -285,6 +291,22 @@ func (c *Client) AppliedClusterResourceQuotas(namespace string) AppliedClusterRe
 	return newAppliedClusterResourceQuotas(c, namespace)
 }
 
+func (c *Client) RoleBindingRestrictions(namespace string) RoleBindingRestrictionInterface {
+	return newRoleBindingRestrictions(c, namespace)
+}
+
+func (c *Client) PodSecurityPolicyReviews(namespace string) PodSecurityPolicyReviewInterface {
+	return newPodSecurityPolicyReviews(c, namespace)
+}
+
+func (c *Client) PodSecurityPolicySelfSubjectReviews(namespace string) PodSecurityPolicySelfSubjectReviewInterface {
+	return newPodSecurityPolicySelfSubjectReviews(c, namespace)
+}
+
+func (c *Client) PodSecurityPolicySubjectReviews(namespace string) PodSecurityPolicySubjectReviewInterface {
+	return newPodSecurityPolicySubjectReviews(c, namespace)
+}
+
 // Client is an OpenShift client object
 type Client struct {
 	*restclient.RESTClient
@@ -323,7 +345,7 @@ func SetOpenShiftDefaults(config *restclient.Config) error {
 		groupVersionCopy := latest.Version
 		config.GroupVersion = &groupVersionCopy
 	}
-	if config.APIPath == "" {
+	if config.APIPath == "" || config.APIPath == "/api" {
 		config.APIPath = "/oapi"
 	}
 	if config.NegotiatedSerializer == nil {

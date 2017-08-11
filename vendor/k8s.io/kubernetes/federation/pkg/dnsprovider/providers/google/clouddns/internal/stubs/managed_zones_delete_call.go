@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ type ManagedZonesDeleteCall struct {
 	Service  *ManagedZonesService
 	Project  string
 	ZoneName string
-	Error    *error // Use this to overide response for testing if required
+	Error    *error // Use this to override response for testing if required
 }
 
 func (call ManagedZonesDeleteCall) Do(opts ...googleapi.CallOption) error {

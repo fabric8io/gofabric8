@@ -98,7 +98,7 @@ func TestAccessOriginWebConsole(t *testing.T) {
 	}{
 		"":                    {http.StatusFound, masterOptions.AssetConfig.PublicURL},
 		"healthz":             {http.StatusOK, ""},
-		"login":               {http.StatusOK, ""},
+		"login?then=%2F":      {http.StatusOK, ""},
 		"oauth/token/request": {http.StatusFound, masterOptions.AssetConfig.MasterPublicURL + "/oauth/authorize"},
 		"console":             {http.StatusMovedPermanently, "/console/"},
 		"console/":            {http.StatusOK, ""},
@@ -137,7 +137,7 @@ func TestAccessDisabledWebConsole(t *testing.T) {
 		location   string
 	}{
 		"healthz":             {http.StatusOK, ""},
-		"login":               {http.StatusOK, ""},
+		"login?then=%2F":      {http.StatusOK, ""},
 		"oauth/token/request": {http.StatusFound, masterOptions.AssetConfig.MasterPublicURL + "/oauth/authorize"},
 		"console":             {http.StatusForbidden, ""},
 		"console/":            {http.StatusForbidden, ""},
@@ -220,8 +220,8 @@ func TestAccessOriginWebConsoleMultipleIdentityProviders(t *testing.T) {
 
 		// Expect the providerSelectionURL to redirect to the loginURL
 		urlMap[providerSelectionURL] = urlResults{http.StatusFound, loginURL}
-		// Expect the loginURL to be valid
-		urlMap[loginURL] = urlResults{http.StatusOK, ""}
+		// Expect the loginURL to be valid (requires a 'then' param)
+		urlMap[loginURL+"?then=%2F"] = urlResults{http.StatusOK, ""}
 
 		// escape the query param the way the template will
 		templateIDPParam := templateEscapeHref(t, idpQueryParam)
@@ -238,6 +238,44 @@ func TestAccessOriginWebConsoleMultipleIdentityProviders(t *testing.T) {
 	// Test all of these URLs
 	for endpoint, exp := range urlMap {
 		url := masterOptions.AssetConfig.MasterPublicURL + endpoint
+		tryAccessURL(t, url, exp.statusCode, exp.location, nil)
+	}
+}
+
+func TestAccessStandaloneOriginWebConsole(t *testing.T) {
+	testutil.RequireEtcd(t)
+	defer testutil.DumpEtcdOnFailure(t)
+
+	masterOptions, err := testserver.DefaultMasterOptions()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	addr, err := testserver.FindAvailableBindAddress(13000, 13999)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	masterOptions.AssetConfig.ServingInfo.BindAddress = addr
+	assetBaseURL := "https://" + addr
+	masterOptions.AssetConfig.PublicURL = assetBaseURL + "/console/"
+	masterOptions.OAuthConfig.AssetPublicURL = assetBaseURL + "/console/"
+
+	if _, err = testserver.StartConfiguredMaster(masterOptions); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for endpoint, exp := range map[string]struct {
+		statusCode int
+		location   string
+	}{
+		"":             {http.StatusFound, "/console/"},
+		"blarg":        {http.StatusFound, "/console/"},
+		"console":      {http.StatusMovedPermanently, "/console/"},
+		"console/":     {http.StatusOK, ""},
+		"console/java": {http.StatusOK, ""},
+	} {
+		url := assetBaseURL + "/" + endpoint
 		tryAccessURL(t, url, exp.statusCode, exp.location, nil)
 	}
 }

@@ -1,0 +1,26 @@
+BINARY_SERVER_BIN=$(INSTALL_PREFIX)/wit.exe
+BINARY_CLIENT_BIN=$(INSTALL_PREFIX)/wit-cli.exe
+GLIDE_BIN=glide.exe
+GOAGEN_BIN=$(VENDOR_DIR)/github.com/goadesign/goa/goagen/goagen.exe
+GO_BINDATA_BIN=$(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata/go-bindata.exe
+GO_BINDATA_DIR=$(VENDOR_DIR)/github.com/jteeuwen/go-bindata/go-bindata/
+GO_BINDATA_ASSETFS_BIN=$(VENDOR_DIR)/github.com/elazarl/go-bindata-assetfs/go-bindata-assetfs/go-bindata-assetfs.exe
+FRESH_BIN=$(VENDOR_DIR)/github.com/pilu/fresh/fresh.exe
+EXTRA_PATH=$(shell cygpath --unix '$(GO_BINDATA_DIR)')
+GOCOV_BIN=$(VENDOR_DIR)/github.com/axw/gocov/gocov/gocov.exe
+GOCOVMERGE_BIN=$(VENDOR_DIR)/github.com/wadey/gocovmerge/gocovmerge.exe
+DOCKER_BIN_NAME=docker.exe
+DOCKER_COMPOSE_BIN_NAME=docker-compose.exe
+
+GOLINT_DIR=$(VENDOR_DIR)/github.com/golang/lint/golint
+GOLINT_BIN=$(GOLINT_DIR)/golint.exe
+GOCYCLO_DIR=$(VENDOR_DIR)/github.com/fzipp/gocyclo
+GOCYCLO_BIN=$(GOCYCLO_DIR)/gocyclo.exe
+GO_JUNIT_BIN=$(VENDOR_DIR)/github.com/jstemmer/go-junit-report/go-junit-report.exe
+
+GIT_BIN_NAME := git.exe
+GLIDE_BIN_NAME := glide.exe
+GO_BIN_NAME := go.exe
+HG_BIN_NAME := hg.exe
+
+CHECK_GOPATH_BIN := $(INSTALL_PREFIX)/check_gopath.exe

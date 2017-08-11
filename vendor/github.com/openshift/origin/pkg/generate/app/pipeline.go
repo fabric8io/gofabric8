@@ -15,6 +15,7 @@ import (
 
 	build "github.com/openshift/origin/pkg/build/api"
 	deploy "github.com/openshift/origin/pkg/deploy/api"
+	"github.com/openshift/origin/pkg/generate"
 	image "github.com/openshift/origin/pkg/image/api"
 	route "github.com/openshift/origin/pkg/route/api"
 	"github.com/openshift/origin/pkg/util/docker/dockerfile"
@@ -90,7 +91,7 @@ func (pb *pipelineBuilder) NewBuildPipeline(from string, input *ImageRef, source
 	source.Name = name
 
 	// Append any exposed ports from Dockerfile to input image
-	if sourceRepository.IsDockerBuild() && sourceRepository.Info() != nil {
+	if sourceRepository.GetStrategy() == generate.StrategyDocker && sourceRepository.Info() != nil {
 		node := sourceRepository.Info().Dockerfile.AST()
 		ports := dockerfile.LastExposedPorts(node)
 		if len(ports) > 0 {
@@ -260,8 +261,8 @@ func MakeSimpleName(name string) string {
 	name = strings.ToLower(name)
 	name = invalidServiceChars.ReplaceAllString(name, "")
 	name = strings.TrimFunc(name, func(r rune) bool { return r == '-' })
-	if len(name) > kuval.DNS952LabelMaxLength {
-		name = name[:kuval.DNS952LabelMaxLength]
+	if len(name) > kuval.DNS1035LabelMaxLength {
+		name = name[:kuval.DNS1035LabelMaxLength]
 	}
 	return name
 }

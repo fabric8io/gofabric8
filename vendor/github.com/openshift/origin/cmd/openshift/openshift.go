@@ -1,11 +1,13 @@
 package main
 
 import (
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 
-	"github.com/golang/glog"
+	"k8s.io/kubernetes/pkg/util/logs"
 
 	"github.com/openshift/origin/pkg/cmd/openshift"
 	"github.com/openshift/origin/pkg/cmd/util/serviceability"
@@ -19,11 +21,12 @@ import (
 )
 
 func main() {
+	logs.InitLogs()
+	defer logs.FlushLogs()
 	defer serviceability.BehaviorOnPanic(os.Getenv("OPENSHIFT_ON_PANIC"))()
 	defer serviceability.Profile(os.Getenv("OPENSHIFT_PROFILE")).Stop()
 
-	glog.CopyStandardLogTo("INFO")
-
+	rand.Seed(time.Now().UTC().UnixNano())
 	if len(os.Getenv("GOMAXPROCS")) == 0 {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Clustering in Kubernetes
 
 
@@ -126,13 +121,6 @@ the `queue` policy defined above. This manual intervention could be replaced by
 code that can verify the signing requests via other means.
 
 ![Dynamic Sequence Diagram](clustering/dynamic.png)
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

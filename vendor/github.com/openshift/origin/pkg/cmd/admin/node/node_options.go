@@ -12,7 +12,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/kubectl"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
@@ -26,14 +26,14 @@ import (
 
 type NodeOptions struct {
 	DefaultNamespace string
-	Kclient          *client.Client
+	KubeClient       kclientset.Interface
 	Writer           io.Writer
 	ErrWriter        io.Writer
 
 	Mapper            meta.RESTMapper
 	Typer             runtime.ObjectTyper
 	RESTClientFactory func(mapping *meta.RESTMapping) (resource.RESTClient, error)
-	Printer           func(mapping *meta.RESTMapping, printOptions *kubectl.PrintOptions) (kubectl.ResourcePrinter, error)
+	Printer           func(mapping *meta.RESTMapping, printOptions kubectl.PrintOptions) (kubectl.ResourcePrinter, error)
 
 	CmdPrinter       kubectl.ResourcePrinter
 	CmdPrinterOutput bool
@@ -58,15 +58,15 @@ func (n *NodeOptions) Complete(f *clientcmd.Factory, c *cobra.Command, args []st
 	if err != nil {
 		return err
 	}
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 
 	n.DefaultNamespace = defaultNamespace
-	n.Kclient = kc
+	n.KubeClient = kc
 	n.Writer = out
 	n.ErrWriter = errout
 	n.Mapper = mapper
 	n.Typer = typer
-	n.RESTClientFactory = f.Factory.ClientForMapping
+	n.RESTClientFactory = f.ClientForMapping
 	n.Printer = f.Printer
 	n.NodeNames = []string{}
 	n.CmdPrinter = cmdPrinter
@@ -157,37 +157,29 @@ func (n *NodeOptions) GetNodes() ([]*kapi.Node, error) {
 	return nodeList, nil
 }
 
-func (n *NodeOptions) GetPrintersByObject(obj runtime.Object) (kubectl.ResourcePrinter, kubectl.ResourcePrinter, error) {
+func (n *NodeOptions) GetPrintersByObject(obj runtime.Object) (kubectl.ResourcePrinter, error) {
 	gvk, _, err := kapi.Scheme.ObjectKinds(obj)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	return n.GetPrinters(gvk[0])
 }
 
-func (n *NodeOptions) GetPrintersByResource(resource unversioned.GroupVersionResource) (kubectl.ResourcePrinter, kubectl.ResourcePrinter, error) {
+func (n *NodeOptions) GetPrintersByResource(resource unversioned.GroupVersionResource) (kubectl.ResourcePrinter, error) {
 	gvks, err := n.Mapper.KindsFor(resource)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	return n.GetPrinters(gvks[0])
 }
 
-func (n *NodeOptions) GetPrinters(gvk unversioned.GroupVersionKind) (kubectl.ResourcePrinter, kubectl.ResourcePrinter, error) {
+func (n *NodeOptions) GetPrinters(gvk unversioned.GroupVersionKind) (kubectl.ResourcePrinter, error) {
 	mapping, err := n.Mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	printerWithHeaders, err := n.Printer(mapping, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	printerNoHeaders, err := n.Printer(mapping, &kubectl.PrintOptions{NoHeaders: true})
-	if err != nil {
-		return nil, nil, err
-	}
-	return printerWithHeaders, printerNoHeaders, nil
+	return n.Printer(mapping, kubectl.PrintOptions{})
 }
 
 func GetPodHostFieldLabel(apiVersion string) string {

@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -121,7 +121,7 @@ func (r *ServiceRegistry) WatchServices(ctx api.Context, options *api.ListOption
 
 func (r *ServiceRegistry) ExportService(ctx api.Context, name string, options unversioned.ExportOptions) (*api.Service, error) {
 	r.mu.Lock()
-	defer r.mu.Lock()
+	defer r.mu.Unlock()
 
 	return r.Service, r.Err
 }

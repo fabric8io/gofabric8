@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -144,6 +144,50 @@ func TestGroupVersionMarshalJSON(t *testing.T) {
 		}
 		if !reflect.DeepEqual(result, c.expect) {
 			t.Errorf("Failed to marshal input '%+v': expected: %s, got: %s", input, c.expect, result)
+		}
+	}
+}
+
+func TestKindForGroupVersionKinds(t *testing.T) {
+	gvks := GroupVersions{
+		GroupVersion{Group: "batch", Version: "v1"},
+		GroupVersion{Group: "batch", Version: "v2alpha1"},
+		GroupVersion{Group: "policy", Version: "v1beta1"},
+	}
+	cases := []struct {
+		input  []GroupVersionKind
+		target GroupVersionKind
+		ok     bool
+	}{
+		{
+			input:  []GroupVersionKind{{Group: "batch", Version: "v2alpha1", Kind: "ScheduledJob"}},
+			target: GroupVersionKind{Group: "batch", Version: "v2alpha1", Kind: "ScheduledJob"},
+			ok:     true,
+		},
+		{
+			input:  []GroupVersionKind{{Group: "batch", Version: "v3alpha1", Kind: "CronJob"}},
+			target: GroupVersionKind{Group: "batch", Version: "v1", Kind: "CronJob"},
+			ok:     true,
+		},
+		{
+			input:  []GroupVersionKind{{Group: "policy", Version: "v1beta1", Kind: "PodDisruptionBudget"}},
+			target: GroupVersionKind{Group: "policy", Version: "v1beta1", Kind: "PodDisruptionBudget"},
+			ok:     true,
+		},
+		{
+			input:  []GroupVersionKind{{Group: "apps", Version: "v1alpha1", Kind: "StatefulSet"}},
+			target: GroupVersionKind{},
+			ok:     false,
+		},
+	}
+
+	for i, c := range cases {
+		target, ok := gvks.KindForGroupVersionKinds(c.input)
+		if c.target != target {
+			t.Errorf("%d: unexpected target: %v, expected %v", i, target, c.target)
+		}
+		if c.ok != ok {
+			t.Errorf("%d: unexpected ok: %v, expected %v", i, ok, c.ok)
 		}
 	}
 }

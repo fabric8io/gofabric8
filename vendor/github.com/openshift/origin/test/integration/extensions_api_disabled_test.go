@@ -3,14 +3,17 @@ package integration
 import (
 	"testing"
 
-	testutil "github.com/openshift/origin/test/util"
-	testserver "github.com/openshift/origin/test/util/server"
-
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
+	kapiv1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/apis/batch"
 	expapi "k8s.io/kubernetes/pkg/apis/extensions"
+	extensions_v1beta1 "k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
+	kclientset15 "k8s.io/kubernetes/pkg/client/clientset_generated/release_1_5"
+
+	testutil "github.com/openshift/origin/test/util"
+	testserver "github.com/openshift/origin/test/util/server"
 )
 
 func TestExtensionsAPIDisabledAutoscaleBatchEnabled(t *testing.T) {
@@ -51,10 +54,11 @@ func TestExtensionsAPIDisabledAutoscaleBatchEnabled(t *testing.T) {
 	if _, err := testserver.CreateNewProject(clusterAdminClient, *clusterAdminClientConfig, projName, "admin"); err != nil {
 		t.Fatalf("unexpected error creating the project: %v", err)
 	}
-	projectAdminClient, projectAdminKubeClient, _, err := testutil.GetClientForUser(*clusterAdminClientConfig, "admin")
+	projectAdminClient, projectAdminKubeClient, projectAdminKubeConfig, err := testutil.GetClientForUser(*clusterAdminClientConfig, "admin")
 	if err != nil {
 		t.Fatalf("unexpected error getting project admin client: %v", err)
 	}
+	projectAdminKubeClient15 := kclientset15.NewForConfigOrDie(projectAdminKubeConfig)
 	if err := testutil.WaitForPolicyUpdate(projectAdminClient, projName, "get", expapi.Resource("horizontalpodautoscalers"), true); err != nil {
 		t.Fatalf("unexpected error waiting for policy update: %v", err)
 	}
@@ -80,7 +84,7 @@ func TestExtensionsAPIDisabledAutoscaleBatchEnabled(t *testing.T) {
 
 	legacyAutoscalers := legacyExtensionsAutoscaling{
 		projectAdminKubeClient.Autoscaling().HorizontalPodAutoscalers(projName),
-		projectAdminKubeClient.ExtensionsClient.RESTClient,
+		projectAdminKubeClient.Extensions().RESTClient(),
 		projName,
 	}
 
@@ -91,10 +95,10 @@ func TestExtensionsAPIDisabledAutoscaleBatchEnabled(t *testing.T) {
 	if _, err := legacyAutoscalers.Create(validHPA); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error creating HPA, got %v", err)
 	}
-	if _, err := projectAdminKubeClient.Extensions().Jobs(projName).List(kapi.ListOptions{}); !errors.IsNotFound(err) {
+	if _, err := projectAdminKubeClient15.Extensions().Jobs(projName).List(kapiv1.ListOptions{}); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error listing jobs, got %v", err)
 	}
-	if _, err := projectAdminKubeClient.Extensions().Jobs(projName).Create(validJob); !errors.IsNotFound(err) {
+	if _, err := projectAdminKubeClient15.Extensions().Jobs(projName).Create(&extensions_v1beta1.Job{}); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error creating job, got %v", err)
 	}
 
@@ -179,17 +183,18 @@ func TestExtensionsAPIDisabled(t *testing.T) {
 	if _, err := testserver.CreateNewProject(clusterAdminClient, *clusterAdminClientConfig, projName, "admin"); err != nil {
 		t.Fatalf("unexpected error creating the project: %v", err)
 	}
-	projectAdminClient, projectAdminKubeClient, _, err := testutil.GetClientForUser(*clusterAdminClientConfig, "admin")
+	projectAdminClient, projectAdminKubeClient, projectAdminKubeConfig, err := testutil.GetClientForUser(*clusterAdminClientConfig, "admin")
 	if err != nil {
 		t.Fatalf("unexpected error getting project admin client: %v", err)
 	}
+	projectAdminKubeClient15 := kclientset15.NewForConfigOrDie(projectAdminKubeConfig)
 	if err := testutil.WaitForPolicyUpdate(projectAdminClient, projName, "get", expapi.Resource("horizontalpodautoscalers"), true); err != nil {
 		t.Fatalf("unexpected error waiting for policy update: %v", err)
 	}
 
 	legacyAutoscalers := legacyExtensionsAutoscaling{
 		projectAdminKubeClient.Autoscaling().HorizontalPodAutoscalers(projName),
-		projectAdminKubeClient.AutoscalingClient.RESTClient,
+		projectAdminKubeClient.Autoscaling().RESTClient(),
 		projName,
 	}
 
@@ -200,10 +205,10 @@ func TestExtensionsAPIDisabled(t *testing.T) {
 	if _, err := legacyAutoscalers.Create(&autoscaling.HorizontalPodAutoscaler{}); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error creating HPA, got %v", err)
 	}
-	if _, err := projectAdminKubeClient.Extensions().Jobs(projName).List(kapi.ListOptions{}); !errors.IsNotFound(err) {
+	if _, err := projectAdminKubeClient15.Extensions().Jobs(projName).List(kapiv1.ListOptions{}); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error listing jobs, got %v", err)
 	}
-	if _, err := projectAdminKubeClient.Extensions().Jobs(projName).Create(&batch.Job{}); !errors.IsNotFound(err) {
+	if _, err := projectAdminKubeClient15.Extensions().Jobs(projName).Create(&extensions_v1beta1.Job{}); !errors.IsNotFound(err) {
 		t.Fatalf("expected NotFound error creating job, got %v", err)
 	}
 

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 <!-- BEGIN MUNGE: GENERATED_TOC -->
 
 - [GPU support](#gpu-support)
@@ -17,7 +12,7 @@
     - [Too complex for now: nvidia-docker](#too-complex-for-now-nvidia-docker)
   - [Implementation plan](#implementation-plan)
     - [V0](#v0)
-      - [Scheduling](#scheduling)
+      - [Scheduling](#scheduling-1)
       - [Runtime](#runtime)
       - [Other](#other)
   - [Future work](#future-work)
@@ -118,7 +113,7 @@ Support binaries and libraries are often versioned along with the kernel module,
 so there should be further hooks to project those under `/bin` and some kind of
 `/lib` before the application is started. This can be done for Docker with the
 use of a versioned [Docker
-volume](https://docs.docker.com/engine/userguide/containers/dockervolumes/) or
+volume](https://docs.docker.com/engine/tutorials/dockervolumes/) or
 with upcoming Kubernetes-specific hooks such as init containers and volume
 containers. In v0, images are expected to bundle everything they need.
 
@@ -278,13 +273,6 @@ There should be knobs for the cluster administrator to only allow certain users
 or roles to schedule GPU workloads. Overcommitting or sharing the same device
 across different pods is not considered safe. It should be possible to segregate
 such GPU-sharing pods by user, namespace or a combination thereof.
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/proposals/gpu-support.md?pixel)]()

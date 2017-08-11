@@ -1,0 +1,11 @@
+{
+  "id": "IGNOREME",
+  "code": "invalid_request",
+  "status": 400,
+  "detail": "value of response.topology must be one of \"network\", \"tree\" but got value \"wrongtopology\"",
+  "meta": {
+    "attribute": "response.topology",
+    "expected": "\"network\", \"tree\"",
+    "value": "wrongtopology"
+  }
+}

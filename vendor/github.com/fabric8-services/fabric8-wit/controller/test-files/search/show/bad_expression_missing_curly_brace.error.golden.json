@@ -1,0 +1,11 @@
+{
+  "errors": [
+    {
+      "code": "bad_request",
+      "detail": "error listing work items for expression '{\"state\": \"0fe7b23e-c66e-43a9-ab1b-fbad9924fe7c\"': Bad value for parameter 'expression': '{\"state\": \"0fe7b23e-c66e-43a9-ab1b-fbad9924fe7c\": unexpected end of JSON input'",
+      "id": "IGNORE_ME",
+      "status": "400",
+      "title": "Bad Request"
+    }
+  ]
+}

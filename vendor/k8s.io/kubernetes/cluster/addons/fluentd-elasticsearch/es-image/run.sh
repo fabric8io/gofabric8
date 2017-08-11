@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2015 The Kubernetes Authors All rights reserved.
+# Copyright 2015 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,12 @@
 
 export NODE_MASTER=${NODE_MASTER:-true}
 export NODE_DATA=${NODE_DATA:-true}
-/elasticsearch_logging_discovery >> /elasticsearch-1.5.2/config/elasticsearch.yml
 export HTTP_PORT=${HTTP_PORT:-9200}
 export TRANSPORT_PORT=${TRANSPORT_PORT:-9300}
-/elasticsearch-1.5.2/bin/elasticsearch
+export MINIMUM_MASTER_NODES=${MINIMUM_MASTER_NODES:-2}
+
+/elasticsearch_logging_discovery >> /elasticsearch/config/elasticsearch.yml
+
+chown -R elasticsearch:elasticsearch /data
+
+/bin/su -c /elasticsearch/bin/elasticsearch elasticsearch

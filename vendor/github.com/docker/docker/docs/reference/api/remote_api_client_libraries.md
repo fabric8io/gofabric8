@@ -4,7 +4,8 @@ title = "Remote API client libraries"
 description = "Various client libraries available to use with the Docker remote API"
 keywords = ["API, Docker, index, registry, REST, documentation, clients, C#, Erlang, Go, Groovy, Java, JavaScript, Perl, PHP, Python, Ruby, Rust,  Scala"]
 [menu.main]
-parent="mn_reference"
+parent="engine_remoteapi"
+weight = 90
 +++
 <![end-metadata]-->
 
@@ -57,6 +58,12 @@ will add the libraries here.
     </tr>
     <tr>
       <td>Go</td>
+      <td>engine-api</td>
+      <td><a class="reference external" href="https://github.com/docker/engine-api">https://github.com/docker/engine-api</a></td>
+      <td>Active</td>
+    </tr>
+    <tr>
+      <td>Go</td>
       <td>go-dockerclient</td>
       <td><a class="reference external" href="https://github.com/fsouza/go-dockerclient">https://github.com/fsouza/go-dockerclient</a></td>
       <td>Active</td>
@@ -86,6 +93,12 @@ will add the libraries here.
       <td>Active</td>
     </tr>
     <tr>
+      <td>HTML (Web Components)</td>
+      <td>docker-elements</td>
+      <td><a class="reference external" href="https://github.com/kapalhq/docker-elements">https://github.com/kapalhq/docker-elements</a></td>
+      <td>Active</td>
+    </tr>
+    <tr>
       <td>Java</td>
       <td>docker-java</td>
       <td><a class="reference external" href="https://github.com/docker-java/docker-java">https://github.com/docker-java/docker-java</a></td>
@@ -101,6 +114,18 @@ will add the libraries here.
       <td>Java</td>
       <td>jclouds-docker</td>
       <td><a class="reference external" href="https://github.com/jclouds/jclouds-labs/tree/master/docker">https://github.com/jclouds/jclouds-labs/tree/master/docker</a></td>
+      <td>Active</td>
+    </tr>
+    <tr>
+      <td>Java</td>
+      <td>rx-docker-client</td>
+      <td><a class="reference external" href="https://github.com/shekhargulati/rx-docker-client">https://github.com/shekhargulati/rx-docker-client</a></td>
+      <td>Active</td>
+    </tr>
+    <tr>
+      <td>JavaScript (NodeJS)</td>
+      <td>dockerizer</td>
+      <td><a class="reference external" href="https://github.com/kesarion/dockerizer">https://github.com/kesarion/dockerizer</a></td>
       <td>Active</td>
     </tr>
     <tr>
@@ -125,6 +150,12 @@ will add the libraries here.
     </tr>
     <tr>
       <td>JavaScript (Angular) <strong>WebUI</strong></td>
+      <td>Albatros</td>
+      <td><a class="reference external" href="https://github.com/dcylabs/albatros">https://github.com/dcylabs/albatros</a></td>
+      <td>Active</td>
+    </tr>
+    <tr>
+      <td>JavaScript (Angular) <strong>WebUI</strong></td>
       <td>docker-cp</td>
       <td><a class="reference external" href="https://github.com/13W/docker-cp">https://github.com/13W/docker-cp</a></td>
       <td>Active</td>
@@ -140,7 +171,7 @@ will add the libraries here.
       <td>dockery</td>
       <td><a class="reference external" href="https://github.com/lexandro/dockery">https://github.com/lexandro/dockery</a></td>
       <td>Active</td>
-    </tr>    
+    </tr>
     <tr>
       <td>Perl</td>
       <td>Net::Docker</td>
@@ -162,7 +193,13 @@ will add the libraries here.
     <tr>
       <td>PHP</td>
       <td>Docker-PHP</td>
-      <td><a class="reference external" href="http://stage1.github.io/docker-php/">http://stage1.github.io/docker-php/</a></td>
+      <td><a class="reference external" href="https://github.com/docker-php/docker-php">https://github.com/docker-php/docker-php</a></td>
+      <td>Active</td>
+    </tr>
+    <tr>
+      <td>PHP</td>
+      <td>Docker-PHP-Client</td>
+      <td><a class="reference external" href="https://github.com/jarkt/docker-php-client">https://github.com/jarkt/docker-php-client</a></td>
       <td>Active</td>
     </tr>
     <tr>
@@ -190,6 +227,12 @@ will add the libraries here.
       <td>Active</td>
     </tr>
     <tr>
+      <td>Rust</td>
+      <td>shiplift</td>
+      <td><a class="reference external" href="https://github.com/softprops/shiplift">https://github.com/softprops/shiplift</a></td>
+      <td>Active</td>
+    </tr>
+    <tr>
       <td>Scala</td>
       <td>tugboat</td>
       <td><a class="reference external" href="https://github.com/softprops/tugboat">https://github.com/softprops/tugboat</a></td>
@@ -203,4 +246,3 @@ will add the libraries here.
     </tr>
   </tbody>
 </table>
-

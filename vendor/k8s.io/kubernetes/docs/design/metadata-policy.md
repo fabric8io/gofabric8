@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # MetadataPolicy and its use in choosing the scheduler in a multi-scheduler system
 
 ## Introduction
@@ -76,11 +71,11 @@ type PolicyAction struct {
 type MetadataPolicy struct {
 	unversioned.TypeMeta `json:",inline"`
 	// Standard object's metadata.
-	// More info: http://releases.k8s.io/release-1.3/docs/devel/api-conventions.md#metadata
+	// More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#metadata
 	ObjectMeta `json:"metadata,omitempty"`
 
 	// Spec defines the metadata policy that should be enforced.
-	// http://releases.k8s.io/release-1.3/docs/devel/api-conventions.md#spec-and-status
+	// http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#spec-and-status
 	Spec MetadataPolicySpec `json:"spec,omitempty"`
 }
 
@@ -88,11 +83,11 @@ type MetadataPolicy struct {
 type MetadataPolicyList struct {
 	unversioned.TypeMeta `json:",inline"`
 	// Standard list metadata.
-	// More info: http://releases.k8s.io/release-1.3/docs/devel/api-conventions.md#types-kinds
+	// More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#types-kinds
 	unversioned.ListMeta `json:"metadata,omitempty"`
 
 	// Items is a list of MetadataPolicy objects.
-	// More info: http://releases.k8s.io/release-1.3/docs/design/admission_control_resource_quota.md#admissioncontrol-plugin-resourcequota
+	// More info: http://releases.k8s.io/HEAD/docs/design/admission_control_resource_quota.md#admissioncontrol-plugin-resourcequota
 	Items []MetadataPolicy `json:"items"`
 }
 ```
@@ -135,13 +130,6 @@ single scheduler, as opposed to choosing a scheduler, a desire mentioned in
 `MetadataPolicy` could be used. Issue #17324 proposes to create a generalized
 API for matching "claims" to "service classes"; matching a pod to a scheduler
 would be one use for such an API.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

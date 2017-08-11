@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,12 +17,13 @@ limitations under the License.
 package system
 
 import (
-	"strings"
+	"regexp"
 
 	"k8s.io/kubernetes/pkg/api"
 )
 
 // TODO: find a better way of figuring out if given node is a registered master.
 func IsMasterNode(node *api.Node) bool {
-	return strings.HasSuffix(node.Name, "master")
+	r := regexp.MustCompile("master(-...)?$")
+	return r.MatchString(node.Name)
 }

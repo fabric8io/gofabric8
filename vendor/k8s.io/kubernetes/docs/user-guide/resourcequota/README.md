@@ -1,16 +1,4 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
-This file has moved to: http://kubernetes.github.io/docs/user-guide/resourcequota/
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
+This file has moved to: http://kubernetes.github.io/docs/admin/resourcequota/
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

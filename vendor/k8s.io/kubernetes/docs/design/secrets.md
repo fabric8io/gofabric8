@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Abstract
 
 A proposal for the distribution of [secrets](../user-guide/secrets.md)
@@ -329,6 +324,7 @@ const (
     SecretTypeOpaque              SecretType = "Opaque"                                 // Opaque (arbitrary data; default)
     SecretTypeServiceAccountToken SecretType = "kubernetes.io/service-account-token"    // Kubernetes auth token
     SecretTypeDockercfg           SecretType = "kubernetes.io/dockercfg"                // Docker registry auth
+    SecretTypeDockerConfigJson    SecretType = "kubernetes.io/dockerconfigjson"         // Latest Docker registry auth
     // FUTURE: other type values
 )
 
@@ -505,7 +501,7 @@ When the container's command runs, the pieces of the key will be available in:
 The container is then free to use the secret data to establish an ssh
 connection.
 
-### Use-Case: Pods with pod / test credentials
+### Use-Case: Pods with prod / test credentials
 
 This example illustrates a pod which consumes a secret containing prod
 credentials and another pod which consumes a secret with test environment
@@ -625,13 +621,6 @@ on their filesystems:
 
     /etc/secret-volume/username
     /etc/secret-volume/password
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

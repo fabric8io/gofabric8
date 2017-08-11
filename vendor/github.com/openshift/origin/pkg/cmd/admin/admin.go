@@ -6,7 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	kubectl "k8s.io/kubernetes/pkg/kubectl/cmd"
+	kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
+	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	"github.com/openshift/origin/pkg/cmd/admin/cert"
 	diagnostics "github.com/openshift/origin/pkg/cmd/admin/diagnostics"
@@ -31,11 +32,11 @@ import (
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
-const adminLong = `
-Administrative Commands
+var adminLong = templates.LongDesc(`
+	Administrative Commands
 
-Commands for managing a cluster are exposed here. Many administrative
-actions involve interaction with the command-line client as well.`
+	Commands for managing a cluster are exposed here. Many administrative
+	actions involve interaction with the command-line client as well.`)
 
 func NewCommandAdmin(name, fullName string, in io.Reader, out io.Writer, errout io.Writer) *cobra.Command {
 	// Main command
@@ -43,7 +44,7 @@ func NewCommandAdmin(name, fullName string, in io.Reader, out io.Writer, errout 
 		Use:   name,
 		Short: "Tools for managing a cluster",
 		Long:  fmt.Sprintf(adminLong),
-		Run:   cmdutil.DefaultSubCommandRun(out),
+		Run:   kcmdutil.DefaultSubCommandRun(out),
 	}
 
 	f := clientcmd.New(cmds.PersistentFlags())
@@ -52,9 +53,9 @@ func NewCommandAdmin(name, fullName string, in io.Reader, out io.Writer, errout 
 		{
 			Message: "Component Installation:",
 			Commands: []*cobra.Command{
-				router.NewCmdRouter(f, fullName, "router", out),
+				router.NewCmdRouter(f, fullName, "router", out, errout),
 				exipfailover.NewCmdIPFailoverConfig(f, fullName, "ipfailover", out, errout),
-				registry.NewCmdRegistry(f, fullName, "registry", out),
+				registry.NewCmdRegistry(f, fullName, "registry", out, errout),
 			},
 		},
 		{
@@ -62,9 +63,10 @@ func NewCommandAdmin(name, fullName string, in io.Reader, out io.Writer, errout 
 			Commands: []*cobra.Command{
 				project.NewCmdNewProject(project.NewProjectRecommendedName, fullName+" "+project.NewProjectRecommendedName, f, out),
 				policy.NewCmdPolicy(policy.PolicyRecommendedName, fullName+" "+policy.PolicyRecommendedName, f, out, errout),
-				groups.NewCmdGroups(groups.GroupsRecommendedName, fullName+" "+groups.GroupsRecommendedName, f, out),
+				groups.NewCmdGroups(groups.GroupsRecommendedName, fullName+" "+groups.GroupsRecommendedName, f, out, errout),
 				cert.NewCmdCert(cert.CertRecommendedName, fullName+" "+cert.CertRecommendedName, out, errout),
 				admin.NewCommandOverwriteBootstrapPolicy(admin.OverwriteBootstrapPolicyCommandName, fullName+" "+admin.OverwriteBootstrapPolicyCommandName, fullName+" "+admin.CreateBootstrapPolicyFileCommand, out),
+				kubecmd.NewCmdCertificate(f, out),
 			},
 		},
 		{
@@ -72,26 +74,26 @@ func NewCommandAdmin(name, fullName string, in io.Reader, out io.Writer, errout 
 			Commands: []*cobra.Command{
 				admin.NewCommandNodeConfig(admin.NodeConfigCommandName, fullName+" "+admin.NodeConfigCommandName, out),
 				node.NewCommandManageNode(f, node.ManageNodeCommandName, fullName+" "+node.ManageNodeCommandName, out, errout),
-				cmdutil.ReplaceCommandName("kubectl", fullName, kubectl.NewCmdCordon(f.Factory, out)),
-				cmdutil.ReplaceCommandName("kubectl", fullName, kubectl.NewCmdUncordon(f.Factory, out)),
-				cmdutil.ReplaceCommandName("kubectl", fullName, kubectl.NewCmdDrain(f.Factory, out)),
-				cmdutil.ReplaceCommandName("kubectl", fullName, kubectl.NewCmdTaint(f.Factory, out)),
-				network.NewCmdPodNetwork(network.PodNetworkCommandName, fullName+" "+network.PodNetworkCommandName, f, out),
+				cmdutil.ReplaceCommandName("kubectl", fullName, templates.Normalize(kubecmd.NewCmdCordon(f, out))),
+				cmdutil.ReplaceCommandName("kubectl", fullName, templates.Normalize(kubecmd.NewCmdUncordon(f, out))),
+				cmdutil.ReplaceCommandName("kubectl", fullName, kubecmd.NewCmdDrain(f, out, errout)),
+				cmdutil.ReplaceCommandName("kubectl", fullName, templates.Normalize(kubecmd.NewCmdTaint(f, out))),
+				network.NewCmdPodNetwork(network.PodNetworkCommandName, fullName+" "+network.PodNetworkCommandName, f, out, errout),
 			},
 		},
 		{
 			Message: "Maintenance:",
 			Commands: []*cobra.Command{
 				diagnostics.NewCmdDiagnostics(diagnostics.DiagnosticsRecommendedName, fullName+" "+diagnostics.DiagnosticsRecommendedName, out),
-				prune.NewCommandPrune(prune.PruneRecommendedName, fullName+" "+prune.PruneRecommendedName, f, out),
+				prune.NewCommandPrune(prune.PruneRecommendedName, fullName+" "+prune.PruneRecommendedName, f, out, errout),
 				buildchain.NewCmdBuildChain(name, fullName+" "+buildchain.BuildChainRecommendedCommandName, f, out),
 				migrate.NewCommandMigrate(
-					migrate.MigrateRecommendedName, fullName+" "+migrate.MigrateRecommendedName, f, out,
+					migrate.MigrateRecommendedName, fullName+" "+migrate.MigrateRecommendedName, f, out, errout,
 					// Migration commands
 					migrateimages.NewCmdMigrateImageReferences("image-references", fullName+" "+migrate.MigrateRecommendedName+" image-references", f, in, out, errout),
 					migratestorage.NewCmdMigrateAPIStorage("storage", fullName+" "+migrate.MigrateRecommendedName+" storage", f, in, out, errout),
 				),
-				top.NewCommandTop(top.TopRecommendedName, fullName+" "+top.TopRecommendedName, f, out),
+				top.NewCommandTop(top.TopRecommendedName, fullName+" "+top.TopRecommendedName, f, out, errout),
 			},
 		},
 		{
@@ -129,7 +131,7 @@ func NewCommandAdmin(name, fullName string, in io.Reader, out io.Writer, errout 
 
 	cmds.AddCommand(
 		// part of every root command
-		cmd.NewCmdConfig(fullName, "config"),
+		cmd.NewCmdConfig(fullName, "config", out, errout),
 		cmd.NewCmdCompletion(fullName, f, out),
 
 		// hidden

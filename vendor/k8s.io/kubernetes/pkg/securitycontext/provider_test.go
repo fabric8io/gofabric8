@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -104,10 +104,10 @@ func TestModifyHostConfig(t *testing.T) {
 
 	setSELinuxHC := &dockercontainer.HostConfig{}
 	setSELinuxHC.SecurityOpt = []string{
-		fmt.Sprintf("%s:%s", dockerLabelUser, "user"),
-		fmt.Sprintf("%s:%s", dockerLabelRole, "role"),
-		fmt.Sprintf("%s:%s", dockerLabelType, "type"),
-		fmt.Sprintf("%s:%s", dockerLabelLevel, "level"),
+		fmt.Sprintf("%s:%s", DockerLabelUser, "user"),
+		fmt.Sprintf("%s:%s", DockerLabelRole, "role"),
+		fmt.Sprintf("%s:%s", DockerLabelType, "type"),
+		fmt.Sprintf("%s:%s", DockerLabelLevel, "level"),
 	}
 
 	// seLinuxLabelsSC := fullValidSecurityContext()
@@ -325,10 +325,10 @@ func fullValidHostConfig() *dockercontainer.HostConfig {
 		CapAdd:     []string{"addCapA", "addCapB"},
 		CapDrop:    []string{"dropCapA", "dropCapB"},
 		SecurityOpt: []string{
-			fmt.Sprintf("%s:%s", dockerLabelUser, "user"),
-			fmt.Sprintf("%s:%s", dockerLabelRole, "role"),
-			fmt.Sprintf("%s:%s", dockerLabelType, "type"),
-			fmt.Sprintf("%s:%s", dockerLabelLevel, "level"),
+			fmt.Sprintf("%s:%s", DockerLabelUser, "user"),
+			fmt.Sprintf("%s:%s", DockerLabelRole, "role"),
+			fmt.Sprintf("%s:%s", DockerLabelType, "type"),
+			fmt.Sprintf("%s:%s", DockerLabelLevel, "level"),
 		},
 	}
 }

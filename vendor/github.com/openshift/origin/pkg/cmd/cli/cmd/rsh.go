@@ -11,41 +11,47 @@ import (
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util/term"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
 const (
 	RshRecommendedName = "rsh"
+	DefaultShell       = "/bin/sh"
+)
 
-	rshLong = `
-Open a remote shell session to a container
+var (
+	rshLong = templates.LongDesc(`
+		Open a remote shell session to a container
 
-This command will attempt to start a shell session in a pod for the specified resource.
-It works with pods, deployment configs, jobs, daemon sets, and replication controllers.
-Any of the aforementioned resources (apart from pods) will be resolved to a ready pod.
-It will default to the first container if none is specified, and will attempt to use
-'/bin/sh' as the default shell. You may pass an optional command after the resource name,
-which will be executed instead of a login shell. A TTY will be automatically allocated
-if standard input is interactive - use -t and -T to override. A TERM variable is sent
-to the environment where the shell (or command) will be executed. By default its value
-is the same as the TERM variable from the local environment; if not set, 'xterm' is used.
+		This command will attempt to start a shell session in a pod for the specified resource.
+		It works with pods, deployment configs, deployments, jobs, daemon sets, replication controllers
+		and replica sets.
+		Any of the aforementioned resources (apart from pods) will be resolved to a ready pod.
+		It will default to the first container if none is specified, and will attempt to use
+		'/bin/sh' as the default shell. You may pass any flags supported by this command before
+		the resource name, and an optional command after the resource name, which will be executed
+		instead of a login shell. A TTY will be automatically allocated if standard input is
+		interactive - use -t and -T to override. A TERM variable is sent to the environment where
+		the shell (or command) will be executed. By default its value is the same as the TERM
+		variable from the local environment; if not set, 'xterm' is used.
 
-Note, some containers may not include a shell - use '%[1]s exec' if you need to run commands
-directly.`
+		Note, some containers may not include a shell - use '%[1]s exec' if you need to run commands
+		directly.`)
 
-	rshExample = `
-  # Open a shell session on the first container in pod 'foo'
-  %[1]s foo
+	rshExample = templates.Examples(`
+	  # Open a shell session on the first container in pod 'foo'
+	  %[1]s foo
 
-  # Run the command 'cat /etc/resolv.conf' inside pod 'foo'
-  %[1]s foo cat /etc/resolv.conf
+	  # Run the command 'cat /etc/resolv.conf' inside pod 'foo'
+	  %[1]s foo cat /etc/resolv.conf
 
-  # See the configuration of your internal registry
-  %[1]s dc/docker-registry cat config.yml
+	  # See the configuration of your internal registry
+	  %[1]s dc/docker-registry cat config.yml
 
-  # Open a shell session on the container named 'index' inside a pod of your job
-  # %[1]s -c index job/sheduled`
+	  # Open a shell session on the container named 'index' inside a pod of your job
+	  # %[1]s -c index job/sheduled`)
 )
 
 // RshOptions declare the arguments accepted by the Rsh command
@@ -53,6 +59,7 @@ type RshOptions struct {
 	ForceTTY   bool
 	DisableTTY bool
 	Executable string
+	Timeout    int
 	*kubecmd.ExecOptions
 }
 
@@ -61,6 +68,7 @@ func NewCmdRsh(name string, parent string, f *clientcmd.Factory, in io.Reader, o
 	options := &RshOptions{
 		ForceTTY:   false,
 		DisableTTY: false,
+		Timeout:    10,
 		ExecOptions: &kubecmd.ExecOptions{
 			StreamOptions: kubecmd.StreamOptions{
 				In:  in,
@@ -71,7 +79,8 @@ func NewCmdRsh(name string, parent string, f *clientcmd.Factory, in io.Reader, o
 				Stdin: true,
 			},
 
-			Executor: &kubecmd.DefaultRemoteExecutor{},
+			FullCmdName: parent,
+			Executor:    &kubecmd.DefaultRemoteExecutor{},
 		},
 	}
 
@@ -88,7 +97,8 @@ func NewCmdRsh(name string, parent string, f *clientcmd.Factory, in io.Reader, o
 	}
 	cmd.Flags().BoolVarP(&options.ForceTTY, "tty", "t", false, "Force a pseudo-terminal to be allocated")
 	cmd.Flags().BoolVarP(&options.DisableTTY, "no-tty", "T", false, "Disable pseudo-terminal allocation")
-	cmd.Flags().StringVar(&options.Executable, "shell", "/bin/sh", "Path to the shell command")
+	cmd.Flags().StringVar(&options.Executable, "shell", DefaultShell, "Path to the shell command")
+	cmd.Flags().IntVar(&options.Timeout, "timeout", 10, "Request timeout for obtaining a pod from the server; defaults to 10 seconds")
 	cmd.Flags().StringVarP(&options.ContainerName, "container", "c", "", "Container name; defaults to first container")
 	cmd.Flags().SetInterspersed(false)
 	return cmd
@@ -130,14 +140,13 @@ func (o *RshOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, args []s
 	}
 	o.Config = config
 
-	client, err := f.Client()
+	client, err := f.ClientSet()
 	if err != nil {
 		return err
 	}
-	o.Client = client
+	o.PodClient = client
 
-	// TODO: Consider making the timeout configurable
-	o.PodName, err = f.PodForResource(resource, 10*time.Second)
+	o.PodName, err = f.PodForResource(resource, time.Duration(o.Timeout)*time.Second)
 	return err
 }
 
@@ -149,8 +158,9 @@ func (o *RshOptions) Validate() error {
 // Run starts a remote shell session on the server
 func (o *RshOptions) Run() error {
 	// Insert the TERM into the command to be run
-	term := fmt.Sprintf("TERM=%s", util.Env("TERM", "xterm"))
-	o.Command = append([]string{"env", term}, o.Command...)
-
+	if len(o.Command) == 1 && o.Command[0] == DefaultShell {
+		termsh := fmt.Sprintf("TERM=%q %s", util.Env("TERM", "xterm"), DefaultShell)
+		o.Command = append(o.Command, "-c", termsh)
+	}
 	return o.ExecOptions.Run()
 }

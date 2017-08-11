@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Deployment
 
 ## Abstract
@@ -227,13 +222,6 @@ Apart from the above, we want to add support for the following:
 
 - https://github.com/kubernetes/kubernetes/issues/1743 has most of the
   discussion that resulted in this proposal.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

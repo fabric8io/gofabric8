@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,11 +27,14 @@ import (
 )
 
 type fakeNetworkHost struct {
+	fakeNamespaceGetter
 	kubeClient clientset.Interface
+	Legacy     bool
+	Runtime    *containertest.FakeRuntime
 }
 
 func NewFakeHost(kubeClient clientset.Interface) *fakeNetworkHost {
-	host := &fakeNetworkHost{kubeClient: kubeClient}
+	host := &fakeNetworkHost{kubeClient: kubeClient, Legacy: true, Runtime: &containertest.FakeRuntime{}}
 	return host
 }
 
@@ -44,5 +47,17 @@ func (fnh *fakeNetworkHost) GetKubeClient() clientset.Interface {
 }
 
 func (nh *fakeNetworkHost) GetRuntime() kubecontainer.Runtime {
-	return &containertest.FakeRuntime{}
+	return nh.Runtime
+}
+
+func (nh *fakeNetworkHost) SupportsLegacyFeatures() bool {
+	return nh.Legacy
+}
+
+type fakeNamespaceGetter struct {
+	ns string
+}
+
+func (nh *fakeNamespaceGetter) GetNetNS(containerID string) (string, error) {
+	return nh.ns, nil
 }

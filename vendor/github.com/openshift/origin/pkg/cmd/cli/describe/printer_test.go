@@ -18,8 +18,10 @@ import (
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	imageapi "github.com/openshift/origin/pkg/image/api"
+	oauthapi "github.com/openshift/origin/pkg/oauth/api"
 	projectapi "github.com/openshift/origin/pkg/project/api"
 	securityapi "github.com/openshift/origin/pkg/security/api"
+	templateapi "github.com/openshift/origin/pkg/template/api"
 )
 
 // PrinterCoverageExceptions is the list of API types that do NOT have corresponding printers
@@ -30,6 +32,7 @@ var PrinterCoverageExceptions = []reflect.Type{
 	reflect.TypeOf(&imageapi.ImageStreamImport{}),     // normal users don't ever look at these
 	reflect.TypeOf(&buildapi.BuildLog{}),              // just a marker type
 	reflect.TypeOf(&buildapi.BuildLogOptions{}),       // just a marker type
+	reflect.TypeOf(&deployapi.DeploymentRequest{}),    // normal users don't ever look at these
 	reflect.TypeOf(&deployapi.DeploymentLog{}),        // just a marker type
 	reflect.TypeOf(&deployapi.DeploymentLogOptions{}), // just a marker type
 
@@ -42,6 +45,7 @@ var PrinterCoverageExceptions = []reflect.Type{
 	reflect.TypeOf(&authorizationapi.LocalSubjectAccessReview{}),
 	reflect.TypeOf(&authorizationapi.LocalResourceAccessReview{}),
 	reflect.TypeOf(&authorizationapi.SelfSubjectRulesReview{}),
+	reflect.TypeOf(&authorizationapi.SubjectRulesReview{}),
 	reflect.TypeOf(&buildapi.BuildLog{}),
 	reflect.TypeOf(&buildapi.BinaryBuildRequestOptions{}),
 	reflect.TypeOf(&buildapi.BuildRequest{}),
@@ -49,6 +53,7 @@ var PrinterCoverageExceptions = []reflect.Type{
 	reflect.TypeOf(&securityapi.PodSecurityPolicySubjectReview{}),
 	reflect.TypeOf(&securityapi.PodSecurityPolicySelfSubjectReview{}),
 	reflect.TypeOf(&securityapi.PodSecurityPolicyReview{}),
+	reflect.TypeOf(&oauthapi.OAuthRedirectReference{}),
 }
 
 // MissingPrinterCoverageExceptions is the list of types that were missing printer methods when I started
@@ -61,7 +66,7 @@ var MissingPrinterCoverageExceptions = []reflect.Type{
 }
 
 func TestPrinterCoverage(t *testing.T) {
-	printer := NewHumanReadablePrinter(nil)
+	printer := NewHumanReadablePrinter(kctl.PrintOptions{})
 
 main:
 	for _, apiType := range kapi.Scheme.KnownTypes(api.SchemeGroupVersion) {
@@ -254,5 +259,92 @@ func mockStreams() []*imageapi.ImageStream {
 				},
 			},
 		},
+	}
+}
+
+func TestPrintTemplate(t *testing.T) {
+	tests := []struct {
+		template templateapi.Template
+		want     string
+	}{
+		{
+			templateapi.Template{
+				ObjectMeta: kapi.ObjectMeta{
+					Name: "name",
+					Annotations: map[string]string{
+						"description": "description",
+					},
+				},
+				Parameters: []templateapi.Parameter{{}},
+				Objects:    []runtime.Object{&kapi.Pod{}},
+			},
+			"name\tdescription\t1 (1 blank)\t1\n",
+		},
+		{
+			templateapi.Template{
+				ObjectMeta: kapi.ObjectMeta{
+					Name: "long",
+					Annotations: map[string]string{
+						"description": "the long description of this template is way way way way way way way way way way way way way too long",
+					},
+				},
+				Parameters: []templateapi.Parameter{},
+				Objects:    []runtime.Object{},
+			},
+			"long\tthe long description of this template is way way way way way way way way way...\t0 (all set)\t0\n",
+		},
+		{
+			templateapi.Template{
+				ObjectMeta: kapi.ObjectMeta{
+					Name: "multiline",
+					Annotations: map[string]string{
+						"description": "Once upon a time\nthere was a template\nwith multiple\nlines\n",
+					},
+				},
+				Parameters: []templateapi.Parameter{},
+				Objects:    []runtime.Object{},
+			},
+			"multiline\tOnce upon a time...\t0 (all set)\t0\n",
+		},
+		{
+			templateapi.Template{
+				ObjectMeta: kapi.ObjectMeta{
+					Name: "trailingnewline",
+					Annotations: map[string]string{
+						"description": "Next line please\n",
+					},
+				},
+				Parameters: []templateapi.Parameter{},
+				Objects:    []runtime.Object{},
+			},
+			"trailingnewline\tNext line please...\t0 (all set)\t0\n",
+		},
+		{
+			templateapi.Template{
+				ObjectMeta: kapi.ObjectMeta{
+					Name: "longmultiline",
+					Annotations: map[string]string{
+						"description": "12345678901234567890123456789012345678901234567890123456789012345678901234567890123\n0",
+					},
+				},
+				Parameters: []templateapi.Parameter{},
+				Objects:    []runtime.Object{},
+			},
+			"longmultiline\t12345678901234567890123456789012345678901234567890123456789012345678901234567...\t0 (all set)\t0\n",
+		},
+	}
+
+	for i, test := range tests {
+		buf := bytes.NewBuffer([]byte{})
+		err := printTemplate(&test.template, buf, kctl.PrintOptions{})
+		if err != nil {
+			t.Errorf("[%d] unexpected error: %v", i, err)
+			continue
+		}
+		got := buf.String()
+		if got != test.want {
+			t.Errorf("[%d] expected %q, got %q", i, test.want, got)
+			continue
+		}
 	}
 }

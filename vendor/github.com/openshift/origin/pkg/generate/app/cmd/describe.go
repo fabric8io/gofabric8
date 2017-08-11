@@ -9,20 +9,16 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	oapi "github.com/openshift/origin/pkg/api"
 	"github.com/openshift/origin/pkg/cmd/cli/describe"
+	"github.com/openshift/origin/pkg/generate"
 	"github.com/openshift/origin/pkg/generate/app"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
-// These constants represent common annotations keys
-const (
-	// OpenShiftDisplayName is a common, optional annotation that stores the name displayed by a UI when referencing a resource.
-	OpenShiftDisplayName = "openshift.io/display-name"
-)
-
 func displayName(meta kapi.ObjectMeta) string {
 	// If an object has a display name, prefer it over the meta name.
-	displayName := meta.Annotations[OpenShiftDisplayName]
+	displayName := meta.Annotations[oapi.OpenShiftDisplayName]
 	if len(displayName) > 0 {
 		return displayName
 	}
@@ -30,10 +26,10 @@ func displayName(meta kapi.ObjectMeta) string {
 }
 
 func localOrRemoteName(meta kapi.ObjectMeta, namespace string) string {
-	if len(meta.Namespace) == 0 || namespace == meta.Namespace {
+	if len(meta.Namespace) == 0 {
 		return meta.Name
 	}
-	return fmt.Sprintf("%q in project %q", meta.Name, meta.Namespace)
+	return meta.Namespace + "/" + meta.Name
 }
 
 func extractFirstImageStreamTag(newOnly bool, images ...*app.ImageRef) string {
@@ -65,9 +61,9 @@ func describeLocatedImage(refInput *app.ComponentInput, baseNamespace string) st
 			if !image.Created.IsZero() {
 				shortID = fmt.Sprintf("%s (%s old)", shortID, describe.FormatRelativeTime(image.Created.Time))
 			}
-			return fmt.Sprintf("Found image %s in image stream %s under tag %q for %q", shortID, localOrRemoteName(match.ImageStream.ObjectMeta, baseNamespace), match.ImageTag, refInput)
+			return fmt.Sprintf("Found image %s in image stream %q under tag %q for %q", shortID, localOrRemoteName(match.ImageStream.ObjectMeta, baseNamespace), match.ImageTag, refInput)
 		}
-		return fmt.Sprintf("Found tag :%s in image stream %s for %q", match.ImageTag, localOrRemoteName(match.ImageStream.ObjectMeta, baseNamespace), refInput)
+		return fmt.Sprintf("Found tag :%s in image stream %q for %q", match.ImageTag, localOrRemoteName(match.ImageStream.ObjectMeta, baseNamespace), refInput)
 	case match.Image != nil:
 		image := match.Image
 		shortID := imageapi.ShortDockerImageID(image, 7)
@@ -148,15 +144,9 @@ func describeBuildPipelineWithImage(out io.Writer, ref app.ComponentReference, p
 				}
 				matches = append(matches, t.Platform)
 			}
-			if len(matches) > 0 && !pipeline.Build.Strategy.IsDockerBuild {
+			if len(matches) > 0 && pipeline.Build.Strategy.Strategy == generate.StrategySource {
 				fmt.Fprintf(out, "    * The source repository appears to match: %s\n", strings.Join(matches, ", "))
 			}
-		}
-		var strategy string
-		if pipeline.Build.Strategy.IsDockerBuild {
-			strategy = "Docker"
-		} else {
-			strategy = "source"
 		}
 		noSource := false
 		var source string
@@ -175,7 +165,7 @@ func describeBuildPipelineWithImage(out io.Writer, ref app.ComponentReference, p
 			source = "<unknown>"
 		}
 
-		fmt.Fprintf(out, "    * A %s build using %s will be created\n", strategy, source)
+		fmt.Fprintf(out, "    * A %s build using %s will be created\n", pipeline.Build.Strategy.Strategy, source)
 		if buildOut, err := pipeline.Build.Output.BuildOutput(); err == nil && buildOut != nil && buildOut.To != nil {
 			switch to := buildOut.To; {
 			case to.Kind == "ImageStreamTag":
@@ -189,8 +179,7 @@ func describeBuildPipelineWithImage(out io.Writer, ref app.ComponentReference, p
 
 		if noSource {
 			// if we have no source, the user must always provide the source from the local dir(binary build)
-			fmt.Fprintf(out, "      * Use 'start-build --from-dir=DIR|--from-repo=DIR|--from-file=FILE' to trigger a new build\n")
-			fmt.Fprintf(out, "      * WARNING: a binary build was created, you must specify one of --from-dir|--from-file|--from-repo when starting builds\n")
+			fmt.Fprintf(out, "      * A binary build was created, use 'start-build --from-dir' to trigger a new build\n")
 		} else {
 			if len(trackedImage) > 0 {
 				// if we have a trackedImage/ICT and we have source, the build will be triggered automatically.
@@ -199,6 +188,11 @@ func describeBuildPipelineWithImage(out io.Writer, ref app.ComponentReference, p
 				// if we have source (but not a tracked image), the user must manually trigger a build.
 				fmt.Fprintf(out, "      * Use 'start-build' to trigger a new build\n")
 			}
+		}
+
+		if pipeline.Build.Source.RequiresAuth {
+			fmt.Fprintf(out, "      * WARNING: this source repository may require credentials.\n"+
+				"                 Create a secret with your git credentials and use 'set build-secret' to assign it to the build config.\n")
 		}
 	}
 	if pipeline.Deployment != nil {
@@ -274,10 +268,10 @@ func describeGeneratedJob(out io.Writer, ref app.ComponentReference, pod *kapi.P
 		fmt.Fprintf(out, "    * %s\n", locatedImage)
 	}
 
-	fmt.Fprintf(out, "    * Install will run in pod %s\n", localOrRemoteName(pod.ObjectMeta, baseNamespace))
+	fmt.Fprintf(out, "    * Install will run in pod %q\n", localOrRemoteName(pod.ObjectMeta, baseNamespace))
 	switch {
 	case secret != nil:
-		fmt.Fprintf(out, "    * The pod has access to your current session token through the secret %s.\n", localOrRemoteName(secret.ObjectMeta, baseNamespace))
+		fmt.Fprintf(out, "    * The pod has access to your current session token through the secret %q.\n", localOrRemoteName(secret.ObjectMeta, baseNamespace))
 		fmt.Fprintf(out, "      If you cancel the install, you should delete the secret or log out of your session.\n")
 	case hasToken && generatorInput.Token.Env != nil:
 		fmt.Fprintf(out, "    * The pod has access to your current session token via environment variable %s.\n", *generatorInput.Token.Env)

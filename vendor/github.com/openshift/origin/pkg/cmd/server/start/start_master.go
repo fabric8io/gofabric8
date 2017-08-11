@@ -17,10 +17,15 @@ import (
 
 	cmapp "k8s.io/kubernetes/cmd/kube-controller-manager/app/options"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/apimachinery/registered"
+	"k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/apis/autoscaling"
+	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/apis/policy"
 	"k8s.io/kubernetes/pkg/capabilities"
 	"k8s.io/kubernetes/pkg/client/typed/dynamic"
-	clientadapter "k8s.io/kubernetes/pkg/client/unversioned/adapters/internalclientset"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	kubelettypes "k8s.io/kubernetes/pkg/kubelet/types"
 	utilwait "k8s.io/kubernetes/pkg/util/wait"
@@ -30,10 +35,12 @@ import (
 	configapilatest "github.com/openshift/origin/pkg/cmd/server/api/latest"
 	"github.com/openshift/origin/pkg/cmd/server/api/validation"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	"github.com/openshift/origin/pkg/cmd/server/crypto"
 	"github.com/openshift/origin/pkg/cmd/server/etcd"
 	"github.com/openshift/origin/pkg/cmd/server/etcd/etcdserver"
 	"github.com/openshift/origin/pkg/cmd/server/kubernetes"
 	"github.com/openshift/origin/pkg/cmd/server/origin"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/pluginconfig"
 	override "github.com/openshift/origin/pkg/quota/admission/clusterresourceoverride"
@@ -45,38 +52,41 @@ type MasterOptions struct {
 	MasterArgs *MasterArgs
 
 	CreateCertificates bool
+	ExpireDays         int
+	SignerExpireDays   int
 	ConfigFile         string
 	Output             io.Writer
 	DisabledFeatures   []string
 }
 
-func (o *MasterOptions) DefaultsFromName(basename string) {
-	if cmdutil.GetProductName(basename) == cmdutil.ProductAtomicEnterprise {
-		o.DisabledFeatures = configapi.AtomicDisabledFeatures
-	}
-}
+func (o *MasterOptions) DefaultsFromName(basename string) {}
 
-const masterLong = `Start a master server
+var masterLong = templates.LongDesc(`
+	Start a master server
 
-This command helps you launch a master server.  Running
+	This command helps you launch a master server.  Running
 
-  %[1]s start master
+	    %[1]s start master
 
-will start a master listening on all interfaces, launch an etcd server to store
-persistent data, and launch the Kubernetes system components. The server will run in the
-foreground until you terminate the process.
+	will start a master listening on all interfaces, launch an etcd server to store
+	persistent data, and launch the Kubernetes system components. The server will run in the
+	foreground until you terminate the process.
 
-Note: starting the master without passing the --master address will attempt to find the IP
-address that will be visible inside running Docker containers. This is not always successful,
-so if you have problems tell the master what public address it should use via --master=<ip>.
+	Note: starting the master without passing the --master address will attempt to find the IP
+	address that will be visible inside running Docker containers. This is not always successful,
+	so if you have problems tell the master what public address it should use via --master=<ip>.
 
-You may also pass --etcd=<address> to connect to an external etcd server.
+	You may also pass --etcd=<address> to connect to an external etcd server.
 
-You may also pass --kubeconfig=<path> to connect to an external Kubernetes cluster.`
+	You may also pass --kubeconfig=<path> to connect to an external Kubernetes cluster.`)
 
 // NewCommandStartMaster provides a CLI handler for 'start master' command
-func NewCommandStartMaster(basename string, out io.Writer) (*cobra.Command, *MasterOptions) {
-	options := &MasterOptions{Output: out}
+func NewCommandStartMaster(basename string, out, errout io.Writer) (*cobra.Command, *MasterOptions) {
+	options := &MasterOptions{
+		ExpireDays:       crypto.DefaultCertificateLifetimeInDays,
+		SignerExpireDays: crypto.DefaultCACertificateLifetimeInDays,
+		Output:           out,
+	}
 	options.DefaultsFromName(basename)
 
 	cmd := &cobra.Command{
@@ -92,9 +102,9 @@ func NewCommandStartMaster(basename string, out io.Writer) (*cobra.Command, *Mas
 			if err := options.StartMaster(); err != nil {
 				if kerrors.IsInvalid(err) {
 					if details := err.(*kerrors.StatusError).ErrStatus.Details; details != nil {
-						fmt.Fprintf(c.OutOrStderr(), "Invalid %s %s\n", details.Kind, details.Name)
+						fmt.Fprintf(errout, "Invalid %s %s\n", details.Kind, details.Name)
 						for _, cause := range details.Causes {
-							fmt.Fprintf(c.OutOrStderr(), "  %s: %s\n", cause.Field, cause.Message)
+							fmt.Fprintf(errout, "  %s: %s\n", cause.Field, cause.Message)
 						}
 						os.Exit(255)
 					}
@@ -122,6 +132,8 @@ func NewCommandStartMaster(basename string, out io.Writer) (*cobra.Command, *Mas
 	flags.Var(options.MasterArgs.ConfigDir, "write-config", "Directory to write an initial config into.  After writing, exit without starting the server.")
 	flags.StringVar(&options.ConfigFile, "config", "", "Location of the master configuration file to run from. When running from a configuration file, all other command-line arguments are ignored.")
 	flags.BoolVar(&options.CreateCertificates, "create-certs", true, "Indicates whether missing certs should be created")
+	flags.IntVar(&options.ExpireDays, "expire-days", options.ExpireDays, "Validity of the certificates in days (defaults to 2 years). WARNING: extending this above default value is highly discouraged.")
+	flags.IntVar(&options.SignerExpireDays, "signer-expire-days", options.SignerExpireDays, "Validity of the CA certificate in days (defaults to 5 years). WARNING: extending this above default value is highly discouraged.")
 
 	BindMasterArgs(options.MasterArgs, flags, "")
 	BindListenArg(options.MasterArgs.ListenArg, flags, "")
@@ -133,8 +145,8 @@ func NewCommandStartMaster(basename string, out io.Writer) (*cobra.Command, *Mas
 	cmd.MarkFlagFilename("write-config")
 	cmd.MarkFlagFilename("config", "yaml", "yml")
 
-	startControllers, _ := NewCommandStartMasterControllers("controllers", basename, out)
-	startAPI, _ := NewCommandStartMasterAPI("api", basename, out)
+	startControllers, _ := NewCommandStartMasterControllers("controllers", basename, out, errout)
+	startAPI, _ := NewCommandStartMasterAPI("api", basename, out, errout)
 	cmd.AddCommand(startAPI)
 	cmd.AddCommand(startControllers)
 
@@ -161,6 +173,13 @@ func (o MasterOptions) Validate(args []string) error {
 			return err
 		}
 
+	}
+
+	if o.ExpireDays < 0 {
+		return errors.New("expire-days must be valid number of days")
+	}
+	if o.SignerExpireDays < 0 {
+		return errors.New("signer-expire-days must be valid number of days")
 	}
 
 	return nil
@@ -315,6 +334,8 @@ func (o MasterOptions) CreateCerts() error {
 	mintAllCertsOptions := admin.CreateMasterCertsOptions{
 		CertDir:            o.MasterArgs.ConfigDir.Value(),
 		SignerName:         signerName,
+		ExpireDays:         o.ExpireDays,
+		SignerExpireDays:   o.SignerExpireDays,
 		Hostnames:          hostnames.List(),
 		APIServerURL:       masterAddr.String(),
 		APIServerCAFiles:   o.MasterArgs.APIServerCAFiles,
@@ -336,7 +357,7 @@ func BuildKubernetesMasterConfig(openshiftConfig *origin.MasterConfig) (*kuberne
 	if openshiftConfig.Options.KubernetesMasterConfig == nil {
 		return nil, nil
 	}
-	kubeConfig, err := kubernetes.BuildKubernetesMasterConfig(openshiftConfig.Options, openshiftConfig.RequestContextMapper, openshiftConfig.KubeClient(), openshiftConfig.Informers, openshiftConfig.KubeAdmissionControl, openshiftConfig.Authenticator)
+	kubeConfig, err := kubernetes.BuildKubernetesMasterConfig(openshiftConfig.Options, openshiftConfig.RequestContextMapper, openshiftConfig.KubeClientset(), openshiftConfig.Informers, openshiftConfig.KubeAdmissionControl, openshiftConfig.Authenticator)
 	return kubeConfig, err
 }
 
@@ -387,7 +408,7 @@ func (m *Master) Start() error {
 	switch {
 	case m.api:
 		glog.Infof("Starting master on %s (%s)", m.config.ServingInfo.BindAddress, version.Get().String())
-		glog.Infof("Public master address is %s", m.config.AssetConfig.MasterPublicURL)
+		glog.Infof("Public master address is %s", m.config.MasterPublicURL)
 		if len(m.config.DisabledFeatures) > 0 {
 			glog.V(4).Infof("Disabled features: %s", strings.Join(m.config.DisabledFeatures, ", "))
 		}
@@ -416,20 +437,20 @@ func (m *Master) Start() error {
 				glog.Fatal(err)
 			}
 
+			openshiftConfig.Informers.KubernetesInformers().Start(utilwait.NeverStop)
 			openshiftConfig.Informers.Start(utilwait.NeverStop)
 			openshiftConfig.Informers.StartCore(utilwait.NeverStop)
 		}()
 	} else {
+		openshiftConfig.Informers.KubernetesInformers().Start(utilwait.NeverStop)
 		openshiftConfig.Informers.Start(utilwait.NeverStop)
-
 	}
 
 	return nil
 }
 
 func startHealth(openshiftConfig *origin.MasterConfig) error {
-	openshiftConfig.RunHealth()
-	return nil
+	return openshiftConfig.RunHealth()
 }
 
 // StartAPI starts the components of the master that are considered part of the API - the Kubernetes
@@ -443,10 +464,8 @@ func StartAPI(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) error {
 	}
 
 	// verify we can connect to etcd with the provided config
-	if etcdClient, err := etcd.GetAndTestEtcdClient(oc.Options.EtcdClientInfo); err != nil {
+	if _, err := etcd.GetAndTestEtcdClient(oc.Options.EtcdClientInfo); err != nil {
 		return err
-	} else {
-		etcdClient.Close()
 	}
 
 	// Must start policy caching immediately
@@ -455,47 +474,26 @@ func StartAPI(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) error {
 	oc.RunGroupCache()
 	oc.RunProjectCache()
 
-	unprotectedInstallers := []origin.APIInstaller{}
-
-	if oc.Options.OAuthConfig != nil {
-		authConfig, err := origin.BuildAuthConfig(oc)
+	var standaloneAssetConfig, embeddedAssetConfig *origin.AssetConfig
+	if oc.WebConsoleEnabled() {
+		overrideConfig, err := getResourceOverrideConfig(oc)
 		if err != nil {
 			return err
 		}
-		unprotectedInstallers = append(unprotectedInstallers, authConfig)
-	}
-
-	var standaloneAssetConfig *origin.AssetConfig
-	if oc.WebConsoleEnabled() {
-		var overrideConfig *overrideapi.ClusterResourceOverrideConfig = nil
-		if oc.Options.KubernetesMasterConfig != nil { // external kube gets you a nil pointer here
-			if overridePluginConfigFile, err := pluginconfig.GetPluginConfigFile(oc.Options.KubernetesMasterConfig.AdmissionConfig.PluginConfig, overrideapi.PluginName, ""); err != nil {
-				return err
-			} else if overridePluginConfigFile != "" {
-				configFile, err := os.Open(overridePluginConfigFile)
-				if err != nil {
-					return err
-				}
-				if overrideConfig, err = override.ReadConfig(configFile); err != nil {
-					return err
-				}
-			}
-		}
-
 		config, err := origin.NewAssetConfig(*oc.Options.AssetConfig, overrideConfig)
 		if err != nil {
 			return err
 		}
 
 		if oc.Options.AssetConfig.ServingInfo.BindAddress == oc.Options.ServingInfo.BindAddress {
-			unprotectedInstallers = append(unprotectedInstallers, config)
+			embeddedAssetConfig = config
 		} else {
 			standaloneAssetConfig = config
 		}
 	}
 
 	if kc != nil {
-		oc.Run([]origin.APIInstaller{kc}, unprotectedInstallers)
+		oc.Run(kc, embeddedAssetConfig)
 	} else {
 		_, kubeClientConfig, err := configapi.GetKubeClient(oc.Options.MasterClients.ExternalKubernetesKubeConfig, oc.Options.MasterClients.ExternalKubernetesClientConnectionOverrides)
 		if err != nil {
@@ -504,10 +502,11 @@ func StartAPI(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) error {
 		proxy := &kubernetes.ProxyConfig{
 			ClientConfig: kubeClientConfig,
 		}
-		oc.Run([]origin.APIInstaller{proxy}, unprotectedInstallers)
+		oc.RunInProxyMode(proxy, embeddedAssetConfig)
 	}
 
 	// start up the informers that we're trying to use in the API server
+	oc.Informers.KubernetesInformers().Start(utilwait.NeverStop)
 	oc.Informers.Start(utilwait.NeverStop)
 	oc.InitializeObjects()
 
@@ -521,6 +520,45 @@ func StartAPI(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) error {
 
 	oc.RunProjectAuthorizationCache()
 	return nil
+}
+
+// getResourceOverrideConfig looks in two potential places where ClusterResourceOverrideConfig can be specified
+func getResourceOverrideConfig(oc *origin.MasterConfig) (*overrideapi.ClusterResourceOverrideConfig, error) {
+	overrideConfig, err := checkForOverrideConfig(oc.Options.AdmissionConfig)
+	if err != nil {
+		return nil, err
+	}
+	if overrideConfig != nil {
+		return overrideConfig, nil
+	}
+	if oc.Options.KubernetesMasterConfig == nil { // external kube gets you a nil pointer here
+		return nil, nil
+	}
+	overrideConfig, err = checkForOverrideConfig(oc.Options.KubernetesMasterConfig.AdmissionConfig)
+	if err != nil {
+		return nil, err
+	}
+	return overrideConfig, nil
+}
+
+// checkForOverrideConfig looks for ClusterResourceOverrideConfig plugin cfg in the admission PluginConfig
+func checkForOverrideConfig(ac configapi.AdmissionConfig) (*overrideapi.ClusterResourceOverrideConfig, error) {
+	overridePluginConfigFile, err := pluginconfig.GetPluginConfigFile(ac.PluginConfig, overrideapi.PluginName, "")
+	if err != nil {
+		return nil, err
+	}
+	if overridePluginConfigFile == "" {
+		return nil, nil
+	}
+	configFile, err := os.Open(overridePluginConfigFile)
+	if err != nil {
+		return nil, err
+	}
+	overrideConfig, err := override.ReadConfig(configFile)
+	if err != nil {
+		return nil, err
+	}
+	return overrideConfig, nil
 }
 
 // startControllers launches the controllers
@@ -569,10 +607,16 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 		if err != nil {
 			glog.Fatalf("Could not get client for deployment controller: %v", err)
 		}
-		_, _, jobClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraJobControllerServiceAccountName)
+
+		// TODO there has to be a better way to do this!
+		// Make a copy of the client config because we need to modify it
+		jobClientConfig := oc.PrivilegedLoopbackClientConfig
+		jobClientConfig.ContentConfig.GroupVersion = &unversioned.GroupVersion{Group: "batch", Version: "v2alpha1"}
+		_, _, jobClient, err := oc.GetServiceAccountClientsWithConfig(bootstrappolicy.InfraJobControllerServiceAccountName, jobClientConfig)
 		if err != nil {
 			glog.Fatalf("Could not get client for job controller: %v", err)
 		}
+
 		_, hpaOClient, hpaKClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraHPAControllerServiceAccountName)
 		if err != nil {
 			glog.Fatalf("Could not get client for HPA controller: %v", err)
@@ -593,6 +637,11 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 			glog.Fatalf("Could not get client for daemonset controller: %v", err)
 		}
 
+		_, _, disruptionClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraDisruptionControllerServiceAccountName)
+		if err != nil {
+			glog.Fatalf("Could not get client for disruption budget controller: %v", err)
+		}
+
 		_, _, gcClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraGCControllerServiceAccountName)
 		if err != nil {
 			glog.Fatalf("Could not get client for pod gc controller: %v", err)
@@ -603,17 +652,23 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 			glog.Fatalf("Could not get client for pod gc controller: %v", err)
 		}
 
-		_, _, petSetClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraPetSetControllerServiceAccountName)
+		_, _, statefulSetClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraStatefulSetControllerServiceAccountName)
 		if err != nil {
 			glog.Fatalf("Could not get client for pet set controller: %v", err)
+		}
+
+		_, _, certificateSigningClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraCertificateSigningControllerServiceAccountName)
+		if err != nil {
+			glog.Fatalf("Could not get client for disruption budget controller: %v", err)
 		}
 
 		namespaceControllerClientConfig, _, namespaceControllerKubeClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraNamespaceControllerServiceAccountName)
 		if err != nil {
 			glog.Fatalf("Could not get client for namespace controller: %v", err)
 		}
-		namespaceControllerClientSet := clientadapter.FromUnversionedClient(namespaceControllerKubeClient)
-		namespaceControllerClientPool := dynamic.NewClientPool(namespaceControllerClientConfig, dynamic.LegacyAPIPathResolverFunc)
+		// TODO: should use a dynamic RESTMapper built from the discovery results.
+		restMapper := registered.RESTMapper()
+		namespaceControllerClientPool := dynamic.NewClientPool(namespaceControllerClientConfig, restMapper, dynamic.LegacyAPIPathResolverFunc)
 
 		_, _, endpointControllerClient, err := oc.GetServiceAccountClients(bootstrappolicy.InfraEndpointControllerServiceAccountName)
 		if err != nil {
@@ -629,35 +684,52 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 
 		extensionsEnabled := len(configapi.GetEnabledAPIVersionsForGroup(kc.Options, extensions.GroupName)) > 0
 
-		// TODO: enable this check once the job controller can use the batch API if the extensions API is disabled
-		// batchEnabled := len(configapi.GetEnabledAPIVersionsForGroup(kc.Options, batch.GroupName)) > 0
-		if extensionsEnabled /*|| batchEnabled*/ {
+		batchEnabled := len(configapi.GetEnabledAPIVersionsForGroup(kc.Options, batch.GroupName)) > 0
+		if extensionsEnabled || batchEnabled {
 			kc.RunJobController(jobClient)
 		}
+		if batchEnabled {
+			kc.RunCronJobController(jobClient)
+		}
 		// TODO: enable this check once the HPA controller can use the autoscaling API if the extensions API is disabled
-		// autoscalingEnabled := len(configapi.GetEnabledAPIVersionsForGroup(kc.Options, autoscaling.GroupName)) > 0
-		if extensionsEnabled /*|| autoscalingEnabled*/ {
+		autoscalingEnabled := len(configapi.GetEnabledAPIVersionsForGroup(kc.Options, autoscaling.GroupName)) > 0
+		if extensionsEnabled || autoscalingEnabled {
 			kc.RunHPAController(hpaOClient, hpaKClient, oc.Options.PolicyConfig.OpenShiftInfrastructureNamespace)
 		}
 		if extensionsEnabled {
 			kc.RunDaemonSetsController(daemonSetClient)
 		}
 
+		policyEnabled := len(configapi.GetEnabledAPIVersionsForGroup(kc.Options, policy.GroupName)) > 0
+		if policyEnabled {
+			kc.RunDisruptionBudgetController(disruptionClient)
+		}
+
 		kc.RunEndpointController(endpointControllerClient)
-		kc.RunNamespaceController(namespaceControllerClientSet, namespaceControllerClientPool)
+		kc.RunNamespaceController(namespaceControllerKubeClient, namespaceControllerClientPool)
 		kc.RunPersistentVolumeController(binderClient, oc.Options.PolicyConfig.OpenShiftInfrastructureNamespace, oc.ImageFor("recycler"), bootstrappolicy.InfraPersistentVolumeRecyclerControllerServiceAccountName)
 		kc.RunPersistentVolumeAttachDetachController(attachDetachControllerClient)
 		kc.RunGCController(gcClient)
 
 		kc.RunServiceLoadBalancerController(serviceLoadBalancerClient)
-		kc.RunPetSetController(petSetClient)
+
+		kc.RunCertificateSigningController(certificateSigningClient)
+
+		appsEnabled := len(configapi.GetEnabledAPIVersionsForGroup(kc.Options, apps.GroupName)) > 0
+		if appsEnabled {
+			kc.RunStatefulSetController(statefulSetClient)
+		}
 
 		glog.Infof("Started Kubernetes Controllers")
 	}
 
 	// no special order
 	if configapi.IsBuildEnabled(&oc.Options) {
-		oc.RunBuildController(oc.Informers)
+		err := oc.RunBuildController(oc.Informers)
+		if err != nil {
+			glog.Fatalf("Could not start build controller: %v", err)
+			return err
+		}
 		oc.RunBuildPodController()
 		oc.RunBuildConfigChangeController()
 		oc.RunBuildImageChangeTriggerController()
@@ -665,7 +737,6 @@ func startControllers(oc *origin.MasterConfig, kc *kubernetes.MasterConfig) erro
 	oc.RunDeploymentController()
 	oc.RunDeploymentConfigController()
 	oc.RunDeploymentTriggerController()
-	oc.RunDeploymentImageChangeTriggerController()
 	oc.RunImageImportController()
 	oc.RunOriginNamespaceController()
 	oc.RunSDNController()

@@ -21,7 +21,7 @@ import (
 func TestImportNothing(t *testing.T) {
 	ctx := NewContext(http.DefaultTransport, http.DefaultTransport).WithCredentials(NoCredentials)
 	isi := &api.ImageStreamImport{}
-	i := NewImageStreamImporter(ctx, 5, nil)
+	i := NewImageStreamImporter(ctx, 5, nil, nil)
 	if err := i.Import(nil, isi); err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestImport(t *testing.T) {
 					Images: []api.ImageImportSpec{
 						{From: kapi.ObjectReference{Kind: "DockerImage", Name: "test"}},
 						{From: kapi.ObjectReference{Kind: "DockerImage", Name: "test@sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}},
-						{From: kapi.ObjectReference{Kind: "DockerImage", Name: "test/un/parse/able/image"}},
+						{From: kapi.ObjectReference{Kind: "DockerImage", Name: "test///un/parse/able/image"}},
 						{From: kapi.ObjectReference{Kind: "ImageStreamTag", Name: "test:other"}},
 					},
 				},
@@ -104,7 +104,7 @@ func TestImport(t *testing.T) {
 				if !expectStatusError(isi.Status.Images[1].Status, "Internal error occurred: no such digest") {
 					t.Errorf("unexpected status: %#v", isi.Status.Images[1].Status)
 				}
-				if !expectStatusError(isi.Status.Images[2].Status, " \"\" is invalid: from.name: Invalid value: \"test/un/parse/able/image\": invalid name: the docker pull spec \"test/un/parse/able/image\" must be two or three segments separated by slashes") {
+				if !expectStatusError(isi.Status.Images[2].Status, " \"\" is invalid: from.name: Invalid value: \"test///un/parse/able/image\": invalid name: invalid reference format") {
 					t.Errorf("unexpected status: %#v", isi.Status.Images[2].Status)
 				}
 				// non DockerImage refs are no-ops
@@ -239,13 +239,13 @@ func TestImport(t *testing.T) {
 				},
 			},
 			expect: func(isi *api.ImageStreamImport, t *testing.T) {
-				if !reflect.DeepEqual(isi.Status.Repository.AdditionalTags, []string{"other"}) {
+				if !reflect.DeepEqual(isi.Status.Repository.AdditionalTags, []string{"v2"}) {
 					t.Errorf("unexpected additional tags: %#v", isi.Status.Repository)
 				}
 				if len(isi.Status.Repository.Images) != 5 {
 					t.Errorf("unexpected number of images: %#v", isi.Status.Repository.Images)
 				}
-				expectedTags := []string{"3", "v2", "v1", "3.1", "abc"}
+				expectedTags := []string{"3.1", "3", "abc", "other", "v1"}
 				for i, image := range isi.Status.Repository.Images {
 					if image.Status.Status != unversioned.StatusFailure || image.Status.Message != "Internal error occurred: no such manifest tag" {
 						t.Errorf("unexpected status %d: %#v", i, isi.Status.Repository.Images)
@@ -258,7 +258,7 @@ func TestImport(t *testing.T) {
 		},
 	}
 	for i, test := range testCases {
-		im := NewImageStreamImporter(test.retriever, 5, nil)
+		im := NewImageStreamImporter(test.retriever, 5, nil, nil)
 		if err := im.Import(nil, &test.isi); err != nil {
 			t.Errorf("%d: %v", i, err)
 		}

@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 
-# Copyright 2015 The Kubernetes Authors All rights reserved.
+# Copyright 2015 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,4 +16,9 @@
 
 export ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-"http://localhost:9200"}
 echo ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
-/kibana-4.0.2-linux-x64/bin/kibana -e ${ELASTICSEARCH_URL}
+
+export KIBANA_BASE_URL=${KIBANA_BASE_URL:-"''"}
+echo "server.basePath: ${KIBANA_BASE_URL}"
+echo "server.basePath: ${KIBANA_BASE_URL}" >> /kibana/config/kibana.yml
+
+/kibana/bin/kibana -e ${ELASTICSEARCH_URL}

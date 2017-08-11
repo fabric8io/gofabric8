@@ -12,14 +12,23 @@ const (
 	// DefaultType is the default IP Failover type.
 	DefaultType = "keepalived"
 
-	// DefaultServicePort is the default service port.
-	DefaultServicePort = 1985
+	// DefaultServicePort is the port associated with the ipfailover config.
+	// Each ipfailover config has a different ServicePort.
+	DefaultServicePort = 63000
 
 	// DefaultWatchPort is the default IP Failover watched port number.
 	DefaultWatchPort = 80
 
 	// DefaultSelector is the default resource selector.
 	DefaultSelector = "ipfailover=<name>"
+
+	// DefaultCheckInterval is the default default interval in seconds
+	// between calls to the CheckScript
+	DefaultCheckInterval = 2
+
+	// DefaultIptablesChain is the default iptables chain on which to add
+	// a rule that accesses 224.0.0.18 (if none exists).
+	DefaultIptablesChain = "INPUT"
 
 	// DefaultInterface is the default network interface.
 	DefaultInterface = "eth0"
@@ -31,7 +40,6 @@ type IPFailoverConfigCmdOptions struct {
 
 	Type           string
 	ImageTemplate  variable.ImageTemplate
-	Credentials    string
 	ServicePort    int
 	Selector       string
 	Create         bool
@@ -39,6 +47,10 @@ type IPFailoverConfigCmdOptions struct {
 
 	//  Failover options.
 	VirtualIPs       string
+	IptablesChain    string
+	NotifyScript     string
+	CheckScript      string
+	CheckInterval    int
 	NetworkInterface string
 	WatchPort        int
 	VRRPIDOffset     int

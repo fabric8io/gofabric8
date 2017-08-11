@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ container: image
 
 image:
 	# Build new image and automatically tag it as latest
-	docker build -t $(PREFIX)/volume-rbd .
-	# Add the version tag to the latest image 
+	docker build --pull -t $(PREFIX)/volume-rbd .
+	# Add the version tag to the latest image
 	docker tag $(PREFIX)/volume-rbd $(PREFIX)/volume-rbd:$(TAG)
 
 block:
@@ -34,8 +34,8 @@ block:
 
 push: image
 	# Push image tagged as latest to repository
-	gcloud docker push $(PREFIX)/volume-rbd
+	gcloud docker -- push $(PREFIX)/volume-rbd
 	# Push version tagged image to repository (since this image is already pushed it will simply create or update version tag)
-	gcloud docker push $(PREFIX)/volume-rbd:$(TAG)
+	gcloud docker -- push $(PREFIX)/volume-rbd:$(TAG)
 
 clean:

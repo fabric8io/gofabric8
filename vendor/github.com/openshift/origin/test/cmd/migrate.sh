@@ -15,20 +15,20 @@ os::test::junit::declare_suite_start "cmd/migrate"
 os::cmd::expect_success 'oc login -u system:admin'
 
 os::test::junit::declare_suite_start "cmd/migrate/storage"
-os::cmd::expect_success_and_text     'oadm migrate storage' 'summary \(DRY RUN\)'
-os::cmd::expect_success_and_text     'oadm migrate storage --loglevel=2' 'migrated \(DRY RUN\): serviceaccounts/deployer'
-os::cmd::expect_success_and_not_text 'oadm migrate storage --loglevel=2 --include=pods' 'migrated \(DRY RUN\): serviceaccounts/deployer'
-os::cmd::expect_success_and_text     'oadm migrate storage --loglevel=2 --include=sa --from-key=default/ --to-key=default/\xFF' 'migrated \(DRY RUN\): serviceaccounts/deployer'
-os::cmd::expect_success_and_not_text 'oadm migrate storage --loglevel=2 --include=sa --from-key=default/ --to-key=default/deployer' 'migrated \(DRY RUN\): serviceaccounts/deployer'
+os::cmd::expect_success_and_text     'oadm migrate storage' 'summary \(dry run\)'
+os::cmd::expect_success_and_text     'oadm migrate storage --loglevel=2' 'migrated \(dry run\): serviceaccounts/deployer'
+os::cmd::expect_success_and_not_text 'oadm migrate storage --loglevel=2 --include=pods' 'migrated \(dry run\): serviceaccounts/deployer'
+os::cmd::expect_success_and_text     'oadm migrate storage --loglevel=2 --include=sa --from-key=default/ --to-key=default/\xFF' 'migrated \(dry run\): serviceaccounts/deployer'
+os::cmd::expect_success_and_not_text 'oadm migrate storage --loglevel=2 --include=sa --from-key=default/ --to-key=default/deployer' 'migrated \(dry run\): serviceaccounts/deployer'
 os::cmd::expect_success_and_text     'oadm migrate storage --loglevel=2 --confirm' 'unchanged:'
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_start "cmd/migrate/imagereferences"
 # create alternating items in history
 os::cmd::expect_success 'oc import-image --from=mysql:latest test:1 --confirm'
+os::cmd::expect_success 'oc import-image --from=php:latest test:2 --confirm'
 os::cmd::expect_success 'oc tag --source=docker php:latest test:1'
 os::cmd::expect_success 'oc tag --source=docker mysql:latest test:1'
-os::cmd::expect_success 'oc import-image --from=php:latest test:2 --confirm'
 os::cmd::expect_success 'oc tag --source=docker mysql:latest test:2'
 os::cmd::expect_success 'oc tag --source=docker php:latest test:2'
 os::cmd::expect_success 'oc tag --source=docker myregistry.com/php:latest test:3'
@@ -45,7 +45,7 @@ os::cmd::expect_failure_and_text     'oadm migrate image-references a/b=a/b --lo
 os::cmd::expect_failure_and_text     'oadm migrate image-references */*=*/* --loglevel=1' 'at least one change'
 # verify dry run
 os::cmd::expect_success_and_text     'oadm migrate image-references my.docker.io/*=docker.io/* --loglevel=1' 'migrated=0'
-os::cmd::expect_success_and_text     'oadm migrate image-references --include=imagestreams docker.io/*=my.docker.io/* --loglevel=1' 'migrated \(DRY RUN\): imagestreams/test -n '
+os::cmd::expect_success_and_text     'oadm migrate image-references --include=imagestreams docker.io/*=my.docker.io/* --loglevel=1' 'migrated \(dry run\): imagestreams/test -n '
 os::cmd::expect_success_and_text     'oadm migrate image-references --include=imagestreams docker.io/mysql=my.docker.io/* --all-namespaces=false --loglevel=1' 'migrated=1'
 os::cmd::expect_success_and_text     'oadm migrate image-references --include=imagestreams docker.io/mysql=my.docker.io/* --all-namespaces=false --loglevel=1 -o yaml' 'dockerImageReference: my.docker.io/mysql@sha256:'
 os::cmd::expect_success_and_text     'oadm migrate image-references --include=imagestreams docker.io/other=my.docker.io/* --all-namespaces=false --loglevel=1' 'migrated=0'

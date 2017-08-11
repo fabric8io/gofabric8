@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -68,9 +68,8 @@ func TestGenerateStorageVersionMap(t *testing.T) {
 	}
 	for i, test := range testCases {
 		s := options.ServerRunOptions{
-			DeprecatedStorageVersion: test.legacyVersion,
-			StorageVersions:          test.storageVersions,
-			DefaultStorageVersions:   test.defaultVersions,
+			StorageVersions:        test.storageVersions,
+			DefaultStorageVersions: test.defaultVersions,
 		}
 		output, err := s.StorageGroupsToEncodingVersion()
 		if err != nil {

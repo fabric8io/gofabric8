@@ -3,6 +3,18 @@ source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 trap os::test::junit::reconcile_output EXIT
 
 project="$( oc project -q )"
+if [[ "${project}" == "default" ]]; then
+  echo "Test must be run from a non-default namespace"
+  exit 1
+fi
+
+# Cleanup cluster resources created by this test
+(
+  set +e
+  oc delete oauthaccesstokens --all
+  oadm policy remove-cluster-role-from-user cluster-debugger user3
+  exit 0
+) &>/dev/null
 
 os::test::junit::declare_suite_start "cmd/authentication"
 
@@ -15,7 +27,7 @@ os::cmd::expect_success_and_text 'oc login -u user1'       'Logged into ".*" as 
 # Completing a login as the same user using existing credentials informs you
 os::cmd::expect_success_and_text 'oc login -u user1'       'Logged into ".*" as "user1" using existing credentials'
 # Return to the system:admin user
-os::cmd::expect_success 'oc login -u system:admin -n cmd-authentication'
+os::cmd::expect_success "oc login -u system:admin -n '${project}'"
 os::test::junit::declare_suite_end
 
 os::test::junit::declare_suite_start "cmd/authentication/scopedtokens"
@@ -30,6 +42,7 @@ os::cmd::expect_success_and_text "oc policy can-i --list -n '${project}' --as=sc
 
 whoamitoken="$(oc process -f "${OS_ROOT}/test/testdata/authentication/scoped-token-template.yaml" TOKEN_PREFIX=whoami SCOPE=user:info USER_NAME="${username}" USER_UID="${useruid}" | oc create -f - -o name | awk -F/ '{print $2}')"
 os::cmd::expect_success_and_text "oc get user/~ --token='${whoamitoken}'" "${username}"
+os::cmd::expect_success_and_text "oc whoami --token='${whoamitoken}'" "${username}"
 os::cmd::expect_failure_and_text "oc get pods --token='${whoamitoken}' -n '${project}'" "prevent this action; User \"scoped-user\" cannot list pods in project \"${project}\""
 
 listprojecttoken="$(oc process -f "${OS_ROOT}/test/testdata/authentication/scoped-token-template.yaml" TOKEN_PREFIX=listproject SCOPE=user:list-scoped-projects USER_NAME="${username}" USER_UID="${useruid}" | oc create -f - -o name | awk -F/ '{print $2}')"
@@ -51,6 +64,7 @@ allescalatingpowerstoken="$(oc process -f "${OS_ROOT}/test/testdata/authenticati
 os::cmd::expect_success_and_text "oc get user/~ --token='${allescalatingpowerstoken}'" "${username}"
 os::cmd::expect_success "oc get secrets --token='${allescalatingpowerstoken}' -n '${project}'"
 # scopes allow it, but authorization doesn't
+os::cmd::try_until_failure "oc get secrets --token='${allescalatingpowerstoken}' -n default"
 os::cmd::expect_failure_and_text "oc get secrets --token='${allescalatingpowerstoken}' -n default" 'cannot list secrets in project'
 os::cmd::expect_success_and_text "oc get projects --token='${allescalatingpowerstoken}'" "${project}"
 os::cmd::expect_success_and_text "oc policy can-i --list --token='${allescalatingpowerstoken}' -n '${project}'" 'get.*pods'
@@ -65,7 +79,23 @@ os::cmd::expect_success_and_text "oc policy can-i create pods --token='${accesst
 os::cmd::expect_success_and_text "oc policy can-i --list --token='${accesstoken}' -n '${project}' --scopes='role:admin:*'" 'get.*pods'
 os::cmd::expect_success_and_not_text "oc policy can-i --list --token='${accesstoken}' -n '${project}'" 'get.*pods'
 
-
 os::test::junit::declare_suite_end
+
+os::test::junit::declare_suite_start "cmd/authentication/debugging"
+os::cmd::expect_success_and_text 'oc login -u user3 -p pw' 'Login successful'
+os::cmd::expect_success 'oc login -u system:admin'
+os::cmd::expect_failure_and_text 'oc get --raw /debug/pprof/ --as=user3' 'Forbidden'
+os::cmd::expect_failure_and_text 'oc get --raw /metrics --as=user3' 'Forbidden'
+os::cmd::expect_success_and_text 'oc get --raw /healthz --as=user3' 'ok'
+os::cmd::expect_success 'oadm policy add-cluster-role-to-user cluster-debugger user3'
+os::cmd::try_until_text 'oc get --raw /debug/pprof/ --as=user3' 'full goroutine stack dump'
+os::cmd::expect_success_and_text 'oc get --raw /debug/pprof/ --as=user3' 'full goroutine stack dump'
+os::cmd::expect_success_and_text 'oc get --raw /metrics --as=user3' 'apiserver_request_latencies'
+os::cmd::expect_success_and_text 'oc get --raw /healthz --as=user3' 'ok'
+# TODO validate controller
+os::test::junit::declare_suite_end
+
+os::test::junit::declare_suite_start "cmd/authentication/scopedtokens"
+
 
 os::test::junit::declare_suite_end

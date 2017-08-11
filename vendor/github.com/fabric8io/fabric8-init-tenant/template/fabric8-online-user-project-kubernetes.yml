@@ -1,0 +1,29 @@
+---
+apiVersion: v1
+kind: Template
+metadata:
+  labels:
+    provider: fabric8
+    project: fabric8-online-team
+    version: 1.0.91
+    group: io.fabric8.online.packages
+  name: fabric8-online-team
+objects:
+- apiVersion: v1
+  kind: Namespace
+  metadata:
+    annotations:
+      openshift.io/description: ${PROJECT_DESCRIPTION}
+      openshift.io/display-name: ${PROJECT_DISPLAYNAME}
+      openshift.io/requester: ${PROJECT_REQUESTING_USER}
+    labels:
+      provider: fabric8
+      app: fabric8-online-team
+    name: ${PROJECT_NAME}
+parameters:
+- name: PROJECT_NAME
+  value: myproject
+- name: PROJECT_REQUESTING_USER
+  value: system:admin
+- name: PROJECT_DISPLAYNAME
+- name: PROJECT_DESCRIPTION    

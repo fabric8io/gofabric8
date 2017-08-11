@@ -8,6 +8,7 @@ import (
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/registry/generic"
 	"k8s.io/kubernetes/pkg/runtime"
+	kstorage "k8s.io/kubernetes/pkg/storage"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
@@ -32,7 +33,7 @@ func (imageStrategy) NamespaceScoped() bool {
 
 // PrepareForCreate clears fields that are not allowed to be set by end users on creation.
 // It extracts the latest information from the manifest (if available) and sets that onto the object.
-func (s imageStrategy) PrepareForCreate(obj runtime.Object) {
+func (s imageStrategy) PrepareForCreate(ctx kapi.Context, obj runtime.Object) {
 	newImage := obj.(*api.Image)
 	// ignore errors, change in place
 	if err := api.ImageWithMetadata(newImage); err != nil {
@@ -66,7 +67,7 @@ func (imageStrategy) Canonicalize(obj runtime.Object) {
 // It extracts the latest info from the manifest and sets that on the object. It allows a user
 // to update the manifest so that it matches the digest (in case an older server stored a manifest
 // that was malformed, it can always be corrected).
-func (s imageStrategy) PrepareForUpdate(obj, old runtime.Object) {
+func (s imageStrategy) PrepareForUpdate(ctx kapi.Context, obj, old runtime.Object) {
 	newImage := obj.(*api.Image)
 	oldImage := old.(*api.Image)
 
@@ -82,30 +83,36 @@ func (s imageStrategy) PrepareForUpdate(obj, old runtime.Object) {
 		}
 	}
 
+	var err error
+
 	// allow an image update that results in the manifest matching the digest (the name)
-	newManifest := newImage.DockerImageManifest
-	newImage.DockerImageManifest = oldImage.DockerImageManifest
-	if newManifest != oldImage.DockerImageManifest && len(newManifest) > 0 {
-		ok, err := api.ManifestMatchesImage(oldImage, []byte(newManifest))
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("attempted to validate that a manifest change to %q matched the signature, but failed: %v", oldImage.Name, err))
-		} else if ok {
-			newImage.DockerImageManifest = newManifest
+	if newImage.DockerImageManifest != oldImage.DockerImageManifest {
+		ok := true
+		if len(newImage.DockerImageManifest) > 0 {
+			ok, err = api.ManifestMatchesImage(oldImage, []byte(newImage.DockerImageManifest))
+			if err != nil {
+				utilruntime.HandleError(fmt.Errorf("attempted to validate that a manifest change to %q matched the signature, but failed: %v", oldImage.Name, err))
+			}
+		}
+		if !ok {
+			newImage.DockerImageManifest = oldImage.DockerImageManifest
 		}
 	}
 
-	newImageConfig := newImage.DockerImageConfig
-	newImage.DockerImageConfig = oldImage.DockerImageConfig
-	if newImageConfig != oldImage.DockerImageConfig && len(newImageConfig) > 0 {
-		ok, err := api.ImageConfigMatchesImage(newImage, []byte(newImageConfig))
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("attempted to validate that a new config for %q mentioned in the manifest, but failed: %v", oldImage.Name, err))
-		} else if ok {
-			newImage.DockerImageConfig = newImageConfig
+	if newImage.DockerImageConfig != oldImage.DockerImageConfig {
+		ok := true
+		if len(newImage.DockerImageConfig) > 0 {
+			ok, err = api.ImageConfigMatchesImage(newImage, []byte(newImage.DockerImageConfig))
+			if err != nil {
+				utilruntime.HandleError(fmt.Errorf("attempted to validate that a new config for %q mentioned in the manifest, but failed: %v", oldImage.Name, err))
+			}
+		}
+		if !ok {
+			newImage.DockerImageConfig = oldImage.DockerImageConfig
 		}
 	}
 
-	if err := api.ImageWithMetadata(newImage); err != nil {
+	if err = api.ImageWithMetadata(newImage); err != nil {
 		utilruntime.HandleError(fmt.Errorf("Unable to update image metadata for %q: %v", newImage.Name, err))
 	}
 
@@ -132,14 +139,22 @@ func (imageStrategy) clearSignatureDetails(image *api.Image) {
 	}
 }
 
-// MatchImage returns a generic matcher for a given label and field selector.
-func MatchImage(label labels.Selector, field fields.Selector) generic.Matcher {
-	return generic.MatcherFunc(func(obj runtime.Object) (bool, error) {
-		image, ok := obj.(*api.Image)
-		if !ok {
-			return false, fmt.Errorf("not an image")
-		}
-		fields := api.ImageToSelectableFields(image)
-		return label.Matches(labels.Set(image.Labels)) && field.Matches(fields), nil
-	})
+// Matcher returns a generic matcher for a given label and field selector.
+func Matcher(label labels.Selector, field fields.Selector) kstorage.SelectionPredicate {
+	return kstorage.SelectionPredicate{
+		Label: label,
+		Field: field,
+		GetAttrs: func(o runtime.Object) (labels.Set, fields.Set, error) {
+			obj, ok := o.(*api.Image)
+			if !ok {
+				return nil, nil, fmt.Errorf("not an image")
+			}
+			return labels.Set(obj.Labels), SelectableFields(obj), nil
+		},
+	}
+}
+
+// SelectableFields returns a field set that can be used for filter selection
+func SelectableFields(obj *api.Image) fields.Set {
+	return generic.ObjectMetaFieldsSet(&obj.ObjectMeta, false)
 }

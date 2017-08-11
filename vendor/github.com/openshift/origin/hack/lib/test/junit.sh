@@ -15,7 +15,7 @@
 function os::test::junit::declare_suite_start() {
     local suite_name=$1
     local num_suites=${NUM_OS_JUNIT_SUITES_IN_FLIGHT:-0}
-    
+
     echo "=== BEGIN TEST SUITE github.com/openshift/origin/test/${suite_name} ===" >> "${JUNIT_REPORT_OUTPUT:-/dev/null}"
     NUM_OS_JUNIT_SUITES_IN_FLIGHT=$(( ${num_suites} + 1 ))
     export NUM_OS_JUNIT_SUITES_IN_FLIGHT
@@ -102,8 +102,8 @@ function os::test::junit::declare_test_end() {
 readonly -f os::test::junit::declare_test_end
 
 # os::test::junit::check_test_counters checks that we do not have any test suites or test cases in flight
-# This function should be called at the very end of any test script using jUnit markers to make sure no error in 
-# marking has occured.
+# This function should be called at the very end of any test script using jUnit markers to make sure no error in
+# marking has occurred.
 #
 # Globals:
 #  - NUM_OS_JUNIT_SUITES_IN_FLIGHT
@@ -143,3 +143,39 @@ function os::test::junit::reconcile_output() {
     done
 }
 readonly -f os::test::junit::reconcile_output
+
+# os::test::junit::generate_oscmd_report generats an XML jUnit report
+# for the `os::cmd` suite from the raw test output. This function should
+# be trapped on EXIT.
+#
+# Globals:
+#  - JUNIT_REPORT_OUTPUT
+#  - ARTIFACT_DIR
+# Arguments:
+#  None
+# Returns:
+#  None
+function os::test::junit::generate_oscmd_report() {
+    if [[ -z "${JUNIT_REPORT_OUTPUT:-}" ||
+          -n "${JUNIT_REPORT_OUTPUT:-}" && ! -s "${JUNIT_REPORT_OUTPUT:-}" ]]; then
+          # we can't generate a report
+          return
+    fi
+
+    # get the jUnit output file into a workable state in case we
+    # crashed in the middle of testing something
+    os::test::junit::reconcile_output
+
+    # check that we didn't mangle jUnit output
+    os::test::junit::check_test_counters
+
+    # use the junitreport tool to generate us a report
+    os::util::ensure::built_binary_exists 'junitreport'
+
+    junitreport --type oscmd                          \
+                --suites nested                       \
+                --roots github.com/openshift/origin   \
+                --output "${ARTIFACT_DIR}/report.xml" \
+                <"${JUNIT_REPORT_OUTPUT}"
+    junitreport summarize <"${ARTIFACT_DIR}/report.xml"
+}

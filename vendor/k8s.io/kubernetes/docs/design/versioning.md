@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubernetes API and Release Versioning
 
 Reference: [Semantic Versioning](http://semver.org)
@@ -172,13 +167,6 @@ to go from 1.x to 1.x+y before they go to 2.x.
 
 There is a separate question of how to track the capabilities of a kubelet to
 facilitate rolling upgrades. That is not addressed here.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

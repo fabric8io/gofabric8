@@ -4,15 +4,15 @@ import (
 	"net"
 
 	"k8s.io/kubernetes/pkg/api/validation"
+	"k8s.io/kubernetes/pkg/api/validation/path"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
-	oapi "github.com/openshift/origin/pkg/api"
 	sdnapi "github.com/openshift/origin/pkg/sdn/api"
 )
 
 // ValidateClusterNetwork tests if required fields in the ClusterNetwork are set.
 func ValidateClusterNetwork(clusterNet *sdnapi.ClusterNetwork) field.ErrorList {
-	allErrs := validation.ValidateObjectMeta(&clusterNet.ObjectMeta, false, oapi.MinimalNameRequirements, field.NewPath("metadata"))
+	allErrs := validation.ValidateObjectMeta(&clusterNet.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
 
 	clusterIP, clusterIPNet, err := net.ParseCIDR(clusterNet.Network)
 	if err != nil {
@@ -83,11 +83,18 @@ func ValidateClusterNetworkUpdate(obj *sdnapi.ClusterNetwork, old *sdnapi.Cluste
 // ValidateHostSubnet tests fields for the host subnet, the host should be a network resolvable string,
 //  and subnet should be a valid CIDR
 func ValidateHostSubnet(hs *sdnapi.HostSubnet) field.ErrorList {
-	allErrs := validation.ValidateObjectMeta(&hs.ObjectMeta, false, oapi.MinimalNameRequirements, field.NewPath("metadata"))
+	allErrs := validation.ValidateObjectMeta(&hs.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
 
-	_, _, err := net.ParseCIDR(hs.Subnet)
-	if err != nil {
-		allErrs = append(allErrs, field.Invalid(field.NewPath("subnet"), hs.Subnet, err.Error()))
+	if hs.Subnet == "" {
+		// check if annotation exists, then let the Subnet field be empty
+		if _, ok := hs.Annotations[sdnapi.AssignHostSubnetAnnotation]; !ok {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("subnet"), hs.Subnet, "Field cannot be empty"))
+		}
+	} else {
+		_, _, err := net.ParseCIDR(hs.Subnet)
+		if err != nil {
+			allErrs = append(allErrs, field.Invalid(field.NewPath("subnet"), hs.Subnet, err.Error()))
+		}
 	}
 	if net.ParseIP(hs.HostIP) == nil {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("hostIP"), hs.HostIP, "invalid IP address"))
@@ -108,7 +115,7 @@ func ValidateHostSubnetUpdate(obj *sdnapi.HostSubnet, old *sdnapi.HostSubnet) fi
 
 // ValidateNetNamespace tests fields for a greater-than-zero NetID
 func ValidateNetNamespace(netnamespace *sdnapi.NetNamespace) field.ErrorList {
-	allErrs := validation.ValidateObjectMeta(&netnamespace.ObjectMeta, false, oapi.MinimalNameRequirements, field.NewPath("metadata"))
+	allErrs := validation.ValidateObjectMeta(&netnamespace.ObjectMeta, false, path.ValidatePathSegmentName, field.NewPath("metadata"))
 
 	if err := sdnapi.ValidVNID(netnamespace.NetID); err != nil {
 		allErrs = append(allErrs, field.Invalid(field.NewPath("netID"), netnamespace.NetID, err.Error()))
@@ -124,7 +131,7 @@ func ValidateNetNamespaceUpdate(obj *sdnapi.NetNamespace, old *sdnapi.NetNamespa
 
 // ValidateEgressNetworkPolicy tests if required fields in the EgressNetworkPolicy are set.
 func ValidateEgressNetworkPolicy(policy *sdnapi.EgressNetworkPolicy) field.ErrorList {
-	allErrs := validation.ValidateObjectMeta(&policy.ObjectMeta, true, oapi.MinimalNameRequirements, field.NewPath("metadata"))
+	allErrs := validation.ValidateObjectMeta(&policy.ObjectMeta, true, path.ValidatePathSegmentName, field.NewPath("metadata"))
 
 	for i, rule := range policy.Spec.Egress {
 		if rule.Type != sdnapi.EgressNetworkPolicyRuleAllow && rule.Type != sdnapi.EgressNetworkPolicyRuleDeny {

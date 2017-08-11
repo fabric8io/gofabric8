@@ -10,14 +10,17 @@ import (
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/cache"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	"k8s.io/kubernetes/pkg/client/record"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/flowcontrol"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 
+	builddefaults "github.com/openshift/origin/pkg/build/admission/defaults"
+	buildoverrides "github.com/openshift/origin/pkg/build/admission/overrides"
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	buildclient "github.com/openshift/origin/pkg/build/client"
 	buildcontroller "github.com/openshift/origin/pkg/build/controller"
@@ -25,12 +28,18 @@ import (
 	strategy "github.com/openshift/origin/pkg/build/controller/strategy"
 	buildutil "github.com/openshift/origin/pkg/build/util"
 	osclient "github.com/openshift/origin/pkg/client"
+	oscache "github.com/openshift/origin/pkg/client/cache"
 	controller "github.com/openshift/origin/pkg/controller"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	errors "github.com/openshift/origin/pkg/util/errors"
 )
 
-const maxRetries = 60
+const (
+	// We must avoid creating processing imagestream changes until the build config store has synced.
+	// If it hasn't synced, to avoid a hot loop, we'll wait this long between checks.
+	storeSyncedPollPeriod = 100 * time.Millisecond
+	maxRetries            = 60
+)
 
 // limitedLogAndRetry stops retrying after maxTimeout, failing the build.
 func limitedLogAndRetry(buildupdater buildclient.BuildUpdater, maxTimeout time.Duration) controller.RetryFunc {
@@ -44,6 +53,7 @@ func limitedLogAndRetry(buildupdater buildclient.BuildUpdater, maxTimeout time.D
 		build.Status.Phase = buildapi.BuildPhaseFailed
 		if !isFatal {
 			build.Status.Reason = buildapi.StatusReasonExceededRetryTimeout
+			build.Status.Message = buildapi.StatusMessageExceededRetryTimeout
 		}
 		build.Status.Message = errors.ErrorToSentence(err)
 		now := unversioned.Now()
@@ -61,12 +71,15 @@ func limitedLogAndRetry(buildupdater buildclient.BuildUpdater, maxTimeout time.D
 // BuildControllerFactory constructs BuildController objects
 type BuildControllerFactory struct {
 	OSClient            osclient.Interface
-	KubeClient          kclient.Interface
+	KubeClient          kclientset.Interface
 	BuildUpdater        buildclient.BuildUpdater
 	BuildLister         buildclient.BuildLister
 	DockerBuildStrategy *strategy.DockerBuildStrategy
 	SourceBuildStrategy *strategy.SourceBuildStrategy
 	CustomBuildStrategy *strategy.CustomBuildStrategy
+	BuildDefaults       builddefaults.BuildDefaults
+	BuildOverrides      buildoverrides.BuildOverrides
+
 	// Stop may be set to allow controllers created by this factory to be terminated.
 	Stop <-chan struct{}
 }
@@ -77,7 +90,7 @@ func (factory *BuildControllerFactory) Create() controller.RunnableController {
 	cache.NewReflector(&buildLW{client: factory.OSClient}, &buildapi.Build{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartRecordingToSink(factory.KubeClient.Events(""))
+	eventBroadcaster.StartRecordingToSink(&kcoreclient.EventSinkImpl{Interface: factory.KubeClient.Core().Events("")})
 
 	client := ControllerClient{factory.KubeClient, factory.OSClient}
 	buildController := &buildcontroller.BuildController{
@@ -91,7 +104,9 @@ func (factory *BuildControllerFactory) Create() controller.RunnableController {
 			SourceBuildStrategy: factory.SourceBuildStrategy,
 			CustomBuildStrategy: factory.CustomBuildStrategy,
 		},
-		Recorder: eventBroadcaster.NewRecorder(kapi.EventSource{Component: "build-controller"}),
+		Recorder:       eventBroadcaster.NewRecorder(kapi.EventSource{Component: "build-controller"}),
+		BuildDefaults:  factory.BuildDefaults,
+		BuildOverrides: factory.BuildOverrides,
 	}
 
 	return &controller.RetryController{
@@ -155,7 +170,8 @@ func (factory *BuildControllerFactory) CreateDeleteController() controller.Runna
 // BuildPodControllerFactory construct BuildPodController objects
 type BuildPodControllerFactory struct {
 	OSClient     osclient.Interface
-	KubeClient   kclient.Interface
+	KubeClient   kclientset.Interface
+	BuildLister  buildclient.BuildLister
 	BuildUpdater buildclient.BuildUpdater
 	// Stop may be set to allow controllers created by this factory to be terminated.
 	Stop <-chan struct{}
@@ -197,8 +213,9 @@ func (factory *BuildPodControllerFactory) Create() controller.RunnableController
 	buildPodController := &buildcontroller.BuildPodController{
 		BuildStore:   factory.buildStore,
 		BuildUpdater: factory.BuildUpdater,
-		SecretClient: factory.KubeClient,
+		SecretClient: factory.KubeClient.Core(),
 		PodManager:   client,
+		RunPolicies:  policy.GetAllRunPolicies(factory.BuildLister, factory.BuildUpdater),
 	}
 
 	return &controller.RetryController{
@@ -274,6 +291,8 @@ func (factory *BuildPodControllerFactory) CreateDeleteController() controller.Ru
 type ImageChangeControllerFactory struct {
 	Client                  osclient.Interface
 	BuildConfigInstantiator buildclient.BuildConfigInstantiator
+	BuildConfigIndex        oscache.StoreToBuildConfigLister
+	BuildConfigIndexSynced  func() bool
 	// Stop may be set to allow controllers created by this factory to be terminated.
 	Stop <-chan struct{}
 }
@@ -284,35 +303,44 @@ func (factory *ImageChangeControllerFactory) Create() controller.RunnableControl
 	queue := cache.NewResyncableFIFO(cache.MetaNamespaceKeyFunc)
 	cache.NewReflector(&imageStreamLW{factory.Client}, &imageapi.ImageStream{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
-	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
-	cache.NewReflector(&buildConfigLW{client: factory.Client}, &buildapi.BuildConfig{}, store, 2*time.Minute).RunUntil(factory.Stop)
-
 	imageChangeController := &buildcontroller.ImageChangeController{
-		BuildConfigStore:        store,
+		BuildConfigIndex:        factory.BuildConfigIndex,
 		BuildConfigInstantiator: factory.BuildConfigInstantiator,
 	}
+
+	// Wait for the bc store to sync before starting any work in this controller.
+	factory.waitForSyncedStores()
 
 	return &controller.RetryController{
 		Queue: queue,
 		RetryManager: controller.NewQueueRetryManager(
 			queue,
 			cache.MetaNamespaceKeyFunc,
-			retryFunc("ImageStream update", func(err error) bool {
-				_, isFatal := err.(buildcontroller.ImageChangeControllerFatalError)
-				return isFatal
-			}),
+			retryFunc("ImageStream update", nil),
 			flowcontrol.NewTokenBucketRateLimiter(1, 10),
 		),
 		Handle: func(obj interface{}) error {
 			imageRepo := obj.(*imageapi.ImageStream)
-			return imageChangeController.HandleImageRepo(imageRepo)
+			return imageChangeController.HandleImageStream(imageRepo)
 		},
+	}
+}
+
+func (factory *ImageChangeControllerFactory) waitForSyncedStores() {
+	for !factory.BuildConfigIndexSynced() {
+		glog.V(4).Infof("Waiting for the bc caches to sync before starting the imagechange buildconfig controller worker")
+		select {
+		case <-time.After(storeSyncedPollPeriod):
+		case <-factory.Stop:
+			return
+		}
+
 	}
 }
 
 type BuildConfigControllerFactory struct {
 	Client                  osclient.Interface
-	KubeClient              kclient.Interface
+	KubeClient              kclientset.Interface
 	BuildConfigInstantiator buildclient.BuildConfigInstantiator
 	// Stop may be set to allow controllers created by this factory to be terminated.
 	Stop <-chan struct{}
@@ -324,7 +352,7 @@ func (factory *BuildConfigControllerFactory) Create() controller.RunnableControl
 	cache.NewReflector(&buildConfigLW{client: factory.Client}, &buildapi.BuildConfig{}, queue, 2*time.Minute).RunUntil(factory.Stop)
 
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartRecordingToSink(factory.KubeClient.Events(""))
+	eventBroadcaster.StartRecordingToSink(&kcoreclient.EventSinkImpl{Interface: factory.KubeClient.Core().Events("")})
 
 	bcController := &buildcontroller.BuildConfigController{
 		BuildConfigInstantiator: factory.BuildConfigInstantiator,
@@ -396,7 +424,7 @@ func (f *typeBasedFactoryStrategy) CreateBuildPod(build *buildapi.Build) (*kapi.
 
 // podLW is a ListWatcher implementation for Pods.
 type podLW struct {
-	client kclient.Interface
+	client kclientset.Interface
 }
 
 // List lists all Pods that have a build label.
@@ -404,13 +432,13 @@ func (lw *podLW) List(options kapi.ListOptions) (runtime.Object, error) {
 	return listPods(lw.client)
 }
 
-func listPods(client kclient.Interface) (*kapi.PodList, error) {
+func listPods(client kclientset.Interface) (*kapi.PodList, error) {
 	// get builds with new label
 	sel, err := labels.Parse(buildapi.BuildLabel)
 	if err != nil {
 		return nil, err
 	}
-	listNew, err := client.Pods(kapi.NamespaceAll).List(kapi.ListOptions{LabelSelector: sel})
+	listNew, err := client.Core().Pods(kapi.NamespaceAll).List(kapi.ListOptions{LabelSelector: sel})
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +456,7 @@ func (lw *podLW) Watch(options kapi.ListOptions) (watch.Interface, error) {
 		LabelSelector:   sel,
 		ResourceVersion: options.ResourceVersion,
 	}
-	return lw.client.Pods(kapi.NamespaceAll).Watch(opts)
+	return lw.client.Core().Pods(kapi.NamespaceAll).Watch(opts)
 }
 
 // buildLW is a ListWatcher implementation for Builds.
@@ -554,7 +582,7 @@ func (lw *buildPodDeleteLW) List(options kapi.ListOptions) (runtime.Object, erro
 			glog.V(5).Infof("Ignoring build %s/%s because it is a pipeline build", build.Namespace, build.Name)
 			continue
 		}
-		pod, err := lw.KubeClient.Pods(build.Namespace).Get(buildapi.GetBuildPodName(&build))
+		pod, err := lw.KubeClient.Core().Pods(build.Namespace).Get(buildapi.GetBuildPodName(&build))
 		if err != nil {
 			if !kerrors.IsNotFound(err) {
 				glog.V(4).Infof("Error getting pod for build %s/%s: %v", build.Namespace, build.Name, err)
@@ -597,28 +625,28 @@ func (lw *buildPodDeleteLW) Watch(options kapi.ListOptions) (watch.Interface, er
 		LabelSelector:   sel,
 		ResourceVersion: options.ResourceVersion,
 	}
-	return lw.KubeClient.Pods(kapi.NamespaceAll).Watch(opts)
+	return lw.KubeClient.Core().Pods(kapi.NamespaceAll).Watch(opts)
 }
 
 // ControllerClient implements the common interfaces needed for build controllers
 type ControllerClient struct {
-	KubeClient kclient.Interface
+	KubeClient kclientset.Interface
 	Client     osclient.Interface
 }
 
 // CreatePod creates a pod using the Kubernetes client.
 func (c ControllerClient) CreatePod(namespace string, pod *kapi.Pod) (*kapi.Pod, error) {
-	return c.KubeClient.Pods(namespace).Create(pod)
+	return c.KubeClient.Core().Pods(namespace).Create(pod)
 }
 
 // DeletePod destroys a pod using the Kubernetes client.
 func (c ControllerClient) DeletePod(namespace string, pod *kapi.Pod) error {
-	return c.KubeClient.Pods(namespace).Delete(pod.Name, nil)
+	return c.KubeClient.Core().Pods(namespace).Delete(pod.Name, nil)
 }
 
 // GetPod gets a pod using the Kubernetes client.
 func (c ControllerClient) GetPod(namespace, name string) (*kapi.Pod, error) {
-	return c.KubeClient.Pods(namespace).Get(name)
+	return c.KubeClient.Core().Pods(namespace).Get(name)
 }
 
 // GetImageStream retrieves an image repository by namespace and name

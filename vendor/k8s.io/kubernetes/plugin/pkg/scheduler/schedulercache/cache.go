@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,14 +74,20 @@ func newSchedulerCache(ttl, period time.Duration, stop <-chan struct{}) *schedul
 	}
 }
 
-func (cache *schedulerCache) GetNodeNameToInfoMap() (map[string]*NodeInfo, error) {
-	nodeNameToInfo := make(map[string]*NodeInfo)
+func (cache *schedulerCache) UpdateNodeNameToInfoMap(nodeNameToInfo map[string]*NodeInfo) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	for name, info := range cache.nodes {
-		nodeNameToInfo[name] = info.Clone()
+		if current, ok := nodeNameToInfo[name]; !ok || current.generation != info.generation {
+			nodeNameToInfo[name] = info.Clone()
+		}
 	}
-	return nodeNameToInfo, nil
+	for name := range nodeNameToInfo {
+		if _, ok := cache.nodes[name]; !ok {
+			delete(nodeNameToInfo, name)
+		}
+	}
+	return nil
 }
 
 func (cache *schedulerCache) List(selector labels.Selector) ([]*api.Pod, error) {
@@ -104,15 +110,15 @@ func (cache *schedulerCache) AssumePod(pod *api.Pod) error {
 
 // assumePod exists for making test deterministic by taking time as input argument.
 func (cache *schedulerCache) assumePod(pod *api.Pod, now time.Time) error {
-	cache.mu.Lock()
-	defer cache.mu.Unlock()
-
 	key, err := getPodKey(pod)
 	if err != nil {
 		return err
 	}
+
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
 	if _, ok := cache.podStates[key]; ok {
-		return fmt.Errorf("pod state wasn't initial but get assumed. Pod key: %v", key)
+		return fmt.Errorf("pod %v state wasn't initial but get assumed", key)
 	}
 
 	cache.addPod(pod)
@@ -135,7 +141,11 @@ func (cache *schedulerCache) ForgetPod(pod *api.Pod) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
-	_, ok := cache.podStates[key]
+	currState, ok := cache.podStates[key]
+	if currState.pod.Spec.NodeName != pod.Spec.NodeName {
+		return fmt.Errorf("pod %v state was assumed on a different node", key)
+	}
+
 	switch {
 	// Only assumed pod can be forgotten.
 	case ok && cache.assumedPods[key]:
@@ -146,7 +156,38 @@ func (cache *schedulerCache) ForgetPod(pod *api.Pod) error {
 		delete(cache.assumedPods, key)
 		delete(cache.podStates, key)
 	default:
-		return fmt.Errorf("pod state wasn't assumed but get forgotten. Pod key: %v", key)
+		return fmt.Errorf("pod %v state wasn't assumed but get forgotten", key)
+	}
+	return nil
+}
+
+// Assumes that lock is already acquired.
+func (cache *schedulerCache) addPod(pod *api.Pod) {
+	n, ok := cache.nodes[pod.Spec.NodeName]
+	if !ok {
+		n = NewNodeInfo()
+		cache.nodes[pod.Spec.NodeName] = n
+	}
+	n.addPod(pod)
+}
+
+// Assumes that lock is already acquired.
+func (cache *schedulerCache) updatePod(oldPod, newPod *api.Pod) error {
+	if err := cache.removePod(oldPod); err != nil {
+		return err
+	}
+	cache.addPod(newPod)
+	return nil
+}
+
+// Assumes that lock is already acquired.
+func (cache *schedulerCache) removePod(pod *api.Pod) error {
+	n := cache.nodes[pod.Spec.NodeName]
+	if err := n.removePod(pod); err != nil {
+		return err
+	}
+	if len(n.pods) == 0 && n.node == nil {
+		delete(cache.nodes, pod.Spec.NodeName)
 	}
 	return nil
 }
@@ -160,9 +201,16 @@ func (cache *schedulerCache) AddPod(pod *api.Pod) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
-	_, ok := cache.podStates[key]
+	currState, ok := cache.podStates[key]
 	switch {
 	case ok && cache.assumedPods[key]:
+		if currState.pod.Spec.NodeName != pod.Spec.NodeName {
+			// The pod was added to a different node than it was assumed to.
+			glog.Warningf("Pod %v assumed to a different node than added to.", key)
+			// Clean this up.
+			cache.removePod(currState.pod)
+			cache.addPod(pod)
+		}
 		delete(cache.assumedPods, key)
 		cache.podStates[key].deadline = nil
 	case !ok:
@@ -187,44 +235,20 @@ func (cache *schedulerCache) UpdatePod(oldPod, newPod *api.Pod) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
-	_, ok := cache.podStates[key]
+	currState, ok := cache.podStates[key]
 	switch {
 	// An assumed pod won't have Update/Remove event. It needs to have Add event
 	// before Update event, in which case the state would change from Assumed to Added.
 	case ok && !cache.assumedPods[key]:
+		if currState.pod.Spec.NodeName != newPod.Spec.NodeName {
+			glog.Errorf("Pod %v updated on a different node than previously added to.", key)
+			glog.Fatalf("Schedulercache is corrupted and can badly affect scheduling decisions")
+		}
 		if err := cache.updatePod(oldPod, newPod); err != nil {
 			return err
 		}
 	default:
-		return fmt.Errorf("pod state wasn't added but get updated. Pod key: %v", key)
-	}
-	return nil
-}
-
-func (cache *schedulerCache) updatePod(oldPod, newPod *api.Pod) error {
-	if err := cache.removePod(oldPod); err != nil {
-		return err
-	}
-	cache.addPod(newPod)
-	return nil
-}
-
-func (cache *schedulerCache) addPod(pod *api.Pod) {
-	n, ok := cache.nodes[pod.Spec.NodeName]
-	if !ok {
-		n = NewNodeInfo()
-		cache.nodes[pod.Spec.NodeName] = n
-	}
-	n.addPod(pod)
-}
-
-func (cache *schedulerCache) removePod(pod *api.Pod) error {
-	n := cache.nodes[pod.Spec.NodeName]
-	if err := n.removePod(pod); err != nil {
-		return err
-	}
-	if len(n.pods) == 0 && n.node == nil {
-		delete(cache.nodes, pod.Spec.NodeName)
+		return fmt.Errorf("pod %v state wasn't added but get updated", key)
 	}
 	return nil
 }
@@ -238,12 +262,16 @@ func (cache *schedulerCache) RemovePod(pod *api.Pod) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
-	_, ok := cache.podStates[key]
+	currState, ok := cache.podStates[key]
 	switch {
 	// An assumed pod won't have Delete/Remove event. It needs to have Add event
 	// before Remove event, in which case the state would change from Assumed to Added.
 	case ok && !cache.assumedPods[key]:
-		err := cache.removePod(pod)
+		if currState.pod.Spec.NodeName != pod.Spec.NodeName {
+			glog.Errorf("Pod %v removed from a different node than previously added to.", key)
+			glog.Fatalf("Schedulercache is corrupted and can badly affect scheduling decisions")
+		}
+		err := cache.removePod(currState.pod)
 		if err != nil {
 			return err
 		}

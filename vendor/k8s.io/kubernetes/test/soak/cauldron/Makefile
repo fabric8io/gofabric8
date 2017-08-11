@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ cauldron:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -a -installsuffix cgo --ldflags '-w' cauldron.go
 
 container:	cauldron
-	docker build -t kubernetes/cauldron:$(TAG) .
+	docker build --pull -t kubernetes/cauldron:$(TAG) .
 
 push:
 	docker push kubernetes/cauldron:$(TAG)

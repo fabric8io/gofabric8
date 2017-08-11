@@ -1,25 +1,30 @@
 package test
 
 import (
+	"testing"
+
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deployv1 "github.com/openshift/origin/pkg/deploy/api/v1"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
 const (
 	ImageStreamName      = "test-image-stream"
-	ImageID              = "00000000000000000000000000000001"
-	DockerImageReference = "registry:5000/openshift/test-image-stream@sha256:00000000000000000000000000000001"
+	ImageID              = "0000000000000000000000000000000000000000000000000000000000000001"
+	DockerImageReference = "registry:5000/openshift/test-image-stream@sha256:0000000000000000000000000000000000000000000000000000000000000001"
 )
 
 func OkDeploymentConfig(version int64) *deployapi.DeploymentConfig {
 	return &deployapi.DeploymentConfig{
 		ObjectMeta: kapi.ObjectMeta{
-			Name: "config",
+			Name:      "config",
+			Namespace: kapi.NamespaceDefault,
+			SelfLink:  "/oapi/v1/namespaces/default/deploymentconfig/config",
 		},
 		Spec:   OkDeploymentConfigSpec(),
 		Status: OkDeploymentConfigStatus(version),
@@ -75,6 +80,7 @@ func OkStrategy() deployapi.DeploymentStrategy {
 		RecreateParams: &deployapi.RecreateDeploymentStrategyParams{
 			TimeoutSeconds: mkintp(20),
 		},
+		ActiveDeadlineSeconds: mkintp(int(deployapi.MaxDeploymentDurationSeconds)),
 	}
 }
 
@@ -131,6 +137,7 @@ func OkSelector() map[string]string {
 }
 
 func OkPodTemplate() *kapi.PodTemplateSpec {
+	one := int64(1)
 	return &kapi.PodTemplateSpec{
 		Spec: kapi.PodSpec{
 			Containers: []kapi.Container{
@@ -143,16 +150,19 @@ func OkPodTemplate() *kapi.PodTemplateSpec {
 							Value: "VAL1",
 						},
 					},
-					ImagePullPolicy: kapi.PullIfNotPresent,
+					ImagePullPolicy:        kapi.PullIfNotPresent,
+					TerminationMessagePath: "/dev/termination-log",
 				},
 				{
-					Name:            "container2",
-					Image:           "registry:8080/repo1:ref2",
-					ImagePullPolicy: kapi.PullIfNotPresent,
+					Name:                   "container2",
+					Image:                  "registry:8080/repo1:ref2",
+					ImagePullPolicy:        kapi.PullIfNotPresent,
+					TerminationMessagePath: "/dev/termination-log",
 				},
 			},
-			RestartPolicy: kapi.RestartPolicyAlways,
-			DNSPolicy:     kapi.DNSClusterFirst,
+			RestartPolicy:                 kapi.RestartPolicyAlways,
+			DNSPolicy:                     kapi.DNSClusterFirst,
+			TerminationGracePeriodSeconds: &one,
 		},
 		ObjectMeta: kapi.ObjectMeta{
 			Labels: OkSelector(),
@@ -171,7 +181,7 @@ func OkPodTemplateMissingImage(missing ...string) *kapi.PodTemplateSpec {
 	template := OkPodTemplate()
 	for i, c := range template.Spec.Containers {
 		if set.Has(c.Name) {
-			// rememeber that slices use copies, so have to ref array entry explicitly
+			// remember that slices use copies, so have to ref array entry explicitly
 			template.Spec.Containers[i].Image = ""
 		}
 	}
@@ -238,6 +248,29 @@ func OkHPAForDeploymentConfig(config *deployapi.DeploymentConfig, min, max int) 
 	}
 }
 
+func OkStreamForConfig(config *deployapi.DeploymentConfig) *imageapi.ImageStream {
+	for _, t := range config.Spec.Triggers {
+		if t.Type != deployapi.DeploymentTriggerOnImageChange {
+			continue
+		}
+
+		ref := t.ImageChangeParams.From
+		name, tag, _ := imageapi.SplitImageStreamTag(ref.Name)
+
+		return &imageapi.ImageStream{
+			ObjectMeta: kapi.ObjectMeta{
+				Name:      name,
+				Namespace: ref.Namespace,
+			},
+			Status: imageapi.ImageStreamStatus{
+				Tags: map[string]imageapi.TagEventList{
+					tag: {
+						Items: []imageapi.TagEvent{{DockerImageReference: t.ImageChangeParams.LastTriggeredImage}}}}},
+		}
+	}
+	return nil
+}
+
 func RemoveTriggerTypes(config *deployapi.DeploymentConfig, triggerTypes ...deployapi.DeploymentTriggerType) {
 	types := sets.NewString()
 	for _, triggerType := range triggerTypes {
@@ -253,4 +286,18 @@ func RemoveTriggerTypes(config *deployapi.DeploymentConfig, triggerTypes ...depl
 	}
 
 	config.Spec.Triggers = remaining
+}
+
+func RoundTripConfig(t *testing.T, config *deployapi.DeploymentConfig) *deployapi.DeploymentConfig {
+	versioned, err := kapi.Scheme.ConvertToVersion(config, deployv1.SchemeGroupVersion)
+	if err != nil {
+		t.Errorf("unexpected conversion error: %v", err)
+		return nil
+	}
+	defaulted, err := kapi.Scheme.ConvertToVersion(versioned, deployapi.SchemeGroupVersion)
+	if err != nil {
+		t.Errorf("unexpected conversion error: %v", err)
+		return nil
+	}
+	return defaulted.(*deployapi.DeploymentConfig)
 }

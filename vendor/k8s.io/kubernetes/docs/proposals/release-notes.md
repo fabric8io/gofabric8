@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 
 # Kubernetes Release Notes
 
@@ -192,13 +187,6 @@ Other notable changes
   [#23070](https://github.com/kubernetes/kubernetes/issues/23070)
   * For now contributors should simply use the first PR that enables a new
     feature by default.  We'll revisit if this does not work well.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

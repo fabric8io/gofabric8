@@ -1,0 +1,13 @@
+{
+  "id": "IGNORE_ME",
+  "code": "invalid_request",
+  "status": 400,
+  "detail": "length of response.name must be less than or equal to than 62 but got value \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\" (len=104)",
+  "meta": {
+    "attribute": "response.name",
+    "comp": "less than or equal to",
+    "expected": 62,
+    "len": 104,
+    "value": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  }
+}

@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,66 +28,89 @@ import (
 
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
+	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util/flag"
 )
 
 type createAuthInfoOptions struct {
 	configAccess      clientcmd.ConfigAccess
 	name              string
-	authPath          util.StringFlag
-	clientCertificate util.StringFlag
-	clientKey         util.StringFlag
-	token             util.StringFlag
-	username          util.StringFlag
-	password          util.StringFlag
+	authPath          flag.StringFlag
+	clientCertificate flag.StringFlag
+	clientKey         flag.StringFlag
+	token             flag.StringFlag
+	username          flag.StringFlag
+	password          flag.StringFlag
 	embedCertData     flag.Tristate
+	authProvider      flag.StringFlag
+
+	authProviderArgs         map[string]string
+	authProviderArgsToRemove []string
 }
 
-var create_authinfo_long = fmt.Sprintf(`Sets a user entry in kubeconfig
-Specifying a name that already exists will merge new fields on top of existing values.
+const (
+	flagAuthProvider    = "auth-provider"
+	flagAuthProviderArg = "auth-provider-arg"
+)
 
-  Client-certificate flags:
-    --%v=certfile --%v=keyfile
+var (
+	create_authinfo_long = fmt.Sprintf(templates.LongDesc(`
+		Sets a user entry in kubeconfig
 
-  Bearer token flags:
-    --%v=bearer_token
+		Specifying a name that already exists will merge new fields on top of existing values.
 
-  Basic auth flags:
-    --%v=basic_user --%v=basic_password
+		    Client-certificate flags:
+		    --%v=certfile --%v=keyfile
 
-  Bearer token and basic auth are mutually exclusive.
-`, clientcmd.FlagCertFile, clientcmd.FlagKeyFile, clientcmd.FlagBearerToken, clientcmd.FlagUsername, clientcmd.FlagPassword)
+		    Bearer token flags:
+			  --%v=bearer_token
 
-const create_authinfo_example = `# Set only the "client-key" field on the "cluster-admin"
-# entry, without touching other values:
-kubectl config set-credentials cluster-admin --client-key=~/.kube/admin.key
+		    Basic auth flags:
+			  --%v=basic_user --%v=basic_password
 
-# Set basic auth for the "cluster-admin" entry
-kubectl config set-credentials cluster-admin --username=admin --password=uXFGweU9l35qcif
+		Bearer token and basic auth are mutually exclusive.`), clientcmd.FlagCertFile, clientcmd.FlagKeyFile, clientcmd.FlagBearerToken, clientcmd.FlagUsername, clientcmd.FlagPassword)
 
-# Embed client certificate data in the "cluster-admin" entry
-kubectl config set-credentials cluster-admin --client-certificate=~/.kube/admin.crt --embed-certs=true`
+	create_authinfo_example = templates.Examples(`
+		# Set only the "client-key" field on the "cluster-admin"
+		# entry, without touching other values:
+		kubectl config set-credentials cluster-admin --client-key=~/.kube/admin.key
+
+		# Set basic auth for the "cluster-admin" entry
+		kubectl config set-credentials cluster-admin --username=admin --password=uXFGweU9l35qcif
+
+		# Embed client certificate data in the "cluster-admin" entry
+		kubectl config set-credentials cluster-admin --client-certificate=~/.kube/admin.crt --embed-certs=true
+
+		# Enable the Google Compute Platform auth provider for the "cluster-admin" entry
+		kubectl config set-credentials cluster-admin --auth-provider=gcp
+
+		# Enable the OpenID Connect auth provider for the "cluster-admin" entry with additional args
+		kubectl config set-credentials cluster-admin --auth-provider=oidc --auth-provider-arg=client-id=foo --auth-provider-arg=client-secret=bar
+
+		# Remove the "client-secret" config value for the OpenID Connect auth provider for the "cluster-admin" entry
+		kubectl config set-credentials cluster-admin --auth-provider=oidc --auth-provider-arg=client-secret-`)
+)
 
 func NewCmdConfigSetAuthInfo(out io.Writer, configAccess clientcmd.ConfigAccess) *cobra.Command {
 	options := &createAuthInfoOptions{configAccess: configAccess}
+	return newCmdConfigSetAuthInfo(out, options)
+}
 
+func newCmdConfigSetAuthInfo(out io.Writer, options *createAuthInfoOptions) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     fmt.Sprintf("set-credentials NAME [--%v=path/to/certfile] [--%v=path/to/keyfile] [--%v=bearer_token] [--%v=basic_user] [--%v=basic_password]", clientcmd.FlagCertFile, clientcmd.FlagKeyFile, clientcmd.FlagBearerToken, clientcmd.FlagUsername, clientcmd.FlagPassword),
+		Use:     fmt.Sprintf("set-credentials NAME [--%v=path/to/certfile] [--%v=path/to/keyfile] [--%v=bearer_token] [--%v=basic_user] [--%v=basic_password] [--%v=provider_name] [--%v=key=value]", clientcmd.FlagCertFile, clientcmd.FlagKeyFile, clientcmd.FlagBearerToken, clientcmd.FlagUsername, clientcmd.FlagPassword, flagAuthProvider, flagAuthProviderArg),
 		Short:   "Sets a user entry in kubeconfig",
 		Long:    create_authinfo_long,
 		Example: create_authinfo_example,
 		Run: func(cmd *cobra.Command, args []string) {
-			if !options.complete(cmd) {
+			if !options.complete(cmd, out) {
+				cmd.Help()
 				return
 			}
 
-			err := options.run()
-			if err != nil {
-				fmt.Fprintf(out, "%v\n", err)
-			} else {
-				fmt.Fprintf(out, "user %q set.\n", options.name)
-			}
+			cmdutil.CheckErr(options.run())
+			fmt.Fprintf(out, "User %q set.\n", options.name)
 		},
 	}
 
@@ -98,6 +121,8 @@ func NewCmdConfigSetAuthInfo(out io.Writer, configAccess clientcmd.ConfigAccess)
 	cmd.Flags().Var(&options.token, clientcmd.FlagBearerToken, clientcmd.FlagBearerToken+" for the user entry in kubeconfig")
 	cmd.Flags().Var(&options.username, clientcmd.FlagUsername, clientcmd.FlagUsername+" for the user entry in kubeconfig")
 	cmd.Flags().Var(&options.password, clientcmd.FlagPassword, clientcmd.FlagPassword+" for the user entry in kubeconfig")
+	cmd.Flags().Var(&options.authProvider, flagAuthProvider, "auth provider for the user entry in kubeconfig")
+	cmd.Flags().StringSlice(flagAuthProviderArg, nil, "'key=value' arugments for the auth provider")
 	f := cmd.Flags().VarPF(&options.embedCertData, clientcmd.FlagEmbedCerts, "", "embed client cert/key for the user entry in kubeconfig")
 	f.NoOptDefVal = "true"
 
@@ -175,6 +200,28 @@ func (o *createAuthInfoOptions) modifyAuthInfo(existingAuthInfo clientcmdapi.Aut
 		modifiedAuthInfo.Password = o.password.Value()
 		setBasic = setBasic || len(modifiedAuthInfo.Password) > 0
 	}
+	if o.authProvider.Provided() {
+		newName := o.authProvider.Value()
+
+		// Only overwrite if the existing auth-provider is nil, or different than the newly specified one.
+		if modifiedAuthInfo.AuthProvider == nil || modifiedAuthInfo.AuthProvider.Name != newName {
+			modifiedAuthInfo.AuthProvider = &clientcmdapi.AuthProviderConfig{
+				Name: newName,
+			}
+		}
+	}
+
+	if modifiedAuthInfo.AuthProvider != nil {
+		if modifiedAuthInfo.AuthProvider.Config == nil {
+			modifiedAuthInfo.AuthProvider.Config = make(map[string]string)
+		}
+		for _, toRemove := range o.authProviderArgsToRemove {
+			delete(modifiedAuthInfo.AuthProvider.Config, toRemove)
+		}
+		for key, value := range o.authProviderArgs {
+			modifiedAuthInfo.AuthProvider.Config[key] = value
+		}
+	}
 
 	// If any auth info was set, make sure any other existing auth types are cleared
 	if setToken || setBasic {
@@ -190,11 +237,26 @@ func (o *createAuthInfoOptions) modifyAuthInfo(existingAuthInfo clientcmdapi.Aut
 	return modifiedAuthInfo
 }
 
-func (o *createAuthInfoOptions) complete(cmd *cobra.Command) bool {
+func (o *createAuthInfoOptions) complete(cmd *cobra.Command, out io.Writer) bool {
 	args := cmd.Flags().Args()
 	if len(args) != 1 {
-		cmd.Help()
 		return false
+	}
+
+	authProviderArgs, err := cmd.Flags().GetStringSlice(flagAuthProviderArg)
+	if err != nil {
+		fmt.Fprintf(out, "Error: %s\n", err)
+		return false
+	}
+
+	if len(authProviderArgs) > 0 {
+		newPairs, removePairs, err := cmdutil.ParsePairs(authProviderArgs, flagAuthProviderArg, true)
+		if err != nil {
+			fmt.Fprintf(out, "Error: %s\n", err)
+			return false
+		}
+		o.authProviderArgs = newPairs
+		o.authProviderArgsToRemove = removePairs
 	}
 
 	o.name = args[0]

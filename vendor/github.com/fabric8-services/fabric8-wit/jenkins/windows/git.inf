@@ -1,0 +1,13 @@
+[Setup]
+Lang=default
+Group=Git
+NoIcons=1
+SetupType=default
+Components=
+Tasks=
+PathOption=Cmd
+SSHOption=OpenSSH
+CRLFOption=CRLFCommitAsIs
+BashTerminalOption=ConHost
+PerformanceTweaksFSCache=Disabled
+DisableStartupPrompt=yes

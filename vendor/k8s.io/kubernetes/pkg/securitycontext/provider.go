@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -91,11 +91,18 @@ func (p SimpleSecurityContextProvider) ModifyHostConfig(pod *api.Pod, container 
 	}
 
 	if effectiveSC.SELinuxOptions != nil {
-		hostConfig.SecurityOpt = modifySecurityOption(hostConfig.SecurityOpt, dockerLabelUser, effectiveSC.SELinuxOptions.User)
-		hostConfig.SecurityOpt = modifySecurityOption(hostConfig.SecurityOpt, dockerLabelRole, effectiveSC.SELinuxOptions.Role)
-		hostConfig.SecurityOpt = modifySecurityOption(hostConfig.SecurityOpt, dockerLabelType, effectiveSC.SELinuxOptions.Type)
-		hostConfig.SecurityOpt = modifySecurityOption(hostConfig.SecurityOpt, dockerLabelLevel, effectiveSC.SELinuxOptions.Level)
+		hostConfig.SecurityOpt = ModifySecurityOptions(hostConfig.SecurityOpt, effectiveSC.SELinuxOptions)
 	}
+}
+
+// ModifySecurityOptions adds SELinux options to config.
+func ModifySecurityOptions(config []string, selinuxOpts *api.SELinuxOptions) []string {
+	config = modifySecurityOption(config, DockerLabelUser, selinuxOpts.User)
+	config = modifySecurityOption(config, DockerLabelRole, selinuxOpts.Role)
+	config = modifySecurityOption(config, DockerLabelType, selinuxOpts.Type)
+	config = modifySecurityOption(config, DockerLabelLevel, selinuxOpts.Level)
+
+	return config
 }
 
 // modifySecurityOption adds the security option of name to the config array with value in the form

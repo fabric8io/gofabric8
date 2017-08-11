@@ -10,39 +10,40 @@ import (
 	"strings"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	kvalidation "k8s.io/kubernetes/pkg/api/validation"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	kvalidation "k8s.io/kubernetes/pkg/util/validation"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	"github.com/spf13/cobra"
 )
 
-const (
-	NewSecretRecommendedCommandName = "new"
+const NewSecretRecommendedCommandName = "new"
 
-	newLong = `
-Create a new secret based on a file or directory
+var (
+	newLong = templates.LongDesc(`
+    Create a new secret based on a file or directory
 
-Key files can be specified using their file path, in which case a default name will be given to them, or optionally 
-with a name and file path, in which case the given name will be used. Specifying a directory will create a secret 
-using with all valid keys in that directory.
-`
+    Key files can be specified using their file path, in which case a default name will be given to them, or optionally
+    with a name and file path, in which case the given name will be used. Specifying a directory will create a secret
+    using with all valid keys in that directory.`)
 
-	newExample = `  # Create a new secret named my-secret with a key named ssh-privatekey
-  %[1]s my-secret ~/.ssh/ssh-privatekey
+	newExample = templates.Examples(`
+    # Create a new secret named my-secret with a key named ssh-privatekey
+    %[1]s my-secret ~/.ssh/ssh-privatekey
 
-  # Create a new secret named my-secret with keys named ssh-privatekey and ssh-publickey instead of the names of the keys on disk
-  %[1]s my-secret ssh-privatekey=~/.ssh/id_rsa ssh-publickey=~/.ssh/id_rsa.pub
+    # Create a new secret named my-secret with keys named ssh-privatekey and ssh-publickey instead of the names of the keys on disk
+    %[1]s my-secret ssh-privatekey=~/.ssh/id_rsa ssh-publickey=~/.ssh/id_rsa.pub
 
-  # Create a new secret named my-secret with keys for each file in the folder "bar"
-  %[1]s my-secret path/to/bar
+    # Create a new secret named my-secret with keys for each file in the folder "bar"
+    %[1]s my-secret path/to/bar
 
-  # Create a new .dockercfg secret named my-secret
-  %[1]s my-secret path/to/.dockercfg
+    # Create a new .dockercfg secret named my-secret
+    %[1]s my-secret path/to/.dockercfg
 
-  # Create a new .docker/config.json secret named my-secret
-  %[1]s my-secret .dockerconfigjson=path/to/.docker/config.json`
+    # Create a new .docker/config.json secret named my-secret
+    %[1]s my-secret .dockerconfigjson=path/to/.docker/config.json`)
 )
 
 type CreateSecretOptions struct {
@@ -56,7 +57,7 @@ type CreateSecretOptions struct {
 	// Directory sources are listed and any direct file children included (but subfolders are not traversed)
 	Sources []string
 
-	SecretsInterface kclient.SecretsInterface
+	SecretsInterface kcoreclient.SecretInterface
 
 	// Writer to write warnings to
 	Stderr io.Writer
@@ -91,8 +92,8 @@ func NewCmdCreateSecret(name, fullName string, f *clientcmd.Factory, out io.Writ
 				secret, err := options.BundleSecret()
 				kcmdutil.CheckErr(err)
 
-				mapper, _ := f.Object(false)
-				kcmdutil.CheckErr(f.Factory.PrintObject(c, mapper, secret, out))
+				mapper, _ := f.Object()
+				kcmdutil.CheckErr(f.PrintObject(c, mapper, secret, out))
 				return
 			}
 
@@ -101,8 +102,8 @@ func NewCmdCreateSecret(name, fullName string, f *clientcmd.Factory, out io.Writ
 		},
 	}
 
-	cmd.Flags().BoolVarP(&options.Quiet, "quiet", "q", options.Quiet, "Suppress warnings")
-	cmd.Flags().BoolVar(&options.AllowUnknownTypes, "confirm", options.AllowUnknownTypes, "Allow unknown secret types.")
+	cmd.Flags().BoolVarP(&options.Quiet, "quiet", "q", options.Quiet, "If true, suppress warnings")
+	cmd.Flags().BoolVar(&options.AllowUnknownTypes, "confirm", options.AllowUnknownTypes, "If true, allow unknown secret types.")
 	cmd.Flags().StringVar(&options.SecretTypeName, "type", "", "The type of secret")
 	kcmdutil.AddPrinterFlags(cmd)
 
@@ -132,11 +133,11 @@ func (o *CreateSecretOptions) Complete(args []string, f *clientcmd.Factory) erro
 		if err != nil {
 			return err
 		}
-		namespace, _, err := f.Factory.DefaultNamespace()
+		namespace, _, err := f.DefaultNamespace()
 		if err != nil {
 			return err
 		}
-		o.SecretsInterface = kubeClient.Secrets(namespace)
+		o.SecretsInterface = kubeClient.Core().Secrets(namespace)
 	}
 
 	return nil
@@ -261,8 +262,8 @@ func (o *CreateSecretOptions) BundleSecret() (*kapi.Secret, error) {
 }
 
 func addKeyToSecret(keyName, filePath string, secretData map[string][]byte) error {
-	if !kvalidation.IsSecretKey(keyName) {
-		return fmt.Errorf("%v is not a valid key name for a secret", keyName)
+	if errors := kvalidation.IsConfigMapKey(keyName); len(errors) > 0 {
+		return fmt.Errorf("%v is not a valid key name for a secret: %s", keyName, strings.Join(errors, ", "))
 	}
 	if _, entryExists := secretData[keyName]; entryExists {
 		return fmt.Errorf("cannot add key %s from path %s, another key by that name already exists: %v.", keyName, filePath, secretData)

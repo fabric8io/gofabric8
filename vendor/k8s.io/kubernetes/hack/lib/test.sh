@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2015 The Kubernetes Authors All rights reserved.
+# Copyright 2015 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ readonly   red=$(tput setaf 1)
 readonly green=$(tput setaf 2)
 
 kube::test::clear_all() {
-  kubectl delete "${kube_flags[@]}" rc,pods --all --grace-period=0
+  kubectl delete "${kube_flags[@]}" rc,pods --all --grace-period=0 --force
 }
 
 # Force exact match of a returned result for a object query.  Wrap this with || to support multiple

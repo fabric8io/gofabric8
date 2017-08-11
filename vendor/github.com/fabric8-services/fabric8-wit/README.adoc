@@ -1,0 +1,420 @@
+= Fabric8 WIT
+:toc:
+:toc-placement: preamble
+:sectnums:
+:experimental:
+
+image:https://ci.centos.org/buildStatus/icon?job=devtools-fabric8-wit-build-master[Jenkins,link="https://ci.centos.org/view/Devtools/job/devtools-fabric8-wit-build-master/lastBuild/"]
+image:https://goreportcard.com/badge/github.com/fabric8-services/fabric8-wit[Go Report Card, link="https://goreportcard.com/report/github.com/fabric8-services/fabric8-wit"]
+image:https://godoc.org/github.com/fabric8-services/fabric8-wit?status.png[GoDoc,link="https://godoc.org/github.com/fabric8-services/fabric8-wit"]
+image:https://codecov.io/gh/fabric8-services/fabric8-wit/branch/master/graph/badge.svg[Codecov.io,link="https://codecov.io/gh/fabric8-services/fabric8-wit"]
+
+== Building from source [[building]]
+
+The following guide is mainly targeted towards a Linux or Mac OSX development
+machine. If you are on Windows, we recommend to take a look at
+link:docs/development/getting-started-win.adoc[Getting started with fabric8-wit development on Windows].
+
+=== Prerequisites [[prerequisites]]
+
+You need to install:
+
+* `go` (>= v1.7)
+* `git`
+* `mercurial`
+* `make`
+
+==== Check your Go version [[check-go-version]]
+
+Run the following command to find out your Go version.
+
+----
+$ go version
+----
+
+*You must at least have Go version 1.7.*
+
+See <<fetch-dependencies>> to see an explanaition on how we deal with
+dependencies.
+
+==== Install glide [[glide-setup]]
+
+This project uses link:https://glide.sh/[glide] as a package manager for Go.
+
+To install glide, go to the
+link:https://github.com/Masterminds/glide/releases[release page] and download
+the newest binary for your operating system.
+
+Unpack the archive that you've downloaded and place the `glide` executable
+somewhere so that it is in your `PATH`.
+
+To check if everything is working, type `glide --version` in a terminal.
+
+----
+$ glide --version
+glide version v0.11.0
+----
+
+Try to use at least version `0.11.0` as we haven't tested another version.
+
+=== Get the code [[get-the-code]]
+
+Assuming you have Go installed and configured (have `$GOPATH` setup) here is
+how to build.
+
+Check out the code
+
+----
+$ git clone https://github.com/fabric8-services/fabric8-wit $GOPATH/src/github.com/fabric8-services/fabric8-wit
+----
+
+=== Build [[build]]
+
+Like most other projects, this one depends on various other projects that need
+to be downloaded.
+
+We also generate some code from design files that shall make it into our
+final artifacts.
+
+To fetch the dependencies, generate code and finally build the project you can
+type `make` in a freshly clone repository of this project.
+
+----
+$ cd $GOPATH/src/github.com/fabric8-services/fabric8-wit
+$ make
+----
+
+==== Special make targets
+
+There is no need to fetch the dependencies, or re-generate code every time you
+want to compile. That's why we offer special `make` targets for these topics:
+
+ * <<fetch-dependencies>>
+ * <<generate-code>>
+ * <<build>>
+ * <<clean>>
+ * <<test>>
+ * <<coverage>>
+
+===== Fetch dependencies [[fetch-dependencies]]
+
+This will download all the dependencies for this project inside a directory
+called `vendor`. This way we can ensure that every developer and our CI system
+is using the same version.
+
+----
+$ cd $GOPATH/src/github.com/fabric8-services/fabric8-wit
+$ make deps
+----
+
+For dependency management of `go` packages we use `glide`.
+The file `glide.yaml` contains all dependencies.
+It is not suggested that you edit the file by hand but if you want to
+understand the format for this file, look link:https://glide.readthedocs.io/en/latest/glide.yaml/[here].
+
+===== Generate GOA sources [[generate-code]]
+
+You need to run this command if you just checked out the code and later if
+you've modified the designs.
+
+----
+$ cd $GOPATH/src/github.com/fabric8-services/fabric8-wit
+$ make generate
+----
+
+===== Build [[build]]
+
+If you want to just build the ALM server and client, run `make build`.
+
+----
+$ cd $GOPATH/src/github.com/fabric8-services/fabric8-wit
+$ make build
+----
+
+===== Clean [[clean]]
+
+This removes all downloaded dependencies, all generated code and compiled
+artifacts.
+
+----
+$ cd $GOPATH/src/github.com/fabric8-services/fabric8-wit
+$ make clean
+----
+
+===== Tests [[test]]
+
+Here's how to run all available tests. All tests will check all Go packages
+except those in the `vendor/` directory.
+Make sure you have docker and docker-compose available.
+
+Setting up test environment - `make integration-test-env-prepare`
+
+Tear test environment down - `make integration-test-env-tear-down`
+
+[horizontal]
+unit-tests::
+Unit tests have the minimum requirement on time and environment setup.
++
+----
+$ cd $GOPATH/src/github.com/fabric8-services/fabric8-wit
+$ make test-unit
+----
+
+integration-tests::
+Integration tests demand more setup (i.e. the PostgreSQL DB must be already
+running) and probably time. We recommend that you use `docker-compose up -d db`.
++
+----
+$ cd $GOPATH/src/github.com/fabric8-services/fabric8-wit
+$ make test-integration
+----
+
+all::
+To run both, the unit and the integration tests you can run
++
+----
+$ cd $GOPATH/src/github.com/fabric8-services/fabric8-wit
+$ make test-all
+----
+
+===== Coverage [[coverage]]
+
+To visualize the coverage of unit, integration, or all tests you can run these
+commands:
+
+ * `$ make coverage-unit`
+ * `$ make coverage-integration`
+ * `$ make coverage-all`
+
+NOTE: If the tests (see <<test>>) have not yet run, or if the sources have changed
+since the last time the tests ran, they will be re-run to produce up to date
+coverage profiles.
+
+Each of the above tests (see <<test>>) produces a coverage profile by default.
+Those coverage files are available under
+
+----
+tmp/coverage/<package>/coverage.<test>.mode-<mode>
+----
+
+Here's how the <placeholders> expand
+
+[horizontal]
+`<package>`::
+something like `github.com/fabric8-services/fabric8-wit/models`
+
+`<test>`::
+`unit` or `integration`
+
+`<mode>`::
+Sets the mode for coverage analysis for the packages being tested.
+Possible values for `<mode>` are *set* (the default), *count*, or *atomic* and
+they directly relate to the output of `go test --help`.
+ * *set*: bool: does this statement run?
+ * *count*: int: how many times does this statement run?
+ * *atomic*: int: count, but correct in multithreaded tests; significantly more
+   expensive.
+
+In addition to all individual coverage information for each package, we also
+create three more files:
+
+[horizontal]
+`tmp/coverage.unit.mode-<mode>`::
+This file collects all the coverage profiles for all *unit* tests.
+
+`tmp/coverage.integration.mode-<mode>`::
+This file collects all the coverage profiles for all *integration* tests.
+
+`tmp/coverage.mode-<mode>`::
+This file is the merge result of the two afore mentioned files and thus gives
+coverage information for all tests.
+
+== Configuration file
+
+If no configuration file is specified when the core is started, these are the defaults.
+
+[source,yaml]
+.config.yaml
+----
+#------------------------
+# Postgres configuration
+#------------------------
+
+postgres.host: localhost
+postgres.port: 5432
+postgres.user: postgres
+postgres.password: mysecretpassword
+postgres.database: postgres
+postgres.sslmode: disable
+# The amount of time in seconds before the connection times out
+postgres.connection.timeout: 5
+# Duration to wait before trying to connect again
+postgres.connection.retrysleep: 1s
+
+#------------------------
+# HTTP configuration
+#------------------------
+
+http.address: 0.0.0.0:8080
+
+#------------------------
+# Misc.
+#------------------------
+
+# Enable development related features, e.g. token generation endpoint
+developer.mode.enabled: false
+
+# Whether you want to create the common work item types such as bug, feature, ...
+populate.commontypes: true
+
+# -----------------------------
+# Authentication configuration
+# -----------------------------
+
+token.privatekey : >
+                    -----BEGIN RSA PRIVATE KEY-----
+                    MIIEpQIBAAKCAQEAnwrjH5iTSErw9xUptp6QSFoUfpHUXZ+PaslYSUrpLjw1q27O
+                    DSFwmhV4+dAaTMO5chFv/kM36H3ZOyA146nwxBobS723okFaIkshRrf6qgtD6coT
+                    HlVUSBTAcwKEjNn4C9jtEpyOl+eSgxhMzRH3bwTIFlLlVMiZf7XVE7P3yuOCpqkk
+                    2rdYVSpQWQWKU+ZRywJkYcLwjEYjc70AoNpjO5QnY+Exx98E30iEdPHZpsfNhsjh
+                    9Z7IX5TrMYgz7zBTw8+niO/uq3RBaHyIhDbvenbR9Q59d88lbnEeHKgSMe2RQpFR
+                    3rxFRkc/64Rn/bMuL/ptNowPqh1P+9GjYzWmPwIDAQABAoIBAQCBCl5ZpnvprhRx
+                    BVTA/Upnyd7TCxNZmzrME+10Gjmz79pD7DV25ejsu/taBYUxP6TZbliF3pggJOv6
+                    UxomTB4znlMDUz0JgyjUpkyril7xVQ6XRAPbGrS1f1Def+54MepWAn3oGeqASb3Q
+                    bAj0Yl12UFTf+AZmkhQpUKk/wUeN718EIY4GRHHQ6ykMSqCKvdnVbMyb9sIzbSTl
+                    v+l1nQFnB/neyJq6P0Q7cxlhVj03IhYj/AxveNlKqZd2Ih3m/CJo0Abtwhx+qHZp
+                    cCBrYj7VelEaGARTmfoIVoGxFGKZNCcNzn7R2ic7safxXqeEnxugsAYX/UmMoq1b
+                    vMYLcaLRAoGBAMqMbbgejbD8Cy6wa5yg7XquqOP5gPdIYYS88TkQTp+razDqKPIU
+                    hPKetnTDJ7PZleOLE6eJ+dQJ8gl6D/dtOsl4lVRy/BU74dk0fYMiEfiJMYEYuAU0
+                    MCramo3HAeySTP8pxSLFYqJVhcTpL9+NQgbpJBUlx5bLDlJPl7auY077AoGBAMkD
+                    UpJRIv/0gYSz5btVheEyDzcqzOMZUVsngabH7aoQ49VjKrfLzJ9WznzJS5gZF58P
+                    vB7RLuIA8m8Y4FUwxOr4w9WOevzlFh0gyzgNY4gCwrzEryOZqYYqCN+8QLWfq/hL
+                    +gYFYpEW5pJ/lAy2i8kPanC3DyoqiZCsUmlg6JKNAoGBAIdCkf6zgKGhHwKV07cs
+                    DIqx2p0rQEFid6UB3ADkb+zWt2VZ6fAHXeT7shJ1RK0o75ydgomObWR5I8XKWqE7
+                    s1dZjDdx9f9kFuVK1Upd1SxoycNRM4peGJB1nWJydEl8RajcRwZ6U+zeOc+OfWbH
+                    WUFuLadlrEx5212CQ2k+OZlDAoGAdsH2w6kZ83xCFOOv41ioqx5HLQGlYLpxfVg+
+                    2gkeWa523HglIcdPEghYIBNRDQAuG3RRYSeW+kEy+f4Jc2tHu8bS9FWkRcsWoIji
+                    ZzBJ0G5JHPtaub6sEC6/ZWe0F1nJYP2KLop57FxKRt0G2+fxeA0ahpMwa2oMMiQM
+                    4GM3pHUCgYEAj2ZjjsF2MXYA6kuPUG1vyY9pvj1n4fyEEoV/zxY1k56UKboVOtYr
+                    BA/cKaLPqUF+08Tz/9MPBw51UH4GYfppA/x0ktc8998984FeIpfIFX6I2U9yUnoQ
+                    OCCAgsB8g8yTB4qntAYyfofEoDiseKrngQT5DSdxd51A/jw7B8WyBK8=
+                    -----END RSA PRIVATE KEY-----
+
+token.publickey : >
+                    -----BEGIN PUBLIC KEY-----
+                    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnwrjH5iTSErw9xUptp6Q
+                    SFoUfpHUXZ+PaslYSUrpLjw1q27ODSFwmhV4+dAaTMO5chFv/kM36H3ZOyA146nw
+                    xBobS723okFaIkshRrf6qgtD6coTHlVUSBTAcwKEjNn4C9jtEpyOl+eSgxhMzRH3
+                    bwTIFlLlVMiZf7XVE7P3yuOCpqkk2rdYVSpQWQWKU+ZRywJkYcLwjEYjc70AoNpj
+                    O5QnY+Exx98E30iEdPHZpsfNhsjh9Z7IX5TrMYgz7zBTw8+niO/uq3RBaHyIhDbv
+                    enbR9Q59d88lbnEeHKgSMe2RQpFR3rxFRkc/64Rn/bMuL/ptNowPqh1P+9GjYzWm
+                    PwIDAQAB
+                    -----END PUBLIC KEY-----
+
+
+# ----------------------------
+# Github OAuth2 configuration
+# ----------------------------
+
+github.client.id : 875da0d2113ba0a6951d
+github.secret : 2fe6736e90a9283036a37059d75ac0c82f4f5288
+
+----
+
+Although this is a YAML file, we highly suggest to stick to this rather lenghty notation instead of nesting structs.
+
+To override configuration values using environment variables, use the prefix
+`F8_` and replace the dots in the variables names with underscores.
+
+For example to override `postgres.password`, set the environment variable `F8_POSTGRES_PASSWORD` to the value of you liking.
+
+NOTE: Environment variables override the default values and the ones you've set in your config file.
+
+==== Development
+
+Only files `+./*.go+`, `+./design/*.go+`, `+./models/*.go+` and `+./tool/wit-cli/main.go+` should be edited.
+
+These files and directory are generated:
+
+ * `./app/`
+ * `./assets/js/`
+ * `./client/`
+ * `./swagger/`
+ * `./tool/cli/`
+ * `./bindata_asstfs.go`
+
+== Developer setup
+
+Start up dependent docker services using `docker-compose` and runs auto reload on source change tool `fresh`.
+
+----
+$ cd $GOPATH/src/github.com/fabric8-services/fabric8-wit
+$ make dev
+----
+
+The above steps start the API Server on port 8080.
+
+Test out the build by executing CLI commands in a different terminal.
+
+NOTE: The CLI needs the API Server which was started on executing `make dev`  to be up and running. Please do not kill the process. Alternatively if you haven't run `make dev` you could just start the server by running `./bin/alm`.
+
+Generate a token for future use.
+----
+./bin/wit-cli generate login -H localhost:8080 --pp
+----
+
+You should get Token in response, save this token in your favourite editor as you need to use this token for POST API calls
+
+Create a work item type (using above token).
+----
+./bin/wit-cli create workitemtype --key "<GENERATED TOKEN>" --payload '{"fields":{"system.owner":{"Type":{"Kind":"user"},"Required":true},"system.state":{"Type":{"Kind":"string"},"Required":false}},"name":"Epic"}' -H localhost:8080 --pp
+----
+Note: Work Item Type `Name` is unique. If one tries to create another work item type with same name, error will be trown.
+
+Retrieve the work item type.
+
+----
+$ ./bin/wit-cli show workitemtype --name "Epic" -H localhost:8080
+----
+
+List all available work item types.
+----
+$ ./bin/wit-cli list workitemtype -H localhost:8080 --pp
+----
+
+Create a work item.
+
+Based on WorkItemType created above, we can create WorkItem.
+We need to use name of work item type in the `type` field below.
+
+----
+$ ./bin/wit-cli create workitem --key "<GENERATED TOKEN>" --payload '{"type": "Epic", "fields": { "system.owner": "tmaeder", "system.state": "open" }}' -H localhost:8080
+----
+
+Retrieve the work item.
+
+----
+$ ./bin/wit-cli show workitem --id 1 -H localhost:8080 --pp
+----
+
+
+System defined Work Item Types are
+
+ * userstory
+ * valueproposition
+ * fundamental
+ * experience
+ * feature
+ * bug
+
+Use any one of above to create Work Item based on that type.
+Following example creates a Work Item of type `userstory`
+----
+$ ./bin/wit-cli create workitem --key "<GENERATED TOKEN>" --payload '{ "data": { "attributes": { "system.owner": "tmaeder", "system.state": "open", "system.title": "Example of an Epic", "version": "1" }, "relationships": { "baseType": { "data": { "id": "Epic", "type": "workitemtypes" } } }, "type": "workitems" } }' -H localhost:8080
+----
+
+In response you should get ID of created item, using that you can retrieve the work item.
+
+----
+$ ./bin/wit-cli show workitem --id <ID> -H localhost:8080 --pp
+----

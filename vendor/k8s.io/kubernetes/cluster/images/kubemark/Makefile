@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 # This makefile assumes that the kubemark binary is present in this directory.
 
 all:
-	docker build -t gcr.io/$(PROJECT)/kubemark .
-	gcloud docker push gcr.io/$(PROJECT)/kubemark
+	docker build --pull -t gcr.io/$(PROJECT)/kubemark .
+	gcloud docker -- push gcr.io/$(PROJECT)/kubemark
 
 .PHONY: all

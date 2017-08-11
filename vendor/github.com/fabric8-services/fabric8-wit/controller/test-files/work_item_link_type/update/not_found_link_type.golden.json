@@ -1,0 +1,10 @@
+{
+  "errors": [
+    {
+      "code": "not_found",
+      "detail": "work item link type with id '3e95d92a-295a-4cf5-8856-659704a709df' not found",
+      "status": "404",
+      "title": "Not found error"
+    }
+  ]
+}

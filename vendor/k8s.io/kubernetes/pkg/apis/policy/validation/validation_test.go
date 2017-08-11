@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,6 +57,31 @@ func TestValidatePodDisruptionBudgetSpec(t *testing.T) {
 		errs := ValidatePodDisruptionBudgetSpec(spec, field.NewPath("foo"))
 		if len(errs) == 0 {
 			t.Errorf("unexpected success for %v", spec)
+		}
+	}
+}
+
+func TestValidatePodDisruptionBudgetStatus(t *testing.T) {
+	successCases := []policy.PodDisruptionBudgetStatus{
+		{PodDisruptionsAllowed: 10},
+		{CurrentHealthy: 5},
+		{DesiredHealthy: 3},
+		{ExpectedPods: 2}}
+	for _, c := range successCases {
+		errors := ValidatePodDisruptionBudgetStatus(c, field.NewPath("status"))
+		if len(errors) > 0 {
+			t.Errorf("unexpected failure %v for %v", errors, c)
+		}
+	}
+	failureCases := []policy.PodDisruptionBudgetStatus{
+		{PodDisruptionsAllowed: -10},
+		{CurrentHealthy: -5},
+		{DesiredHealthy: -3},
+		{ExpectedPods: -2}}
+	for _, c := range failureCases {
+		errors := ValidatePodDisruptionBudgetStatus(c, field.NewPath("status"))
+		if len(errors) == 0 {
+			t.Errorf("unexpected success for %v", c)
 		}
 	}
 }

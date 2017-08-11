@@ -17,8 +17,10 @@ import (
 	"github.com/openshift/origin/pkg/authorization/rulevalidation"
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	osutil "github.com/openshift/origin/pkg/cmd/util"
+
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
@@ -43,30 +45,31 @@ type ReconcileClusterRolesOptions struct {
 	RoleClient client.ClusterRoleInterface
 }
 
-const (
-	reconcileLong = `
-Update cluster roles to match the recommended bootstrap policy
+var (
+	reconcileLong = templates.LongDesc(`
+		Update cluster roles to match the recommended bootstrap policy
 
-This command will compare cluster roles against the recommended bootstrap policy.  Any cluster role
-that does not match will be replaced by the recommended bootstrap role.  This command will not remove
-any additional cluster role.
+		This command will compare cluster roles against the recommended bootstrap policy.  Any cluster role
+		that does not match will be replaced by the recommended bootstrap role.  This command will not remove
+		any additional cluster role.
 
-Cluster roles with the annotation %s set to "true" are skipped.
+		Cluster roles with the annotation %s set to "true" are skipped.
 
-You can see which cluster roles have recommended changed by choosing an output type.`
+		You can see which cluster roles have recommended changed by choosing an output type.`)
 
-	reconcileExample = `  # Display the names of cluster roles that would be modified
-  %[1]s -o name
+	reconcileExample = templates.Examples(`
+		# Display the names of cluster roles that would be modified
+	  %[1]s -o name
 
-  # Add missing permissions to cluster roles that don't match the current defaults
-  %[1]s --confirm
+	  # Add missing permissions to cluster roles that don't match the current defaults
+	  %[1]s --confirm
 
-  # Add missing permissions and remove extra permissions from
-  # cluster roles that don't match the current defaults
-  %[1]s --additive-only=false --confirm
+	  # Add missing permissions and remove extra permissions from
+	  # cluster roles that don't match the current defaults
+	  %[1]s --additive-only=false --confirm
 
-  # Display the union of the default and modified cluster roles
-  %[1]s --additive-only`
+	  # Display the union of the default and modified cluster roles
+	  %[1]s --additive-only`)
 )
 
 // NewCmdReconcileClusterRoles implements the OpenShift cli reconcile-cluster-roles command
@@ -97,8 +100,8 @@ func NewCmdReconcileClusterRoles(name, fullName string, f *clientcmd.Factory, ou
 		},
 	}
 
-	cmd.Flags().BoolVar(&o.Confirmed, "confirm", o.Confirmed, "Specify that cluster roles should be modified. Defaults to false, displaying what would be replaced but not actually replacing anything.")
-	cmd.Flags().BoolVar(&o.Union, "additive-only", o.Union, "Preserves modified cluster roles.")
+	cmd.Flags().BoolVar(&o.Confirmed, "confirm", o.Confirmed, "If true, specify that cluster roles should be modified. Defaults to false, displaying what would be replaced but not actually replacing anything.")
+	cmd.Flags().BoolVar(&o.Union, "additive-only", o.Union, "If true, preserves modified cluster roles.")
 	kcmdutil.AddPrinterFlags(cmd)
 	cmd.Flags().Lookup("output").DefValue = "yaml"
 	cmd.Flags().Lookup("output").Value.Set("yaml")
@@ -115,7 +118,7 @@ func (o *ReconcileClusterRolesOptions) Complete(cmd *cobra.Command, f *clientcmd
 
 	o.Output = kcmdutil.GetFlagString(cmd, "output")
 
-	mapper, _ := f.Object(false)
+	mapper, _ := f.Object()
 	for _, resourceString := range args {
 		resource, name, err := osutil.ResolveResource(authorizationapi.Resource("clusterroles"), resourceString, mapper)
 		if err != nil {
@@ -164,7 +167,7 @@ func (o *ReconcileClusterRolesOptions) RunReconcileClusterRoles(cmd *cobra.Comma
 		for _, item := range changedClusterRoles {
 			list.Items = append(list.Items, item)
 		}
-		mapper, _ := f.Object(false)
+		mapper, _ := f.Object()
 		fn := cmdutil.VersionedPrintObject(f.PrintObject, cmd, mapper, o.Out)
 		if err := fn(list); err != nil {
 			return err
@@ -203,27 +206,11 @@ func (o *ReconcileClusterRolesOptions) ChangedClusterRoles() ([]*authorizationap
 			return nil, nil, err
 		}
 
-		// Copy any existing labels/annotations, so the displayed update is correct
-		// This assumes bootstrap roles will not set any labels/annotations
-		// These aren't actually used during update; the latest labels/annotations are pulled from the existing object again
-		expectedClusterRole.Labels = actualClusterRole.Labels
-		expectedClusterRole.Annotations = actualClusterRole.Annotations
-
-		_, extraRules := rulevalidation.Covers(expectedClusterRole.Rules, actualClusterRole.Rules)
-		_, missingRules := rulevalidation.Covers(actualClusterRole.Rules, expectedClusterRole.Rules)
-
-		// We need to reconcile:
-		// 1. if we're missing rules
-		// 2. if there are extra rules we need to remove
-		if (len(missingRules) > 0) || (!o.Union && len(extraRules) > 0) {
-			if o.Union {
-				expectedClusterRole.Rules = append(expectedClusterRole.Rules, extraRules...)
-			}
-
+		if reconciledClusterRole, needsReconciliation := computeReconciledRole(*expectedClusterRole, *actualClusterRole, o.Union); needsReconciliation {
 			if actualClusterRole.Annotations[ReconcileProtectAnnotation] == "true" {
-				skippedRoles = append(skippedRoles, expectedClusterRole)
+				skippedRoles = append(skippedRoles, reconciledClusterRole)
 			} else {
-				changedRoles = append(changedRoles, expectedClusterRole)
+				changedRoles = append(changedRoles, reconciledClusterRole)
 			}
 		}
 	}
@@ -234,6 +221,38 @@ func (o *ReconcileClusterRolesOptions) ChangedClusterRoles() ([]*authorizationap
 	}
 
 	return changedRoles, skippedRoles, nil
+}
+
+func computeReconciledRole(expected authorizationapi.ClusterRole, actual authorizationapi.ClusterRole, union bool) (*authorizationapi.ClusterRole, bool) {
+	existingAnnotationKeys := sets.StringKeySet(actual.Annotations)
+	expectedAnnotationKeys := sets.StringKeySet(expected.Annotations)
+	missingAnnotationKeys := !existingAnnotationKeys.HasAll(expectedAnnotationKeys.List()...)
+
+	// Copy any existing labels, so the displayed update is correct
+	// This assumes bootstrap roles will not set any labels
+	// These labels aren't actually used during update; the latest labels are pulled from the existing object again
+	// Annotations are merged in a way that guarantees that user made changes have precedence over the defaults
+	// The latest annotations are pulled from the existing object again during update before doing the actual merge
+	expected.Labels = actual.Labels
+	expected.Annotations = mergeAnnotations(expected.Annotations, actual.Annotations)
+
+	_, extraRules := rulevalidation.Covers(expected.Rules, actual.Rules)
+	_, missingRules := rulevalidation.Covers(actual.Rules, expected.Rules)
+
+	// We need to reconcile:
+	// 1. if we're missing rules
+	// 2. if there are extra rules we need to remove
+	// 3. if we are missing annotations
+	needsReconciliation := (len(missingRules) > 0) || (!union && len(extraRules) > 0) || missingAnnotationKeys
+
+	if !needsReconciliation {
+		return nil, false
+	}
+
+	if union {
+		expected.Rules = append(expected.Rules, extraRules...)
+	}
+	return &expected, true
 }
 
 // ReplaceChangedRoles will reconcile all the changed roles back to the recommended bootstrap policy
@@ -258,6 +277,7 @@ func (o *ReconcileClusterRolesOptions) ReplaceChangedRoles(changedRoles []*autho
 		}
 
 		role.Rules = changedRoles[i].Rules
+		role.Annotations = mergeAnnotations(changedRoles[i].Annotations, role.Annotations)
 		updatedRole, err := o.RoleClient.Update(role)
 		if err != nil {
 			errs = append(errs, err)
@@ -268,4 +288,15 @@ func (o *ReconcileClusterRolesOptions) ReplaceChangedRoles(changedRoles []*autho
 	}
 
 	return kerrors.NewAggregate(errs)
+}
+
+// mergeAnnotations combines the given annotation maps with the later annotations having higher precedence
+func mergeAnnotations(maps ...map[string]string) map[string]string {
+	output := map[string]string{}
+	for _, m := range maps {
+		for k, v := range m {
+			output[k] = v
+		}
+	}
+	return output
 }

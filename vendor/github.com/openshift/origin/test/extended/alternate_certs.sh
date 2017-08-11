@@ -4,15 +4,17 @@
 source "$(dirname "${BASH_SOURCE}")/../../hack/lib/init.sh"
 
 os::util::environment::setup_all_server_vars "test-extended-alternate-certs/"
-reset_tmp_dir
 
 export EXTENDED_TEST_PATH="${OS_ROOT}/test/extended"
 
 function cleanup()
 {
 	out=$?
-    kill $OS_PID
-	echo "[INFO] Exiting"
+	kill $OS_PID
+
+	os::test::junit::generate_oscmd_report
+
+	os::log::info "Exiting"
 	exit $out
 }
 
@@ -20,19 +22,26 @@ trap "exit" INT TERM
 trap "cleanup" EXIT
 
 
-echo "[INFO] Starting server as distinct processes"
-echo "[INFO] `openshift version`"
-echo "[INFO] Server logs will be at:    ${LOG_DIR}/openshift.log"
-echo "[INFO] Test artifacts will be in: ${ARTIFACT_DIR}"
-echo "[INFO] Config dir is:             ${SERVER_CONFIG_DIR}"
+os::log::info "Starting server as distinct processes"
+os::log::info "`openshift version`"
+os::log::info "Server logs will be at:    ${LOG_DIR}/openshift.log"
+os::log::info "Test artifacts will be in: ${ARTIFACT_DIR}"
+os::log::info "Config dir is:             ${SERVER_CONFIG_DIR}"
+
+# Allow setting $JUNIT_REPORT to toggle output behavior
+if [[ -n "${JUNIT_REPORT:-}" ]]; then
+	export JUNIT_REPORT_OUTPUT="${LOG_DIR}/raw_test_output.log"
+fi
 
 mkdir -p ${LOG_DIR}
 
-echo "[INFO] Scan of OpenShift related processes already up via ps -ef	| grep openshift : "
+os::log::info "Scan of OpenShift related processes already up via ps -ef	| grep openshift : "
 ps -ef | grep openshift
 
 mkdir -p "${SERVER_CONFIG_DIR}"
 pushd "${SERVER_CONFIG_DIR}"
+
+os::test::junit::declare_suite_start "extended/alternate_certs"
 
 # Make custom CA and server cert
 os::cmd::expect_success 'oadm ca create-signer-cert --overwrite=true --cert=master/custom-ca.crt --key=master/custom-ca.key --serial=master/custom-ca.txt --name=my-custom-ca@`date +%s`'
@@ -73,6 +82,8 @@ os::cmd::expect_success_and_text "oc whoami --config=master/openshift-master.kub
 os::cmd::expect_success_and_text "oc whoami --config=node-mynode/node.kubeconfig"                                        'system:node:mynode'
 os::cmd::expect_success_and_text "oc whoami --config=node-mynode/node.kubeconfig --server=https://localhost:${API_PORT}" 'system:node:mynode'
 os::cmd::expect_success_and_text "oc whoami --config=node-mynode/node.kubeconfig --server=https://127.0.0.1:${API_PORT}" 'system:node:mynode'
+
+os::test::junit::declare_suite_end
 
 kill $OS_PID
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -127,5 +127,35 @@ func TestLen(t *testing.T) {
 	q.Add("foo") // should not increase the queue length.
 	if e, a := 2, q.Len(); e != a {
 		t.Errorf("Expected %v, got %v", e, a)
+	}
+}
+
+func TestReinsert(t *testing.T) {
+	q := workqueue.New()
+	q.Add("foo")
+
+	// Start processing
+	i, _ := q.Get()
+	if i != "foo" {
+		t.Errorf("Expected %v, got %v", "foo", i)
+	}
+
+	// Add it back while processing
+	q.Add(i)
+
+	// Finish it up
+	q.Done(i)
+
+	// It should be back on the queue
+	i, _ = q.Get()
+	if i != "foo" {
+		t.Errorf("Expected %v, got %v", "foo", i)
+	}
+
+	// Finish that one up
+	q.Done(i)
+
+	if a := q.Len(); a != 0 {
+		t.Errorf("Expected queue to be empty. Has %v items", a)
 	}
 }

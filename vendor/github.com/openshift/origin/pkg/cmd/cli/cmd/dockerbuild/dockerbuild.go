@@ -17,26 +17,29 @@ import (
 	"k8s.io/kubernetes/pkg/util/interrupt"
 
 	dockerbuilder "github.com/openshift/imagebuilder/dockerclient"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	"github.com/openshift/origin/pkg/generate/app"
 )
 
-const (
-	dockerbuildLong = `
-Build a Dockerfile into a single layer
+var (
+	dockerbuildLong = templates.LongDesc(`
+		Build a Dockerfile into a single layer
 
-Builds the provided directory with a Dockerfile into a single layered image.
-Requires that you have a working connection to a Docker engine. You may mount
-secrets or config into the build with the --mount flag - these files will not
-be included in the final image.
+		Builds the provided directory with a Dockerfile into a single layered image.
+		Requires that you have a working connection to a Docker engine. You may mount
+		secrets or config into the build with the --mount flag - these files will not
+		be included in the final image.
 
-Experimental: This command is under active development and may change without notice.`
+		Experimental: This command is under active development and may change without notice.`)
 
-	dockerbuildExample = `  # Build the current directory into a single layer and tag
-  %[1]s ex dockerbuild . myimage:latest
+	dockerbuildExample = templates.Examples(`
+		# Build the current directory into a single layer and tag
+	  %[1]s ex dockerbuild . myimage:latest
 
-  # Mount a client secret into the build at a certain path
-  %[1]s ex dockerbuild . myimage:latest --mount ~/mysecret.pem:/etc/pki/secret/mysecret.pem`
+	  # Mount a client secret into the build at a certain path
+	  %[1]s ex dockerbuild . myimage:latest --mount ~/mysecret.pem:/etc/pki/secret/mysecret.pem`)
 )
 
 type DockerbuildOptions struct {
@@ -53,7 +56,7 @@ type DockerbuildOptions struct {
 	DockerfilePath string
 	AllowPull      bool
 	Keyring        credentialprovider.DockerKeyring
-	Arguments      cmdutil.Environment
+	Arguments      app.Environment
 }
 
 func NewCmdDockerbuild(fullName string, f *clientcmd.Factory, out, errOut io.Writer) *cobra.Command {
@@ -70,7 +73,7 @@ func NewCmdDockerbuild(fullName string, f *clientcmd.Factory, out, errOut io.Wri
 			kcmdutil.CheckErr(options.Complete(f, cmd, args))
 			kcmdutil.CheckErr(options.Validate())
 			if err := options.Run(); err != nil {
-				// TODO: move met to kcmdutil
+				// TODO: move me to kcmdutil
 				if err == cmdutil.ErrExit {
 					os.Exit(1)
 				}
@@ -95,7 +98,7 @@ func (o *DockerbuildOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, 
 	if len(paths) != 2 {
 		return kcmdutil.UsageError(cmd, "the directory to build and tag must be specified")
 	}
-	o.Arguments, _, _ = cmdutil.ParseEnvironmentArguments(envArgs)
+	o.Arguments, _, _ = app.ParseEnvironment(envArgs...)
 	o.Directory = paths[0]
 	o.Tag = paths[1]
 	if len(o.DockerfilePath) == 0 {

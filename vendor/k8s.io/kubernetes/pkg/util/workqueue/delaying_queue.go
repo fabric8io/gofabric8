@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,11 +20,11 @@ import (
 	"sort"
 	"time"
 
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/clock"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
-// DelayingInterface is an Interface that can Add an item at a later time.  This makes it easier to
+// DelayingInterface is an Interface that can Add an item at a later time. This makes it easier to
 // requeue items after failures without ending up in a hot-loop.
 type DelayingInterface interface {
 	Interface
@@ -34,14 +34,14 @@ type DelayingInterface interface {
 
 // NewDelayingQueue constructs a new workqueue with delayed queuing ability
 func NewDelayingQueue() DelayingInterface {
-	return newDelayingQueue(util.RealClock{}, "")
+	return newDelayingQueue(clock.RealClock{}, "")
 }
 
 func NewNamedDelayingQueue(name string) DelayingInterface {
-	return newDelayingQueue(util.RealClock{}, name)
+	return newDelayingQueue(clock.RealClock{}, name)
 }
 
-func newDelayingQueue(clock util.Clock, name string) DelayingInterface {
+func newDelayingQueue(clock clock.Clock, name string) DelayingInterface {
 	ret := &delayingType{
 		Interface:          NewNamed(name),
 		clock:              clock,
@@ -62,12 +62,15 @@ type delayingType struct {
 	Interface
 
 	// clock tracks time for delayed firing
-	clock util.Clock
+	clock clock.Clock
 
 	// stopCh lets us signal a shutdown to the waiting loop
 	stopCh chan struct{}
 
 	// heartbeat ensures we wait no more than maxWait before firing
+	//
+	// TODO: replace with Ticker (and add to clock) so this can be cleaned up.
+	// clock.Tick will leak.
 	heartbeat <-chan time.Time
 
 	// waitingForAdd is an ordered slice of items to be added to the contained work queue
@@ -115,7 +118,7 @@ func (q *delayingType) AddAfter(item interface{}, duration time.Duration) {
 	}
 }
 
-// maxWait keeps a max bound on the wait time.  It's just insurance against weird things happening.
+// maxWait keeps a max bound on the wait time. It's just insurance against weird things happening.
 // Checking the queue every 10 seconds isn't expensive and we know that we'll never end up with an
 // expired item sitting for more than 10 seconds.
 const maxWait = 10 * time.Second
@@ -192,6 +195,9 @@ func (q *delayingType) waitingLoop() {
 // inserts the given entry into the sorted entries list
 // same semantics as append()... the given slice may be modified,
 // and the returned value should be used
+//
+// TODO: This should probably be converted to use container/heap to improve
+// running time for a large number of items.
 func insert(entries []waitFor, knownEntries map[t]time.Time, entry waitFor) []waitFor {
 	// if the entry is already in our retry list and the existing time is before the new one, just skip it
 	existingTime, exists := knownEntries[entry.data]

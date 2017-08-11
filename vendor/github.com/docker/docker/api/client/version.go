@@ -1,20 +1,23 @@
 package client
 
 import (
-	"encoding/json"
 	"runtime"
 	"text/template"
+	"time"
 
-	"github.com/docker/docker/api"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/autogen/dockerversion"
+	"golang.org/x/net/context"
+
+	Cli "github.com/docker/docker/cli"
+	"github.com/docker/docker/dockerversion"
 	flag "github.com/docker/docker/pkg/mflag"
 	"github.com/docker/docker/utils"
+	"github.com/docker/docker/utils/templates"
+	"github.com/docker/engine-api/types"
 )
 
-var VersionTemplate = `Client:
+var versionTemplate = `Client:
  Version:      {{.Client.Version}}
- API version:  {{.Client.ApiVersion}}
+ API version:  {{.Client.APIVersion}}
  Go version:   {{.Client.GoVersion}}
  Git commit:   {{.Client.GitCommit}}
  Built:        {{.Client.BuildTime}}
@@ -23,18 +26,12 @@ var VersionTemplate = `Client:
 
 Server:
  Version:      {{.Server.Version}}
- API version:  {{.Server.ApiVersion}}
+ API version:  {{.Server.APIVersion}}
  Go version:   {{.Server.GoVersion}}
  Git commit:   {{.Server.GitCommit}}
  Built:        {{.Server.BuildTime}}
  OS/Arch:      {{.Server.Os}}/{{.Server.Arch}}{{if .Server.Experimental}}
  Experimental: {{.Server.Experimental}}{{end}}{{end}}`
-
-type VersionData struct {
-	Client   types.Version
-	ServerOK bool
-	Server   types.Version
-}
 
 // CmdVersion shows Docker version information.
 //
@@ -42,54 +39,57 @@ type VersionData struct {
 //
 // Usage: docker version
 func (cli *DockerCli) CmdVersion(args ...string) (err error) {
-	cmd := cli.Subcmd("version", nil, "Show the Docker version information.", true)
+	cmd := Cli.Subcmd("version", nil, Cli.DockerCommands["version"].Description, true)
 	tmplStr := cmd.String([]string{"f", "#format", "-format"}, "", "Format the output using the given go template")
 	cmd.Require(flag.Exact, 0)
 
 	cmd.ParseFlags(args, true)
-	if *tmplStr == "" {
-		*tmplStr = VersionTemplate
+
+	templateFormat := versionTemplate
+	if *tmplStr != "" {
+		templateFormat = *tmplStr
 	}
 
 	var tmpl *template.Template
-	if tmpl, err = template.New("").Funcs(funcMap).Parse(*tmplStr); err != nil {
-		return StatusError{StatusCode: 64,
+	if tmpl, err = templates.Parse(templateFormat); err != nil {
+		return Cli.StatusError{StatusCode: 64,
 			Status: "Template parsing error: " + err.Error()}
 	}
 
-	vd := VersionData{
-		Client: types.Version{
-			Version:      dockerversion.VERSION,
-			ApiVersion:   api.Version,
+	vd := types.VersionResponse{
+		Client: &types.Version{
+			Version:      dockerversion.Version,
+			APIVersion:   cli.client.ClientVersion(),
 			GoVersion:    runtime.Version(),
-			GitCommit:    dockerversion.GITCOMMIT,
-			BuildTime:    dockerversion.BUILDTIME,
+			GitCommit:    dockerversion.GitCommit,
+			BuildTime:    dockerversion.BuildTime,
 			Os:           runtime.GOOS,
 			Arch:         runtime.GOARCH,
 			Experimental: utils.ExperimentalBuild(),
 		},
 	}
 
-	defer func() {
-		if err2 := tmpl.Execute(cli.out, vd); err2 != nil && err == nil {
-			err = err2
+	serverVersion, err := cli.client.ServerVersion(context.Background())
+	if err == nil {
+		vd.Server = &serverVersion
+	}
+
+	// first we need to make BuildTime more human friendly
+	t, errTime := time.Parse(time.RFC3339Nano, vd.Client.BuildTime)
+	if errTime == nil {
+		vd.Client.BuildTime = t.Format(time.ANSIC)
+	}
+
+	if vd.ServerOK() {
+		t, errTime = time.Parse(time.RFC3339Nano, vd.Server.BuildTime)
+		if errTime == nil {
+			vd.Server.BuildTime = t.Format(time.ANSIC)
 		}
-		cli.out.Write([]byte{'\n'})
-	}()
-
-	serverResp, err := cli.call("GET", "/version", nil, nil)
-	if err != nil {
-		return err
 	}
 
-	defer serverResp.body.Close()
-
-	if err = json.NewDecoder(serverResp.body).Decode(&vd.Server); err != nil {
-		return StatusError{StatusCode: 1,
-			Status: "Error reading remote version: " + err.Error()}
+	if err2 := tmpl.Execute(cli.out, vd); err2 != nil && err == nil {
+		err = err2
 	}
-
-	vd.ServerOK = true
-
-	return
+	cli.out.Write([]byte{'\n'})
+	return err
 }

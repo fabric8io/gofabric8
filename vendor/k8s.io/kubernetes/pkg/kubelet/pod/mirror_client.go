@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -81,7 +81,7 @@ func (mc *basicMirrorClient) DeleteMirrorPod(podFullName string) error {
 		glog.Errorf("Failed to parse a pod full name %q", podFullName)
 		return err
 	}
-	glog.V(4).Infof("Deleting a mirror pod %q", podFullName)
+	glog.V(2).Infof("Deleting a mirror pod %q", podFullName)
 	// TODO(random-liu): Delete the mirror pod with uid precondition in mirror pod manager
 	if err := mc.apiserverClient.Core().Pods(namespace).Delete(name, api.NewDeleteOptions(0)); err != nil && !errors.IsNotFound(err) {
 		glog.Errorf("Failed deleting a mirror pod %q: %v", podFullName, err)

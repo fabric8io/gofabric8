@@ -6,8 +6,8 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/registry/generic"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/storage"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
 	"github.com/openshift/origin/pkg/sdn/api"
@@ -23,7 +23,7 @@ type enpStrategy struct {
 // objects via the REST API.
 var Strategy = enpStrategy{kapi.Scheme}
 
-func (enpStrategy) PrepareForUpdate(obj, old runtime.Object) {}
+func (enpStrategy) PrepareForUpdate(ctx kapi.Context, obj, old runtime.Object) {}
 
 // NamespaceScoped is true for egress network policy
 func (enpStrategy) NamespaceScoped() bool {
@@ -34,7 +34,7 @@ func (enpStrategy) GenerateName(base string) string {
 	return base
 }
 
-func (enpStrategy) PrepareForCreate(obj runtime.Object) {
+func (enpStrategy) PrepareForCreate(ctx kapi.Context, obj runtime.Object) {
 }
 
 // Canonicalize normalizes the object after validation.
@@ -61,13 +61,21 @@ func (enpStrategy) ValidateUpdate(ctx kapi.Context, obj, old runtime.Object) fie
 }
 
 // Matcher returns a generic matcher for a given label and field selector.
-func Matcher(label labels.Selector, field fields.Selector) generic.Matcher {
-	return generic.MatcherFunc(func(obj runtime.Object) (bool, error) {
-		network, ok := obj.(*api.EgressNetworkPolicy)
-		if !ok {
-			return false, fmt.Errorf("not an EgressNetworkPolicy")
-		}
-		fields := api.EgressNetworkPolicyToSelectableFields(network)
-		return label.Matches(labels.Set(network.Labels)) && field.Matches(fields), nil
-	})
+func Matcher(label labels.Selector, field fields.Selector) storage.SelectionPredicate {
+	return storage.SelectionPredicate{
+		Label: label,
+		Field: field,
+		GetAttrs: func(o runtime.Object) (labels.Set, fields.Set, error) {
+			obj, ok := o.(*api.EgressNetworkPolicy)
+			if !ok {
+				return nil, nil, fmt.Errorf("not an EgressNetworkPolicy")
+			}
+			return labels.Set(obj.Labels), SelectableFields(obj), nil
+		},
+	}
+}
+
+// SelectableFields returns a field set that can be used for filter selection
+func SelectableFields(obj *api.EgressNetworkPolicy) fields.Set {
+	return api.EgressNetworkPolicyToSelectableFields(obj)
 }

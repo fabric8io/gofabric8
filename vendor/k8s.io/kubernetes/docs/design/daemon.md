@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # DaemonSet in Kubernetes
 
 **Author**: Ananya Kumar (@AnanyaKumar)
@@ -145,7 +140,7 @@ upgradable, and more generally could not be managed through the API server
 interface.
 
 A third alternative is to generalize the Replication Controller. We would do
-something like: if you set the `replicas` field of the ReplicationConrollerSpec
+something like: if you set the `replicas` field of the ReplicationControllerSpec
 to -1, then it means "run exactly one replica on every node matching the
 nodeSelector in the pod template." The ReplicationController would pretend
 `replicas` had been set to some large number -- larger than the largest number
@@ -166,15 +161,15 @@ some discussion of this topic).
 #### Client
 
 - Add support for DaemonSet commands to kubectl and the client. Client code was
-added to client/unversioned. The main files in Kubectl that were modified are
-kubectl/describe.go and kubectl/stop.go, since for other calls like Get, Create,
+added to pkg/client/unversioned. The main files in Kubectl that were modified are
+pkg/kubectl/describe.go and pkg/kubectl/stop.go, since for other calls like Get, Create,
 and Update, the client simply forwards the request to the backend via the REST
 API.
 
 #### Apiserver
 
 - Accept, parse, validate client commands
-- REST API calls are handled in registry/daemon
+- REST API calls are handled in pkg/registry/daemonset
   - In particular, the api server will add the object to etcd
   - DaemonManager listens for updates to etcd (using Framework.informer)
 - API objects for DaemonSet were created in expapi/v1/types.go and
@@ -204,13 +199,6 @@ restartPolicy set to Always.
 ## Open Issues
 
 - Should work similarly to [Deployment](http://issues.k8s.io/1743).
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

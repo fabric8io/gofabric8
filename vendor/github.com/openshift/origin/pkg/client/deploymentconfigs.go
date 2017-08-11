@@ -4,7 +4,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	extensionsv1beta1 "k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/retry"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/watch"
 
@@ -30,6 +30,7 @@ type DeploymentConfigInterface interface {
 	GetScale(name string) (*extensions.Scale, error)
 	UpdateScale(scale *extensions.Scale) (*extensions.Scale, error)
 	UpdateStatus(config *deployapi.DeploymentConfig) (*deployapi.DeploymentConfig, error)
+	Instantiate(request *deployapi.DeploymentRequest) (*deployapi.DeploymentConfig, error)
 }
 
 // deploymentConfigs implements DeploymentConfigsNamespacer interface
@@ -155,13 +156,25 @@ func (c *deploymentConfigs) UpdateStatus(deploymentConfig *deployapi.DeploymentC
 	return
 }
 
+// Instantiate instantiates a new build from build config returning new object or an error
+func (c *deploymentConfigs) Instantiate(request *deployapi.DeploymentRequest) (*deployapi.DeploymentConfig, error) {
+	result := &deployapi.DeploymentConfig{}
+	resp := c.r.Post().Namespace(c.ns).Resource("deploymentConfigs").Name(request.Name).SubResource("instantiate").Body(request).Do()
+	var statusCode int
+	if resp.StatusCode(&statusCode); statusCode == 204 {
+		return nil, nil
+	}
+	err := resp.Into(result)
+	return result, err
+}
+
 type updateConfigFunc func(d *deployapi.DeploymentConfig)
 
 // UpdateConfigWithRetries will try to update a deployment config and ignore any update conflicts.
 func UpdateConfigWithRetries(dn DeploymentConfigsNamespacer, namespace, name string, applyUpdate updateConfigFunc) (*deployapi.DeploymentConfig, error) {
 	var config *deployapi.DeploymentConfig
 
-	resultErr := kclient.RetryOnConflict(kclient.DefaultBackoff, func() error {
+	resultErr := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		var err error
 		config, err = dn.DeploymentConfigs(namespace).Get(name)
 		if err != nil {

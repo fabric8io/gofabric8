@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,14 +18,30 @@ FROM gcr.io/google_containers/kube-cross:KUBE_BUILD_IMAGE_CROSS_TAG
 # Mark this as a kube-build container
 RUN touch /kube-build-image
 
-WORKDIR /go/src/k8s.io/kubernetes
+# To run as non-root we sometimes need to rebuild go stdlib packages.
+RUN chmod -R a+rwx /usr/local/go/pkg ${K8S_PATCHED_GOROOT}/pkg
 
-# Propagate the git tree version into the build image
-ADD kube-version-defs /kube-version-defs
-ENV KUBE_GIT_VERSION_FILE /kube-version-defs
+# For running integration tests /var/run/kubernetes is required
+# and should be writable by user
+RUN mkdir /var/run/kubernetes && chmod a+rwx /var/run/kubernetes
+
+# The kubernetes source is expected to be mounted here.  This will be the base
+# of operations.
+ENV HOME /go/src/k8s.io/kubernetes
+WORKDIR ${HOME}
 
 # Make output from the dockerized build go someplace else
 ENV KUBE_OUTPUT_SUBPATH _output/dockerized
 
-# Upload Kubernetes source
-ADD kube-source.tar.gz /go/src/k8s.io/kubernetes/
+# Pick up version stuff here as we don't copy our .git over.
+ENV KUBE_GIT_VERSION_FILE ${HOME}/.dockerized-kube-version-defs
+
+# Make log messages use the right timezone
+ADD localtime /etc/localtime
+RUN chmod a+r /etc/localtime
+
+# Set up rsyncd
+ADD rsyncd.password /
+RUN chmod a+r /rsyncd.password
+ADD rsyncd.sh /
+RUN chmod a+rx /rsyncd.sh

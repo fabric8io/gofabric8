@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubernetes Event Compression
 
 This document captures the design of event compression.
@@ -42,7 +37,7 @@ entries.
 ## Design
 
 Instead of a single Timestamp, each event object
-[contains](http://releases.k8s.io/release-1.3/pkg/api/types.go#L1111) the following
+[contains](http://releases.k8s.io/HEAD/pkg/api/types.go#L1111) the following
 fields:
  * `FirstTimestamp unversioned.Time`
    * The date/time of the first occurrence of the event.
@@ -103,7 +98,7 @@ of time and generates tons of unique events, the previously generated events
 cache will not grow unchecked in memory. Instead, after 4096 unique events are
 generated, the oldest events are evicted from the cache.
  * When an event is generated, the previously generated events cache is checked
-(see [`pkg/client/unversioned/record/event.go`](http://releases.k8s.io/release-1.3/pkg/client/record/event.go)).
+(see [`pkg/client/unversioned/record/event.go`](http://releases.k8s.io/HEAD/pkg/client/record/event.go)).
    * If the key for the new event matches the key for a previously generated
 event (meaning all of the above fields match between the new event and some
 previously generated event), then the event is considered to be a duplicate and
@@ -141,10 +136,10 @@ Sample kubectl output:
 
 ```console
 FIRSTSEEN                         LASTSEEN                          COUNT               NAME                                          KIND                SUBOBJECT                                REASON              SOURCE                                                  MESSAGE
-Thu, 12 Feb 2015 01:13:02 +0000   Thu, 12 Feb 2015 01:13:02 +0000   1                   kubernetes-node-4.c.saad-dev-vms.internal     Minion                                                       starting            {kubelet kubernetes-node-4.c.saad-dev-vms.internal}     Starting kubelet.
-Thu, 12 Feb 2015 01:13:09 +0000   Thu, 12 Feb 2015 01:13:09 +0000   1                   kubernetes-node-1.c.saad-dev-vms.internal     Minion                                                       starting            {kubelet kubernetes-node-1.c.saad-dev-vms.internal}     Starting kubelet.
-Thu, 12 Feb 2015 01:13:09 +0000   Thu, 12 Feb 2015 01:13:09 +0000   1                   kubernetes-node-3.c.saad-dev-vms.internal     Minion                                                       starting            {kubelet kubernetes-node-3.c.saad-dev-vms.internal}     Starting kubelet.
-Thu, 12 Feb 2015 01:13:09 +0000   Thu, 12 Feb 2015 01:13:09 +0000   1                   kubernetes-node-2.c.saad-dev-vms.internal     Minion                                                       starting            {kubelet kubernetes-node-2.c.saad-dev-vms.internal}     Starting kubelet.
+Thu, 12 Feb 2015 01:13:02 +0000   Thu, 12 Feb 2015 01:13:02 +0000   1                   kubernetes-node-4.c.saad-dev-vms.internal     Node                                                         starting            {kubelet kubernetes-node-4.c.saad-dev-vms.internal}     Starting kubelet.
+Thu, 12 Feb 2015 01:13:09 +0000   Thu, 12 Feb 2015 01:13:09 +0000   1                   kubernetes-node-1.c.saad-dev-vms.internal     Node                                                         starting            {kubelet kubernetes-node-1.c.saad-dev-vms.internal}     Starting kubelet.
+Thu, 12 Feb 2015 01:13:09 +0000   Thu, 12 Feb 2015 01:13:09 +0000   1                   kubernetes-node-3.c.saad-dev-vms.internal     Node                                                         starting            {kubelet kubernetes-node-3.c.saad-dev-vms.internal}     Starting kubelet.
+Thu, 12 Feb 2015 01:13:09 +0000   Thu, 12 Feb 2015 01:13:09 +0000   1                   kubernetes-node-2.c.saad-dev-vms.internal     Node                                                         starting            {kubelet kubernetes-node-2.c.saad-dev-vms.internal}     Starting kubelet.
 Thu, 12 Feb 2015 01:13:05 +0000   Thu, 12 Feb 2015 01:13:12 +0000   4                   monitoring-influx-grafana-controller-0133o    Pod                                                          failedScheduling    {scheduler }                                            Error scheduling: no nodes available to schedule pods
 Thu, 12 Feb 2015 01:13:05 +0000   Thu, 12 Feb 2015 01:13:12 +0000   4                   elasticsearch-logging-controller-fplln        Pod                                                          failedScheduling    {scheduler }                                            Error scheduling: no nodes available to schedule pods
 Thu, 12 Feb 2015 01:13:05 +0000   Thu, 12 Feb 2015 01:13:12 +0000   4                   kibana-logging-controller-gziey               Pod                                                          failedScheduling    {scheduler }                                            Error scheduling: no nodes available to schedule pods
@@ -167,13 +162,6 @@ compressing multiple recurring events in to a single event.
 single event to optimize etcd storage.
  * PR [#4444](http://pr.k8s.io/4444): Switch events history to use LRU cache
 instead of map.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

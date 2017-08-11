@@ -12,11 +12,12 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/retry"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/openshift/origin/pkg/client"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
@@ -33,39 +34,50 @@ type TagOptions struct {
 	referenceTag bool
 	namespace    string
 
+	referencePolicy string
+
 	ref            imageapi.DockerImageReference
 	sourceKind     string
 	destNamespace  []string
 	destNameAndTag []string
 }
 
+var (
+	tagLong = templates.LongDesc(`
+		Tag existing images into image streams
+
+		The tag command allows you to take an existing tag or image from an image
+		stream, or a Docker image pull spec, and set it as the most recent image for a
+		tag in 1 or more other image streams. It is similar to the 'docker tag'
+		command, but it operates on image streams instead.
+
+		Pass the --insecure flag if your external registry does not have a valid HTTPS
+		certificate, or is only served over HTTP. Pass --scheduled to have the server
+		regularly check the tag for updates and import the latest version (which can
+		then trigger builds and deployments). Note that --scheduled is only allowed for
+		Docker images.`)
+
+	tagExample = templates.Examples(`
+		# Tag the current image for the image stream 'openshift/ruby' and tag '2.0' into the image stream 'yourproject/ruby with tag 'tip'.
+	  %[1]s tag openshift/ruby:2.0 yourproject/ruby:tip
+
+	  # Tag a specific image.
+	  %[1]s tag openshift/ruby@sha256:6b646fa6bf5e5e4c7fa41056c27910e679c03ebe7f93e361e6515a9da7e258cc yourproject/ruby:tip
+
+	  # Tag an external Docker image.
+	  %[1]s tag --source=docker openshift/origin:latest yourproject/ruby:tip
+
+	  # Tag an external Docker image and request pullthrough for it.
+	  %[1]s tag --source=docker openshift/origin:latest yourproject/ruby:tip --reference-policy=local
+
+
+	  # Remove the specified spec tag from an image stream.
+	  %[1]s tag openshift/origin:latest -d`)
+)
+
 const (
-	tagLong = `
-Tag existing images into image streams
-
-The tag command allows you to take an existing tag or image from an image
-stream, or a Docker image pull spec, and set it as the most recent image for a
-tag in 1 or more other image streams. It is similar to the 'docker tag'
-command, but it operates on image streams instead.
-
-Pass the --insecure flag if your external registry does not have a valid HTTPS
-certificate, or is only served over HTTP. Pass --scheduled to have the server
-regularly check the tag for updates and import the latest version (which can
-then trigger builds and deployments). Note that --scheduled is only allowed for
-Docker images.
-`
-
-	tagExample = `  # Tag the current image for the image stream 'openshift/ruby' and tag '2.0' into the image stream 'yourproject/ruby with tag 'tip'.
-  %[1]s tag openshift/ruby:2.0 yourproject/ruby:tip
-
-  # Tag a specific image.
-  %[1]s tag openshift/ruby@sha256:6b646fa6bf5e5e4c7fa41056c27910e679c03ebe7f93e361e6515a9da7e258cc yourproject/ruby:tip
-
-  # Tag an external Docker image.
-  %[1]s tag --source=docker openshift/origin:latest yourproject/ruby:tip
-
-  # Remove the specified spec tag from an image stream.
-  %[1]s tag openshift/origin:latest -d`
+	sourceReferencePolicy = "source"
+	localReferencePolicy  = "local"
 )
 
 // NewCmdTag implements the OpenShift cli tag command.
@@ -84,12 +96,13 @@ func NewCmdTag(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Comm
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.sourceKind, "source", opts.sourceKind, "Optional hint for the source type; valid values are 'imagestreamtag', 'istag', 'imagestreamimage', 'isimage', and 'docker'")
-	cmd.Flags().BoolVarP(&opts.deleteTag, "delete", "d", opts.deleteTag, "Delete the provided spec tags")
+	cmd.Flags().StringVar(&opts.sourceKind, "source", opts.sourceKind, "Optional hint for the source type; valid values are 'imagestreamtag', 'istag', 'imagestreamimage', 'isimage', and 'docker'.")
+	cmd.Flags().BoolVarP(&opts.deleteTag, "delete", "d", opts.deleteTag, "Delete the provided spec tags.")
 	cmd.Flags().BoolVar(&opts.aliasTag, "alias", false, "Should the destination tag be updated whenever the source tag changes. Defaults to false.")
 	cmd.Flags().BoolVar(&opts.referenceTag, "reference", false, "Should the destination tag continue to pull from the source namespace. Defaults to false.")
-	cmd.Flags().BoolVar(&opts.scheduleTag, "scheduled", false, "Set a Docker image to be periodically imported from a remote repository.")
-	cmd.Flags().BoolVar(&opts.insecureTag, "insecure", false, "Set to true if importing the specified Docker image requires HTTP or has a self-signed certificate.")
+	cmd.Flags().BoolVar(&opts.scheduleTag, "scheduled", false, "Set a Docker image to be periodically imported from a remote repository. Defaults to false.")
+	cmd.Flags().BoolVar(&opts.insecureTag, "insecure", false, "Set to true if importing the specified Docker image requires HTTP or has a self-signed certificate. Defaults to false.")
+	cmd.Flags().StringVar(&opts.referencePolicy, "reference-policy", sourceReferencePolicy, "Allow to request pullthrough for external image when set to 'local'. Defaults to 'source'.")
 
 	return cmd
 }
@@ -118,7 +131,7 @@ func parseStreamName(defaultNamespace, name string) (string, string, error) {
 }
 
 func determineSourceKind(f *clientcmd.Factory, input string) string {
-	mapper, _ := f.Object(false)
+	mapper, _ := f.Object()
 	gvks, err := mapper.KindsFor(unversioned.GroupVersionResource{Group: imageapi.GroupName, Resource: input})
 	if err == nil {
 		return gvks[0].Kind
@@ -272,6 +285,10 @@ func (o TagOptions) Validate() error {
 		return errors.New("--alias and --delete may not be both specified")
 	}
 
+	if o.referencePolicy != sourceReferencePolicy && o.referencePolicy != localReferencePolicy {
+		return errors.New("reference policy must be set to 'source' or 'local'")
+	}
+
 	// Validate source tag based on --delete usage.
 	if o.deleteTag {
 		if len(o.sourceKind) > 0 {
@@ -311,13 +328,20 @@ func (o TagOptions) Validate() error {
 
 // RunTag contains all the necessary functionality for the OpenShift cli tag command.
 func (o TagOptions) RunTag() error {
+	var tagReferencePolicy imageapi.TagReferencePolicyType
+	switch o.referencePolicy {
+	case sourceReferencePolicy:
+		tagReferencePolicy = imageapi.SourceTagReferencePolicy
+	case localReferencePolicy:
+		tagReferencePolicy = imageapi.LocalTagReferencePolicy
+	}
 	for i, destNameAndTag := range o.destNameAndTag {
 		destName, destTag, ok := imageapi.SplitImageStreamTag(destNameAndTag)
 		if !ok {
 			return fmt.Errorf("%q must be of the form <stream_name>:<tag>", destNameAndTag)
 		}
 
-		err := kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			isc := o.osClient.ImageStreams(o.destNamespace[i])
 
 			if o.deleteTag {
@@ -325,7 +349,7 @@ func (o TagOptions) RunTag() error {
 				err := o.osClient.ImageStreamTags(o.destNamespace[i]).Delete(destName, destTag)
 				switch {
 				case err == nil:
-					fmt.Fprintf(o.out, "Deleted tag %s/%s.", o.destNamespace[i], destNameAndTag)
+					fmt.Fprintf(o.out, "Deleted tag %s/%s.\n", o.destNamespace[i], destNameAndTag)
 					return nil
 
 				case kerrors.IsMethodNotSupported(err), kerrors.IsForbidden(err):
@@ -358,7 +382,7 @@ func (o TagOptions) RunTag() error {
 					return err
 				}
 
-				fmt.Fprintf(o.out, "Deleted tag %s/%s.", o.destNamespace[i], destNameAndTag)
+				fmt.Fprintf(o.out, "Deleted tag %s/%s.\n", o.destNamespace[i], destNameAndTag)
 				return nil
 			}
 
@@ -373,6 +397,9 @@ func (o TagOptions) RunTag() error {
 					ImportPolicy: imageapi.TagImportPolicy{
 						Insecure:  o.insecureTag,
 						Scheduled: o.scheduleTag,
+					},
+					ReferencePolicy: imageapi.TagReferencePolicy{
+						Type: tagReferencePolicy,
 					},
 					From: &kapi.ObjectReference{
 						Kind: o.sourceKind,

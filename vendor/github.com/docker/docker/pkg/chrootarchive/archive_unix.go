@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"runtime"
 	"syscall"
@@ -45,11 +46,14 @@ func untar() {
 		fatal(err)
 	}
 	// fully consume stdin in case it is zero padded
-	flush(os.Stdin)
+	if _, err := flush(os.Stdin); err != nil {
+		fatal(err)
+	}
+
 	os.Exit(0)
 }
 
-func invokeUnpack(decompressedArchive io.ReadCloser, dest string, options *archive.TarOptions) error {
+func invokeUnpack(decompressedArchive io.Reader, dest string, options *archive.TarOptions) error {
 
 	// We can't pass a potentially large exclude list directly via cmd line
 	// because we easily overrun the kernel's max argument/environment size
@@ -79,6 +83,11 @@ func invokeUnpack(decompressedArchive io.ReadCloser, dest string, options *archi
 	w.Close()
 
 	if err := cmd.Wait(); err != nil {
+		// when `xz -d -c -q | docker-untar ...` failed on docker-untar side,
+		// we need to exhaust `xz`'s output, otherwise the `xz` side will be
+		// pending on write pipe forever
+		io.Copy(ioutil.Discard, decompressedArchive)
+
 		return fmt.Errorf("Untar re-exec error: %v: output: %s", err, output)
 	}
 	return nil

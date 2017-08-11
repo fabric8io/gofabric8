@@ -1,0 +1,30 @@
+{
+  "data": {
+    "attributes": {
+      "createdAt": "0001-01-01T00:00:00Z",
+      "last_used_workspace": "my-last-used-workspace",
+      "stackId": "golang-default",
+      "type": "git",
+      "url": "https://github.com/fabric8-services/fabric8-wit.git"
+    },
+    "id": "d7a282f6-1c10-459e-bb44-55a1a6d48bdd",
+    "links": {
+      "edit": "http:///api/codebases/d7a282f6-1c10-459e-bb44-55a1a6d48bdd/edit",
+      "related": "http:///api/codebases/d7a282f6-1c10-459e-bb44-55a1a6d48bdd",
+      "self": "http:///api/codebases/d7a282f6-1c10-459e-bb44-55a1a6d48bdd"
+    },
+    "relationships": {
+      "space": {
+        "data": {
+          "id": "a8bee527-12d2-4aff-9823-3511c1c8e6b9",
+          "type": "spaces"
+        },
+        "links": {
+          "related": "http:///api/spaces/a8bee527-12d2-4aff-9823-3511c1c8e6b9",
+          "self": "http:///api/spaces/a8bee527-12d2-4aff-9823-3511c1c8e6b9"
+        }
+      }
+    },
+    "type": "codebases"
+  }
+}

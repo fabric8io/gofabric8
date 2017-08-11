@@ -1,7 +1,7 @@
 // +build !linux
 
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,8 +29,4 @@ type realMountDetector struct {
 
 func (m *realMountDetector) GetMountMedium(path string) (storageMedium, bool, error) {
 	return mediumUnknown, false, nil
-}
-
-func selinuxEnabled() bool {
-	return false
 }

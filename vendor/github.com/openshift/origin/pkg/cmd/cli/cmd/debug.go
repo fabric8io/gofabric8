@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,14 +25,18 @@ import (
 	"k8s.io/kubernetes/pkg/util/term"
 	"k8s.io/kubernetes/pkg/watch"
 
+	"github.com/openshift/origin/pkg/client"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	generateapp "github.com/openshift/origin/pkg/generate/app"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
 type DebugOptions struct {
 	Attach kcmd.AttachOptions
+	Client *client.Client
 
 	Print         func(pod *kapi.Pod, w io.Writer) error
 	LogsForObject func(object, options runtime.Object) (*restclient.Request, error)
@@ -59,45 +64,47 @@ type DebugOptions struct {
 }
 
 const (
-	debugLong = `
-Launch a command shell to debug a running application
-
-When debugging images and setup problems, it's useful to get an exact copy of a running
-pod configuration and troubleshoot with a shell. Since a pod that is failing may not be
-started and not accessible to 'rsh' or 'exec', the 'debug' command makes it easy to
-create a carbon copy of that setup.
-
-The default mode is to start a shell inside of the first container of the referenced pod,
-replication controller, or deployment config. The started pod will be a copy of your
-source pod, with labels stripped, the command changed to '/bin/sh', and readiness and
-liveness checks disabled. If you just want to run a command, add '--' and a command to
-run. Passing a command will not create a TTY or send STDIN by default. Other flags are
-supported for altering the container or pod in common ways.
-
-A common problem running containers is a security policy that prohibits you from running
-as a root user on the cluster. You can use this command to test running a pod as
-non-root (with --as-user) or to run a non-root pod as root (with --as-root).
-
-The debug pod is deleted when the the remote command completes or the user interrupts
-the shell.`
-
-	debugExample = `
-  # Debug a currently running deployment
-  %[1]s dc/test
-
-  # Test running a deployment as a non-root user
-  %[1]s dc/test --as-user=1000000
-
-  # Debug a specific failing container by running the env command in the 'second' container
-  %[1]s dc/test -c second -- /bin/env
-
-  # See the pod that would be created to debug
-  %[1]s dc/test -o yaml`
-
 	debugPodLabelName = "debug.openshift.io/name"
 
 	debugPodAnnotationSourceContainer = "debug.openshift.io/source-container"
 	debugPodAnnotationSourceResource  = "debug.openshift.io/source-resource"
+)
+
+var (
+	debugLong = templates.LongDesc(`
+		Launch a command shell to debug a running application
+
+		When debugging images and setup problems, it's useful to get an exact copy of a running
+		pod configuration and troubleshoot with a shell. Since a pod that is failing may not be
+		started and not accessible to 'rsh' or 'exec', the 'debug' command makes it easy to
+		create a carbon copy of that setup.
+
+		The default mode is to start a shell inside of the first container of the referenced pod,
+		replication controller, or deployment config. The started pod will be a copy of your
+		source pod, with labels stripped, the command changed to '/bin/sh', and readiness and
+		liveness checks disabled. If you just want to run a command, add '--' and a command to
+		run. Passing a command will not create a TTY or send STDIN by default. Other flags are
+		supported for altering the container or pod in common ways.
+
+		A common problem running containers is a security policy that prohibits you from running
+		as a root user on the cluster. You can use this command to test running a pod as
+		non-root (with --as-user) or to run a non-root pod as root (with --as-root).
+
+		The debug pod is deleted when the the remote command completes or the user interrupts
+		the shell.`)
+
+	debugExample = templates.Examples(`
+	  # Debug a currently running deployment
+	  %[1]s dc/test
+
+	  # Test running a deployment as a non-root user
+	  %[1]s dc/test --as-user=1000000
+
+	  # Debug a specific failing container by running the env command in the 'second' container
+	  %[1]s dc/test -c second -- /bin/env
+
+	  # See the pod that would be created to debug
+	  %[1]s dc/test -o yaml`)
 )
 
 // NewCmdDebug creates a command for debugging pods.
@@ -135,7 +142,7 @@ func NewCmdDebug(fullName string, f *clientcmd.Factory, in io.Reader, out, errou
 	cmd.Flags().String("output-version", "", "Output the formatted object with the given version (default api-version).")
 	cmd.Flags().String("template", "", "Template string or path to template file to use when -o=go-template, -o=go-template-file. The template format is golang templates [http://golang.org/pkg/text/template/#pkg-overview].")
 	cmd.MarkFlagFilename("template")
-	cmd.Flags().Bool("no-headers", false, "When using the default output, don't print headers.")
+	cmd.Flags().Bool("no-headers", false, "If true, when using the default output, don't print headers.")
 	cmd.Flags().MarkHidden("no-headers")
 	cmd.Flags().String("sort-by", "", "If non-empty, sort list types using this field specification.  The field specification is expressed as a JSONPath expression (e.g. 'ObjectMeta.Name'). The field in the API resource specified by this JSONPath expression must be an integer or a string.")
 	cmd.Flags().MarkHidden("sort-by")
@@ -147,13 +154,13 @@ func NewCmdDebug(fullName string, f *clientcmd.Factory, in io.Reader, out, errou
 	cmd.Flags().BoolVarP(&options.DisableTTY, "no-tty", "T", false, "Disable pseudo-terminal allocation")
 
 	cmd.Flags().StringVarP(&options.Attach.ContainerName, "container", "c", "", "Container name; defaults to first container")
-	cmd.Flags().BoolVar(&options.KeepAnnotations, "keep-annotations", false, "Keep the original pod annotations")
-	cmd.Flags().BoolVar(&options.KeepLiveness, "keep-liveness", false, "Keep the original pod liveness probes")
+	cmd.Flags().BoolVar(&options.KeepAnnotations, "keep-annotations", false, "If true, keep the original pod annotations")
+	cmd.Flags().BoolVar(&options.KeepLiveness, "keep-liveness", false, "If true, keep the original pod liveness probes")
 	cmd.Flags().BoolVar(&options.KeepInitContainers, "keep-init-containers", true, "Run the init containers for the pod. Defaults to true.")
-	cmd.Flags().BoolVar(&options.KeepReadiness, "keep-readiness", false, "Keep the original pod readiness probes")
-	cmd.Flags().BoolVar(&options.OneContainer, "one-container", false, "Run only the selected container, remove all others")
+	cmd.Flags().BoolVar(&options.KeepReadiness, "keep-readiness", false, "If true, keep the original pod readiness probes")
+	cmd.Flags().BoolVar(&options.OneContainer, "one-container", false, "If true, run only the selected container, remove all others")
 	cmd.Flags().StringVar(&options.NodeName, "node-name", "", "Set a specific node to run on - by default the pod will run on any valid node")
-	cmd.Flags().BoolVar(&options.AsRoot, "as-root", false, "Try to run the container as the root user")
+	cmd.Flags().BoolVar(&options.AsRoot, "as-root", false, "If true, try to run the container as the root user")
 	cmd.Flags().Int64Var(&options.AsUser, "as-user", -1, "Try to run the container as a specific user UID (note: admins may limit your ability to use this flag)")
 
 	cmd.Flags().StringVarP(&options.Filename, "filename", "f", "", "Filename or URL to file to read a template")
@@ -210,14 +217,14 @@ func (o *DebugOptions) Complete(cmd *cobra.Command, f *clientcmd.Factory, args [
 		return err
 	}
 
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 	b := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder()).
 		NamespaceParam(cmdNamespace).DefaultNamespace().
 		SingleResourceType().
 		ResourceNames("pods", resources...).
 		Flatten()
 	if len(o.Filename) > 0 {
-		b.FilenameParam(explicit, false, o.Filename)
+		b.FilenameParam(explicit, &resource.FilenameOptions{Recursive: false, Filenames: []string{o.Filename}})
 	}
 
 	o.AddEnv, o.RemoveEnv, err = cmdutil.ParseEnv(envArgs, nil)
@@ -226,7 +233,7 @@ func (o *DebugOptions) Complete(cmd *cobra.Command, f *clientcmd.Factory, args [
 	}
 
 	one := false
-	infos, err := b.Do().IntoSingular(&one).Infos()
+	infos, err := b.Do().IntoSingleItemImplied(&one).Infos()
 	if err != nil {
 		return err
 	}
@@ -271,11 +278,12 @@ func (o *DebugOptions) Complete(cmd *cobra.Command, f *clientcmd.Factory, args [
 	}
 	o.Attach.Config = config
 
-	_, kc, err := f.Clients()
+	oc, kc, err := f.Clients()
 	if err != nil {
 		return err
 	}
-	o.Attach.Client = kc
+	o.Attach.PodClient = kc.Core()
+	o.Client = oc
 	return nil
 }
 func (o DebugOptions) Validate() error {
@@ -335,7 +343,7 @@ func (o *DebugOptions) Debug() error {
 				stderr = os.Stderr
 			}
 			fmt.Fprintf(stderr, "\nRemoving debug pod ...\n")
-			if err := o.Attach.Client.Pods(pod.Namespace).Delete(pod.Name, kapi.NewDeleteOptions(0)); err != nil {
+			if err := o.Attach.PodClient.Pods(pod.Namespace).Delete(pod.Name, kapi.NewDeleteOptions(0)); err != nil {
 				if !kapierrors.IsNotFound(err) {
 					fmt.Fprintf(stderr, "error: unable to delete the debug pod %q: %v\n", pod.Name, err)
 				}
@@ -345,7 +353,7 @@ func (o *DebugOptions) Debug() error {
 
 	glog.V(5).Infof("Created attach arguments: %#v", o.Attach)
 	return o.Attach.InterruptParent.Run(func() error {
-		w, err := o.Attach.Client.Pods(pod.Namespace).Watch(SingleObject(pod.ObjectMeta))
+		w, err := o.Attach.PodClient.Pods(pod.Namespace).Watch(SingleObject(pod.ObjectMeta))
 		if err != nil {
 			return err
 		}
@@ -387,6 +395,110 @@ func (o *DebugOptions) Debug() error {
 	})
 }
 
+// getContainerImageViaDeploymentConfig attempts to return an Image for a given
+// Container.  It tries to walk from the Container's Pod to its DeploymentConfig
+// (via the "openshift.io/deployment-config.name" annotation), then tries to
+// find the ImageStream from which the DeploymentConfig is deploying, then tries
+// to find a match for the Container's image in the ImageStream's Images.
+func (o *DebugOptions) getContainerImageViaDeploymentConfig(pod *kapi.Pod, container *kapi.Container) (*imageapi.Image, error) {
+	ref, err := imageapi.ParseDockerImageReference(container.Image)
+	if err != nil {
+		return nil, err
+	}
+
+	if ref.ID == "" {
+		return nil, nil // ID is needed for later lookup
+	}
+
+	dcname := pod.Annotations[deployapi.DeploymentConfigAnnotation]
+	if dcname == "" {
+		return nil, nil // Pod doesn't appear to have been created by a DeploymentConfig
+	}
+
+	dc, err := o.Client.DeploymentConfigs(o.Attach.Pod.Namespace).Get(dcname)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, trigger := range dc.Spec.Triggers {
+		if trigger.Type == deployapi.DeploymentTriggerOnImageChange &&
+			trigger.ImageChangeParams != nil &&
+			trigger.ImageChangeParams.From.Kind == "ImageStreamTag" {
+
+			isname, _, err := imageapi.ParseImageStreamTagName(trigger.ImageChangeParams.From.Name)
+			if err != nil {
+				return nil, err
+			}
+
+			namespace := trigger.ImageChangeParams.From.Namespace
+			if len(namespace) == 0 {
+				namespace = o.Attach.Pod.Namespace
+			}
+
+			isi, err := o.Client.ImageStreamImages(namespace).Get(isname, ref.ID)
+			if err != nil {
+				return nil, err
+			}
+
+			return &isi.Image, nil
+		}
+	}
+
+	return nil, nil // DeploymentConfig doesn't have an ImageChange Trigger
+}
+
+// getContainerImageViaImageStreamImport attempts to return an Image for a given
+// Container.  It does this by submiting a ImageStreamImport request with Import
+// set to false.  The request will not succeed if the backing repository
+// requires Insecure to be set to true, which cannot be hard-coded for security
+// reasons.
+func (o *DebugOptions) getContainerImageViaImageStreamImport(container *kapi.Container) (*imageapi.Image, error) {
+	isi := &imageapi.ImageStreamImport{
+		ObjectMeta: kapi.ObjectMeta{
+			Name: "oc-debug",
+		},
+		Spec: imageapi.ImageStreamImportSpec{
+			Images: []imageapi.ImageImportSpec{
+				{
+					From: kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: container.Image,
+					},
+				},
+			},
+		},
+	}
+
+	isi, err := o.Client.ImageStreams(o.Attach.Pod.Namespace).Import(isi)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(isi.Status.Images) > 0 {
+		return isi.Status.Images[0].Image, nil
+	}
+
+	return nil, nil
+}
+
+func (o *DebugOptions) getContainerImageCommand(pod *kapi.Pod, container *kapi.Container) ([]string, error) {
+	if len(container.Command) > 0 {
+		return container.Command, nil
+	}
+
+	image, _ := o.getContainerImageViaDeploymentConfig(pod, container)
+	if image == nil {
+		image, _ = o.getContainerImageViaImageStreamImport(container)
+	}
+
+	if image == nil || image.DockerImageMetadata.Config == nil {
+		return nil, errors.New("error: no usable image found")
+	}
+
+	config := image.DockerImageMetadata.Config
+	return append(config.Entrypoint, config.Cmd...), nil
+}
+
 // transformPodForDebug alters the input pod to be debuggable
 func (o *DebugOptions) transformPodForDebug(annotations map[string]string) (*kapi.Pod, []string) {
 	pod := o.Attach.Pod
@@ -399,15 +511,13 @@ func (o *DebugOptions) transformPodForDebug(annotations map[string]string) (*kap
 	container := containerForName(pod, o.Attach.ContainerName)
 
 	// identify the command to be run
-	originalCommand := append(container.Command, container.Args...)
-	container.Command = o.Command
-	if len(originalCommand) == 0 {
-		if cmd, ok := imageapi.ContainerImageEntrypointByAnnotation(pod.Annotations, o.Attach.ContainerName); ok {
-			originalCommand = cmd
-		}
+	originalCommand, _ := o.getContainerImageCommand(pod, container)
+	if len(originalCommand) > 0 {
+		originalCommand = append(originalCommand, container.Args...)
 	}
-	container.Args = nil
 
+	container.Command = o.Command
+	container.Args = nil
 	container.TTY = o.Attach.Stdin && o.Attach.TTY
 	container.Stdin = o.Attach.Stdin
 	container.StdinOnce = o.Attach.Stdin
@@ -496,13 +606,13 @@ func (o *DebugOptions) createPod(pod *kapi.Pod) (*kapi.Pod, error) {
 	namespace, name := pod.Namespace, pod.Name
 
 	// create the pod
-	created, err := o.Attach.Client.Pods(namespace).Create(pod)
+	created, err := o.Attach.PodClient.Pods(namespace).Create(pod)
 	if err == nil || !kapierrors.IsAlreadyExists(err) {
 		return created, err
 	}
 
 	// only continue if the pod has the right annotations
-	existing, err := o.Attach.Client.Pods(namespace).Get(name)
+	existing, err := o.Attach.PodClient.Pods(namespace).Get(name)
 	if err != nil {
 		return nil, err
 	}
@@ -511,10 +621,10 @@ func (o *DebugOptions) createPod(pod *kapi.Pod) (*kapi.Pod, error) {
 	}
 
 	// delete the existing pod
-	if err := o.Attach.Client.Pods(namespace).Delete(name, kapi.NewDeleteOptions(0)); err != nil && !kapierrors.IsNotFound(err) {
+	if err := o.Attach.PodClient.Pods(namespace).Delete(name, kapi.NewDeleteOptions(0)); err != nil && !kapierrors.IsNotFound(err) {
 		return nil, fmt.Errorf("unable to delete existing debug pod %q: %v", name, err)
 	}
-	return o.Attach.Client.Pods(namespace).Create(pod)
+	return o.Attach.PodClient.Pods(namespace).Create(pod)
 }
 
 func containerForName(pod *kapi.Pod, name string) *kapi.Container {

@@ -1,0 +1,28 @@
+= README
+:toc:
+:toc-placement: preamble
+:sectnums:
+:experimental:
+
+This section of the documentation contains a guide for users who want to contribute code or documentation to the fabric8-wit project.
+
+Code or documentation isn’t the only way to contribute. You can also link:https://github.com/fabric8-services/fabric8-wit/issues/new[report an issue].
+
+You can even propose your own type of contribution. Right now we don’t have a lot written about this yet, so just email almighty-public@redhat.com
+if this type of contributing interests you.
+
+=== How to use this guide?
+
+The guide attempts to explain how to use the fabric8-wit development environment as precisely, predictably, and procedurally as possible.
+
+=== How to get started?
+
+Start by getting the software you require. If you are on Windows, see link:getting-started-win.adoc[Getting started with fabric8-wit development on Windows].
+
+If you are on Mac or Linux, consult the main link:../../README.adoc[README] as
+many tools (like Git and Go) can most likely be installed via the system's
+package manager (e.g. YUM or Apt).
+
+=== How to debug?
+
+We've put together a separate document on the topic of link:debugging.adoc[debugging].

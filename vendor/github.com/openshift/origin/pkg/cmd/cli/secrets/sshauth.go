@@ -7,33 +7,36 @@ import (
 	"io/ioutil"
 
 	"k8s.io/kubernetes/pkg/api"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+
+	"github.com/openshift/origin/pkg/cmd/templates"
 
 	"github.com/spf13/cobra"
 )
 
-const (
-	// CreateSSHAuthSecretRecommendedCommandName represents name of subcommand for `oc secrets` command
-	CreateSSHAuthSecretRecommendedCommandName = "new-sshauth"
+// CreateSSHAuthSecretRecommendedCommandName represents name of subcommand for `oc secrets` command
+const CreateSSHAuthSecretRecommendedCommandName = "new-sshauth"
 
-	createSSHAuthSecretLong = `
-Create a new SSH authentication secret
+var (
+	createSSHAuthSecretLong = templates.LongDesc(`
+    Create a new SSH authentication secret
 
-SSH authentication secrets are used to authenticate against SCM servers.
+    SSH authentication secrets are used to authenticate against SCM servers.
 
-When creating applications, you may have a SCM server that requires SSH authentication - private SSH key.
-In order for the nodes to clone source code on your behalf, they have to have the credentials. You can
-provide this information by creating a 'sshauth' secret and attaching it to your service account.`
+    When creating applications, you may have a SCM server that requires SSH authentication - private SSH key.
+    In order for the nodes to clone source code on your behalf, they have to have the credentials. You can
+    provide this information by creating a 'sshauth' secret and attaching it to your service account.`)
 
-	createSSHAuthSecretExample = `  // If your SSH authentication method requires only private SSH key, add it by using:
-  %[1]s SECRET --ssh-privatekey=FILENAME
+	createSSHAuthSecretExample = templates.Examples(`
+    # If your SSH authentication method requires only private SSH key, add it by using:
+    %[1]s SECRET --ssh-privatekey=FILENAME
 
-  // If your SSH authentication method requires also CA certificate, add it by using:
-  %[1]s SECRET --ssh-privatekey=FILENAME --ca-cert=FILENAME
+    # If your SSH authentication method requires also CA certificate, add it by using:
+    %[1]s SECRET --ssh-privatekey=FILENAME --ca-cert=FILENAME
 
-  // If you do already have a .gitconfig file needed for authentication, you can create a gitconfig secret by using:
-  %[2]s SECRET path/to/.gitconfig`
+    # If you do already have a .gitconfig file needed for authentication, you can create a gitconfig secret by using:
+    %[2]s SECRET path/to/.gitconfig`)
 )
 
 // CreateSSHAuthSecretOptions holds the credential needed to authenticate against SCM servers.
@@ -47,11 +50,11 @@ type CreateSSHAuthSecretOptions struct {
 
 	Out io.Writer
 
-	SecretsInterface client.SecretsInterface
+	SecretsInterface kcoreclient.SecretInterface
 }
 
 // NewCmdCreateSSHAuthSecret implements the OpenShift cli secrets new-sshauth subcommand
-func NewCmdCreateSSHAuthSecret(name, fullName string, f *kcmdutil.Factory, out io.Writer, newSecretFullName, ocEditFullName string) *cobra.Command {
+func NewCmdCreateSSHAuthSecret(name, fullName string, f kcmdutil.Factory, out io.Writer, newSecretFullName, ocEditFullName string) *cobra.Command {
 	o := &CreateSSHAuthSecretOptions{
 		Out: out,
 	}
@@ -74,7 +77,7 @@ func NewCmdCreateSSHAuthSecret(name, fullName string, f *kcmdutil.Factory, out i
 				secret, err := o.NewSSHAuthSecret()
 				kcmdutil.CheckErr(err)
 
-				mapper, _ := f.Object(false)
+				mapper, _ := f.Object()
 				kcmdutil.CheckErr(f.PrintObject(c, mapper, secret, out))
 				return
 			}
@@ -117,7 +120,7 @@ func (o *CreateSSHAuthSecretOptions) CreateSSHAuthSecret() error {
 func (o *CreateSSHAuthSecretOptions) NewSSHAuthSecret() (*api.Secret, error) {
 	secret := &api.Secret{}
 	secret.Name = o.SecretName
-	secret.Type = api.SecretTypeOpaque
+	secret.Type = api.SecretTypeSSHAuth
 	secret.Data = map[string][]byte{}
 
 	if len(o.PrivateKeyPath) != 0 {
@@ -149,14 +152,14 @@ func (o *CreateSSHAuthSecretOptions) NewSSHAuthSecret() (*api.Secret, error) {
 
 // Complete fills CreateSSHAuthSecretOptions fields with data and checks whether necessary
 // arguments were provided.
-func (o *CreateSSHAuthSecretOptions) Complete(f *kcmdutil.Factory, args []string) error {
+func (o *CreateSSHAuthSecretOptions) Complete(f kcmdutil.Factory, args []string) error {
 	if len(args) != 1 {
 		return errors.New("must have exactly one argument: secret name")
 	}
 	o.SecretName = args[0]
 
 	if f != nil {
-		client, err := f.Client()
+		client, err := f.ClientSet()
 		if err != nil {
 			return err
 		}
@@ -164,7 +167,7 @@ func (o *CreateSSHAuthSecretOptions) Complete(f *kcmdutil.Factory, args []string
 		if err != nil {
 			return err
 		}
-		o.SecretsInterface = client.Secrets(namespace)
+		o.SecretsInterface = client.Core().Secrets(namespace)
 	}
 
 	return nil

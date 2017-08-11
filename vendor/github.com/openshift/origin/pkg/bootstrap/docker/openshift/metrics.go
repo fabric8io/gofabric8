@@ -3,12 +3,12 @@ package openshift
 import (
 	"fmt"
 
-	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	kapi "k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
+	kbatch "k8s.io/kubernetes/pkg/apis/batch"
 
 	"github.com/openshift/origin/pkg/bootstrap/docker/errors"
-	"github.com/openshift/origin/pkg/cmd/admin/policy"
+	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 	svcMetrics             = "hawkular-metrics"
 	metricsDeployerSA      = "metrics-deployer"
 	metricsDeployerSecret  = "metrics-deployer"
-	metricsDeployerPodName = "metrics-deployer-pod"
+	metricsDeployerJobName = "metrics-deployer-pod"
 )
 
 // InstallMetrics checks whether metrics is installed and installs it if not already installed
@@ -26,7 +26,7 @@ func (h *Helper) InstallMetrics(f *clientcmd.Factory, hostName, imagePrefix, ima
 		return errors.NewError("cannot obtain API clients").WithCause(err).WithDetails(h.OriginLog())
 	}
 
-	_, err = kubeClient.Services(infraNamespace).Get(svcMetrics)
+	_, err = kubeClient.Core().Services(infraNamespace).Get(svcMetrics)
 	if err == nil {
 		// If there's no error, the metrics service already exists
 		return nil
@@ -38,36 +38,23 @@ func (h *Helper) InstallMetrics(f *clientcmd.Factory, hostName, imagePrefix, ima
 	// Create metrics deployer service account
 	routerSA := &kapi.ServiceAccount{}
 	routerSA.Name = metricsDeployerSA
-	_, err = kubeClient.ServiceAccounts(infraNamespace).Create(routerSA)
+	_, err = kubeClient.Core().ServiceAccounts(infraNamespace).Create(routerSA)
 	if err != nil {
 		return errors.NewError("cannot create metrics deployer service account").WithCause(err).WithDetails(h.OriginLog())
 	}
 
 	// Add edit role to deployer service account
-	roleBindingAccessor := policy.NewLocalRoleBindingAccessor(infraNamespace, osClient)
-	addEditRole := policy.RoleModificationOptions{
-		RoleName:            "edit",
-		RoleBindingAccessor: roleBindingAccessor,
-		Subjects: []kapi.ObjectReference{
-			{
-				Namespace: infraNamespace,
-				Name:      metricsDeployerSA,
-				Kind:      "ServiceAccount",
-			},
-		},
-	}
-	if err = addEditRole.AddRole(); err != nil {
+	if err = AddRoleToServiceAccount(osClient, "edit", metricsDeployerSA, infraNamespace); err != nil {
 		return errors.NewError("cannot add edit role to metrics deployer service account").WithCause(err).WithDetails(h.OriginLog())
 	}
 
-	// Add cluster reader role to heapster service account
-	clusterRoleBindingAccessor := policy.NewClusterRoleBindingAccessor(osClient)
-	addClusterReaderRole := policy.RoleModificationOptions{
-		RoleName:            "cluster-reader",
-		RoleBindingAccessor: clusterRoleBindingAccessor,
-		Users:               []string{"system:serviceaccount:openshift-infra:heapster"},
+	// Add view role to the hawkular service account
+	if err = AddRoleToServiceAccount(osClient, "view", "hawkular", infraNamespace); err != nil {
+		return errors.NewError("cannot add view role to the hawkular service account").WithCause(err).WithDetails(h.OriginLog())
 	}
-	if err = addClusterReaderRole.AddRole(); err != nil {
+
+	// Add cluster reader role to heapster service account
+	if err = AddClusterRole(osClient, "cluster-reader", "system:serviceaccount:openshift-infra:heapster"); err != nil {
 		return errors.NewError("cannot add cluster reader role to heapster service account").WithCause(err).WithDetails(h.OriginLog())
 	}
 
@@ -75,19 +62,21 @@ func (h *Helper) InstallMetrics(f *clientcmd.Factory, hostName, imagePrefix, ima
 	deployerSecret := &kapi.Secret{}
 	deployerSecret.Name = metricsDeployerSecret
 	deployerSecret.Data = map[string][]byte{"nothing": []byte("/dev/null")}
-	if _, err = kubeClient.Secrets(infraNamespace).Create(deployerSecret); err != nil {
+	if _, err = kubeClient.Core().Secrets(infraNamespace).Create(deployerSecret); err != nil {
 		return errors.NewError("cannot create metrics deployer secret").WithCause(err).WithDetails(h.OriginLog())
 	}
 
-	// Create deployer Pod
-	deployerPod := metricsDeployerPod(hostName, imagePrefix, imageVersion)
-	if _, err = kubeClient.Pods(infraNamespace).Create(deployerPod); err != nil {
-		return errors.NewError("cannot create metrics deployer pod").WithCause(err).WithDetails(h.OriginLog())
-	}
+	// Create the job client
+	jobClient := kubeClient.Batch().Jobs(infraNamespace)
+
+	// Submit the job
+	jobClient.Create(metricsDeployerJob(hostName, imagePrefix, imageVersion))
+
 	return nil
 }
 
-func metricsDeployerPod(hostName, imagePrefix, imageVersion string) *kapi.Pod {
+// Returns a job to create the metrics deployer pod
+func metricsDeployerJob(hostName, imagePrefix, imageVersion string) *kbatch.Job {
 	env := []kapi.EnvVar{
 		{
 			Name: "PROJECT",
@@ -135,7 +124,7 @@ func metricsDeployerPod(hostName, imagePrefix, imageVersion string) *kapi.Pod {
 		},
 		{
 			Name:  "USE_PERSISTENT_STORAGE",
-			Value: "false",
+			Value: "true",
 		},
 		{
 			Name:  "CASSANDRA_NODES",
@@ -158,49 +147,65 @@ func metricsDeployerPod(hostName, imagePrefix, imageVersion string) *kapi.Pod {
 			Value: "10s",
 		},
 	}
-	pod := &kapi.Pod{
-		Spec: kapi.PodSpec{
-			DNSPolicy:          kapi.DNSClusterFirst,
-			RestartPolicy:      kapi.RestartPolicyNever,
-			ServiceAccountName: metricsDeployerSA,
-			Volumes: []kapi.Volume{
-				{
-					Name: "empty",
-					VolumeSource: kapi.VolumeSource{
-						EmptyDir: &kapi.EmptyDirVolumeSource{},
-					},
+	podSpec := kapi.PodSpec{
+		DNSPolicy:          kapi.DNSClusterFirst,
+		RestartPolicy:      kapi.RestartPolicyNever,
+		ServiceAccountName: metricsDeployerSA,
+		Volumes: []kapi.Volume{
+			{
+				Name: "empty",
+				VolumeSource: kapi.VolumeSource{
+					EmptyDir: &kapi.EmptyDirVolumeSource{},
 				},
-				{
-					Name: "secret",
-					VolumeSource: kapi.VolumeSource{
-						Secret: &kapi.SecretVolumeSource{
-							SecretName: metricsDeployerSecret,
-						},
+			},
+			{
+				Name: "secret",
+				VolumeSource: kapi.VolumeSource{
+					Secret: &kapi.SecretVolumeSource{
+						SecretName: metricsDeployerSecret,
 					},
 				},
 			},
 		},
-	}
-	pod.Name = metricsDeployerPodName
-	pod.Spec.Containers = []kapi.Container{
-		{
-			Image: fmt.Sprintf("%s-metrics-deployer:%s", imagePrefix, imageVersion),
-			Name:  "deployer",
-			VolumeMounts: []kapi.VolumeMount{
-				{
-					Name:      "secret",
-					MountPath: "/secret",
-					ReadOnly:  true,
+		Containers: []kapi.Container{
+			{
+				Image: fmt.Sprintf("%s-metrics-deployer:%s", imagePrefix, imageVersion),
+				Name:  "deployer",
+				VolumeMounts: []kapi.VolumeMount{
+					{
+						Name:      "secret",
+						MountPath: "/secret",
+						ReadOnly:  true,
+					},
+					{
+						Name:      "empty",
+						MountPath: "/etc/deploy",
+					},
 				},
-				{
-					Name:      "empty",
-					MountPath: "/etc/deploy",
-				},
+				Env: env,
 			},
-			Env: env,
 		},
 	}
-	return pod
+
+	completions := int32(1)
+
+	deadline := int64(60 * 5)
+
+	meta := kapi.ObjectMeta{
+		Name: metricsDeployerJobName,
+	}
+
+	job := &kbatch.Job{
+		ObjectMeta: meta,
+		Spec: kbatch.JobSpec{
+			Completions:           &completions,
+			ActiveDeadlineSeconds: &deadline,
+			Template: kapi.PodTemplateSpec{
+				Spec: podSpec,
+			},
+		},
+	}
+	return job
 }
 
 func MetricsHost(routingSuffix, serverIP string) string {

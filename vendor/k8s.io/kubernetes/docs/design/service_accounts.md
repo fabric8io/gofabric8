@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Service Accounts
 
 ## Motivation
@@ -84,9 +79,9 @@ system external to Kubernetes.
 
 Kubernetes does not dictate how to divide up the space of user identifier
 strings. User names can be simple Unix-style short usernames, (e.g. `alice`), or
-may be qualified to allow for federated identity (`alice@example.com` vs
+may be qualified to allow for federated identity (`alice@example.com` vs.
 `alice@example.org`.) Naming convention may distinguish service accounts from
-user accounts (e.g. `alice@example.com` vs
+user accounts (e.g. `alice@example.com` vs.
 `build-service-account-a3b7f0@foo-namespace.service-accounts.example.com`), but
 Kubernetes does not require this.
 
@@ -208,13 +203,6 @@ and read-write access to events in that namespace?)
 Finally, it may provide an interface to automate creation of new
 serviceAccounts. In that case, the user may want to GET serviceAccounts to see
 what has been created.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

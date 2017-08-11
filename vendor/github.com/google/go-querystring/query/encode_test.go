@@ -12,20 +12,9 @@ import (
 	"time"
 )
 
-type Nested struct {
-	A   SubNested  `url:"a"`
-	B   *SubNested `url:"b"`
-	Ptr *SubNested `url:"ptr,omitempty"`
-}
-
-type SubNested struct {
-	Value string `url:"value"`
-}
-
 func TestValues_types(t *testing.T) {
 	str := "string"
 	strPtr := &str
-	timeVal := time.Date(2000, 1, 1, 12, 34, 56, 0, time.UTC)
 
 	tests := []struct {
 		in   interface{}
@@ -54,17 +43,11 @@ func TestValues_types(t *testing.T) {
 				A *string
 				B *int
 				C **string
-				D *time.Time
-			}{
-				A: strPtr,
-				C: &strPtr,
-				D: &timeVal,
-			},
+			}{A: strPtr, C: &strPtr},
 			url.Values{
 				"A": {str},
 				"B": {""},
 				"C": {str},
-				"D": {"2000-01-01T12:34:56Z"},
 			},
 		},
 		{
@@ -78,9 +61,6 @@ func TestValues_types(t *testing.T) {
 				F [2]string `url:",space"`
 				G []*string `url:",space"`
 				H []bool    `url:",int,space"`
-				I []string  `url:",brackets"`
-				J []string  `url:",semicolon"`
-				K []string  `url:",numbered"`
 			}{
 				A: []string{"a", "b"},
 				B: []string{"a", "b"},
@@ -90,23 +70,16 @@ func TestValues_types(t *testing.T) {
 				F: [2]string{"a", "b"},
 				G: []*string{&str, &str},
 				H: []bool{true, false},
-				I: []string{"a", "b"},
-				J: []string{"a", "b"},
-				K: []string{"a", "b"},
 			},
 			url.Values{
-				"A":   {"a", "b"},
-				"B":   {"a,b"},
-				"C":   {"a b"},
-				"D":   {"a", "b"},
-				"E":   {"a,b"},
-				"F":   {"a b"},
-				"G":   {"string string"},
-				"H":   {"1 0"},
-				"I[]": {"a", "b"},
-				"J":   {"a;b"},
-				"K0":  {"a"},
-				"K1":  {"b"},
+				"A": {"a", "b"},
+				"B": {"a,b"},
+				"C": {"a b"},
+				"D": {"a", "b"},
+				"E": {"a,b"},
+				"F": {"a b"},
+				"G": {"string string"},
+				"H": {"1 0"},
 			},
 		},
 		{
@@ -128,41 +101,6 @@ func TestValues_types(t *testing.T) {
 				"C": {"1"},
 				"D": {"0"},
 			},
-		},
-		{
-			struct {
-				Nest Nested `url:"nest"`
-			}{
-				Nested{
-					A: SubNested{
-						Value: "that",
-					},
-				},
-			},
-			url.Values{
-				"nest[a][value]": {"that"},
-				"nest[b]":        {""},
-			},
-		},
-		{
-			struct {
-				Nest Nested `url:"nest"`
-			}{
-				Nested{
-					Ptr: &SubNested{
-						Value: "that",
-					},
-				},
-			},
-			url.Values{
-				"nest[a][value]":   {""},
-				"nest[b]":          {""},
-				"nest[ptr][value]": {"that"},
-			},
-		},
-		{
-			nil,
-			url.Values{},
 		},
 	}
 
@@ -217,15 +155,6 @@ type D struct {
 	C string
 }
 
-type e struct {
-	B
-	C string
-}
-
-type F struct {
-	e
-}
-
 func TestValues_embeddedStructs(t *testing.T) {
 	tests := []struct {
 		in   interface{}
@@ -237,10 +166,6 @@ func TestValues_embeddedStructs(t *testing.T) {
 		},
 		{
 			D{B: B{C: "bar"}, C: "foo"},
-			url.Values{"C": {"foo", "bar"}},
-		},
-		{
-			F{e{B: B{C: "bar"}, C: "foo"}}, // With unexported embed
 			url.Values{"C": {"foo", "bar"}},
 		},
 	}
@@ -266,16 +191,16 @@ func TestValues_invalidInput(t *testing.T) {
 
 type EncodedArgs []string
 
-func (m EncodedArgs) EncodeValues(key string, v *url.Values) error {
+func (m EncodedArgs) EncodeValues(v *url.Values) error {
 	for i, arg := range m {
-		v.Set(fmt.Sprintf("%s.%d", key, i), arg)
+		v.Set(fmt.Sprintf("arg.%d", i), arg)
 	}
 	return nil
 }
 
 func TestValues_Marshaler(t *testing.T) {
 	s := struct {
-		Args EncodedArgs `url:"arg"`
+		Args EncodedArgs `url:"args"`
 	}{[]string{"a", "b", "c"}}
 	v, err := Values(s)
 	if err != nil {
@@ -287,21 +212,6 @@ func TestValues_Marshaler(t *testing.T) {
 		"arg.1": {"b"},
 		"arg.2": {"c"},
 	}
-	if !reflect.DeepEqual(want, v) {
-		t.Errorf("Values(%q) returned %v, want %v", s, v, want)
-	}
-}
-
-func TestValues_MarshalerWithNilPointer(t *testing.T) {
-	s := struct {
-		Args *EncodedArgs `url:"arg"`
-	}{}
-	v, err := Values(s)
-	if err != nil {
-		t.Errorf("Values(%q) returned error: %v", s, err)
-	}
-
-	want := url.Values{}
 	if !reflect.DeepEqual(want, v) {
 		t.Errorf("Values(%q) returned %v, want %v", s, v, want)
 	}

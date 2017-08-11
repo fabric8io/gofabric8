@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,37 +26,52 @@ import (
 	"github.com/golang/glog"
 	"github.com/skynetservices/skydns/metrics"
 	"github.com/skynetservices/skydns/server"
+	"github.com/spf13/pflag"
+
 	"k8s.io/kubernetes/cmd/kube-dns/app/options"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	kdns "k8s.io/kubernetes/pkg/dns"
+	dnsConfig "k8s.io/kubernetes/pkg/dns/config"
 )
 
 type KubeDNSServer struct {
 	// DNS domain name.
-	domain      string
-	healthzPort int
-	dnsPort     int
-	kd          *kdns.KubeDNS
+	domain         string
+	healthzPort    int
+	dnsBindAddress string
+	dnsPort        int
+	kd             *kdns.KubeDNS
 }
 
 func NewKubeDNSServerDefault(config *options.KubeDNSConfig) *KubeDNSServer {
-	ks := KubeDNSServer{
-		domain: config.ClusterDomain,
-	}
+	ks := KubeDNSServer{domain: config.ClusterDomain}
 
 	kubeClient, err := newKubeClient(config)
 	if err != nil {
 		glog.Fatalf("Failed to create a kubernetes client: %v", err)
 	}
+
 	ks.healthzPort = config.HealthzPort
+	ks.dnsBindAddress = config.DNSBindAddress
 	ks.dnsPort = config.DNSPort
-	ks.kd, err = kdns.NewKubeDNS(kubeClient, config.ClusterDomain, config.Federations)
-	if err != nil {
-		glog.Fatalf("Failed to start kubeDNS: %v", err)
+
+	var configSync dnsConfig.Sync
+	if config.ConfigMap == "" {
+		glog.V(0).Infof("ConfigMap not configured, using values from command line flags")
+		configSync = dnsConfig.NewNopSync(
+			&dnsConfig.Config{Federations: config.Federations})
+	} else {
+		glog.V(0).Infof("Using configuration read from ConfigMap: %v:%v",
+			config.ConfigMapNs, config.ConfigMap)
+		configSync = dnsConfig.NewSync(
+			kubeClient, config.ConfigMapNs, config.ConfigMap)
 	}
+
+	ks.kd = kdns.NewKubeDNS(kubeClient, config.ClusterDomain, configSync)
+
 	return &ks
 }
 
@@ -88,25 +103,32 @@ func newKubeClient(dnsConfig *options.KubeDNSConfig) (clientset.Interface, error
 		}
 	}
 
-	glog.Infof("Using %s for kubernetes master", config.Host)
-	glog.Infof("Using kubernetes API %v", config.GroupVersion)
+	glog.V(0).Infof("Using %v for kubernetes master, kubernetes API: %v",
+		config.Host, config.GroupVersion)
 	return clientset.NewForConfig(config)
 }
 
 func (server *KubeDNSServer) Run() {
+	pflag.VisitAll(func(flag *pflag.Flag) {
+		glog.V(0).Infof("FLAG: --%s=%q", flag.Name, flag.Value)
+	})
 	setupSignalHandlers()
 	server.startSkyDNSServer()
 	server.kd.Start()
-	server.setupHealthzHandlers()
-	glog.Infof("Setting up Healthz Handler(/readiness, /cache) on port :%d", server.healthzPort)
+	server.setupHandlers()
+
+	glog.V(0).Infof("Status HTTP port %v", server.healthzPort)
 	glog.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", server.healthzPort), nil))
 }
 
 // setupHealthzHandlers sets up a readiness and liveness endpoint for kube2sky.
-func (server *KubeDNSServer) setupHealthzHandlers() {
+func (server *KubeDNSServer) setupHandlers() {
+	glog.V(0).Infof("Setting up Healthz Handler (/readiness)")
 	http.HandleFunc("/readiness", func(w http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(w, "ok\n")
 	})
+
+	glog.V(0).Infof("Setting up cache handler (/cache)")
 	http.HandleFunc("/cache", func(w http.ResponseWriter, req *http.Request) {
 		serializedJSON, err := server.kd.GetCacheAsJSON()
 		if err == nil {
@@ -118,25 +140,32 @@ func (server *KubeDNSServer) setupHealthzHandlers() {
 	})
 }
 
-// setupSignalHandlers runs a goroutine that waits on SIGINT or SIGTERM and logs it
-// before exiting.
+// setupSignalHandlers installs signal handler to ignore SIGINT and
+// SIGTERM. This daemon will be killed by SIGKILL after the grace
+// period to allow for some manner of graceful shutdown.
 func setupSignalHandlers() {
 	sigChan := make(chan os.Signal)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		glog.Fatalf("Received signal: %s", <-sigChan)
+		glog.V(0).Infof("Ignoring signal %v (can only be terminated by SIGKILL)", <-sigChan)
 	}()
 }
 
 func (d *KubeDNSServer) startSkyDNSServer() {
-	glog.Infof("Starting SkyDNS server. Listening on port:%d", d.dnsPort)
-	skydnsConfig := &server.Config{Domain: d.domain, DnsAddr: fmt.Sprintf("0.0.0.0:%d", d.dnsPort)}
+	glog.V(0).Infof("Starting SkyDNS server (%v:%v)", d.dnsBindAddress, d.dnsPort)
+	skydnsConfig := &server.Config{
+		Domain:  d.domain,
+		DnsAddr: fmt.Sprintf("%s:%d", d.dnsBindAddress, d.dnsPort),
+	}
 	server.SetDefaults(skydnsConfig)
 	s := server.New(d.kd, skydnsConfig)
 	if err := metrics.Metrics(); err != nil {
-		glog.Fatalf("skydns: %s", err)
+		glog.Fatalf("Skydns metrics error: %s", err)
+	} else if metrics.Port != "" {
+		glog.V(0).Infof("Skydns metrics enabled (%v:%v)", metrics.Path, metrics.Port)
 	} else {
-		glog.Infof("skydns: metrics enabled on :%s%s", metrics.Port, metrics.Path)
+		glog.V(0).Infof("Skydns metrics not enabled")
 	}
+
 	go s.Run()
 }

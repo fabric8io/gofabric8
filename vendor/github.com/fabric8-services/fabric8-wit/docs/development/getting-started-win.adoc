@@ -1,0 +1,376 @@
+= Getting started with fabric8-wit development on Windows
+:author: Konrad Kleine
+:toc:
+:toc-placement!:
+:sectnums:
+:experimental:
+
+This page explains how to get the software you need to use a Windows 10 64 bit machine for fabric8-wit development. In addition to that this page lists steps how to configure your development environment in terms of setting Windows environment variables.
+
+NOTE: In this guide we assume that the drive where your home folder is located is `c:`. Please adjust this to your needs whenever your home folder is on another drive.
+
+Whenever you have problems with this setup you might find an answer in the <<troubleshooting>> section.
+
+toc::[]
+
+[[introduction]]
+=== Introduction
+
+To start developing on Windows you must:
+
+* <<install-git>>
+* <<install-mercurial>>
+* <<install-glide>>
+* <<install-go>>
+* <<install-cygwin>>
+
+After that you have to configure various things
+
+* <<configure-git>>
+* <<configure-windows-env>>
+
+As a final step we install a debugger. This requires some preparation and that's why we do it as one of the last steps.
+
+* <<install-delve>>
+
+To get the code and build it, look here:
+
+* <<get-the-code>>
+* <<fetch-dependencies>>
+* <<build-from-source>>
+
+[[install-git]]
+=== Install Git
+
+1. Browse to the link:https://git-scm.com/download/win[Git download page].
+1. If your download doesn't start automatically click the **64-bit Git for Windows Setup.** link.
+  Windows prompts you to save the file to your machine. The exact location isn't important.
+1. Run the saved file.
+1. The system displays the Git Setup wizard.
+1. Click the *Next* button to move through the wizard and accept all the defaults.
+1. Click *Finish* when you are done.
+
+[[install-mercurial]]
+=== Install Mercurial
+
+1. Browse to the link:https://www.mercurial-scm.org/downloads[Mercurial download page].
+1. Find the download entitled *Mercurial 3.9 Inno Setup installer - x64 Windows - does not require admin rights* and click on *download*. The version can be higher than *3.9* but don't worry.
+1. Windows prompts you to save the file to your machine. The exact location isn't important.
+1. Run the saved file.
+1. The system displays the Mercurial Setup Wizard.
+1. On the *License Agreement* page select *I accept the agreement*.
+1. Click the *Next* button to get to the page *Select Destination Directory*.
+1. Enter C:\Users\YOURNAME\mercurial` as the destination directory and replace `YOURNAME` with your winows login name.
+1. Click *Next* to get to the page *Select Start Menu Folder*.
+1. Click *Next* to get to the page *Ready to Install*.
+1. Click *Install* to get to the page *Information*.
+1. Click *Next* to get to the page *Completing the Mercurial Setup*.
+1. Make sure the box *Add the installation path to the search path* is checked.
+1. Click *Finish* when you are done.
+
+[[install-glide]]
+=== Install Glide
+
+In Go third-party packages are typically searched for inside a special directory. If a required package is not there, it will be downloaded using link:https://golang.org/cmd/go/#hdr-Download_and_install_packages_and_dependencies[`go get`]. While this seems handy at first it can have a serious drawback: you cannot specify which version of the package to download. This can lead to problems when a required package changes its interface that your code relies on.
+To overcome this , we use a tool called link:https://glide.sh/[`glide`] to download required packages in exactly specified versions and install them in a `vendor` directory right next to our source code under.
+
+1. Browse to the link:https://github.com/Masterminds/glide/releases/[Glide release download page].
+1. Under *Release 0.11.1* (or newer) click on the link that says: *glide-v0.11.1-windows-amd64.zip*. (e.g. link:https://github.com/Masterminds/glide/releases/download/v0.11.1/glide-v0.11.1-windows-amd64.zip[download Glide 0.11.1])
+1. Windows prompts you to save the file to your machine. The exact location isn't important.
+1. Right click the downloaded file and select *extract all*.
+1. Enter `c:\Users\YOURNAME\glide` as destination and replace `YOURNAME` with your winows login name.
+1. Click extract.
+1. The `glide.exe` binary is now located under `C:\Users\YOURNAME\glide\windows-amd64\glide.exe`
+
+[[install-go]]
+=== Install Go
+
+1. Browse to the link:https://golang.org/dl/[Go download page].
+1. Under *Featured downloads* click on the one that says: *Microsoft Windows*. (e.g. link:https://storage.googleapis.com/golang/go1.7.4.windows-amd64.msi[download Go 1.7.4])
+1. Windows prompts you to save the file to your machine. The exact location isn't important.
+1. Run the saved file.
+1. The system displays the Go Setup Wizard.
+1. Click the *Next* button to move through the wizard and accept all the defaults.
+1. Click *Install* to install Go.
+1. Click *Finish* when you are done.
+
+[[install-cygwin]]
+=== Install Cygwin
+
+Cygwin is: 
+
+* a large collection of GNU and Open Source tools which provide functionality similar to a Linux distribution on Windows.
+* a DLL (cygwin1.dll) which provides substantial POSIX API functionality.
+
+Follow these steps to install cygwin:
+
+1. Browse to the link:https://cygwin.com/setup-x86_64.exe[Cygwin download page].
+1. Windows prompts you to save the file to your machine. The exact location isn't important.
+1. Run the saved file.
+1. The system displays the Go Setup Wizard.
+1. Click the *Next* button once to get to the page *Choose A Download Source*.
+1. Select *Install from Internet* (if not already selected).
+1. Click *Next* to get to the page *Select Root Installation Directory*.
+1. Enter `C:\Users\YOURNAME\cygwin` as *Root Directory* and replace `YOURNAME` with your Windows username. 
+1. Under *Install for* select *All users* (if not already selected).
+1. Click *Next* to get to the page *Select Local Package Directory*.
+1. Enter `C:\Users\YOURNAME\AppData\Local\Temp` as *Local Package Directory* and replace `YOURNAME` with your Windows username.
+1. Click *Next* to get to the page *Select Your Internet Connection*.
+1. Select *Direct Connection* (if not already selected). If you have a more exotic connection (like in a univeristy or school), you might need to adjust proxy setting here but in most cases this is not needed.
+1. Click *Next* to get to the page *Choose A Download Site*.
+1. If you don't have an extremly slow internet connection you can leave everything untouched. Otherwise you can pick an *Available Download Site* that's more close to you than the default `http://cygwin.mirror.constant.com`.
+1. Click *Next* to get to the *Select Packages Page*.
+1. In the *Search* field enter `make` to filter the packages.
+1. Unfold the *Devel* section by clicking on the little `+` symbol.
+1. In the *Package* column look for *make: The GNU version of the 'make' utility* and click the *Skip* text in the *New* column. This should render the *Bin?* column on this line to be a checked box. The *Skip* text should also disappear and instead render a version string like `4.2.1-1`.
+1. Click *Next* to get to the page *Resolving Dependencies* page.
+1. Click *Next* to download and install the packages.
+1. Click *Finish* when you are done.
+
+[[configure-git]]
+== Configure Git
+
+Whenever you make a commit using Git, you want to make sure that it's clear who the author is. To address this, follow these easy steps:
+
+1. Hit the kbd:[Windows] key on your keyboard and type `git bash` to start searching for the *Git Bash* application.
+2. Hit kbd:[Enter].
+3. Set your username by entering
++
+[source,bash]
+----
+git config --global user.name "YOUR NAME"
+----
++
+after the `$` character and replace `YOUR NAME` with your own name.
+4. Set your email address by entering
++
+[source,bash]
+----
+git config --global user.email "YOUR@NAME.COM"
+----
++
+after the `$` character and replace `YOUR@NAME.COM` with your own email address.
+5. You can close the git bash now by either clicking the X or typing kbd:[Ctrl+d].
+
+[[configure-windows-env]]
+== Configure Windows environment variables
+
+[[add-glide-to-poath]]
+=== Add glide to PATH
+
+IMPORTANT: Before you continue, *close any existing Windows Command Prompt* (or at least close the one you've opened while working through this document). This is important because otherwise the environment variables that we have modified won't be available.
+
+To be able to launch `glide.exe` from any location using the Windows Command Prompt we'll have to add the path to the executable, namely `C:\Users\YOURNAME\glide\windows-amd64` to the Windows user's `PATH` variable or create a new `PATH` variable.
+
+1. Hit the kbd:[Windows] key on your keyboard and type `cmd.exe` to start searching for the Windows Command Prompt. Hit kbd:[Enter].
+2. We will add the path to `glide.exe` to an environment variable called `PATH` now or created it if it doesn't already exist. Check if your user already has set a `PATH` variable by typing
++
+----
+echo %PATH%
+----
++
+and hit kbd:[Enter].
+
+ a. If the output is `%PATH%` then you have not yet set a `PATH` variable and we can continue by typing
++
+----
+setx PATH "%HOMEDRIVE%\%HOMEPATH%\glide\windows-amd64"
+----
++
+and hit kbd:[Enter].
+
+ b. If the output is something different from `%PATH%` then we have to append the path `C:\Users\YOURNAME\glide\windows-amd64` by setting the `PATH` variable and separating the already existing paths using a semicolon:
++
+----
+setx PATH "%PATH%;%HOMEDRIVE%\%HOMEPATH%\glide\windows-amd64"
+----
+
+[[create-gopath]]
+=== Create GOPATH
+
+IMPORTANT: Before you continue, *close any existing Windows Command Prompt* (or at least close the one you've opened while working through this document). This is important because otherwise the environment variables that we have modified won't be available.
+
+Typically, Go projects are checked out under a special directory which is commonly known as `GOPATH`. The fabric8-wit project makes not exception here. In most of the documentation that is written for Linux or MacOSX you will find us referencing this path as `$GOPATH`. On Windows this translates to `%GOPATH%`.
+
+Now you may already have guessed this but `%GOPATH%` is also an environment variable that contains a path (sometimes a list of paths separated by semicolons) to various locations that will all be treated as `GOPATH`s by Go. 
+
+Depending on your configuration we will either have to create a `GOPATH` environment variable or re-use an existing one.
+
+1. Hit the kbd:[Windows] key on your keyboard and type `cmd.exe` to start searching for the Windows Command Prompt. Hit kbd:[Enter].
+1. Check if your user already has set a `GOPATH` variable by typing
++
+----
+echo %GOPATH%
+----
+
+ a. If the output is `%GOPATH%` then you have not yet set a `GOPATH` variable and we can continue by typing
++
+----
+setx GOPATH "%HOMEDRIVE%\%HOMEPATH%\go"
+----
++
+The variable `%HOMEPATH%` expands to your user's directory (e.g. `\Users\John`) and `%HOMEDRIVE%` expands to `c:` for example.
+
+ a. If the output is something different from `%GOPATH%` then we have to append the path `%HOMEDRIVE%\%HOMEPATH%\go` by setting the `GOPATH` variable and separating the already existing paths using a semicolon:
++
+----
+setx GOPATH "%GOPATH%;%HOMEDRIVE%\%HOMEPATH%\go"
+----
+
+=== Add GOPATH\bin to PATH
+
+IMPORTANT: Before you continue, *close any existing Windows Command Prompt* (or at least close the one you've opened while working through this document). This is important because otherwise the environment variables that we have modified won't be available.
+
+When you fetch go packages using link:https://golang.org/cmd/go/#hdr-Download_and_install_packages_and_dependencies[`go get`] you might end up having executables from these packages living under your `%GOPATH%` in a `bin` folder. It is common to add this directory to your `%PATH%` variable like we did in <<add-glide-to-path>>.
+
+1. Hit the kbd:[Windows] key on your keyboard and type `cmd.exe` to start searching for the Windows Command Prompt. Hit kbd:[Enter].
+1. Next type in this command
++
+----
+setx PATH "%PATH%;%GOPATH%\bin"
+----
++
+and hit kbd:[Enter].
+
+[[troubleshooting]]
+=== Troubleshooting
+
+Problem::
+* When running the `setx` command in the Command Prompt, Windows tells me this `WARNING: The data being saved is truncated to 1024 characters.`
+Solution::
+* Hit the kbd:[Windows] key on your keyboard and type `cmd.exe` to start searching for the Windows Command Prompt.
+* Right click on the symbol and click on *Start as administrator*.
+* Repeat the `setx` command that wasn't working before and add the `/M` option. This will modify the system-wide environment variable which is why you need admin rights to do this. For example: `setx /M PATH "%PATH%;%GOPATH%\bin%"`.
+
+=== Evaluation
+
+IMPORTANT: Before you continue, *close any existing Windows Command Prompt* (or at least close the one you've opened while working through this document). This is important because otherwise the environment variables that we have modified won't be available.
+
+1. Hit the kbd:[Windows] key on your keyboard and type `cmd.exe` to start searching for the Windows Command Prompt. Hit kbd:[Enter].
+1. Make sure we can find git, mercurial (`hg` command), glide, and go:
+Execute the commands from these lines one by one
++
+----
+git --version
+hg --version
+glide --version
+go version
+----
+
+1. Check that the output looks something like this:
++
+----
+git version 2.9.2.windows.1
+
+Mercurial Distributed SCM (version 3.9)
+(see https://mercurial-scm.org for more information)
+
+Copyright (C) 2005-2016 Matt Mackall and others
+This is free software; see the source for copying conditions. There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+glide version v0.11.1
+
+go version go1.7.4 windows/amd64
+----
+
+[[install-delve]]
+== Install delve
+
+link:https://github.com/derekparker/delve[Delve] is a debugger for the Go programming language.
+
+1. Make sure you've completed the steps in <<configure-windows-env>>.
+1. Hit the kbd:[Windows] key on your keyboard and type `cmd.exe` to start searching for the Windows Command Prompt. Hit kbd:[Enter].
+1. Run this command to install *delve* and make it available through the `dlv` command:
++
+[source]
+----
+go get github.com/derekparker/delve/cmd/dlv
+----
+
+1. Test that the *dlv* command can be found by typing:
++
+[source]
+----
+dlv version
+----
++
+You should see something like this:
++
+[source]
+----
+Delve Debugger
+Version: 0.11.0-alpha
+Build:
+----
+
+[[get-the-code]]
+== Get the code
+
+1. Hit the kbd:[Windows] key on your keyboard and type `cmd.exe` to start searching for the Windows Command Prompt. Hit kbd:[Enter].
+1. Run this command to clone the fabric8-wit project into the correct folder that we've prepared in <<create-gopath>>.
++
+[source]
+----
+git clone https://github.com/fabric8-services/fabric8-wit.git %HOMEDRIVE%\%HOMEPATH%\go\src\github.com\fabric8-services/fabric8-wit
+----
+
+[[fetch-dependencies]]
+== Fetch dependencies
+
+1. Hit the kbd:[Windows] key on your keyboard and type `cmd.exe` to start searching for the Windows Command Prompt. Hit kbd:[Enter].
+1. Navigate to the source directory by running
++
+[source]
+----
+cd %HOMEDRIVE\%HOMEPATH%\go\src\github.com\fabric8-services\fabric8-wit
+----
+
+1. Fetch the Go packages that this project depends on by running
++
+[source]
+----
+glide install
+----
++
+This command could take a while to finish. After that, the dependencies are stored in `%HOMEDRIVE\%HOMEPATH%\go\src\github.com\fabric8-services\fabric8-wit\vendor`.
+
+[[build-from-source]]
+== Build from source
+
+NOTE: Make sure that you've followed the procedures in <<get-the-code>> and <<fetch-dependencies>> before you continue.
+
+To build the source we use the *Cygwin64 Terminal* that we've installed in <<install-cygwin>>. That terminal behaves more like a Bash on Linux than the Windows Commmand Prompt. But don't worry, this is fine.
+
+NOTE: In the Windows Command Prompt each environment variable is accessible by typing `echo %VAR%`, whereas in the Cygwin64 Terminal we have to type `echo $VAR`. Please note, that only one prefixing character (`$`) is needed.
+
+NOTE: Unlike the Windows Command Prompt, Cygwin64 Terminal can only handle forward slashes in paths. This is why you will see us converting our environment variables using a path converting tool, namely `cygpath`.
+
+1. Hit the kbd:[Windows] key on your keyboard and type `cygwin` to start searching for the *Cygwin64 Terminal*. Hit kbd:[Enter].
+1. Navigate to the source directory
++
+[source,bash]
+----
+cd "$(cygpath --unix $HOMEPATH)/go/src/github.com/fabric8-services/fabric8-wit"
+----
+
+1. Now, generate code from the design templates using link:https://goa.design/[Goa]:
++
+[source,bash]
+----
+PATH="$PATH:$(cygpath --unix "C:/Users/$USER/mercurial")" make generate
+----
+
+1. Build the the server and client component:
++
+[source,bash]
+----
+PATH="$PATH:$(cygpath --unix "C:/Users/$USER/mercurial")" make build
+----
+
+1. Run the unit tests
++
+[source,bash]
+----
+PATH="$PATH:$(cygpath --unix "C:/Users/$USER/mercurial")" make test-unit
+----

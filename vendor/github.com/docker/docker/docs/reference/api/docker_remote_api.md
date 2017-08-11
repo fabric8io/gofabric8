@@ -4,51 +4,98 @@ title = "Remote API"
 description = "API Documentation for Docker"
 keywords = ["API, Docker, rcli, REST,  documentation"]
 [menu.main]
-parent = "smn_remoteapi"
+parent = "engine_remoteapi"
+weight=-99
 +++
 <![end-metadata]-->
 
 # Docker Remote API
 
- - By default the Docker daemon listens on `unix:///var/run/docker.sock`
-   and the client must have `root` access to interact with the daemon.
- - If the Docker daemon is set to use an encrypted TCP socket (`--tls`,
-   or `--tlsverify`) as with Boot2Docker 1.3.0, then you need to add extra
-   parameters to `curl` or `wget` when making test API requests:
-   `curl --insecure --cert ~/.docker/cert.pem --key ~/.docker/key.pem https://boot2docker:2376/images/json`
-   or 
-   `wget --no-check-certificate --certificate=$DOCKER_CERT_PATH/cert.pem --private-key=$DOCKER_CERT_PATH/key.pem https://boot2docker:2376/images/json -O - -q`
- - If a group named `docker` exists on your system, docker will apply
-   ownership of the socket to the group.
- - The API tends to be REST, but for some complex commands, like attach
-   or pull, the HTTP connection is hijacked to transport STDOUT, STDIN,
-   and STDERR.
- - Since API version 1.2, the auth configuration is now handled client
-   side, so the client has to send the `authConfig` as a `POST` in `/images/(name)/push`.
- - authConfig, set as the `X-Registry-Auth` header, is currently a Base64
-   encoded (JSON) string with the following structure:
-   `{"username": "string", "password": "string", "email": "string",
-   "serveraddress" : "string", "auth": ""}`. Notice that `auth` is to be left
-   empty, `serveraddress` is a domain/ip without protocol, and that double
-   quotes (instead of single ones) are required.
- - The Remote API uses an open schema model.  In this model, unknown 
-   properties in incoming messages will be ignored.
-   Client applications need to take this into account to ensure
-   they will not break when talking to newer Docker daemons.
+Docker's Remote API uses an open schema model.  In this model, unknown
+properties in incoming messages are ignored. Client applications need to take
+this behavior into account to ensure they do not break when talking to newer
+Docker daemons.
 
-The current version of the API is v1.20
+The API tends to be REST, but for some complex commands, like attach or pull,
+the HTTP connection is hijacked to transport STDOUT, STDIN, and STDERR.
 
-Calling `/info` is the same as calling
-`/v1.20/info`.
+By default the Docker daemon listens on `unix:///var/run/docker.sock` and the
+client must have `root` access to interact with the daemon. If a group named
+`docker` exists on your system, `docker` applies ownership of the socket to the
+group.
 
-You can still call an old version of the API using
-`/v1.19/info`.
+To connect to the Docker daemon with cURL you need to use cURL 7.40 or
+later, as these versions have the `--unix-socket` flag available. To
+run `curl` against the daemon on the default socket, use the
+following:
+
+    curl --unix-socket /var/run/docker.sock http:/containers/json
+
+If you have bound the Docker daemon to a different socket path or TCP
+port, you would reference that in your cURL rather than the
+default.
+
+The current version of the API is v1.23 which means calling `/info` is the same
+as calling `/v1.23/info`. To call an older version of the API use
+`/v1.22/info`.
+
+Use the table below to find the API version for a Docker version:
+
+Docker version  | API version                        | Changes
+----------------|------------------------------------|------------------------------------------------------
+1.11.x          | [1.23](docker_remote_api_v1.23.md) | [API changes](docker_remote_api.md#v1-23-api-changes)
+1.10.x          | [1.22](docker_remote_api_v1.22.md) | [API changes](docker_remote_api.md#v1-22-api-changes)
+1.9.x           | [1.21](docker_remote_api_v1.21.md) | [API changes](docker_remote_api.md#v1-21-api-changes)
+1.8.x           | [1.20](docker_remote_api_v1.20.md) | [API changes](docker_remote_api.md#v1-20-api-changes)
+1.7.x           | [1.19](docker_remote_api_v1.19.md) | [API changes](docker_remote_api.md#v1-19-api-changes)
+1.6.x           | [1.18](docker_remote_api_v1.18.md) | [API changes](docker_remote_api.md#v1-18-api-changes)
+1.5.x           | [1.17](docker_remote_api_v1.17.md) | [API changes](docker_remote_api.md#v1-17-api-changes)
+1.4.x           | [1.16](docker_remote_api_v1.16.md) | [API changes](docker_remote_api.md#v1-16-api-changes)
+1.3.x           | [1.15](docker_remote_api_v1.15.md) | [API changes](docker_remote_api.md#v1-15-api-changes)
+1.2.x           | [1.14](docker_remote_api_v1.14.md) | [API changes](docker_remote_api.md#v1-14-api-changes)
+
+Refer to the [GitHub repository](
+https://github.com/docker/docker/tree/master/docs/reference/api) for
+older releases.
+
+## Authentication
+
+Since API version 1.2, the auth configuration is now handled client side, so the
+client has to send the `authConfig` as a `POST` in `/images/(name)/push`. The
+`authConfig`, set as the `X-Registry-Auth` header, is currently a Base64 encoded
+(JSON) string with the following structure:
+
+```
+{"username": "string", "password": "string", "email": "string",
+   "serveraddress" : "string", "auth": ""}
+```
+
+Callers should leave the `auth` empty. The `serveraddress` is a domain/ip
+without protocol. Throughout this structure, double quotes are required.
+
+## Using Docker Machine with the API
+
+If you are using `docker-machine`, the Docker daemon is on a host that
+uses an encrypted TCP socket using TLS. This means, for Docker Machine users,
+you need to add extra parameters to `curl` or `wget` when making test
+API requests, for example:
+
+```
+curl --insecure \
+     --cert $DOCKER_CERT_PATH/cert.pem \
+     --key $DOCKER_CERT_PATH/key.pem \
+     https://YOUR_VM_IP:2376/images/json
+
+wget --no-check-certificate --certificate=$DOCKER_CERT_PATH/cert.pem \
+     --private-key=$DOCKER_CERT_PATH/key.pem \
+     https://YOUR_VM_IP:2376/images/json -O - -q
+```
 
 ## Docker Events
 
 The following diagram depicts the container states accessible through the API.
 
-![States](../images/event_state.png)
+![States](images/event_state.png)
 
 Some container-related events are not affected by container state, so they are not included in this diagram. These events are:
 
@@ -58,668 +105,187 @@ Some container-related events are not affected by container state, so they are n
 
 Running `docker rmi` emits an **untag** event when removing an image name.  The `rmi` command may also emit **delete** events when images are deleted by ID directly or by deleting the last tag referring to the image.
 
-> **Acknowledgement**: This diagram and the accompanying text were used with the permission of Matt Good and Gilder Labs. See Matt's original blog post [Docker Events Explained](http://gliderlabs.com/blog/2015/04/14/docker-events-explained/).
+> **Acknowledgment**: This diagram and the accompanying text were used with the permission of Matt Good and Gilder Labs. See Matt's original blog post [Docker Events Explained](https://gliderlabs.com/blog/2015/04/14/docker-events-explained/).
 
-## v1.20
+## Version history
 
-### Full documentation
+This section lists each version from latest to oldest.  Each listing includes a link to the full documentation set and the changes relevant in that release.
 
-[*Docker Remote API v1.20*](/reference/api/docker_remote_api_v1.20/)
+### v1.23 API changes
 
-### What's new
+[Docker Remote API v1.23](docker_remote_api_v1.23.md) documentation
 
-`GET /containers/(id)/archive`
+* `GET /containers/json` returns the state of the container, one of `created`, `restarting`, `running`, `paused`, `exited` or `dead`.
+* `GET /containers/json` returns the mount points for the container.
+* `GET /networks/(name)` now returns an `Internal` field showing whether the network is internal or not.
+* `GET /networks/(name)` now returns an `EnableIPv6` field showing whether the network has ipv6 enabled or not.
+* `POST /containers/(name)/update` now supports updating container's restart policy.
+* `POST /networks/create` now supports enabling ipv6 on the network by setting the `EnableIPv6` field (doing this with a label will no longer work).
+* `GET /info` now returns `CgroupDriver` field showing what cgroup driver the daemon is using; `cgroupfs` or `systemd`.
+* `GET /info` now returns `KernelMemory` field, showing if "kernel memory limit" is supported.
+* `POST /containers/create` now takes `PidsLimit` field, if the kernel is >= 4.3 and the pids cgroup is supported.
+* `GET /containers/(id or name)/stats` now returns `pids_stats`, if the kernel is >= 4.3 and the pids cgroup is supported.
+* `POST /containers/create` now allows you to override usernamespaces remapping and use privileged options for the container.
+* `POST /containers/create` now allows specifying `nocopy` for named volumes, which disables automatic copying from the container path to the volume.
+* `POST /auth` now returns an `IdentityToken` when supported by a registry.
+* `POST /containers/create` with both `Hostname` and `Domainname` fields specified will result in the container's hostname being set to `Hostname`, rather than `Hostname.Domainname`.
 
-**New!**
-Get an archive of filesystem content from a container.
+### v1.22 API changes
 
-`PUT /containers/(id)/archive`
+[Docker Remote API v1.22](docker_remote_api_v1.22.md) documentation
 
-**New!**
-Upload an archive of content to be extracted to an
-existing directory inside a container's filesystem.
+* `POST /container/(name)/update` updates the resources of a container.
+* `GET /containers/json` supports filter `isolation` on Windows.
+* `GET /containers/json` now returns the list of networks of containers.
+* `GET /info` Now returns `Architecture` and `OSType` fields, providing information
+  about the host architecture and operating system type that the daemon runs on.
+* `GET /networks/(name)` now returns a `Name` field for each container attached to the network.
+* `GET /version` now returns the `BuildTime` field in RFC3339Nano format to make it
+  consistent with other date/time values returned by the API.
+* `AuthConfig` now supports a `registrytoken` for token based authentication
+* `POST /containers/create` now has a 4M minimum value limit for `HostConfig.KernelMemory`
+* Pushes initiated with `POST /images/(name)/push` and pulls initiated with `POST /images/create`
+  will be cancelled if the HTTP connection making the API request is closed before
+  the push or pull completes.
+* `POST /containers/create` now allows you to set a read/write rate limit for a
+  device (in bytes per second or IO per second).
+* `GET /networks` now supports filtering by `name`, `id` and `type`.
+* `POST /containers/create` now allows you to set the static IPv4 and/or IPv6 address for the container.
+* `POST /networks/(id)/connect` now allows you to set the static IPv4 and/or IPv6 address for the container.
+* `GET /info` now includes the number of containers running, stopped, and paused.
+* `POST /networks/create` now supports restricting external access to the network by setting the `Internal` field.
+* `POST /networks/(id)/disconnect` now includes a `Force` option to forcefully disconnect a container from network
+* `GET /containers/(id)/json` now returns the `NetworkID` of containers.
+* `POST /networks/create` Now supports an options field in the IPAM config that provides options
+  for custom IPAM plugins.
+* `GET /networks/{network-id}` Now returns IPAM config options for custom IPAM plugins if any
+  are available.
+* `GET /networks/<network-id>` now returns subnets info for user-defined networks.
+* `GET /info` can now return a `SystemStatus` field useful for returning additional information about applications
+  that are built on top of engine.
 
-`POST /containers/(id)/copy`
+### v1.21 API changes
 
-**Deprecated!**
-This copy endpoint has been deprecated in favor of the above `archive` endpoint
-which can be used to download files and directories from a container.
+[Docker Remote API v1.21](docker_remote_api_v1.21.md) documentation
 
-**New!**
-The `hostConfig` option now accepts the field `GroupAdd`, which specifies a list of additional
-groups that the container process will run as.
+* `GET /volumes` lists volumes from all volume drivers.
+* `POST /volumes/create` to create a volume.
+* `GET /volumes/(name)` get low-level information about a volume.
+* `DELETE /volumes/(name)` remove a volume with the specified name.
+* `VolumeDriver` was moved from `config` to `HostConfig` to make the configuration portable.
+* `GET /images/(name)/json` now returns information about an image's `RepoTags` and `RepoDigests`.
+* The `config` option now accepts the field `StopSignal`, which specifies the signal to use to kill a container.
+* `GET /containers/(id)/stats` will return networking information respectively for each interface.
+* The `HostConfig` option now includes the `DnsOptions` field to configure the container's DNS options.
+* `POST /build` now optionally takes a serialized map of build-time variables.
+* `GET /events` now includes a `timenano` field, in addition to the existing `time` field.
+* `GET /events` now supports filtering by image and container labels.
+* `GET /info` now lists engine version information and return the information of `CPUShares` and `Cpuset`.
+* `GET /containers/json` will return `ImageID` of the image used by container.
+* `POST /exec/(name)/start` will now return an HTTP 409 when the container is either stopped or paused.
+* `GET /containers/(name)/json` now accepts a `size` parameter. Setting this parameter to '1' returns container size information in the `SizeRw` and `SizeRootFs` fields.
+* `GET /containers/(name)/json` now returns a `NetworkSettings.Networks` field,
+  detailing network settings per network. This field deprecates the
+  `NetworkSettings.Gateway`, `NetworkSettings.IPAddress`,
+  `NetworkSettings.IPPrefixLen`, and `NetworkSettings.MacAddress` fields, which
+  are still returned for backward-compatibility, but will be removed in a future version.
+* `GET /exec/(id)/json` now returns a `NetworkSettings.Networks` field,
+  detailing networksettings per network. This field deprecates the
+  `NetworkSettings.Gateway`, `NetworkSettings.IPAddress`,
+  `NetworkSettings.IPPrefixLen`, and `NetworkSettings.MacAddress` fields, which
+  are still returned for backward-compatibility, but will be removed in a future version.
+* The `HostConfig` option now includes the `OomScoreAdj` field for adjusting the
+  badness heuristic. This heuristic selects which processes the OOM killer kills
+  under out-of-memory conditions.
 
-## v1.19
+### v1.20 API changes
 
-### Full documentation
+[Docker Remote API v1.20](docker_remote_api_v1.20.md) documentation
 
-[*Docker Remote API v1.19*](/reference/api/docker_remote_api_v1.19/)
+* `GET /containers/(id)/archive` get an archive of filesystem content from a container.
+* `PUT /containers/(id)/archive` upload an archive of content to be extracted to
+an existing directory inside a container's filesystem.
+* `POST /containers/(id)/copy` is deprecated in favor of the above `archive`
+endpoint which can be used to download files and directories from a container.
+* The `hostConfig` option now accepts the field `GroupAdd`, which specifies a
+list of additional groups that the container process will run as.
 
-### What's new
+### v1.19 API changes
 
-**New!**
-When the daemon detects a version mismatch with the client, usually when
+[Docker Remote API v1.19](docker_remote_api_v1.19.md) documentation
+
+* When the daemon detects a version mismatch with the client, usually when
 the client is newer than the daemon, an HTTP 400 is now returned instead
 of a 404.
+* `GET /containers/(id)/stats` now accepts `stream` bool to get only one set of stats and disconnect.
+* `GET /containers/(id)/logs` now accepts a `since` timestamp parameter.
+* `GET /info` The fields `Debug`, `IPv4Forwarding`, `MemoryLimit`, and
+`SwapLimit` are now returned as boolean instead of as an int. In addition, the
+end point now returns the new boolean fields `CpuCfsPeriod`, `CpuCfsQuota`, and
+`OomKillDisable`.
+* The `hostConfig` option now accepts the fields `CpuPeriod` and `CpuQuota`
+* `POST /build` accepts `cpuperiod` and `cpuquota` options
 
-`GET /containers/(id)/stats`
+### v1.18 API changes
 
-**New!**
-You can now supply a `stream` bool to get only one set of stats and
-disconnect
+[Docker Remote API v1.18](docker_remote_api_v1.18.md) documentation
 
-`GET /containers(id)/logs`
+* `GET /version` now returns `Os`, `Arch` and `KernelVersion`.
+* `POST /containers/create` and `POST /containers/(id)/start`allow you to  set ulimit settings for use in the container.
+* `GET /info` now returns `SystemTime`, `HttpProxy`,`HttpsProxy` and `NoProxy`.
+* `GET /images/json` added a `RepoDigests` field to include image digest information.
+* `POST /build` can now set resource constraints for all containers created for the build.
+* `CgroupParent` can be passed in the host config to setup container cgroups under a specific cgroup.
+* `POST /build` closing the HTTP request cancels the build
+* `POST /containers/(id)/exec` includes `Warnings` field to response.
 
-**New!**
+### v1.17 API changes
 
-This endpoint now accepts a `since` timestamp parameter.
+[Docker Remote API v1.17](docker_remote_api_v1.17.md) documentation
 
-`GET /info`
-
-**New!**
-
-The fields `Debug`, `IPv4Forwarding`, `MemoryLimit`, and `SwapLimit`
-are now returned as boolean instead of as an int.
-
-In addition, the end point now returns the new boolean fields
-`CpuCfsPeriod`, `CpuCfsQuota`, and `OomKillDisable`.
-
-## v1.18
-
-### Full documentation
-
-[*Docker Remote API v1.18*](/reference/api/docker_remote_api_v1.18/)
-
-### What's new
-
-`GET /version`
-
-**New!**
-This endpoint now returns `Os`, `Arch` and `KernelVersion`.
-
-`POST /containers/create`
-`POST /containers/(id)/start`
-
-**New!**
-You can set ulimit settings to be used within the container.
-
-`GET /info`
-
-**New!**
-This endpoint now returns `SystemTime`, `HttpProxy`,`HttpsProxy` and `NoProxy`.
-
-`GET /images/json`
-
-**New!**
-Added a `RepoDigests` field to include image digest information.
-
-`POST /build`
-
-**New!**
-Builds can now set resource constraints for all containers created for the build.
-
-**New!**
-(`CgroupParent`) can be passed in the host config to setup container cgroups under a specific cgroup.
-
-`POST /build`
-
-**New!**
-Closing the HTTP request will now cause the build to be canceled.
-
-`POST /containers/(id)/exec`
-
-**New!**
-Add `Warnings` field to response.
-
-## v1.17
-
-### Full documentation
-
-[*Docker Remote API v1.17*](/reference/api/docker_remote_api_v1.17/)
-
-### What's new
-
-The build supports `LABEL` command. Use this to add metadata
-to an image. For example you could add data describing the content of an image.
-
-`LABEL "com.example.vendor"="ACME Incorporated"`
-
-**New!**
-`POST /containers/(id)/attach` and `POST /exec/(id)/start`
-
-**New!**
-Docker client now hints potential proxies about connection hijacking using HTTP Upgrade headers.
-
-`POST /containers/create`
-
-**New!**
-You can set labels on container create describing the container.
-
-`GET /containers/json`
-
-**New!**
-The endpoint returns the labels associated with the containers (`Labels`).
-
-`GET /containers/(id)/json`
-
-**New!**
-This endpoint now returns the list current execs associated with the container (`ExecIDs`).
-This endpoint now returns the container labels (`Config.Labels`).
-
-`POST /containers/(id)/rename`
-
-**New!**
-New endpoint to rename a container `id` to a new name.
-
-`POST /containers/create`
-`POST /containers/(id)/start`
-
-**New!**
-(`ReadonlyRootfs`) can be passed in the host config to mount the container's
-root filesystem as read only.
-
-`GET /containers/(id)/stats`
-
-**New!**
-This endpoint returns a live stream of a container's resource usage statistics.
-
-`GET /images/json`
-
-**New!**
-This endpoint now returns the labels associated with each image (`Labels`).
+* The build supports `LABEL` command. Use this to add metadata to an image. For
+example you could add data describing the content of an image. `LABEL
+"com.example.vendor"="ACME Incorporated"`
+* `POST /containers/(id)/attach` and `POST /exec/(id)/start`
+* The Docker client now hints potential proxies about connection hijacking using HTTP Upgrade headers.
+* `POST /containers/create` sets labels on container create describing the container.
+* `GET /containers/json` returns the labels associated with the containers (`Labels`).
+* `GET /containers/(id)/json` returns the list current execs associated with the
+container (`ExecIDs`). This endpoint now returns the container labels
+(`Config.Labels`).
+* `POST /containers/(id)/rename` renames a container `id` to a new name.*
+* `POST /containers/create` and `POST /containers/(id)/start` callers can pass
+`ReadonlyRootfs` in the host config to mount the container's root filesystem as
+read only.
+* `GET /containers/(id)/stats` returns a live stream of a container's resource usage statistics.
+* `GET /images/json` returns the labels associated with each image (`Labels`).
 
 
-## v1.16
+### v1.16 API changes
 
-### Full documentation
+[Docker Remote API v1.16](docker_remote_api_v1.16.md)
 
-[*Docker Remote API v1.16*](/reference/api/docker_remote_api_v1.16/)
-
-### What's new
-
-`GET /info`
-
-**New!**
-`info` now returns the number of CPUs available on the machine (`NCPU`),
+* `GET /info` returns the number of CPUs available on the machine (`NCPU`),
 total memory available (`MemTotal`), a user-friendly name describing the running Docker daemon (`Name`), a unique ID identifying the daemon (`ID`), and
 a list of daemon labels (`Labels`).
+* `POST /containers/create` callers can set the new container's MAC address explicitly.
+* Volumes are now initialized when the container is created.
+* `POST /containers/(id)/copy` copies data which is contained in a volume.
 
-`POST /containers/create`
+### v1.15 API changes
 
-**New!**
-You can set the new container's MAC address explicitly.
+[Docker Remote API v1.15](docker_remote_api_v1.15.md) documentation
 
-**New!**
-Volumes are now initialized when the container is created.
+`POST /containers/create` you can set a container's `HostConfig` when creating a
+container. Previously this was only available when starting a container.
 
-`POST /containers/(id)/copy`
+### v1.14 API changes
 
-**New!**
-You can now copy data which is contained in a volume.
+[Docker Remote API v1.14](docker_remote_api_v1.14.md) documentation
 
-## v1.15
-
-### Full documentation
-
-[*Docker Remote API v1.15*](/reference/api/docker_remote_api_v1.15/)
-
-### What's new
-
-`POST /containers/create`
-
-**New!**
-It is now possible to set a container's HostConfig when creating a container.
-Previously this was only available when starting a container.
-
-## v1.14
-
-### Full documentation
-
-[*Docker Remote API v1.14*](/reference/api/docker_remote_api_v1.14/)
-
-### What's new
-
-`DELETE /containers/(id)`
-
-**New!**
-When using `force`, the container will be immediately killed with SIGKILL.
-
-`POST /containers/(id)/start`
-
-**New!**
-The `hostConfig` option now accepts the field `CapAdd`, which specifies a list of capabilities
+* `DELETE /containers/(id)` when using `force`, the container will be immediately killed with SIGKILL.
+* `POST /containers/(id)/start` the `HostConfig` option accepts the field `CapAdd`, which specifies a list of capabilities
 to add, and the field `CapDrop`, which specifies a list of capabilities to drop.
-
-`POST /images/create`
-
-**New!**
-The `fromImage` and `repo` parameters now supports the `repo:tag` format.
-Consequently,  the `tag` parameter is now obsolete. Using the new format and
-the `tag` parameter at the same time will return an error.
-
-## v1.13
-
-### Full documentation
-
-[*Docker Remote API v1.13*](/reference/api/docker_remote_api_v1.13/)
-
-### What's new
-
-`GET /containers/(name)/json`
-
-**New!**
-The `HostConfig.Links` field is now filled correctly
-
-**New!**
-`Sockets` parameter added to the `/info` endpoint listing all the sockets the 
-daemon is configured to listen on.
-
-`POST /containers/(name)/start`
-`POST /containers/(name)/stop`
-
-**New!**
-`start` and `stop` will now return 304 if the container's status is not modified
-
-`POST /commit`
-
-**New!**
-Added a `pause` parameter (default `true`) to pause the container during commit
-
-## v1.12
-
-### Full documentation
-
-[*Docker Remote API v1.12*](/reference/api/docker_remote_api_v1.12/)
-
-### What's new
-
-`POST /build`
-
-**New!**
-Build now has support for the `forcerm` parameter to always remove containers
-
-`GET /containers/(name)/json`
-`GET /images/(name)/json`
-
-**New!**
-All the JSON keys are now in CamelCase
-
-**New!**
-Trusted builds are now Automated Builds - `is_trusted` is now `is_automated`.
-
-**Removed Insert Endpoint**
-The `insert` endpoint has been removed.
-
-## v1.11
-
-### Full documentation
-
-[*Docker Remote API v1.11*](/reference/api/docker_remote_api_v1.11/)
-
-### What's new
-
-`GET /_ping`
-
-**New!**
-You can now ping the server via the `_ping` endpoint.
-
-`GET /events`
-
-**New!**
-You can now use the `-until` parameter to close connection
-after timestamp.
-
-`GET /containers/(id)/logs`
-
-This url is preferred method for getting container logs now.
-
-## v1.10
-
-### Full documentation
-
-[*Docker Remote API v1.10*](/reference/api/docker_remote_api_v1.10/)
-
-### What's new
-
-`DELETE /images/(name)`
-
-**New!**
-You can now use the force parameter to force delete of an
-    image, even if it's tagged in multiple repositories. **New!**
-    You
-    can now use the noprune parameter to prevent the deletion of parent
-    images
-
-`DELETE /containers/(id)`
-
-**New!**
-You can now use the force parameter to force delete a
-    container, even if it is currently running
-
-## v1.9
-
-### Full documentation
-
-[*Docker Remote API v1.9*](/reference/api/docker_remote_api_v1.9/)
-
-### What's new
-
-`POST /build`
-
-**New!**
-This endpoint now takes a serialized ConfigFile which it
-uses to resolve the proper registry auth credentials for pulling the
-base image. Clients which previously implemented the version
-accepting an AuthConfig object must be updated.
-
-## v1.8
-
-### Full documentation
-
-[*Docker Remote API v1.8*](/reference/api/docker_remote_api_v1.8/)
-
-### What's new
-
-`POST /build`
-
-**New!**
-This endpoint now returns build status as json stream. In
-case of a build error, it returns the exit status of the failed
-command.
-
-`GET /containers/(id)/json`
-
-**New!**
-This endpoint now returns the host config for the
-container.
-
-`POST /images/create`
-
-`POST /images/(name)/insert`
-
-`POST /images/(name)/push`
-
-**New!**
-progressDetail object was added in the JSON. It's now
-possible to get the current value and the total of the progress
-without having to parse the string.
-
-## v1.7
-
-### Full documentation
-
-[*Docker Remote API v1.7*](/reference/api/docker_remote_api_v1.7/)
-
-### What's new
-
-`GET /images/json`
-
-The format of the json returned from this uri changed. Instead of an
-entry for each repo/tag on an image, each image is only represented
-once, with a nested attribute indicating the repo/tags that apply to
-that image.
-
-Instead of:
-
-    HTTP/1.1 200 OK
-    Content-Type: application/json
-
-    [
-      {
-        "VirtualSize": 131506275,
-        "Size": 131506275,
-        "Created": 1365714795,
-        "Id": "8dbd9e392a964056420e5d58ca5cc376ef18e2de93b5cc90e868a1bbc8318c1c",
-        "Tag": "12.04",
-        "Repository": "ubuntu"
-      },
-      {
-        "VirtualSize": 131506275,
-        "Size": 131506275,
-        "Created": 1365714795,
-        "Id": "8dbd9e392a964056420e5d58ca5cc376ef18e2de93b5cc90e868a1bbc8318c1c",
-        "Tag": "latest",
-        "Repository": "ubuntu"
-      },
-      {
-        "VirtualSize": 131506275,
-        "Size": 131506275,
-        "Created": 1365714795,
-        "Id": "8dbd9e392a964056420e5d58ca5cc376ef18e2de93b5cc90e868a1bbc8318c1c",
-        "Tag": "precise",
-        "Repository": "ubuntu"
-      },
-      {
-        "VirtualSize": 180116135,
-        "Size": 24653,
-        "Created": 1364102658,
-        "Id": "b750fe79269d2ec9a3c593ef05b4332b1d1a02a62b4accb2c21d589ff2f5f2dc",
-        "Tag": "12.10",
-        "Repository": "ubuntu"
-      },
-      {
-        "VirtualSize": 180116135,
-        "Size": 24653,
-        "Created": 1364102658,
-        "Id": "b750fe79269d2ec9a3c593ef05b4332b1d1a02a62b4accb2c21d589ff2f5f2dc",
-        "Tag": "quantal",
-        "Repository": "ubuntu"
-      }
-    ]
-
-The returned json looks like this:
-
-    HTTP/1.1 200 OK
-    Content-Type: application/json
-
-    [
-      {
-         "RepoTags": [
-           "ubuntu:12.04",
-           "ubuntu:precise",
-           "ubuntu:latest"
-         ],
-         "Id": "8dbd9e392a964056420e5d58ca5cc376ef18e2de93b5cc90e868a1bbc8318c1c",
-         "Created": 1365714795,
-         "Size": 131506275,
-         "VirtualSize": 131506275
-      },
-      {
-         "RepoTags": [
-           "ubuntu:12.10",
-           "ubuntu:quantal"
-         ],
-         "ParentId": "27cf784147099545",
-         "Id": "b750fe79269d2ec9a3c593ef05b4332b1d1a02a62b4accb2c21d589ff2f5f2dc",
-         "Created": 1364102658,
-         "Size": 24653,
-         "VirtualSize": 180116135
-      }
-    ]
-
-`GET /images/viz`
-
-This URI no longer exists. The `images --viz`
-output is now generated in the client, using the
-`/images/json` data.
-
-## v1.6
-
-### Full documentation
-
-[*Docker Remote API v1.6*](/reference/api/docker_remote_api_v1.6/)
-
-### What's new
-
-`POST /containers/(id)/attach`
-
-**New!**
-You can now split stderr from stdout. This is done by
-prefixing a header to each transmission. See
-[`POST /containers/(id)/attach`](
-/reference/api/docker_remote_api_v1.9/#attach-to-a-container "POST /containers/(id)/attach").
-The WebSocket attach is unchanged. Note that attach calls on the
-previous API version didn't change. Stdout and stderr are merged.
-
-## v1.5
-
-### Full documentation
-
-[*Docker Remote API v1.5*](/reference/api/docker_remote_api_v1.5/)
-
-### What's new
-
-`POST /images/create`
-
-**New!**
-You can now pass registry credentials (via an AuthConfig
-    object) through the X-Registry-Auth header
-
-`POST /images/(name)/push`
-
-**New!**
-The AuthConfig object now needs to be passed through the
-    X-Registry-Auth header
-
-`GET /containers/json`
-
-**New!**
-The format of the Ports entry has been changed to a list of
-dicts each containing PublicPort, PrivatePort and Type describing a
-port mapping.
-
-## v1.4
-
-### Full documentation
-
-[*Docker Remote API v1.4*](/reference/api/docker_remote_api_v1.4/)
-
-### What's new
-
-`POST /images/create`
-
-**New!**
-When pulling a repo, all images are now downloaded in parallel.
-
-`GET /containers/(id)/top`
-
-**New!**
-You can now use ps args with docker top, like docker top
-    <container_id> aux
-
-`GET /events`
-
-**New!**
-Image's name added in the events
-
-## v1.3
-
-docker v0.5.0
-[51f6c4a](https://github.com/docker/docker/commit/51f6c4a7372450d164c61e0054daf0223ddbd909)
-
-### Full documentation
-
-[*Docker Remote API v1.3*](/reference/api/docker_remote_api_v1.3/)
-
-### What's new
-
-`GET /containers/(id)/top`
-
-List the processes running inside a container.
-
-`GET /events`
-
-**New!**
-Monitor docker's events via streaming or via polling
-
-Builder (/build):
-
- - Simplify the upload of the build context
- - Simply stream a tarball instead of multipart upload with 4
-   intermediary buffers
- - Simpler, less memory usage, less disk usage and faster
-
-> **Warning**: 
-> The /build improvements are not reverse-compatible. Pre 1.3 clients will
-> break on /build.
-
-List containers (/containers/json):
-
- - You can use size=1 to get the size of the containers
-
-Start containers (/containers/<id>/start):
-
- - You can now pass host-specific configuration (e.g., bind mounts) in
-   the POST body for start calls
-
-## v1.2
-
-docker v0.4.2
-[2e7649b](https://github.com/docker/docker/commit/2e7649beda7c820793bd46766cbc2cfeace7b168)
-
-### Full documentation
-
-[*Docker Remote API v1.2*](/reference/api/docker_remote_api_v1.2/)
-
-### What's new
-
-The auth configuration is now handled by the client.
-
-The client should send it's authConfig as POST on each call of
-`/images/(name)/push`
-
-`GET /auth`
-
-**Deprecated.**
-
-`POST /auth`
-
-Only checks the configuration but doesn't store it on the server
-
-    Deleting an image is now improved, will only untag the image if it
-    has children and remove all the untagged parents if has any.
-
-`POST /images/<name>/delete`
-
-Now returns a JSON structure with the list of images
-deleted/untagged.
-
-## v1.1
-
-docker v0.4.0
-[a8ae398](https://github.com/docker/docker/commit/a8ae398bf52e97148ee7bd0d5868de2e15bd297f)
-
-### Full documentation
-
-[*Docker Remote API v1.1*](/reference/api/docker_remote_api_v1.1/)
-
-### What's new
-
-`POST /images/create`
-
-`POST /images/(name)/insert`
-
-`POST /images/(name)/push`
-
-Uses json stream instead of HTML hijack, it looks like this:
-
-        HTTP/1.1 200 OK
-        Content-Type: application/json
-
-        {"status":"Pushing..."}
-        {"status":"Pushing", "progress":"1/? (n/a)"}
-        {"error":"Invalid..."}
-        ...
-
-## v1.0
-
-docker v0.3.4
-[8d73740](https://github.com/docker/docker/commit/8d73740343778651c09160cde9661f5f387b36f4)
-
-### Full documentation
-
-[*Docker Remote API v1.0*](/reference/api/docker_remote_api_v1.0/)
-
-### What's new
-
-Initial version
+* `POST /images/create` th `fromImage` and `repo` parameters support the
+`repo:tag` format. Consequently,  the `tag` parameter is now obsolete. Using the
+new format and the `tag` parameter at the same time will return an error.

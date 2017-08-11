@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -78,14 +79,19 @@ func startAgent(t *testing.T) (client Agent, socket string, cleanup func()) {
 	}
 }
 
-func testAgent(t *testing.T, key interface{}, cert *ssh.Certificate) {
+func testAgent(t *testing.T, key interface{}, cert *ssh.Certificate, lifetimeSecs uint32) {
 	agent, _, cleanup := startAgent(t)
 	defer cleanup()
 
-	testAgentInterface(t, agent, key, cert)
+	testAgentInterface(t, agent, key, cert, lifetimeSecs)
 }
 
-func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Certificate) {
+func testKeyring(t *testing.T, key interface{}, cert *ssh.Certificate, lifetimeSecs uint32) {
+	a := NewKeyring()
+	testAgentInterface(t, a, key, cert, lifetimeSecs)
+}
+
+func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Certificate, lifetimeSecs uint32) {
 	signer, err := ssh.NewSignerFromKey(key)
 	if err != nil {
 		t.Fatalf("NewSignerFromKey(%T): %v", key, err)
@@ -100,10 +106,15 @@ func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Ce
 	// Attempt to insert the key, with certificate if specified.
 	var pubKey ssh.PublicKey
 	if cert != nil {
-		err = agent.Add(key, cert, "comment")
+		err = agent.Add(AddedKey{
+			PrivateKey:   key,
+			Certificate:  cert,
+			Comment:      "comment",
+			LifetimeSecs: lifetimeSecs,
+		})
 		pubKey = cert
 	} else {
-		err = agent.Add(key, nil, "comment")
+		err = agent.Add(AddedKey{PrivateKey: key, Comment: "comment", LifetimeSecs: lifetimeSecs})
 		pubKey = signer.PublicKey()
 	}
 	if err != nil {
@@ -131,11 +142,25 @@ func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Ce
 	if err := pubKey.Verify(data, sig); err != nil {
 		t.Fatalf("Verify(%s): %v", pubKey.Type(), err)
 	}
+
+	// If the key has a lifetime, is it removed when it should be?
+	if lifetimeSecs > 0 {
+		time.Sleep(time.Second*time.Duration(lifetimeSecs) + 100*time.Millisecond)
+		keys, err := agent.List()
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		if len(keys) > 0 {
+			t.Fatalf("key not expired")
+		}
+	}
+
 }
 
 func TestAgent(t *testing.T) {
-	for _, keyType := range []string{"rsa", "dsa", "ecdsa"} {
-		testAgent(t, testPrivateKeys[keyType], nil)
+	for _, keyType := range []string{"rsa", "dsa", "ecdsa", "ed25519"} {
+		testAgent(t, testPrivateKeys[keyType], nil, 0)
+		testKeyring(t, testPrivateKeys[keyType], nil, 1)
 	}
 }
 
@@ -147,7 +172,8 @@ func TestCert(t *testing.T) {
 	}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 
-	testAgent(t, testPrivateKeys["rsa"], cert)
+	testAgent(t, testPrivateKeys["rsa"], cert, 0)
+	testKeyring(t, testPrivateKeys["rsa"], cert, 1)
 }
 
 // netPipe is analogous to net.Pipe, but it uses a real net.Conn, and
@@ -185,7 +211,7 @@ func TestAuth(t *testing.T) {
 	agent, _, cleanup := startAgent(t)
 	defer cleanup()
 
-	if err := agent.Add(testPrivateKeys["rsa"], nil, "comment"); err != nil {
+	if err := agent.Add(AddedKey{PrivateKey: testPrivateKeys["rsa"], Comment: "comment"}); err != nil {
 		t.Errorf("Add: %v", err)
 	}
 
@@ -223,10 +249,10 @@ func TestLockClient(t *testing.T) {
 }
 
 func testLockAgent(agent Agent, t *testing.T) {
-	if err := agent.Add(testPrivateKeys["rsa"], nil, "comment 1"); err != nil {
+	if err := agent.Add(AddedKey{PrivateKey: testPrivateKeys["rsa"], Comment: "comment 1"}); err != nil {
 		t.Errorf("Add: %v", err)
 	}
-	if err := agent.Add(testPrivateKeys["dsa"], nil, "comment dsa"); err != nil {
+	if err := agent.Add(AddedKey{PrivateKey: testPrivateKeys["dsa"], Comment: "comment dsa"}); err != nil {
 		t.Errorf("Add: %v", err)
 	}
 	if keys, err := agent.List(); err != nil {
@@ -274,5 +300,44 @@ func testLockAgent(agent Agent, t *testing.T) {
 		t.Errorf("List: %v", err)
 	} else if len(keys) != 1 {
 		t.Errorf("Want 1 keys, got %v", keys)
+	}
+}
+
+func TestAgentLifetime(t *testing.T) {
+	agent, _, cleanup := startAgent(t)
+	defer cleanup()
+
+	for _, keyType := range []string{"rsa", "dsa", "ecdsa"} {
+		// Add private keys to the agent.
+		err := agent.Add(AddedKey{
+			PrivateKey:   testPrivateKeys[keyType],
+			Comment:      "comment",
+			LifetimeSecs: 1,
+		})
+		if err != nil {
+			t.Fatalf("add: %v", err)
+		}
+		// Add certs to the agent.
+		cert := &ssh.Certificate{
+			Key:         testPublicKeys[keyType],
+			ValidBefore: ssh.CertTimeInfinity,
+			CertType:    ssh.UserCert,
+		}
+		cert.SignCert(rand.Reader, testSigners[keyType])
+		err = agent.Add(AddedKey{
+			PrivateKey:   testPrivateKeys[keyType],
+			Certificate:  cert,
+			Comment:      "comment",
+			LifetimeSecs: 1,
+		})
+		if err != nil {
+			t.Fatalf("add: %v", err)
+		}
+	}
+	time.Sleep(1100 * time.Millisecond)
+	if keys, err := agent.List(); err != nil {
+		t.Errorf("List: %v", err)
+	} else if len(keys) != 0 {
+		t.Errorf("Want 0 keys, got %v", len(keys))
 	}
 }

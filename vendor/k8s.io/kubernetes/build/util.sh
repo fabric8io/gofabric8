@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ function kube::release::semantic_version() {
   # Client Version: version.Info{Major:"1", Minor:"1+", GitVersion:"v1.1.0-alpha.0.2328+3c0a05de4a38e3", GitCommit:"3c0a05de4a38e355d147dbfb4d85bad6d2d73bb9", GitTreeState:"clean"}
   # and spits back the GitVersion piece in a way that is somewhat
   # resilient to the other fields changing (we hope)
-  ${KUBE_ROOT}/cluster/kubectl.sh version -c | sed "s/, */\\
+  ${KUBE_ROOT}/cluster/kubectl.sh version --client | sed "s/, */\\
 /g" | egrep "^GitVersion:" | cut -f2 -d: | cut -f2 -d\"
 }
 

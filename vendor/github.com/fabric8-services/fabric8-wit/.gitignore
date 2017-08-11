@@ -1,0 +1,86 @@
+### Intellij ###
+.idea/
+*.iws
+*.iml
+/out/
+.idea_modules/
+atlassian-ide-plugin.xml
+
+### Eclipse ###
+.metadata
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+
+# Eclipse Core
+.project
+
+# External tool builders
+.externalToolBuilders/
+
+# Locally stored "Eclipse launch configurations"
+*.launch
+
+# Code Recommenders
+.recommenders/
+
+
+### VisualStudioCode ###
+.vscode
+
+### Go ###
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+
+# Folders
+_obj
+_test
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+_testmain.go
+
+*.exe
+*.test
+*.prof
+
+# Fabric8-wit specific artifacts
+/debug
+**/debug.test
+
+# Fabric8-wit binaries
+bin/
+
+# Glide package manager
+.glide
+vendor/
+
+# Generated assets
+app/
+assets/js/
+bindata_assetfs.go
+client/
+swagger/
+tool/cli/
+migration/sqlbindata.go
+migration/sqlbindata_test.go
+account/tenant
+
+# Ignore artifacts directory
+bin/

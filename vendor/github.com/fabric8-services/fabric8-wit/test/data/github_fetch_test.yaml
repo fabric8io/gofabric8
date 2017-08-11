@@ -1,0 +1,190 @@
+---
+version: 1
+interactions:
+- request:
+    body: ""
+    form: {}
+    headers:
+      Accept:
+      - application/vnd.github.v3+json
+      User-Agent:
+      - go-github/2
+    url: https://api.github.com/search/issues?per_page=20&q=is%3Aopen+is%3Aissue+user%3Aalmighty-test
+    method: GET
+  response:
+    body: '{
+  "total_count": 2,
+  "incomplete_results": false,
+  "items": [
+    {
+      "url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/2",
+      "repository_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit",
+      "labels_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/2/labels{/name}",
+      "comments_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/2/comments",
+      "events_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/2/events",
+      "html_url": "https://github.com/fabric8-wit-test/fabric8-wit-test-unit/issues/2",
+      "id": 176621784,
+      "number": 2,
+      "title": "map flatten : test case : with assignee",
+      "user": {
+        "login": "sbose78",
+        "id": 545280,
+        "avatar_url": "https://avatars.githubusercontent.com/u/545280?v=3",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/sbose78",
+        "html_url": "https://github.com/sbose78",
+        "followers_url": "https://api.github.com/users/sbose78/followers",
+        "following_url": "https://api.github.com/users/sbose78/following{/other_user}",
+        "gists_url": "https://api.github.com/users/sbose78/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/sbose78/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/sbose78/subscriptions",
+        "organizations_url": "https://api.github.com/users/sbose78/orgs",
+        "repos_url": "https://api.github.com/users/sbose78/repos",
+        "events_url": "https://api.github.com/users/sbose78/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/sbose78/received_events",
+        "type": "User",
+        "site_admin": false
+      },
+      "labels": [
+
+      ],
+      "state": "open",
+      "locked": false,
+      "assignee": {
+        "login": "sbose78",
+        "id": 545280,
+        "avatar_url": "https://avatars.githubusercontent.com/u/545280?v=3",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/sbose78",
+        "html_url": "https://github.com/sbose78",
+        "followers_url": "https://api.github.com/users/sbose78/followers",
+        "following_url": "https://api.github.com/users/sbose78/following{/other_user}",
+        "gists_url": "https://api.github.com/users/sbose78/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/sbose78/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/sbose78/subscriptions",
+        "organizations_url": "https://api.github.com/users/sbose78/orgs",
+        "repos_url": "https://api.github.com/users/sbose78/repos",
+        "events_url": "https://api.github.com/users/sbose78/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/sbose78/received_events",
+        "type": "User",
+        "site_admin": false
+      },
+      "assignees": [
+        {
+          "login": "sbose78",
+          "id": 545280,
+          "avatar_url": "https://avatars.githubusercontent.com/u/545280?v=3",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/sbose78",
+          "html_url": "https://github.com/sbose78",
+          "followers_url": "https://api.github.com/users/sbose78/followers",
+          "following_url": "https://api.github.com/users/sbose78/following{/other_user}",
+          "gists_url": "https://api.github.com/users/sbose78/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/sbose78/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/sbose78/subscriptions",
+          "organizations_url": "https://api.github.com/users/sbose78/orgs",
+          "repos_url": "https://api.github.com/users/sbose78/repos",
+          "events_url": "https://api.github.com/users/sbose78/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/sbose78/received_events",
+          "type": "User",
+          "site_admin": false
+        }
+      ],
+      "milestone": null,
+      "comments": 0,
+      "created_at": "2016-09-13T12:00:54Z",
+      "updated_at": "2016-09-13T12:00:54Z",
+      "closed_at": null,
+      "body": "desc\n",
+      "score": 1.0
+    },
+    {
+      "url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/1",
+      "repository_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit",
+      "labels_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/1/labels{/name}",
+      "comments_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/1/comments",
+      "events_url": "https://api.github.com/repos/fabric8-wit-test/fabric8-wit-test-unit/issues/1/events",
+      "html_url": "https://github.com/fabric8-wit-test/fabric8-wit-test-unit/issues/1",
+      "id": 176621042,
+      "number": 1,
+      "title": "map flatten test case : without assignee",
+      "user": {
+        "login": "sbose78",
+        "id": 545280,
+        "avatar_url": "https://avatars.githubusercontent.com/u/545280?v=3",
+        "gravatar_id": "",
+        "url": "https://api.github.com/users/sbose78",
+        "html_url": "https://github.com/sbose78",
+        "followers_url": "https://api.github.com/users/sbose78/followers",
+        "following_url": "https://api.github.com/users/sbose78/following{/other_user}",
+        "gists_url": "https://api.github.com/users/sbose78/gists{/gist_id}",
+        "starred_url": "https://api.github.com/users/sbose78/starred{/owner}{/repo}",
+        "subscriptions_url": "https://api.github.com/users/sbose78/subscriptions",
+        "organizations_url": "https://api.github.com/users/sbose78/orgs",
+        "repos_url": "https://api.github.com/users/sbose78/repos",
+        "events_url": "https://api.github.com/users/sbose78/events{/privacy}",
+        "received_events_url": "https://api.github.com/users/sbose78/received_events",
+        "type": "User",
+        "site_admin": false
+      },
+      "labels": [
+
+      ],
+      "state": "open",
+      "locked": false,
+      "assignee": null,
+      "assignees": [
+
+      ],
+      "milestone": null,
+      "comments": 0,
+      "created_at": "2016-09-13T11:57:24Z",
+      "updated_at": "2016-09-13T11:59:37Z",
+      "closed_at": null,
+      "body": "sample desc\n",
+      "score": 1.0
+    }
+  ]
+}'
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Access-Control-Expose-Headers:
+      - ETag, Link, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset,
+        X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval
+      Cache-Control:
+      - no-cache
+      Content-Security-Policy:
+      - default-src 'none'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Sat, 24 Sep 2016 12:30:44 GMT
+      Server:
+      - GitHub.com
+      Status:
+      - 200 OK
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubdomains; preload
+      Vary:
+      - Accept-Encoding
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - deny
+      X-Github-Media-Type:
+      - github.v3; format=json
+      X-Github-Request-Id:
+      - 75C0831D:167B2:70967D0:57E671F3
+      X-Ratelimit-Limit:
+      - "10"
+      X-Ratelimit-Remaining:
+      - "9"
+      X-Ratelimit-Reset:
+      - "1474720304"
+      X-Served-By:
+      - a241e1a8264a6ace03db946c85b92db3
+      X-Xss-Protection:
+      - 1; mode=block
+    status: 200 OK
+    code: 200

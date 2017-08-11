@@ -1,0 +1,1 @@
+ALTER TABLE work_item_types ADD COLUMN icon text DEFAULT 'fa-question' NOT NULL;

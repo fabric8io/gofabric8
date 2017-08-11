@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -284,7 +284,7 @@ function pc-create-vm {
 
    # Wait for the VM to be started and connected to the network
   have_network=0
-  for i in $(seq 120); do
+  for i in {1..120}; do
     # photon -n vm networks print several fields:
     # NETWORK MAC IP GATEWAY CONNECTED?
     # We wait until CONNECTED is True

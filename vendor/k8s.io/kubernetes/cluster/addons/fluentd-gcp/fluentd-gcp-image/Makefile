@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,27 +24,16 @@
 # 4. Test etc.
 # 5. Issue PR.
 # 6. When PR is approved make the gcr.io version of the image: make build push
-# 7. Revert the referendes to kubernetes/fluentd-gcp:$(TAG) to gcr.io/google_containers/fluentd-gcp:$(TAG) 
+# 7. Revert the referendes to kubernetes/fluentd-gcp:$(TAG) to gcr.io/google_containers/fluentd-gcp:$(TAG)
 
-.PHONY:	kbuild kpush
+.PHONY:	build push
 
-TAG = 1.21
-
-# Rules for building the test image for deployment to Dockerhub with user kubernetes.
-
-kbuild:
-	docker build -t kubernetes/fluentd-gcp:$(TAG) .
-
-
-kpush:
-	docker push kubernetes/fluentd-gcp:$(TAG)
-
-
-# Rules for building the real image for deployment to gcr.io
+PREFIX=gcr.io/google_containers
+TAG = 1.28
 
 build:
-	docker build -t gcr.io/google_containers/fluentd-gcp:$(TAG) .
+	docker build --pull -t $(PREFIX)/fluentd-gcp:$(TAG) .
 
 
 push:
-	gcloud docker push gcr.io/google_containers/fluentd-gcp:$(TAG)
+	gcloud docker -- push $(PREFIX)/fluentd-gcp:$(TAG)

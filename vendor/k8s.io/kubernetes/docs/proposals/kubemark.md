@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubemark proposal
 
 ## Goal of this document
@@ -155,13 +150,6 @@ scalability tests. Alternatively we can just use current density/load tests,
 In the future we want to add following capabilities to the Kubemark system:
 - replaying real traffic reconstructed from the recorded Events stream,
 - simulating scraping things running on Nodes through Master proxy.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
