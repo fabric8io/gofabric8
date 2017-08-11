@@ -29,7 +29,7 @@ type cleanUpContentRepoFlags struct {
 }
 
 // NewCmdCleanUpContentRepository delete files in the tenants content repository
-func NewCmdCleanUpContentRepository(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCleanUpContentRepository(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "content-repo",
 		Short:   "Hard delete all fabric8 apps, environments and configurations",
@@ -51,7 +51,7 @@ func NewCmdCleanUpContentRepository(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *cleanUpContentRepoFlags) cleanContentRepo(f *cmdutil.Factory) error {
+func (p *cleanUpContentRepoFlags) cleanContentRepo(f cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)

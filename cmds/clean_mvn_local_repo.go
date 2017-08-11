@@ -32,7 +32,7 @@ type cleanUpMavenLocalRepoFlags struct {
 }
 
 // NewCmdCleanUpMavenLocalRepo delete files in the tenants content repository
-func NewCmdCleanUpMavenLocalRepo(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCleanUpMavenLocalRepo(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "maven-local-repo",
 		Short:   "Hard delete the local maven repository files",
@@ -54,7 +54,7 @@ func NewCmdCleanUpMavenLocalRepo(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *cleanUpMavenLocalRepoFlags) cleanMavenLocalRepo(f *cmdutil.Factory) error {
+func (p *cleanUpMavenLocalRepoFlags) cleanMavenLocalRepo(f cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)

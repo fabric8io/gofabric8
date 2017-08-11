@@ -19,7 +19,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (

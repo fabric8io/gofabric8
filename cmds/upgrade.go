@@ -29,7 +29,7 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/spf13/cobra"
 	kapi "k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -41,7 +41,7 @@ const (
 	mavenPrefix = "http://central.maven.org/maven2/"
 )
 
-func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
+func NewCmdUpgrade(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade [name]",
 		Short: "Upgrades the packages if there is a newer version available",
@@ -125,7 +125,7 @@ func NewCmdUpgrade(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv bool, exposer string, githubClientID string, githubClientSecret string) error {
+func upgradePackages(ns string, c *clientset.Clientset, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv bool, exposer string, githubClientID string, githubClientSecret string) error {
 	selector, err := createPackageSelector()
 	if err != nil {
 		return err
@@ -216,7 +216,7 @@ func upgradePackages(ns string, c *k8sclient.Client, ocl *oclient.Client, args [
 	return nil
 }
 
-func upgradePackage(ns string, c *k8sclient.Client, ocl *oclient.Client, domain string, apiserver string, pv bool, name string, newVersion string, packageUrlPrefix string, params map[string]string) {
+func upgradePackage(ns string, c *clientset.Clientset, ocl *oclient.Client, domain string, apiserver string, pv bool, name string, newVersion string, packageUrlPrefix string, params map[string]string) {
 	util.Info("Upgrading package ")
 	util.Success(name)
 	util.Info(" to version: ")

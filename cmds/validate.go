@@ -23,16 +23,16 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/selection"
 )
 
-type validateFunc func(c *k8sclient.Client, f *cmdutil.Factory) (Result, error)
-type oValidateFunc func(c *oclient.Client, f *cmdutil.Factory) (Result, error)
+type validateFunc func(c *clientset.Clientset, f cmdutil.Factory) (Result, error)
+type oValidateFunc func(c *oclient.Client, f cmdutil.Factory) (Result, error)
 
-func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
+func NewCmdValidate(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate",
 		Short: "Validate your Kubernetes or OpenShift environment",
@@ -74,12 +74,12 @@ func NewCmdValidate(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func printValidationResult(check string, v validateFunc, c *k8sclient.Client, f *cmdutil.Factory) {
+func printValidationResult(check string, v validateFunc, c *clientset.Clientset, f cmdutil.Factory) {
 	r, err := v(c, f)
 	printResult(check, r, err)
 }
 
-func printOValidationResult(check string, v oValidateFunc, c *oclient.Client, f *cmdutil.Factory) {
+func printOValidationResult(check string, v oValidateFunc, c *oclient.Client, f cmdutil.Factory) {
 	r, err := v(c, f)
 	printResult(check, r, err)
 }
@@ -113,7 +113,7 @@ func printResult(check string, r Result, err error) {
 	util.Blank()
 }
 
-func validateServiceAccount(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func validateServiceAccount(c *clientset.Clientset, f cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
@@ -125,7 +125,7 @@ func validateServiceAccount(c *k8sclient.Client, f *cmdutil.Factory) (Result, er
 	return Failure, err
 }
 
-func validateConsoleDeployment(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func validateConsoleDeployment(c *clientset.Clientset, f cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
@@ -137,7 +137,7 @@ func validateConsoleDeployment(c *k8sclient.Client, f *cmdutil.Factory) (Result,
 	return Failure, err
 }
 
-func validateConsoleDeploymentConfig(c *oclient.Client, f *cmdutil.Factory) (Result, error) {
+func validateConsoleDeploymentConfig(c *oclient.Client, f cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
@@ -149,7 +149,7 @@ func validateConsoleDeploymentConfig(c *oclient.Client, f *cmdutil.Factory) (Res
 	return Failure, err
 }
 
-func validatePersistenceVolumeClaims(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func validatePersistenceVolumeClaims(c *clientset.Clientset, f cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
@@ -202,12 +202,13 @@ EOF
 	return Failure, err
 }
 
-func validateRouter(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func validateRouter(c *clientset.Clientset, f cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
 	}
-	requirement, err := labels.NewRequirement("router", labels.EqualsOperator, sets.NewString("router"))
+	requirement, err := labels.NewRequirement(
+		"router", selection.Equals, []string{"rpiter"})
 	if err != nil {
 		return Failure, err
 	}
@@ -228,7 +229,7 @@ func validateRouter(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
 	return Failure, err
 }
 
-func validateSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func validateSecurityContextConstraints(c *clientset.Clientset, f cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
@@ -247,7 +248,7 @@ func validateSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory)
 	return Failure, err
 }
 
-func validateJenkinshiftService(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func validateJenkinshiftService(c *clientset.Clientset, f cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
@@ -259,7 +260,7 @@ func validateJenkinshiftService(c *k8sclient.Client, f *cmdutil.Factory) (Result
 	return Failure, err
 }
 
-func validateTemplates(c *oclient.Client, f *cmdutil.Factory) (Result, error) {
+func validateTemplates(c *oclient.Client, f cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err
@@ -271,7 +272,7 @@ func validateTemplates(c *oclient.Client, f *cmdutil.Factory) (Result, error) {
 	return Failure, err
 }
 
-func validateConfigMaps(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func validateConfigMaps(c *clientset.Clientset, f cmdutil.Factory) (Result, error) {
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
 		return Failure, err

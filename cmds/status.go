@@ -27,7 +27,7 @@ import (
 const ()
 
 // NewCmdStatus stops the current local cluster
-func NewCmdStatus(f *cmdutil.Factory) *cobra.Command {
+func NewCmdStatus(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Gets the status of a local cluster",

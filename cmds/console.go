@@ -22,7 +22,7 @@ import (
 )
 
 // NewCmdConsole Open the fabric8 console
-func NewCmdConsole(f *cmdutil.Factory) *cobra.Command {
+func NewCmdConsole(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "console",
 		Short: "Open the fabric8 console",

@@ -28,13 +28,13 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/labels"
 )
 
 // NewCmdCleanUp delete all fabric8 apps, environments and configurations
-func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCleanUpSystem(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "system",
 		Short: "Hard delete all fabric8 apps, environments and configurations",
@@ -66,7 +66,7 @@ func NewCmdCleanUpSystem(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func NewCmdCleanUpApp(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCleanUpApp(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "app",
 		Short: "Hard delete a specific fabric8 app and its environments and configurations",
@@ -99,7 +99,7 @@ func NewCmdCleanUpApp(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func deleteSystem(f *cmdutil.Factory) error {
+func deleteSystem(f cmdutil.Factory) error {
 	var oc *oclient.Client
 
 	c, cfg := client.NewClient(f)
@@ -135,7 +135,7 @@ func deleteSystem(f *cmdutil.Factory) error {
 	return nil
 }
 
-func deleteApp(f *cmdutil.Factory, selectormap map[string]string) error {
+func deleteApp(f cmdutil.Factory, selectormap map[string]string) error {
 	isOpenShift := false
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
@@ -166,7 +166,7 @@ func deleteApp(f *cmdutil.Factory, selectormap map[string]string) error {
 	return nil
 }
 
-func cleanUpOpenshiftResources(c *k8sclient.Client, oc *oclient.Client, ns string, selector labels.Selector) {
+func cleanUpOpenshiftResources(c *clientset.Clientset, oc *oclient.Client, ns string, selector labels.Selector) {
 
 	err := deleteDeploymentConfigs(oc, ns, selector)
 	if err != nil {
@@ -189,7 +189,7 @@ func cleanUpOpenshiftResources(c *k8sclient.Client, oc *oclient.Client, ns strin
 	}
 }
 
-func cleanUpKubernetesResources(c *k8sclient.Client, ns string, selector labels.Selector, isOpenShift bool) {
+func cleanUpKubernetesResources(c *clientset.Clientset, ns string, selector labels.Selector, isOpenShift bool) {
 
 	err := deleteDeployments(c, ns, selector)
 	if err != nil {
@@ -283,7 +283,7 @@ func deleteRoutes(oc *oclient.Client, ns string, selector labels.Selector) error
 	return nil
 }
 
-func deleteDeployments(c *k8sclient.Client, ns string, selector labels.Selector) error {
+func deleteDeployments(c *clientset.Clientset, ns string, selector labels.Selector) error {
 	fmt.Printf("Deleting deployments with label %s\n", selector.String())
 	e := exec.Command("kubectl", "delete", "deployments", "-l", selector.String())
 	err := e.Run()
@@ -294,7 +294,7 @@ func deleteDeployments(c *k8sclient.Client, ns string, selector labels.Selector)
 
 }
 
-func deletePersistentVolumeClaims(c *k8sclient.Client, ns string, selector labels.Selector) (err error) {
+func deletePersistentVolumeClaims(c *clientset.Clientset, ns string, selector labels.Selector) (err error) {
 	fmt.Printf("Deleting pvc with label %s\n", selector.String())
 	pvcs, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{LabelSelector: selector})
 	if pvcs == nil {
@@ -302,7 +302,7 @@ func deletePersistentVolumeClaims(c *k8sclient.Client, ns string, selector label
 	}
 	for _, item := range pvcs.Items {
 		name := item.ObjectMeta.Name
-		errd := c.PersistentVolumeClaims(ns).Delete(name)
+		errd := c.PersistentVolumeClaims(ns).Delete(name, nil)
 		if errd != nil {
 			util.Infof("Error deleting PVC %s\n", name)
 		}
@@ -310,14 +310,14 @@ func deletePersistentVolumeClaims(c *k8sclient.Client, ns string, selector label
 	return
 }
 
-func deleteReplicationControllers(c *k8sclient.Client, ns string, selector labels.Selector) error {
+func deleteReplicationControllers(c *clientset.Clientset, ns string, selector labels.Selector) error {
 	fmt.Printf("Deleting rc with label %s\n", selector.String())
 	rcs, err := c.ReplicationControllers(ns).List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return err
 	}
 	for _, rc := range rcs.Items {
-		err := c.ReplicationControllers(ns).Delete(rc.Name)
+		err := c.ReplicationControllers(ns).Delete(rc.Name, nil)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to delete ReplicationController %s\n", rc.Name))
 		}
@@ -325,7 +325,7 @@ func deleteReplicationControllers(c *k8sclient.Client, ns string, selector label
 	return nil
 }
 
-func deleteReplicaSets(c *k8sclient.Client, ns string, selector labels.Selector) error {
+func deleteReplicaSets(c *clientset.Clientset, ns string, selector labels.Selector) error {
 	fmt.Printf("Deleting ReplicaSets with label %s\n", selector.String())
 
 	rsets, err := c.ReplicaSets(ns).List(api.ListOptions{LabelSelector: selector})
@@ -341,14 +341,14 @@ func deleteReplicaSets(c *k8sclient.Client, ns string, selector labels.Selector)
 	return nil
 }
 
-func deleteServices(c *k8sclient.Client, ns string, selector labels.Selector) error {
+func deleteServices(c *clientset.Clientset, ns string, selector labels.Selector) error {
 	fmt.Printf("Deleting services with label %s\n", selector.String())
 	services, err := c.Services(ns).List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return err
 	}
 	for _, s := range services.Items {
-		err := c.Services(ns).Delete(s.Name)
+		err := c.Services(ns).Delete(s.Name, nil)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to delete Service %s\n", s.Name))
 		}
@@ -356,14 +356,14 @@ func deleteServices(c *k8sclient.Client, ns string, selector labels.Selector) er
 	return nil
 }
 
-func deleteSecrets(c *k8sclient.Client, ns string, selector labels.Selector) error {
+func deleteSecrets(c *clientset.Clientset, ns string, selector labels.Selector) error {
 	fmt.Printf("Deleting secrets with label %s\n", selector.String())
 	secrets, err := c.Secrets(ns).List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return err
 	}
 	for _, s := range secrets.Items {
-		err := c.Secrets(ns).Delete(s.Name)
+		err := c.Secrets(ns).Delete(s.Name, nil)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to delete Secret %s\n", s.Name))
 		}
@@ -371,14 +371,14 @@ func deleteSecrets(c *k8sclient.Client, ns string, selector labels.Selector) err
 	return nil
 }
 
-func deleteIngress(c *k8sclient.Client, ns string, selector labels.Selector) error {
+func deleteIngress(c *clientset.Clientset, ns string, selector labels.Selector) error {
 	fmt.Printf("Deleting ingress with label %s\n", selector.String())
-	ing, err := c.Ingress(ns).List(api.ListOptions{LabelSelector: selector})
+	ing, err := c.Ingresses(ns).List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return err
 	}
 	for _, i := range ing.Items {
-		err := c.Ingress(ns).Delete(i.Name, nil)
+		err := c.Ingresses(ns).Delete(i.Name, nil)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to delete Ingress %s\n", i.Name))
 		}
@@ -386,14 +386,14 @@ func deleteIngress(c *k8sclient.Client, ns string, selector labels.Selector) err
 	return nil
 }
 
-func deleteConfigMaps(c *k8sclient.Client, ns string, selector labels.Selector) error {
+func deleteConfigMaps(c *clientset.Clientset, ns string, selector labels.Selector) error {
 	fmt.Printf("Deleting configmaps with label %s\n", selector.String())
 	cmps, err := c.ConfigMaps(ns).List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return err
 	}
 	for _, cm := range cmps.Items {
-		err := c.ConfigMaps(ns).Delete(cm.Name)
+		err := c.ConfigMaps(ns).Delete(cm.Name, nil)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to delete ConfigMap %s\n", cm.Name))
 		}
@@ -401,14 +401,14 @@ func deleteConfigMaps(c *k8sclient.Client, ns string, selector labels.Selector) 
 	return nil
 }
 
-func deleteServiceAccounts(c *k8sclient.Client, ns string, selector labels.Selector) error {
+func deleteServiceAccounts(c *clientset.Clientset, ns string, selector labels.Selector) error {
 	fmt.Printf("Deleting serviceAccount with label %s\n", selector.String())
 	sas, err := c.ServiceAccounts(ns).List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return err
 	}
 	for _, s := range sas.Items {
-		err := c.ServiceAccounts(ns).Delete(s.Name)
+		err := c.ServiceAccounts(ns).Delete(s.Name, nil)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to delete ServiceAccount %s\n", s.Name))
 		}
@@ -416,7 +416,7 @@ func deleteServiceAccounts(c *k8sclient.Client, ns string, selector labels.Selec
 	return nil
 }
 
-func deletePods(c *k8sclient.Client, ns string, selector labels.Selector) error {
+func deletePods(c *clientset.Clientset, ns string, selector labels.Selector) error {
 	fmt.Printf("Deleting pods with label %s\n", selector.String())
 	pods, err := c.Pods(ns).List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
@@ -453,14 +453,14 @@ func deleteProjects(oc *oclient.Client, selector labels.Selector) error {
 	return nil
 }
 
-func deleteNamespaces(c *k8sclient.Client, selector labels.Selector) error {
+func deleteNamespaces(c *clientset.Clientset, selector labels.Selector) error {
 	fmt.Printf("Deleting namespaces with label %s\n", selector.String())
 	ns, err := c.Namespaces().List(api.ListOptions{LabelSelector: selector})
 	if err != nil {
 		return err
 	}
 	for _, n := range ns.Items {
-		err := c.Namespaces().Delete(n.Name)
+		err := c.Namespaces().Delete(n.Name, nil)
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to delete Namespace %s\n", n.Name))
 		}

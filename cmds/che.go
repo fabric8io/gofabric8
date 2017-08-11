@@ -22,12 +22,10 @@ import (
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
-
 	"github.com/spf13/cobra"
-
 	"k8s.io/kubernetes/pkg/api"
 
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -40,7 +38,7 @@ type cmdCheShell struct {
 	pod       string
 }
 
-func NewCmdCheShell(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCheShell(f cmdutil.Factory) *cobra.Command {
 	p := &cmdCheShell{}
 	cmd := &cobra.Command{
 		Use:   "che",
@@ -49,7 +47,6 @@ func NewCmdCheShell(f *cmdutil.Factory) *cobra.Command {
 			p.cmd = cmd
 			p.args = args
 			handleError(p.run(f))
-
 		},
 	}
 	flags := cmd.Flags()
@@ -59,7 +56,7 @@ func NewCmdCheShell(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *cmdCheShell) run(f *cmdutil.Factory) error {
+func (p *cmdCheShell) run(f cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 
 	initSchema()
@@ -104,7 +101,7 @@ func (p *cmdCheShell) run(f *cmdutil.Factory) error {
 	return fmt.Errorf("No Che workspace pods found in namespace %s", cheNS)
 }
 
-func (p *cmdCheShell) openShell(c *k8sclient.Client, namespace string, podName string, isOpenshift bool) error {
+func (p *cmdCheShell) openShell(c *clientset.Clientset, namespace string, podName string, isOpenshift bool) error {
 	shell := p.shell
 	util.Infof("starting %s shell in Che workspace pod %s in namespace %s\n", shell, podName, namespace)
 	kubeBinary := "kubectl"

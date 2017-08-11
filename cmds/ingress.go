@@ -23,11 +23,11 @@ import (
 	"github.com/spf13/cobra"
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-func NewCmdIngress(f *cmdutil.Factory) *cobra.Command {
+func NewCmdIngress(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ingress",
 		Short: "Creates any missing Ingress resources for services",
@@ -59,11 +59,11 @@ func NewCmdIngress(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func createIngressForDomain(ns string, domain string, c *k8sclient.Client, fac *cmdutil.Factory) error {
+func createIngressForDomain(ns string, domain string, c *clientset.Clientset, fac cmdutil.Factory) error {
 	rapi.AddToScheme(kapi.Scheme)
 	rapiv1.AddToScheme(kapi.Scheme)
 
-	ingressClient := c.Extensions().Ingress(ns)
+	ingressClient := c.Extensions().Ingresses(ns)
 	ingresses, err := ingressClient.List(kapi.ListOptions{})
 	if err != nil {
 		util.Errorf("Failed to load ingresses in namespace %s with error %v", ns, err)

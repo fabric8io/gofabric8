@@ -26,7 +26,7 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	"k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/watch"
 )
@@ -38,7 +38,7 @@ const (
 	namespaceFlag   = "namespace"
 )
 
-func NewCmdWaitFor(f *cmdutil.Factory) *cobra.Command {
+func NewCmdWaitFor(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "wait-for",
 		Short: "Waits for the listed deployments to be ready - useful for automation and testing",
@@ -113,7 +113,7 @@ func handleError(err error) {
 	}
 }
 
-func waitForDeployments(c *k8sclient.Client, ns string, waitAll bool, names []string, sleepMillis time.Duration) error {
+func waitForDeployments(c *clientset.Clientset, ns string, waitAll bool, names []string, sleepMillis time.Duration) error {
 	if waitAll {
 		deployments, err := c.Extensions().Deployments(ns).List(api.ListOptions{})
 		if err != nil {
@@ -161,7 +161,7 @@ func waitForDeploymentConfigs(c *oclient.Client, ns string, waitAll bool, names 
 	return nil
 }
 
-func waitForDeployment(c *k8sclient.Client, ns string, name string, sleepMillis time.Duration) error {
+func waitForDeployment(c *clientset.Clientset, ns string, name string, sleepMillis time.Duration) error {
 	util.Infof("Deployment %s waiting for it to be ready...\n", name)
 	for {
 		deployment, err := c.Extensions().Deployments(ns).Get(name)

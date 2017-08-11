@@ -27,7 +27,7 @@ import (
 const ()
 
 // NewCmdStop stops the current local cluster
-func NewCmdStop(f *cmdutil.Factory) *cobra.Command {
+func NewCmdStop(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stop",
 		Short: "Stops a running local cluster",

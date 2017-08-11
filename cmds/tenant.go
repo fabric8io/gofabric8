@@ -20,7 +20,7 @@ import (
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-func NewCmdTenant(f *cmdutil.Factory) *cobra.Command {
+func NewCmdTenant(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tenant",
 		Short: "Commands for working on your tenant",

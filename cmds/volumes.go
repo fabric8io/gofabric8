@@ -27,7 +27,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -35,7 +35,7 @@ const (
 	sshCommandFlag = "ssh-command"
 )
 
-func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
+func NewCmdVolumes(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "volumes",
 		Short: "Creates a persisent volume for any pending persistance volume claims",
@@ -61,7 +61,7 @@ func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
 						name := item.ObjectMeta.Name
 						status := item.Status.Phase
 						if status == api.ClaimPending || status == api.ClaimLost {
-							err = c.PersistentVolumeClaims(ns).Delete(name)
+							err = c.PersistentVolumeClaims(ns).Delete(name, nil)
 							if err != nil {
 								util.Infof("Error deleting PVC %s\n", name)
 							} else {
@@ -92,7 +92,7 @@ func NewCmdVolumes(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func findPendingPVs(c *k8sclient.Client, ns string) (bool, *api.PersistentVolumeClaimList, []string) {
+func findPendingPVs(c *clientset.Clientset, ns string) (bool, *api.PersistentVolumeClaimList, []string) {
 
 	pvcs, err := c.PersistentVolumeClaims(ns).List(api.ListOptions{})
 
@@ -116,7 +116,7 @@ func findPendingPVs(c *k8sclient.Client, ns string) (bool, *api.PersistentVolume
 	return false, nil, nil
 }
 
-func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand string) (Result, error) {
+func createPV(c *clientset.Clientset, ns string, pvcNames []string, sshCommand string) (Result, error) {
 
 	for _, pvcName := range pvcNames {
 		hostPath := path.Join("/data", ns, pvcName)
@@ -172,7 +172,7 @@ func createPV(c *k8sclient.Client, ns string, pvcNames []string, sshCommand stri
 
 // if we are on minikube or minishift lets try to create the
 // hostPath folders with relaxed persmissions
-func configureHostPathVolume(c *k8sclient.Client, ns string, hostPath string, sshCommand string) error {
+func configureHostPathVolume(c *clientset.Clientset, ns string, hostPath string, sshCommand string) error {
 	cli := sshCommand
 
 	if len(cli) == 0 {

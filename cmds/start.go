@@ -30,8 +30,8 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/kardianos/osext"
 	"github.com/spf13/cobra"
-	"k8s.io/kubernetes/pkg/client/restclient"
-	k8client "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -47,7 +47,7 @@ const (
 )
 
 // NewCmdStart starts a local cloud environment
-func NewCmdStart(f *cmdutil.Factory) *cobra.Command {
+func NewCmdStart(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Starts a local cloud development environment",
@@ -293,7 +293,7 @@ func fileNotExist(path string) bool {
 	return findExecutable(path) != nil
 }
 
-func keepTryingToGetClient(f *cmdutil.Factory) (*k8client.Client, *restclient.Config, error) {
+func keepTryingToGetClient(f cmdutil.Factory) (*clientset.Clientset, *restclient.Config, error) {
 	timeout := time.After(2 * time.Minute)
 	tick := time.Tick(1 * time.Second)
 	// Keep trying until we're timed out or got a result or got an error
@@ -315,13 +315,13 @@ func keepTryingToGetClient(f *cmdutil.Factory) (*k8client.Client, *restclient.Co
 	}
 }
 
-func getClient(f *cmdutil.Factory) (*k8client.Client, *restclient.Config, error) {
+func getClient(f cmdutil.Factory) (*clientset.Clientset, *restclient.Config, error) {
 	var err error
 	cfg, err := f.ClientConfig()
 	if err != nil {
 		return nil, cfg, err
 	}
-	c, err := k8client.New(cfg)
+	c, err := clientset.NewForConfig(cfg)
 	if err != nil {
 		return nil, cfg, err
 	}

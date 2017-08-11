@@ -22,7 +22,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"k8s.io/kubernetes/pkg/client/restclient"
+	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	k8client "k8s.io/kubernetes/pkg/client/unversioned"
 
 	"github.com/spf13/cobra"

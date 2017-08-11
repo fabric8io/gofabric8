@@ -27,7 +27,7 @@ import (
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	kubeApi "k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -41,7 +41,7 @@ const (
 
 // NewCmdService looks up the external service address and opens the URL
 // Credits: https://github.com/kubernetes/minikube/blob/v0.9.0/cmd/minikube/cmd/service.go
-func NewCmdService(f *cmdutil.Factory) *cobra.Command {
+func NewCmdService(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "service",
 		Short: "Opens the specified Kubernetes service in your browser",
@@ -69,7 +69,7 @@ func NewCmdService(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func openService(ns string, serviceName string, c *k8sclient.Client, printURL bool, retry bool) {
+func openService(ns string, serviceName string, c *clientset.Clientset, printURL bool, retry bool) {
 	if retry {
 		if err := RetryAfter(1200, func() error { return CheckService(ns, serviceName, c) }, 10*time.Second); err != nil {
 			util.Errorf("Could not find finalized endpoint being pointed to by %s: %v", serviceName, err)
@@ -102,7 +102,7 @@ func openService(ns string, serviceName string, c *k8sclient.Client, printURL bo
 }
 
 // FindServiceURL returns the external service URL waiting a little bit for it to show up
-func FindServiceURL(ns string, serviceName string, c *k8sclient.Client, retry bool) string {
+func FindServiceURL(ns string, serviceName string, c *clientset.Clientset, retry bool) string {
 	answer := ""
 	if retry {
 		if err := RetryAfter(1200, func() error { return CheckServiceExists(ns, serviceName, c) }, 10*time.Second); err != nil {
@@ -122,7 +122,7 @@ func FindServiceURL(ns string, serviceName string, c *k8sclient.Client, retry bo
 }
 
 // CheckServiceExists waits for the specified service to have an external URL
-func CheckServiceExists(ns string, service string, c *k8sclient.Client) error {
+func CheckServiceExists(ns string, service string, c *clientset.Clientset) error {
 	svc, err := c.Services(ns).Get(service)
 	if err != nil {
 		return err
@@ -138,7 +138,7 @@ func CheckServiceExists(ns string, service string, c *k8sclient.Client) error {
 // CheckService waits for the specified service to be ready by returning an error until the service is up
 // The check is done by polling the endpoint associated with the service and when the endpoint exists, returning no error->service-online
 // Credits: https://github.com/kubernetes/minikube/blob/v0.9.0/cmd/minikube/cmd/service.go#L89
-func CheckService(ns string, service string, c *k8sclient.Client) error {
+func CheckService(ns string, service string, c *clientset.Clientset) error {
 	svc, err := c.Services(ns).Get(service)
 	if err != nil {
 		return err
@@ -177,7 +177,7 @@ func CheckEndpointReady(endpoint *kubeApi.Endpoints) error {
 }
 
 //WaitForExternalIPAddress will wait for loadbalancers to update the service and return it's external ip address
-func WaitForExternalIPAddress(ns string, serviceName string, c *k8sclient.Client) (address string, err error) {
+func WaitForExternalIPAddress(ns string, serviceName string, c *clientset.Clientset) (address string, err error) {
 
 	if err := RetryAfter(1200, func() error { return HasExternalIP(ns, serviceName, c) }, 10*time.Second); err != nil {
 		util.Errorf("Could not find external IP for %s: %v", serviceName, err)
@@ -191,7 +191,7 @@ func WaitForExternalIPAddress(ns string, serviceName string, c *k8sclient.Client
 }
 
 //HasExternalIP checks if a service has an external ip address
-func HasExternalIP(ns string, serviceName string, c *k8sclient.Client) error {
+func HasExternalIP(ns string, serviceName string, c *clientset.Clientset) error {
 	svc, err := c.Services(ns).Get(serviceName)
 	if err != nil {
 		return err

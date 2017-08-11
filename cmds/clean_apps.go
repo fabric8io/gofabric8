@@ -20,9 +20,10 @@ import (
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
-	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/spf13/cobra"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+
+	oclient "github.com/openshift/origin/pkg/client"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -31,7 +32,7 @@ type cleanUpAppsFlags struct {
 }
 
 // NewCmdCleanUpApps deletes all the tenant apps
-func NewCmdCleanUpApps(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCleanUpApps(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "apps",
 		Short: "Hard delete all of your tenant applications",
@@ -52,7 +53,7 @@ func NewCmdCleanUpApps(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *cleanUpAppsFlags) cleanApps(f *cmdutil.Factory) error {
+func (p *cleanUpAppsFlags) cleanApps(f cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)
@@ -106,7 +107,7 @@ func (p *cleanUpAppsFlags) cleanApps(f *cmdutil.Factory) error {
 	return nil
 }
 
-func cleanUpAllOpenshiftResources(c *k8sclient.Client, oc *oclient.Client, ns string) error {
+func cleanUpAllOpenshiftResources(c *clientset.Clientset, oc *oclient.Client, ns string) error {
 	ocCmd := "oc"
 	err := runCommand(ocCmd, "delete", "dc", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
@@ -124,7 +125,7 @@ func cleanUpAllOpenshiftResources(c *k8sclient.Client, oc *oclient.Client, ns st
 	return err
 }
 
-func cleanUpAllKubernetesResources(c *k8sclient.Client, ns string, openshift bool, isUserNS bool) error {
+func cleanUpAllKubernetesResources(c *clientset.Clientset, ns string, openshift bool, isUserNS bool) error {
 	ocCmd := "oc"
 	err := runCommand(ocCmd, "delete", "deployment", "--all", "--ignore-not-found=true", "-n", ns)
 	if err != nil {
