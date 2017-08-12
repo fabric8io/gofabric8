@@ -1,13 +1,11 @@
-hash: 94dd237e7a3f89cb38aeb0a09a6e9c3ee0c928bbb542eb097068627a26796c6a
-updated: 2017-08-10T16:36:25.529442038+02:00
+hash: 16b929cb446592008d493cb88d1c034e8826b9a4a86f064717e7773096caea74
+updated: 2017-08-12T17:38:44.20186146+02:00
 imports:
 - name: cloud.google.com/go
   version: 3b1ae45394a234c385be014e9a488f2bb6eef821
   subpackages:
   - compute/metadata
   - internal
-- name: github.com/armon/go-metrics
-  version: 345426c77237ece5dab0e1605c3e4b35c3f54757
 - name: github.com/asaskevich/govalidator
   version: 7b3beb6df3c42abd3509abfc3bcacc0fbfb7c877
 - name: github.com/Azure/go-ansiterm
@@ -18,8 +16,6 @@ imports:
   version: 3ac7bf7a47d159a033b107610db8a1b6575507a4
   subpackages:
   - quantile
-- name: github.com/bitly/go-simplejson
-  version: aabad6e819789e569bd6aabf444c935aa9ba1e44
 - name: github.com/blang/semver
   version: b38d23b8782a487059e8fc8773e9a5b228a77cb6
 - name: github.com/coreos/etcd
@@ -111,8 +107,6 @@ imports:
   version: 805cee6e0d43c72ba1d4e3275965ff41e0da068a
 - name: github.com/dgrijalva/jwt-go
   version: 01aeca54ebda6e0fbfafd0a524d234159c05ec20
-- name: github.com/dimfeld/httptreemux
-  version: 13dde8a00d96b369e7398490fd8a3af9ca114b84
 - name: github.com/docker/distribution
   version: cd27f179f2c10c5d300e6d09025b538c475b0d51
   subpackages:
@@ -164,26 +158,6 @@ imports:
   version: ba18e35c5c1b36ef6334cad706eb681153d2d379
 - name: github.com/exponent-io/jsonpath
   version: d6023ce2651d8eafb5c75bb0c7167536102ec9f5
-- name: github.com/fabric8-services/fabric8-tenant
-  version: dc84a118cbeb2162f16548b900a1d0f99cacf22e
-  subpackages:
-  - keycloak
-  - template
-  - tenant
-- name: github.com/fabric8-services/fabric8-wit
-  version: 58db841e76891f1251bdec86908c61360f11d375
-  subpackages:
-  - configuration
-  - errors
-  - jsonapi
-  - log
-  - login/token_context
-  - resource
-  - rest
-- name: github.com/fabric8io/fabric8-init-tenant
-  version: dc84a118cbeb2162f16548b900a1d0f99cacf22e
-  subpackages:
-  - openshift
 - name: github.com/fsnotify/fsnotify
   version: f12c6236fe7b5cf6bcf30e5935d08cb079d78334
 - name: github.com/fsouza/go-dockerclient
@@ -216,23 +190,6 @@ imports:
   version: 6aced65f8501fe1217321abf0749d354824ba2ff
 - name: github.com/go-openapi/swag
   version: 1d0bd113de87027671077d3c71eb3ac5d7dbba72
-- name: github.com/goadesign/goa
-  version: 58f3177f36f2c50ee6119da92795e48bac6d6243
-  vcs: git
-  subpackages:
-  - client
-  - cors
-  - design
-  - design/apidsl
-  - goagen
-  - goagen/codegen
-  - goagen/gen_app
-  - goagen/gen_controller
-  - goagen/utils
-  - goatest
-  - middleware
-  - middleware/security/jwt
-  - uuid
 - name: github.com/gogo/protobuf
   version: c0656edd0d9eab7c66d1eb0c568f9039345796f7
   subpackages:
@@ -330,10 +287,6 @@ imports:
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/jimmidyson/go-download
   version: 7f9a90c8c95bee1bb7de9e72c682c67c8bf5546d
-- name: github.com/jinzhu/gorm
-  version: c1b9cf186e4bcd8e5d566ef43f2ae2dfe22dc34e
-- name: github.com/jinzhu/inflection
-  version: 1c35d901db3da928c72a72d8458480cc9ade058f
 - name: github.com/jonboulle/clockwork
   version: 72f9bd7c4e0c2a40055ab3d0f09654f730cce982
 - name: github.com/jteeuwen/go-bindata
@@ -497,8 +450,6 @@ imports:
   version: 5bd2802263f21d8788851d5305584c82a5c75d7e
 - name: github.com/russross/blackfriday
   version: 300106c228d52c8941d4b3de6054a6062a86dda3
-- name: github.com/satori/go.uuid
-  version: 5bf94b69c6b68ee1b541973bb8e1144db23a194b
 - name: github.com/shurcooL/sanitized_anchor_name
   version: 10ef21a441db47d8b13ebcc5fd2310f636973c77
 - name: github.com/Sirupsen/logrus

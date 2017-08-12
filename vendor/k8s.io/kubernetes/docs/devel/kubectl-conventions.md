@@ -290,7 +290,7 @@ type MineConfig struct {
 }
 
 // NewCmdMine implements the kubectl mine command.
-func NewCmdMine(parent, name string, f cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdMine(parent, name string, f *cmdutil.Factory, out io.Writer) *cobra.Command {
   opts := &MineConfig{}
 
   cmd := &cobra.Command{
@@ -316,7 +316,7 @@ func NewCmdMine(parent, name string, f cmdutil.Factory, out io.Writer) *cobra.Co
 }
 
 // Complete completes all the required options for mine.
-func (o *MineConfig) Complete(f cmdutil.Factory, cmd *cobra.Command, args []string, out io.Writer) error {
+func (o *MineConfig) Complete(f *cmdutil.Factory, cmd *cobra.Command, args []string, out io.Writer) error {
   return nil
 }
 
