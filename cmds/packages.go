@@ -20,13 +20,14 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 	kapi "k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/util/sets"
+	"k8s.io/kubernetes/pkg/selection"
 )
 
-func NewCmdPackages(f *cmdutil.Factory) *cobra.Command {
+func NewCmdPackages(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "packages",
 		Short: "Lists the packages that are currently installed",
@@ -56,7 +57,8 @@ func NewCmdPackages(f *cmdutil.Factory) *cobra.Command {
 }
 
 func createPackageSelector() (*labels.Selector, error) {
-	req, err := labels.NewRequirement("fabric8.io/kind", labels.EqualsOperator, sets.NewString("package"))
+	req, err := labels.NewRequirement(
+		"fabric8.io/kind", selection.Equals, []string{"package"})
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +66,7 @@ func createPackageSelector() (*labels.Selector, error) {
 	return &selector, nil
 }
 
-func listPackages(ns string, c *k8sclient.Client, fac *cmdutil.Factory) error {
+func listPackages(ns string, c *clientset.Clientset, fac cmdutil.Factory) error {
 	selector, err := createPackageSelector()
 	if err != nil {
 		return err

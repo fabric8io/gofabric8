@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors All rights reserved.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,12 +23,14 @@ source "${KUBE_ROOT}/hack/lib/init.sh"
 
 kube::golang::setup_env
 
-"${KUBE_ROOT}/hack/build-go.sh" \
-    cmd/gendocs \
-    cmd/genkubedocs \
-    cmd/genman \
-    cmd/genyaml \
-    federation/cmd/genfeddocs
+BINS=(
+	cmd/gendocs
+	cmd/genkubedocs
+	cmd/genman
+	cmd/genyaml
+	federation/cmd/genfeddocs
+)
+make -C "${KUBE_ROOT}" WHAT="${BINS[*]}"
 
 kube::util::ensure-temp-dir
 

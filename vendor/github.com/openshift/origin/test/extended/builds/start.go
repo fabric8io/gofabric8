@@ -2,6 +2,8 @@ package builds
 
 import (
 	"fmt"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -10,21 +12,24 @@ import (
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
 
+	buildapi "github.com/openshift/origin/pkg/build/api"
 	exutil "github.com/openshift/origin/test/extended/util"
 )
 
 var _ = g.Describe("[builds][Slow] starting a build using CLI", func() {
 	defer g.GinkgoRecover()
 	var (
-		buildFixture   = exutil.FixturePath("testdata", "test-build.json")
-		exampleGemfile = exutil.FixturePath("testdata", "test-build-app", "Gemfile")
-		exampleBuild   = exutil.FixturePath("testdata", "test-build-app")
-		oc             = exutil.NewCLI("cli-start-build", exutil.KubeConfigPath())
+		buildFixture      = exutil.FixturePath("testdata", "test-build.json")
+		exampleGemfile    = exutil.FixturePath("testdata", "test-build-app", "Gemfile")
+		exampleBuild      = exutil.FixturePath("testdata", "test-build-app")
+		exampleGemfileURL = "https://raw.githubusercontent.com/openshift/ruby-hello-world/master/Gemfile"
+		exampleArchiveURL = "https://github.com/openshift/ruby-hello-world/archive/master.zip"
+		oc                = exutil.NewCLI("cli-start-build", exutil.KubeConfigPath())
 	)
 
 	g.JustBeforeEach(func() {
 		g.By("waiting for builder service account")
-		err := exutil.WaitForBuilderAccount(oc.KubeREST().ServiceAccounts(oc.Namespace()))
+		err := exutil.WaitForBuilderAccount(oc.KubeClient().Core().ServiceAccounts(oc.Namespace()))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		oc.Run("create").Args("-f", buildFixture).Execute()
 	})
@@ -86,6 +91,8 @@ var _ = g.Describe("[builds][Slow] starting a build using CLI", func() {
 	})
 
 	g.Describe("binary builds", func() {
+		var commit string
+
 		g.It("should accept --from-file as input", func() {
 			g.By("starting the build with a Dockerfile")
 			br, err := exutil.StartBuildAndWait(oc, "sample-build", fmt.Sprintf("--from-file=%s", exampleGemfile))
@@ -97,7 +104,6 @@ var _ = g.Describe("[builds][Slow] starting a build using CLI", func() {
 			o.Expect(br.StartBuildStdErr).To(o.ContainSubstring("Uploading file"))
 			o.Expect(br.StartBuildStdErr).To(o.ContainSubstring("as binary input for the build ..."))
 			o.Expect(buildLog).To(o.ContainSubstring("Your bundle is complete"))
-
 		})
 
 		g.It("should accept --from-dir as input", func() {
@@ -127,17 +133,20 @@ var _ = g.Describe("[builds][Slow] starting a build using CLI", func() {
 
 		g.It("should accept --from-repo with --commit as input", func() {
 			g.By("starting the build with a Git repository")
-			// NOTE: This actually takes the commit from the origin repository. If the
-			// test-build-app changes, this commit has to be bumped.
-			br, err := exutil.StartBuildAndWait(oc, "sample-build", "--commit=f0f3834", fmt.Sprintf("--from-repo=%s", exampleBuild))
+			gitCmd := exec.Command("git", "rev-parse", "HEAD~1")
+			gitCmd.Dir = exampleBuild
+			commitByteArray, err := gitCmd.CombinedOutput()
+			commit = strings.TrimSpace(string(commitByteArray[:]))
+			o.Expect(err).NotTo(o.HaveOccurred())
+			br, err := exutil.StartBuildAndWait(oc, "sample-build", fmt.Sprintf("--commit=%s", commit), fmt.Sprintf("--from-repo=%s", exampleBuild))
 			br.AssertSuccess()
 			buildLog, err := br.Logs()
 			o.Expect(err).NotTo(o.HaveOccurred())
 
 			o.Expect(br.StartBuildStdErr).To(o.ContainSubstring("Uploading"))
-			o.Expect(br.StartBuildStdErr).To(o.ContainSubstring(`at commit "f0f3834"`))
+			o.Expect(br.StartBuildStdErr).To(o.ContainSubstring(fmt.Sprintf("at commit \"%s\"", commit)))
 			o.Expect(br.StartBuildStdErr).To(o.ContainSubstring("as binary input for the build ..."))
-			o.Expect(buildLog).To(o.ContainSubstring(`"commit":"f0f38342e53eac2a6995acca81d06bd9dd6d4964"`))
+			o.Expect(buildLog).To(o.ContainSubstring(fmt.Sprintf("\"commit\":\"%s\"", commit)))
 			o.Expect(buildLog).To(o.ContainSubstring("Your bundle is complete"))
 		})
 
@@ -161,6 +170,44 @@ var _ = g.Describe("[builds][Slow] starting a build using CLI", func() {
 			br, err = exutil.StartBuildAndWait(oc, "sample-build-binary", fmt.Sprintf("--from-build=%s", "sample-build-binary-1"))
 			o.Expect(br.StartBuildErr).To(o.HaveOccurred())
 			o.Expect(br.StartBuildStdErr).To(o.ContainSubstring("has no valid source inputs"))
+		})
+
+		g.It("shoud accept --from-file with https URL as an input", func() {
+			g.By("starting a valid build with input file served by https")
+			br, err := exutil.StartBuildAndWait(oc, "sample-build", fmt.Sprintf("--from-file=%s", exampleGemfileURL))
+			br.AssertSuccess()
+			buildLog, err := br.Logs()
+			o.Expect(err).NotTo(o.HaveOccurred())
+			o.Expect(br.StartBuildStdErr).To(o.ContainSubstring(fmt.Sprintf("Uploading file from %q as binary input for the build", exampleGemfileURL)))
+			o.Expect(buildLog).To(o.ContainSubstring("Your bundle is complete"))
+		})
+
+		g.It("shoud accept --from-archive with https URL as an input", func() {
+			g.By("starting a valid build with input archive served by https")
+			// can't use sample-build-binary because we need contextDir due to github archives containing the top-level directory
+			br, err := exutil.StartBuildAndWait(oc, "sample-build-github-archive", fmt.Sprintf("--from-archive=%s", exampleArchiveURL))
+			br.AssertSuccess()
+			buildLog, err := br.Logs()
+			o.Expect(err).NotTo(o.HaveOccurred())
+			o.Expect(br.StartBuildStdErr).To(o.ContainSubstring(fmt.Sprintf("Uploading archive from %q as binary input for the build", exampleArchiveURL)))
+			o.Expect(buildLog).To(o.ContainSubstring("Your bundle is complete"))
+		})
+	})
+
+	g.Describe("cancel a binary build that doesn't start running in 5 minutes", func() {
+		g.It("should start a build and wait for the build to be cancelled", func() {
+			g.By("starting a build with a nodeselector that can't be matched")
+			go func() {
+				exutil.StartBuild(oc, "sample-build-binary-invalidnodeselector", fmt.Sprintf("--from-file=%s", exampleGemfile))
+			}()
+			build := &buildapi.Build{}
+			cancelFn := func(b *buildapi.Build) bool {
+				build = b
+				return exutil.CheckBuildCancelledFn(b)
+			}
+			err := exutil.WaitForABuild(oc.Client().Builds(oc.Namespace()), "sample-build-binary-invalidnodeselector-1", nil, nil, cancelFn)
+			o.Expect(err).NotTo(o.HaveOccurred())
+			o.Expect(build.Status.Phase).To(o.Equal(buildapi.BuildPhaseCancelled))
 		})
 	})
 
@@ -186,6 +233,7 @@ var _ = g.Describe("[builds][Slow] starting a build using CLI", func() {
 				if err != nil || len(out) == 0 {
 					return false, nil
 				}
+
 				buildName = out
 				return true, nil
 			})

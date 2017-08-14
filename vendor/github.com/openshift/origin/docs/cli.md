@@ -104,7 +104,7 @@ The options are:
 |`--code` *dir*                | Use source code in *dir*                           |
 |`--context-dir` *dir*         | Use *dir* as context dir in the build              |
 |`--docker-image` *image*      | Include Docker image *image* in the app            |
-|`--env` (`-e`) *k1=v1,...*    | Set env vars *k1...* to values *v1...*             |
+|`--env` (`-e`) *k=v*          | Set env var *k* to value *v*                       |
 |`--file` *filename*           | Use template in *filename*                         |
 |`--group` *comp1*`+`*comp2*   | Group together components *comp1* and *comp2*      |
 |`--image-stream` (`-i`) *is*  | Use imagestream *is* in the app                    |
@@ -115,7 +115,7 @@ The options are:
 |`--output-template` *s*       | Template string (`-o template`) or path (`-o templatefile`) |
 |`--output-version` *version*  | Output with *version* (default api-version)        |
 |`--output` (`-o`) *format*    | *format* is one of: `json`, `yaml`, `template`, `templatefile` |
-|`--param` (`-p`) *k1=v1,...*  | Set/override parameters *k1...* with *v1...*       |
+|`--param` (`-p`) *k=v*        | Set/override parameter *k* with value *v*          |
 |`--strategy` *s*              | Use build strategy *s*, one of: `docker`, `source` |
 |`--template` *t*              | Use OpenShift stored template *t* in the app       |
 
@@ -156,11 +156,11 @@ $ oc project
 
 This manually starts a build, using either the specified buildConfig or a build name with the `--from-build` option.
 
-Other options:  
+Other options:
 
 | Name       |  Description                                                                                             |
 |:-----------|:---------------------------------------------------------------------------------------------------------|
-|`--env`, *(-e)* FOO=bar | Explicitly set or override environment variables for the current build. Does not change the BuildConfig. |
+|`--env`, *(-e)* FOO=bar | Explicitly set or override environment variable for the current build. Does not change the BuildConfig. |
 |`--build-loglevel` | Set or override the build log level output [0-5] during the build. |
 |`--commit`  | Specify the source code commit identifier the build should use; requires a build based on a Git repository. |
 |`--follow`  | Start a build and watch its logs until it completes or fails. |
@@ -691,7 +691,7 @@ The options are:
 |`-f` *filename*        | Write to *filename* instead of standard output.  |
 |`--as-template` *name* | Output in template format with name *name*.      |
 |`--all-namespace`      | If present, list the requested object(s) across all namespaces. Namespace in current context is ignored even if specified with --namespace. |
-|`--exact`              | Preserve fields that may be cluster specific, such as service `portalIP`s or generated names. |
+|`--exact`              | Preserve fields that may be cluster specific, such as service `clusterIP`s or generated names. |
 |`--raw`                | Do not alter the resources in any way after they are loaded. |
 
 The following example exports all services to a template with name `test`.

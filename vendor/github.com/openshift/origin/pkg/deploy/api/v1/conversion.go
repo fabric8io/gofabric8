@@ -1,8 +1,6 @@
 package v1
 
 import (
-	"fmt"
-	"math"
 	"reflect"
 	"strings"
 
@@ -60,7 +58,6 @@ func Convert_v1_RollingDeploymentStrategyParams_To_api_RollingDeploymentStrategy
 	out.UpdatePeriodSeconds = in.UpdatePeriodSeconds
 	out.IntervalSeconds = in.IntervalSeconds
 	out.TimeoutSeconds = in.TimeoutSeconds
-	out.UpdatePercent = in.UpdatePercent
 
 	if in.Pre != nil {
 		if err := s.Convert(&in.Pre, &out.Pre, 0); err != nil {
@@ -72,18 +69,12 @@ func Convert_v1_RollingDeploymentStrategyParams_To_api_RollingDeploymentStrategy
 			return err
 		}
 	}
-
-	if in.UpdatePercent != nil {
-		pct := intstr.FromString(fmt.Sprintf("%d%%", int(math.Abs(float64(*in.UpdatePercent)))))
-		if *in.UpdatePercent > 0 {
-			out.MaxSurge = pct
-		} else {
-			out.MaxUnavailable = pct
-		}
-	} else {
+	if in.MaxUnavailable != nil {
 		if err := s.Convert(in.MaxUnavailable, &out.MaxUnavailable, 0); err != nil {
 			return err
 		}
+	}
+	if in.MaxSurge != nil {
 		if err := s.Convert(in.MaxSurge, &out.MaxSurge, 0); err != nil {
 			return err
 		}
@@ -95,7 +86,6 @@ func Convert_api_RollingDeploymentStrategyParams_To_v1_RollingDeploymentStrategy
 	out.UpdatePeriodSeconds = in.UpdatePeriodSeconds
 	out.IntervalSeconds = in.IntervalSeconds
 	out.TimeoutSeconds = in.TimeoutSeconds
-	out.UpdatePercent = in.UpdatePercent
 
 	if in.Pre != nil {
 		if err := s.Convert(&in.Pre, &out.Pre, 0); err != nil {
@@ -114,25 +104,16 @@ func Convert_api_RollingDeploymentStrategyParams_To_v1_RollingDeploymentStrategy
 	if out.MaxSurge == nil {
 		out.MaxSurge = &intstr.IntOrString{}
 	}
-	if in.UpdatePercent != nil {
-		pct := intstr.FromString(fmt.Sprintf("%d%%", int(math.Abs(float64(*in.UpdatePercent)))))
-		if *in.UpdatePercent > 0 {
-			out.MaxSurge = &pct
-		} else {
-			out.MaxUnavailable = &pct
-		}
-	} else {
-		if err := s.Convert(&in.MaxUnavailable, out.MaxUnavailable, 0); err != nil {
-			return err
-		}
-		if err := s.Convert(&in.MaxSurge, out.MaxSurge, 0); err != nil {
-			return err
-		}
+	if err := s.Convert(&in.MaxUnavailable, out.MaxUnavailable, 0); err != nil {
+		return err
+	}
+	if err := s.Convert(&in.MaxSurge, out.MaxSurge, 0); err != nil {
+		return err
 	}
 	return nil
 }
 
-func addConversionFuncs(scheme *runtime.Scheme) {
+func addConversionFuncs(scheme *runtime.Scheme) error {
 	err := scheme.AddConversionFuncs(
 		Convert_v1_DeploymentTriggerImageChangeParams_To_api_DeploymentTriggerImageChangeParams,
 		Convert_api_DeploymentTriggerImageChangeParams_To_v1_DeploymentTriggerImageChangeParams,
@@ -141,12 +122,13 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 		Convert_api_RollingDeploymentStrategyParams_To_v1_RollingDeploymentStrategyParams,
 	)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	if err := scheme.AddFieldLabelConversionFunc("v1", "DeploymentConfig",
 		oapi.GetFieldLabelConversionFunc(newer.DeploymentConfigToSelectableFields(&newer.DeploymentConfig{}), nil),
 	); err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }

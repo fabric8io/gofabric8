@@ -7,7 +7,7 @@ Labels are carefully picked to optimize for:
 
  - Readability: maintainers must immediately know the state of a PR
  - Filtering simplicity: different labels represent many different aspects of
-   the reviewing work, and can even be targetted at different maintainers groups.
+   the reviewing work, and can even be targeted at different maintainers groups.
 
 A pull request should only be attributed labels documented in this section: other labels that may
 exist on the repository should apply to issues.
@@ -26,6 +26,7 @@ exist on the repository should apply to issues.
 
 Special status labels:
 
+ * `status/failing-ci`: indicates that the PR in its current state fails the test suite
  * `status/needs-attention`: calls for a collective discussion during a review session
 
 ## Specialty group labels
@@ -43,8 +44,9 @@ help in reviewing the PR, or because of the potential impact of the PR on their 
  * `impact/api`
  * `impact/changelog`
  * `impact/cli`
- * `impact/dockerfile`
  * `impact/deprecation`
+ * `impact/distribution`
+ * `impact/dockerfile`
 
 # Workflow
 

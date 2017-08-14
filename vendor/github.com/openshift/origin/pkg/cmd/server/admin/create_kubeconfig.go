@@ -13,15 +13,48 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	kcrypto "k8s.io/kubernetes/pkg/util/crypto"
+	"k8s.io/kubernetes/pkg/util/cert"
 
+	"github.com/openshift/origin/pkg/cmd/cli/config"
 	cliconfig "github.com/openshift/origin/pkg/cmd/cli/config"
 	"github.com/openshift/origin/pkg/cmd/server/crypto"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
 )
 
 const CreateKubeConfigCommandName = "create-kubeconfig"
+
+var createKubeConfigLongDesc = templates.LongDesc(`
+  Create's a .kubeconfig file at <--kubeconfig> that looks like this:
+
+      clusters:
+      - cluster:
+      certificate-authority-data: <contents of --certificate-authority>
+      server: <--master>
+      name: <--cluster>
+      - cluster:
+      certificate-authority-data: <contents of --certificate-authority>
+      server: <--public-master>
+      name: public-<--cluster>
+      contexts:
+      - context:
+      cluster: <--cluster>
+      user: <--user>
+      namespace: <--namespace>
+      name: <--context>
+      - context:
+      cluster: public-<--cluster>
+      user: <--user>
+      namespace: <--namespace>
+      name: public-<--context>
+      current-context: <--context>
+      kind: Config
+      users:
+      - name: <--user>
+      user:
+      client-certificate-data: <contents of --client-certificate>
+      client-key-data: <contents of --client-key>`)
 
 type CreateKubeConfigOptions struct {
 	APIServerURL       string
@@ -43,37 +76,7 @@ func NewCommandCreateKubeConfig(commandName string, fullName string, out io.Writ
 	cmd := &cobra.Command{
 		Use:   commandName,
 		Short: "Create a basic .kubeconfig file from client certs",
-		Long: `
-Create's a .kubeconfig file at <--kubeconfig> that looks like this:
-
-clusters:
-- cluster:
-    certificate-authority-data: <contents of --certificate-authority>
-    server: <--master>
-  name: <--cluster>
-- cluster:
-    certificate-authority-data: <contents of --certificate-authority>
-    server: <--public-master>
-  name: public-<--cluster>
-contexts:
-- context:
-    cluster: <--cluster>
-    user: <--user>
-    namespace: <--namespace>
-  name: <--context>
-- context:
-    cluster: public-<--cluster>
-    user: <--user>
-    namespace: <--namespace>
-  name: public-<--context>
-current-context: <--context>
-kind: Config
-users:
-- name: <--user>
-  user:
-    client-certificate-data: <contents of --client-certificate>
-    client-key-data: <contents of --client-key>
-`,
+		Long:  createKubeConfigLongDesc,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := options.Validate(args); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
@@ -121,7 +124,7 @@ func (o CreateKubeConfigOptions) Validate(args []string) error {
 		return errors.New("certificate-authority must be provided")
 	} else {
 		for _, caFile := range o.APIServerCAFiles {
-			if _, err := kcrypto.CertPoolFromFile(caFile); err != nil {
+			if _, err := cert.NewPool(caFile); err != nil {
 				return fmt.Errorf("certificate-authority must be a valid certificate file: %v", err)
 			}
 		}
@@ -172,6 +175,12 @@ func (o CreateKubeConfigOptions) CreateKubeConfig() (*clientcmdapi.Config, error
 	credentials[userNick] = &clientcmdapi.AuthInfo{
 		ClientCertificateData: certData,
 		ClientKeyData:         keyData,
+	}
+
+	// normalize the provided server to a format expected by config
+	o.APIServerURL, err = config.NormalizeServerURL(o.APIServerURL)
+	if err != nil {
+		return nil, err
 	}
 
 	clusters := make(map[string]*clientcmdapi.Cluster)

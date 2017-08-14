@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Resource Quota - Scoping resources
 
 ## Problem Description
@@ -50,10 +45,10 @@ max number of active best-effort pods.  In addition, the cluster-admin
 requires the ability to scope a quota that limits compute resources to
 exclude best-effort pods.
 
-### Ability to quota long-running vs bounded-duration compute resources
+### Ability to quota long-running vs. bounded-duration compute resources
 
 The cluster-admin may want to quota end-users separately
-based on long-running vs bounded-duration compute resources.
+based on long-running vs. bounded-duration compute resources.
 
 For example, a cluster-admin may offer more compute resources
 for long running pods that are expected to have a more permanent residence
@@ -65,7 +60,7 @@ request if there is no active traffic.  An operator that wants to control
 density will offer lower quota limits for batch workloads than web applications.
 
 A classic example is a PaaS deployment where the cluster-admin may
-allow a separate budget for pods that run their web application vs pods that
+allow a separate budget for pods that run their web application vs. pods that
 build web applications.
 
 Another example is providing more quota to a database pod than a
@@ -76,8 +71,8 @@ pod that performs a database migration.
 * As a cluster-admin, I want the ability to quota
  * compute resource requests
  * compute resource limits
- * compute resources for terminating vs non-terminating workloads
- * compute resources for best-effort vs non-best-effort pods
+ * compute resources for terminating vs. non-terminating workloads
+ * compute resources for best-effort vs. non-best-effort pods
 
 ## Proposed Change
 
@@ -331,13 +326,6 @@ Appropriate unit and e2e testing will be authored.
 
 Existing resource quota documentation and examples will be updated.
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

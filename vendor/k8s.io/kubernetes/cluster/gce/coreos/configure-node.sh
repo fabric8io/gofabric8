@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2015 The Kubernetes Authors All rights reserved.
+# Copyright 2015 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ function configure-kube-apiserver() {
   echo "Configuring kube-apiserver"
   
   # Wait for etcd to be up.
-  wait-url-up http://127.0.0.1:4001/version
+  wait-url-up http://127.0.0.1:2379/version
 
   touch /var/log/kube-apiserver.log
 
@@ -135,6 +135,9 @@ function configure-master-addons() {
 
   if [[ "${ENABLE_CLUSTER_DNS}" == "true" ]]; then
     evaluate-manifests-dir ${MANIFESTS_DIR}/addons/dns ${addon_dir}/dns
+    if [[ "${ENABLE_DNS_HORIZONTAL_AUTOSCALER}" == "true" ]]; then
+      evaluate-manifests-dir ${MANIFESTS_DIR}/addons/dns-horizontal-autoscaler ${addon_dir}/dns-horizontal-autoscaler
+    fi
   fi
 
   if [[ "${ENABLE_CLUSTER_UI}" == "true" ]]; then

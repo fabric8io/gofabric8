@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,10 +21,10 @@ goproxy: goproxy.go
 	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w' ./goproxy.go
 
 image: goproxy
-	docker build -t $(PREFIX)/goproxy:$(TAG) .
+	docker build --pull -t $(PREFIX)/goproxy:$(TAG) .
 
 push: image
-	gcloud docker push $(PREFIX)/goproxy:$(TAG)
+	gcloud docker -- push $(PREFIX)/goproxy:$(TAG)
 
 clean:
 	rm -f goproxy

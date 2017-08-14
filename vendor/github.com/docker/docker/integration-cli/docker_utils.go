@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,310 +22,149 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/opts"
+	"github.com/docker/docker/pkg/httputils"
+	"github.com/docker/docker/pkg/integration"
 	"github.com/docker/docker/pkg/ioutils"
 	"github.com/docker/docker/pkg/stringutils"
+	"github.com/docker/engine-api/types"
+	"github.com/docker/go-connections/tlsconfig"
+	"github.com/docker/go-units"
 	"github.com/go-check/check"
 )
 
-// Daemon represents a Docker daemon for the testing framework.
-type Daemon struct {
-	c              *check.C
-	logFile        *os.File
-	folder         string
-	stdin          io.WriteCloser
-	stdout, stderr io.ReadCloser
-	cmd            *exec.Cmd
-	storageDriver  string
-	execDriver     string
-	wait           chan error
-	userlandProxy  bool
-}
-
-func enableUserlandProxy() bool {
-	if env := os.Getenv("DOCKER_USERLANDPROXY"); env != "" {
-		if val, err := strconv.ParseBool(env); err != nil {
-			return val
-		}
-	}
-	return true
-}
-
-// NewDaemon returns a Daemon instance to be used for testing.
-// This will create a directory such as d123456789 in the folder specified by $DEST.
-// The daemon will not automatically start.
-func NewDaemon(c *check.C) *Daemon {
-	dest := os.Getenv("DEST")
-	if dest == "" {
-		c.Fatal("Please set the DEST environment variable")
-	}
-
-	dir := filepath.Join(dest, fmt.Sprintf("d%d", time.Now().UnixNano()%100000000))
-	daemonFolder, err := filepath.Abs(dir)
+func init() {
+	cmd := exec.Command(dockerBinary, "images")
+	cmd.Env = appendBaseEnv(true)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		c.Fatalf("Could not make %q an absolute path: %v", dir, err)
+		panic(fmt.Errorf("err=%v\nout=%s\n", err, out))
 	}
-
-	if err := os.MkdirAll(filepath.Join(daemonFolder, "graph"), 0600); err != nil {
-		c.Fatalf("Could not create %s/graph directory", daemonFolder)
-	}
-
-	userlandProxy := true
-	if env := os.Getenv("DOCKER_USERLANDPROXY"); env != "" {
-		if val, err := strconv.ParseBool(env); err != nil {
-			userlandProxy = val
+	lines := strings.Split(string(out), "\n")[1:]
+	for _, l := range lines {
+		if l == "" {
+			continue
+		}
+		fields := strings.Fields(l)
+		imgTag := fields[0] + ":" + fields[1]
+		// just for case if we have dangling images in tested daemon
+		if imgTag != "<none>:<none>" {
+			protectedImages[imgTag] = struct{}{}
 		}
 	}
 
-	return &Daemon{
-		c:             c,
-		folder:        daemonFolder,
-		storageDriver: os.Getenv("DOCKER_GRAPHDRIVER"),
-		execDriver:    os.Getenv("DOCKER_EXECDRIVER"),
-		userlandProxy: userlandProxy,
+	// Obtain the daemon platform so that it can be used by tests to make
+	// intelligent decisions about how to configure themselves, and validate
+	// that the target platform is valid.
+	res, _, err := sockRequestRaw("GET", "/version", nil, "application/json")
+	if err != nil || res == nil || (res != nil && res.StatusCode != http.StatusOK) {
+		panic(fmt.Errorf("Init failed to get version: %v. Res=%v", err.Error(), res))
 	}
-}
+	svrHeader, _ := httputils.ParseServerHeader(res.Header.Get("Server"))
+	daemonPlatform = svrHeader.OS
+	if daemonPlatform != "linux" && daemonPlatform != "windows" {
+		panic("Cannot run tests against platform: " + daemonPlatform)
+	}
 
-// Start will start the daemon and return once it is ready to receive requests.
-// You can specify additional daemon flags.
-func (d *Daemon) Start(arg ...string) error {
-	dockerBinary, err := exec.LookPath(dockerBinary)
+	// On Windows, extract out the version as we need to make selective
+	// decisions during integration testing as and when features are implemented.
+	if daemonPlatform == "windows" {
+		if body, err := ioutil.ReadAll(res.Body); err == nil {
+			var server types.Version
+			if err := json.Unmarshal(body, &server); err == nil {
+				// eg in "10.0 10550 (10550.1000.amd64fre.branch.date-time)" we want 10550
+				windowsDaemonKV, _ = strconv.Atoi(strings.Split(server.KernelVersion, " ")[1])
+			}
+		}
+	}
+
+	// Now we know the daemon platform, can set paths used by tests.
+	_, body, err := sockRequest("GET", "/info", nil)
 	if err != nil {
-		d.c.Fatalf("could not find docker binary in $PATH: %v", err)
+		panic(err)
 	}
 
-	args := []string{
-		"--host", d.sock(),
-		"--daemon",
-		"--graph", fmt.Sprintf("%s/graph", d.folder),
-		"--pidfile", fmt.Sprintf("%s/docker.pid", d.folder),
-		fmt.Sprintf("--userland-proxy=%t", d.userlandProxy),
+	var info types.Info
+	err = json.Unmarshal(body, &info)
+	daemonStorageDriver = info.Driver
+	dockerBasePath = info.DockerRootDir
+	volumesConfigPath = filepath.Join(dockerBasePath, "volumes")
+	containerStoragePath = filepath.Join(dockerBasePath, "containers")
+	// Make sure in context of daemon, not the local platform. Note we can't
+	// use filepath.FromSlash or ToSlash here as they are a no-op on Unix.
+	if daemonPlatform == "windows" {
+		volumesConfigPath = strings.Replace(volumesConfigPath, `/`, `\`, -1)
+		containerStoragePath = strings.Replace(containerStoragePath, `/`, `\`, -1)
+	} else {
+		volumesConfigPath = strings.Replace(volumesConfigPath, `\`, `/`, -1)
+		containerStoragePath = strings.Replace(containerStoragePath, `\`, `/`, -1)
 	}
+}
 
-	// If we don't explicitly set the log-level or debug flag(-D) then
-	// turn on debug mode
-	foundIt := false
-	for _, a := range arg {
-		if strings.Contains(a, "--log-level") || strings.Contains(a, "-D") {
-			foundIt = true
-		}
-	}
-	if !foundIt {
-		args = append(args, "--debug")
-	}
-
-	if d.storageDriver != "" {
-		args = append(args, "--storage-driver", d.storageDriver)
-	}
-	if d.execDriver != "" {
-		args = append(args, "--exec-driver", d.execDriver)
-	}
-
-	args = append(args, arg...)
-	d.cmd = exec.Command(dockerBinary, args...)
-
-	d.logFile, err = os.OpenFile(filepath.Join(d.folder, "docker.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
+func convertBasesize(basesizeBytes int64) (int64, error) {
+	basesize := units.HumanSize(float64(basesizeBytes))
+	basesize = strings.Trim(basesize, " ")[:len(basesize)-3]
+	basesizeFloat, err := strconv.ParseFloat(strings.Trim(basesize, " "), 64)
 	if err != nil {
-		d.c.Fatalf("Could not create %s/docker.log: %v", d.folder, err)
+		return 0, err
 	}
-
-	d.cmd.Stdout = d.logFile
-	d.cmd.Stderr = d.logFile
-
-	if err := d.cmd.Start(); err != nil {
-		return fmt.Errorf("could not start daemon container: %v", err)
-	}
-
-	wait := make(chan error)
-
-	go func() {
-		wait <- d.cmd.Wait()
-		d.c.Log("exiting daemon")
-		close(wait)
-	}()
-
-	d.wait = wait
-
-	tick := time.Tick(500 * time.Millisecond)
-	// make sure daemon is ready to receive requests
-	startTime := time.Now().Unix()
-	for {
-		d.c.Log("waiting for daemon to start")
-		if time.Now().Unix()-startTime > 5 {
-			// After 5 seconds, give up
-			return errors.New("Daemon exited and never started")
-		}
-		select {
-		case <-time.After(2 * time.Second):
-			return errors.New("timeout: daemon does not respond")
-		case <-tick:
-			c, err := net.Dial("unix", filepath.Join(d.folder, "docker.sock"))
-			if err != nil {
-				continue
-			}
-
-			client := httputil.NewClientConn(c, nil)
-			defer client.Close()
-
-			req, err := http.NewRequest("GET", "/_ping", nil)
-			if err != nil {
-				d.c.Fatalf("could not create new request: %v", err)
-			}
-
-			resp, err := client.Do(req)
-			if err != nil {
-				continue
-			}
-			if resp.StatusCode != http.StatusOK {
-				d.c.Logf("received status != 200 OK: %s", resp.Status)
-			}
-
-			d.c.Log("daemon started")
-			return nil
-		}
-	}
-}
-
-// StartWithBusybox will first start the daemon with Daemon.Start()
-// then save the busybox image from the main daemon and load it into this Daemon instance.
-func (d *Daemon) StartWithBusybox(arg ...string) error {
-	if err := d.Start(arg...); err != nil {
-		return err
-	}
-	bb := filepath.Join(d.folder, "busybox.tar")
-	if _, err := os.Stat(bb); err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("unexpected error on busybox.tar stat: %v", err)
-		}
-		// saving busybox image from main daemon
-		if err := exec.Command(dockerBinary, "save", "--output", bb, "busybox:latest").Run(); err != nil {
-			return fmt.Errorf("could not save busybox image: %v", err)
-		}
-	}
-	// loading busybox image to this daemon
-	if _, err := d.Cmd("load", "--input", bb); err != nil {
-		return fmt.Errorf("could not load busybox image: %v", err)
-	}
-	if err := os.Remove(bb); err != nil {
-		d.c.Logf("Could not remove %s: %v", bb, err)
-	}
-	return nil
-}
-
-// Stop will send a SIGINT every second and wait for the daemon to stop.
-// If it timeouts, a SIGKILL is sent.
-// Stop will not delete the daemon directory. If a purged daemon is needed,
-// instantiate a new one with NewDaemon.
-func (d *Daemon) Stop() error {
-	if d.cmd == nil || d.wait == nil {
-		return errors.New("daemon not started")
-	}
-
-	defer func() {
-		d.logFile.Close()
-		d.cmd = nil
-	}()
-
-	i := 1
-	tick := time.Tick(time.Second)
-
-	if err := d.cmd.Process.Signal(os.Interrupt); err != nil {
-		return fmt.Errorf("could not send signal: %v", err)
-	}
-out1:
-	for {
-		select {
-		case err := <-d.wait:
-			return err
-		case <-time.After(15 * time.Second):
-			// time for stopping jobs and run onShutdown hooks
-			d.c.Log("timeout")
-			break out1
-		}
-	}
-
-out2:
-	for {
-		select {
-		case err := <-d.wait:
-			return err
-		case <-tick:
-			i++
-			if i > 4 {
-				d.c.Logf("tried to interrupt daemon for %d times, now try to kill it", i)
-				break out2
-			}
-			d.c.Logf("Attempt #%d: daemon is still running with pid %d", i, d.cmd.Process.Pid)
-			if err := d.cmd.Process.Signal(os.Interrupt); err != nil {
-				return fmt.Errorf("could not send signal: %v", err)
-			}
-		}
-	}
-
-	if err := d.cmd.Process.Kill(); err != nil {
-		d.c.Logf("Could not kill daemon: %v", err)
-		return err
-	}
-
-	return nil
-}
-
-// Restart will restart the daemon by first stopping it and then starting it.
-func (d *Daemon) Restart(arg ...string) error {
-	d.Stop()
-	return d.Start(arg...)
-}
-
-func (d *Daemon) sock() string {
-	return fmt.Sprintf("unix://%s/docker.sock", d.folder)
-}
-
-// Cmd will execute a docker CLI command against this Daemon.
-// Example: d.Cmd("version") will run docker -H unix://path/to/unix.sock version
-func (d *Daemon) Cmd(name string, arg ...string) (string, error) {
-	args := []string{"--host", d.sock(), name}
-	args = append(args, arg...)
-	c := exec.Command(dockerBinary, args...)
-	b, err := c.CombinedOutput()
-	return string(b), err
-}
-
-func (d *Daemon) CmdWithArgs(daemonArgs []string, name string, arg ...string) (string, error) {
-	args := append(daemonArgs, name)
-	args = append(args, arg...)
-	c := exec.Command(dockerBinary, args...)
-	b, err := c.CombinedOutput()
-	return string(b), err
-}
-
-func (d *Daemon) LogfileName() string {
-	return d.logFile.Name()
+	return int64(basesizeFloat) * 1024 * 1024 * 1024, nil
 }
 
 func daemonHost() string {
-	daemonUrlStr := "unix://" + opts.DefaultUnixSocket
+	daemonURLStr := "unix://" + opts.DefaultUnixSocket
 	if daemonHostVar := os.Getenv("DOCKER_HOST"); daemonHostVar != "" {
-		daemonUrlStr = daemonHostVar
+		daemonURLStr = daemonHostVar
 	}
-	return daemonUrlStr
+	return daemonURLStr
+}
+
+func getTLSConfig() (*tls.Config, error) {
+	dockerCertPath := os.Getenv("DOCKER_CERT_PATH")
+
+	if dockerCertPath == "" {
+		return nil, fmt.Errorf("DOCKER_TLS_VERIFY specified, but no DOCKER_CERT_PATH environment variable")
+	}
+
+	option := &tlsconfig.Options{
+		CAFile:   filepath.Join(dockerCertPath, "ca.pem"),
+		CertFile: filepath.Join(dockerCertPath, "cert.pem"),
+		KeyFile:  filepath.Join(dockerCertPath, "key.pem"),
+	}
+	tlsConfig, err := tlsconfig.Client(*option)
+	if err != nil {
+		return nil, err
+	}
+
+	return tlsConfig, nil
 }
 
 func sockConn(timeout time.Duration) (net.Conn, error) {
 	daemon := daemonHost()
-	daemonUrl, err := url.Parse(daemon)
+	daemonURL, err := url.Parse(daemon)
 	if err != nil {
 		return nil, fmt.Errorf("could not parse url %q: %v", daemon, err)
 	}
 
 	var c net.Conn
-	switch daemonUrl.Scheme {
+	switch daemonURL.Scheme {
+	case "npipe":
+		return npipeDial(daemonURL.Path, timeout)
 	case "unix":
-		return net.DialTimeout(daemonUrl.Scheme, daemonUrl.Path, timeout)
+		return net.DialTimeout(daemonURL.Scheme, daemonURL.Path, timeout)
 	case "tcp":
-		return net.DialTimeout(daemonUrl.Scheme, daemonUrl.Host, timeout)
+		if os.Getenv("DOCKER_TLS_VERIFY") != "" {
+			// Setup the socket TLS configuration.
+			tlsConfig, err := getTLSConfig()
+			if err != nil {
+				return nil, err
+			}
+			dialer := &net.Dialer{Timeout: timeout}
+			return tls.DialWithDialer(dialer, daemonURL.Scheme, daemonURL.Host, tlsConfig)
+		}
+		return net.DialTimeout(daemonURL.Scheme, daemonURL.Host, timeout)
 	default:
-		return c, fmt.Errorf("unknown scheme %v (%s)", daemonUrl.Scheme, daemon)
+		return c, fmt.Errorf("unknown scheme %v (%s)", daemonURL.Scheme, daemon)
 	}
 }
 
@@ -335,15 +176,43 @@ func sockRequest(method, endpoint string, data interface{}) (int, []byte, error)
 
 	res, body, err := sockRequestRaw(method, endpoint, jsonData, "application/json")
 	if err != nil {
-		b, _ := ioutil.ReadAll(body)
-		return -1, b, err
+		return -1, nil, err
 	}
-	var b []byte
-	b, err = readBody(body)
+	b, err := readBody(body)
 	return res.StatusCode, b, err
 }
 
 func sockRequestRaw(method, endpoint string, data io.Reader, ct string) (*http.Response, io.ReadCloser, error) {
+	req, client, err := newRequestClient(method, endpoint, data, ct)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		client.Close()
+		return nil, nil, err
+	}
+	body := ioutils.NewReadCloserWrapper(resp.Body, func() error {
+		defer resp.Body.Close()
+		return client.Close()
+	})
+
+	return resp, body, nil
+}
+
+func sockRequestHijack(method, endpoint string, data io.Reader, ct string) (net.Conn, *bufio.Reader, error) {
+	req, client, err := newRequestClient(method, endpoint, data, ct)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	client.Do(req)
+	conn, br := client.Hijack()
+	return conn, br, nil
+}
+
+func newRequestClient(method, endpoint string, data io.Reader, ct string) (*http.Request, *httputil.ClientConn, error) {
 	c, err := sockConn(time.Duration(10 * time.Second))
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not dial docker daemon: %v", err)
@@ -360,18 +229,7 @@ func sockRequestRaw(method, endpoint string, data io.Reader, ct string) (*http.R
 	if ct != "" {
 		req.Header.Set("Content-Type", ct)
 	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		client.Close()
-		return nil, nil, fmt.Errorf("could not perform request: %v", err)
-	}
-	body := ioutils.NewReadCloserWrapper(resp.Body, func() error {
-		defer resp.Body.Close()
-		return client.Close()
-	})
-
-	return resp, body, nil
+	return req, client, nil
 }
 
 func readBody(b io.ReadCloser) ([]byte, error) {
@@ -408,35 +266,91 @@ func deleteAllContainers() error {
 		return err
 	}
 
-	if err = deleteContainer(containers); err != nil {
-		return err
+	if containers != "" {
+		if err = deleteContainer(containers); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-var protectedImages = map[string]struct{}{}
-
-func init() {
-	out, err := exec.Command(dockerBinary, "images").CombinedOutput()
+func deleteAllNetworks() error {
+	networks, err := getAllNetworks()
 	if err != nil {
-		panic(err)
+		return err
 	}
-	lines := strings.Split(string(out), "\n")[1:]
-	for _, l := range lines {
-		if l == "" {
+	var errors []string
+	for _, n := range networks {
+		if n.Name == "bridge" || n.Name == "none" || n.Name == "host" {
 			continue
 		}
-		fields := strings.Fields(l)
-		imgTag := fields[0] + ":" + fields[1]
-		// just for case if we have dangling images in tested daemon
-		if imgTag != "<none>:<none>" {
-			protectedImages[imgTag] = struct{}{}
+		status, b, err := sockRequest("DELETE", "/networks/"+n.Name, nil)
+		if err != nil {
+			errors = append(errors, err.Error())
+			continue
+		}
+		if status != http.StatusNoContent {
+			errors = append(errors, fmt.Sprintf("error deleting network %s: %s", n.Name, string(b)))
 		}
 	}
+	if len(errors) > 0 {
+		return fmt.Errorf(strings.Join(errors, "\n"))
+	}
+	return nil
 }
 
+func getAllNetworks() ([]types.NetworkResource, error) {
+	var networks []types.NetworkResource
+	_, b, err := sockRequest("GET", "/networks", nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, &networks); err != nil {
+		return nil, err
+	}
+	return networks, nil
+}
+
+func deleteAllVolumes() error {
+	volumes, err := getAllVolumes()
+	if err != nil {
+		return err
+	}
+	var errors []string
+	for _, v := range volumes {
+		status, b, err := sockRequest("DELETE", "/volumes/"+v.Name, nil)
+		if err != nil {
+			errors = append(errors, err.Error())
+			continue
+		}
+		if status != http.StatusNoContent {
+			errors = append(errors, fmt.Sprintf("error deleting volume %s: %s", v.Name, string(b)))
+		}
+	}
+	if len(errors) > 0 {
+		return fmt.Errorf(strings.Join(errors, "\n"))
+	}
+	return nil
+}
+
+func getAllVolumes() ([]*types.Volume, error) {
+	var volumes types.VolumesListResponse
+	_, b, err := sockRequest("GET", "/volumes", nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, &volumes); err != nil {
+		return nil, err
+	}
+	return volumes.Volumes, nil
+}
+
+var protectedImages = map[string]struct{}{}
+
 func deleteAllImages() error {
-	out, err := exec.Command(dockerBinary, "images").CombinedOutput()
+	cmd := exec.Command(dockerBinary, "images")
+	cmd.Env = appendBaseEnv(true)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return err
 	}
@@ -539,78 +453,95 @@ func imageExists(image string) error {
 	return err
 }
 
-func pullImageIfNotExist(image string) (err error) {
+func pullImageIfNotExist(image string) error {
 	if err := imageExists(image); err != nil {
 		pullCmd := exec.Command(dockerBinary, "pull", image)
 		_, exitCode, err := runCommandWithOutput(pullCmd)
 
 		if err != nil || exitCode != 0 {
-			err = fmt.Errorf("image %q wasn't found locally and it couldn't be pulled: %s", image, err)
+			return fmt.Errorf("image %q wasn't found locally and it couldn't be pulled: %s", image, err)
 		}
 	}
-	return
+	return nil
 }
 
-func dockerCmdWithError(c *check.C, args ...string) (string, int, error) {
-	return runCommandWithOutput(exec.Command(dockerBinary, args...))
+func dockerCmdWithError(args ...string) (string, int, error) {
+	if err := validateArgs(args...); err != nil {
+		return "", 0, err
+	}
+	return integration.DockerCmdWithError(dockerBinary, args...)
 }
 
 func dockerCmdWithStdoutStderr(c *check.C, args ...string) (string, string, int) {
-	stdout, stderr, status, err := runCommandWithStdoutStderr(exec.Command(dockerBinary, args...))
-	c.Assert(err, check.IsNil, check.Commentf("%q failed with errors: %s, %v", strings.Join(args, " "), stderr, err))
-	return stdout, stderr, status
+	if err := validateArgs(args...); err != nil {
+		c.Fatalf(err.Error())
+	}
+	return integration.DockerCmdWithStdoutStderr(dockerBinary, c, args...)
 }
 
 func dockerCmd(c *check.C, args ...string) (string, int) {
-	out, status, err := runCommandWithOutput(exec.Command(dockerBinary, args...))
-	c.Assert(err, check.IsNil, check.Commentf("%q failed with errors: %s, %v", strings.Join(args, " "), out, err))
-	return out, status
+	if err := validateArgs(args...); err != nil {
+		c.Fatalf(err.Error())
+	}
+	return integration.DockerCmd(dockerBinary, c, args...)
 }
 
 // execute a docker command with a timeout
 func dockerCmdWithTimeout(timeout time.Duration, args ...string) (string, int, error) {
-	out, status, err := runCommandWithOutputAndTimeout(exec.Command(dockerBinary, args...), timeout)
-	if err != nil {
-		return out, status, fmt.Errorf("%q failed with errors: %v : %q)", strings.Join(args, " "), err, out)
+	if err := validateArgs(args...); err != nil {
+		return "", 0, err
 	}
-	return out, status, err
+	return integration.DockerCmdWithTimeout(dockerBinary, timeout, args...)
 }
 
 // execute a docker command in a directory
 func dockerCmdInDir(c *check.C, path string, args ...string) (string, int, error) {
-	dockerCommand := exec.Command(dockerBinary, args...)
-	dockerCommand.Dir = path
-	out, status, err := runCommandWithOutput(dockerCommand)
-	if err != nil {
-		return out, status, fmt.Errorf("%q failed with errors: %v : %q)", strings.Join(args, " "), err, out)
+	if err := validateArgs(args...); err != nil {
+		c.Fatalf(err.Error())
 	}
-	return out, status, err
+	return integration.DockerCmdInDir(dockerBinary, path, args...)
 }
 
 // execute a docker command in a directory with a timeout
 func dockerCmdInDirWithTimeout(timeout time.Duration, path string, args ...string) (string, int, error) {
-	dockerCommand := exec.Command(dockerBinary, args...)
-	dockerCommand.Dir = path
-	out, status, err := runCommandWithOutputAndTimeout(dockerCommand, timeout)
-	if err != nil {
-		return out, status, fmt.Errorf("%q failed with errors: %v : %q)", strings.Join(args, " "), err, out)
+	if err := validateArgs(args...); err != nil {
+		return "", 0, err
 	}
-	return out, status, err
+	return integration.DockerCmdInDirWithTimeout(dockerBinary, timeout, path, args...)
 }
 
-func findContainerIP(c *check.C, id string, vargs ...string) string {
-	args := append(vargs, "inspect", "--format='{{ .NetworkSettings.IPAddress }}'", id)
+// validateArgs is a checker to ensure tests are not running commands which are
+// not supported on platforms. Specifically on Windows this is 'busybox top'.
+func validateArgs(args ...string) error {
+	if daemonPlatform != "windows" {
+		return nil
+	}
+	foundBusybox := -1
+	for key, value := range args {
+		if strings.ToLower(value) == "busybox" {
+			foundBusybox = key
+		}
+		if (foundBusybox != -1) && (key == foundBusybox+1) && (strings.ToLower(value) == "top") {
+			return errors.New("Cannot use 'busybox top' in tests on Windows. Use runSleepingContainer()")
+		}
+	}
+	return nil
+}
+
+// find the State.ExitCode in container metadata
+func findContainerExitCode(c *check.C, name string, vargs ...string) string {
+	args := append(vargs, "inspect", "--format='{{ .State.ExitCode }} {{ .State.Error }}'", name)
 	cmd := exec.Command(dockerBinary, args...)
 	out, _, err := runCommandWithOutput(cmd)
 	if err != nil {
 		c.Fatal(err, out)
 	}
-
-	return strings.Trim(out, " \r\n'")
+	return out
 }
 
-func (d *Daemon) findContainerIP(id string) string {
-	return findContainerIP(d.c, id, "--host", d.sock())
+func findContainerIP(c *check.C, id string, network string) string {
+	out, _ := dockerCmd(c, "inspect", fmt.Sprintf("--format='{{ .NetworkSettings.Networks.%s.IPAddress }}'", network), id)
+	return strings.Trim(out, " \r\n'")
 }
 
 func getContainerCount() (int, error) {
@@ -638,10 +569,12 @@ func getContainerCount() (int, error) {
 	return 0, fmt.Errorf("couldn't find the Container count in the output")
 }
 
+// FakeContext creates directories that can be used as a build context
 type FakeContext struct {
 	Dir string
 }
 
+// Add a file at a path, creating directories where necessary
 func (f *FakeContext) Add(file, content string) error {
 	return f.addFile(file, []byte(content))
 }
@@ -658,11 +591,13 @@ func (f *FakeContext) addFile(file string, content []byte) error {
 
 }
 
+// Delete a file at a path
 func (f *FakeContext) Delete(file string) error {
 	filepath := path.Join(f.Dir, file)
 	return os.RemoveAll(filepath)
 }
 
+// Close deletes the context
 func (f *FakeContext) Close() error {
 	return os.RemoveAll(f.Dir)
 }
@@ -843,20 +778,35 @@ COPY . /static`); err != nil {
 		return nil, fmt.Errorf("failed to find container port: err=%v\nout=%s", err, out)
 	}
 
+	fileserverHostPort := strings.Trim(out, "\n")
+	_, port, err := net.SplitHostPort(fileserverHostPort)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse file server host:port: %v", err)
+	}
+
+	dockerHostURL, err := url.Parse(daemonHost())
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse daemon host URL: %v", err)
+	}
+
+	host, _, err := net.SplitHostPort(dockerHostURL.Host)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse docker daemon host:port: %v", err)
+	}
+
 	return &remoteFileServer{
 		container: container,
 		image:     image,
-		host:      strings.Trim(out, "\n"),
+		host:      fmt.Sprintf("%s:%s", host, port),
 		ctx:       ctx}, nil
 }
 
-func inspectFieldAndMarshall(name, field string, output interface{}) error {
-	str, err := inspectFieldJSON(name, field)
-	if err != nil {
-		return err
+func inspectFieldAndMarshall(c *check.C, name, field string, output interface{}) {
+	str := inspectFieldJSON(c, name, field)
+	err := json.Unmarshal([]byte(str), output)
+	if c != nil {
+		c.Assert(err, check.IsNil, check.Commentf("failed to unmarshal: %v", err))
 	}
-
-	return json.Unmarshal([]byte(str), output)
 }
 
 func inspectFilter(name, filter string) (string, error) {
@@ -864,21 +814,37 @@ func inspectFilter(name, filter string) (string, error) {
 	inspectCmd := exec.Command(dockerBinary, "inspect", "-f", format, name)
 	out, exitCode, err := runCommandWithOutput(inspectCmd)
 	if err != nil || exitCode != 0 {
-		return "", fmt.Errorf("failed to inspect container %s: %s", name, out)
+		return "", fmt.Errorf("failed to inspect %s: %s", name, out)
 	}
 	return strings.TrimSpace(out), nil
 }
 
-func inspectField(name, field string) (string, error) {
+func inspectFieldWithError(name, field string) (string, error) {
 	return inspectFilter(name, fmt.Sprintf(".%s", field))
 }
 
-func inspectFieldJSON(name, field string) (string, error) {
-	return inspectFilter(name, fmt.Sprintf("json .%s", field))
+func inspectField(c *check.C, name, field string) string {
+	out, err := inspectFilter(name, fmt.Sprintf(".%s", field))
+	if c != nil {
+		c.Assert(err, check.IsNil)
+	}
+	return out
 }
 
-func inspectFieldMap(name, path, field string) (string, error) {
-	return inspectFilter(name, fmt.Sprintf("index .%s %q", path, field))
+func inspectFieldJSON(c *check.C, name, field string) string {
+	out, err := inspectFilter(name, fmt.Sprintf("json .%s", field))
+	if c != nil {
+		c.Assert(err, check.IsNil)
+	}
+	return out
+}
+
+func inspectFieldMap(c *check.C, name, path, field string) string {
+	out, err := inspectFilter(name, fmt.Sprintf("index .%s %q", path, field))
+	if c != nil {
+		c.Assert(err, check.IsNil)
+	}
+	return out
 }
 
 func inspectMountSourceField(name, destination string) (string, error) {
@@ -890,7 +856,7 @@ func inspectMountSourceField(name, destination string) (string, error) {
 }
 
 func inspectMountPoint(name, destination string) (types.MountPoint, error) {
-	out, err := inspectFieldJSON(name, "Mounts")
+	out, err := inspectFilter(name, "json .Mounts")
 	if err != nil {
 		return types.MountPoint{}, err
 	}
@@ -898,7 +864,7 @@ func inspectMountPoint(name, destination string) (types.MountPoint, error) {
 	return inspectMountPointJSON(out, destination)
 }
 
-var mountNotFound = errors.New("mount point not found")
+var errMountNotFound = errors.New("mount point not found")
 
 func inspectMountPointJSON(j, destination string) (types.MountPoint, error) {
 	var mp []types.MountPoint
@@ -915,14 +881,29 @@ func inspectMountPointJSON(j, destination string) (types.MountPoint, error) {
 	}
 
 	if m == nil {
-		return types.MountPoint{}, mountNotFound
+		return types.MountPoint{}, errMountNotFound
 	}
 
 	return *m, nil
 }
 
+func inspectImage(name, filter string) (string, error) {
+	args := []string{"inspect", "--type", "image"}
+	if filter != "" {
+		format := fmt.Sprintf("{{%s}}", filter)
+		args = append(args, "-f", format)
+	}
+	args = append(args, name)
+	inspectCmd := exec.Command(dockerBinary, args...)
+	out, exitCode, err := runCommandWithOutput(inspectCmd)
+	if err != nil || exitCode != 0 {
+		return "", fmt.Errorf("failed to inspect %s: %s", name, out)
+	}
+	return strings.TrimSpace(out), nil
+}
+
 func getIDByName(name string) (string, error) {
-	return inspectField(name, "Id")
+	return inspectFieldWithError(name, "Id")
 }
 
 // getContainerState returns the exit code of the container
@@ -955,14 +936,20 @@ func getContainerState(c *check.C, id string) (int, bool, error) {
 	return exitStatus, running, nil
 }
 
-func buildImageWithOut(name, dockerfile string, useCache bool) (string, string, error) {
+func buildImageCmd(name, dockerfile string, useCache bool, buildFlags ...string) *exec.Cmd {
 	args := []string{"build", "-t", name}
 	if !useCache {
 		args = append(args, "--no-cache")
 	}
+	args = append(args, buildFlags...)
 	args = append(args, "-")
 	buildCmd := exec.Command(dockerBinary, args...)
 	buildCmd.Stdin = strings.NewReader(dockerfile)
+	return buildCmd
+}
+
+func buildImageWithOut(name, dockerfile string, useCache bool, buildFlags ...string) (string, string, error) {
+	buildCmd := buildImageCmd(name, dockerfile, useCache, buildFlags...)
 	out, exitCode, err := runCommandWithOutput(buildCmd)
 	if err != nil || exitCode != 0 {
 		return "", out, fmt.Errorf("failed to build the image: %s", out)
@@ -974,14 +961,8 @@ func buildImageWithOut(name, dockerfile string, useCache bool) (string, string, 
 	return id, out, nil
 }
 
-func buildImageWithStdoutStderr(name, dockerfile string, useCache bool) (string, string, string, error) {
-	args := []string{"build", "-t", name}
-	if !useCache {
-		args = append(args, "--no-cache")
-	}
-	args = append(args, "-")
-	buildCmd := exec.Command(dockerBinary, args...)
-	buildCmd.Stdin = strings.NewReader(dockerfile)
+func buildImageWithStdoutStderr(name, dockerfile string, useCache bool, buildFlags ...string) (string, string, string, error) {
+	buildCmd := buildImageCmd(name, dockerfile, useCache, buildFlags...)
 	stdout, stderr, exitCode, err := runCommandWithStdoutStderr(buildCmd)
 	if err != nil || exitCode != 0 {
 		return "", stdout, stderr, fmt.Errorf("failed to build the image: %s", stdout)
@@ -993,31 +974,86 @@ func buildImageWithStdoutStderr(name, dockerfile string, useCache bool) (string,
 	return id, stdout, stderr, nil
 }
 
-func buildImage(name, dockerfile string, useCache bool) (string, error) {
-	id, _, err := buildImageWithOut(name, dockerfile, useCache)
+func buildImage(name, dockerfile string, useCache bool, buildFlags ...string) (string, error) {
+	id, _, err := buildImageWithOut(name, dockerfile, useCache, buildFlags...)
 	return id, err
 }
 
-func buildImageFromContext(name string, ctx *FakeContext, useCache bool) (string, error) {
+func buildImageFromContext(name string, ctx *FakeContext, useCache bool, buildFlags ...string) (string, error) {
+	id, _, err := buildImageFromContextWithOut(name, ctx, useCache, buildFlags...)
+	if err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+func buildImageFromContextWithOut(name string, ctx *FakeContext, useCache bool, buildFlags ...string) (string, string, error) {
 	args := []string{"build", "-t", name}
 	if !useCache {
 		args = append(args, "--no-cache")
 	}
+	args = append(args, buildFlags...)
 	args = append(args, ".")
 	buildCmd := exec.Command(dockerBinary, args...)
 	buildCmd.Dir = ctx.Dir
 	out, exitCode, err := runCommandWithOutput(buildCmd)
 	if err != nil || exitCode != 0 {
-		return "", fmt.Errorf("failed to build the image: %s", out)
+		return "", "", fmt.Errorf("failed to build the image: %s", out)
 	}
-	return getIDByName(name)
+	id, err := getIDByName(name)
+	if err != nil {
+		return "", "", err
+	}
+	return id, out, nil
 }
 
-func buildImageFromPath(name, path string, useCache bool) (string, error) {
+func buildImageFromContextWithStdoutStderr(name string, ctx *FakeContext, useCache bool, buildFlags ...string) (string, string, string, error) {
 	args := []string{"build", "-t", name}
 	if !useCache {
 		args = append(args, "--no-cache")
 	}
+	args = append(args, buildFlags...)
+	args = append(args, ".")
+	buildCmd := exec.Command(dockerBinary, args...)
+	buildCmd.Dir = ctx.Dir
+
+	stdout, stderr, exitCode, err := runCommandWithStdoutStderr(buildCmd)
+	if err != nil || exitCode != 0 {
+		return "", stdout, stderr, fmt.Errorf("failed to build the image: %s", stdout)
+	}
+	id, err := getIDByName(name)
+	if err != nil {
+		return "", stdout, stderr, err
+	}
+	return id, stdout, stderr, nil
+}
+
+func buildImageFromGitWithStdoutStderr(name string, ctx *fakeGit, useCache bool, buildFlags ...string) (string, string, string, error) {
+	args := []string{"build", "-t", name}
+	if !useCache {
+		args = append(args, "--no-cache")
+	}
+	args = append(args, buildFlags...)
+	args = append(args, ctx.RepoURL)
+	buildCmd := exec.Command(dockerBinary, args...)
+
+	stdout, stderr, exitCode, err := runCommandWithStdoutStderr(buildCmd)
+	if err != nil || exitCode != 0 {
+		return "", stdout, stderr, fmt.Errorf("failed to build the image: %s", stdout)
+	}
+	id, err := getIDByName(name)
+	if err != nil {
+		return "", stdout, stderr, err
+	}
+	return id, stdout, stderr, nil
+}
+
+func buildImageFromPath(name, path string, useCache bool, buildFlags ...string) (string, error) {
+	args := []string{"build", "-t", name}
+	if !useCache {
+		args = append(args, "--no-cache")
+	}
+	args = append(args, buildFlags...)
 	args = append(args, path)
 	buildCmd := exec.Command(dockerBinary, args...)
 	out, exitCode, err := runCommandWithOutput(buildCmd)
@@ -1027,7 +1063,7 @@ func buildImageFromPath(name, path string, useCache bool) (string, error) {
 	return getIDByName(name)
 }
 
-type GitServer interface {
+type gitServer interface {
 	URL() string
 	Close() error
 }
@@ -1045,18 +1081,18 @@ func (r *localGitServer) URL() string {
 	return r.Server.URL
 }
 
-type FakeGIT struct {
+type fakeGit struct {
 	root    string
-	server  GitServer
+	server  gitServer
 	RepoURL string
 }
 
-func (g *FakeGIT) Close() {
+func (g *fakeGit) Close() {
 	g.server.Close()
 	os.RemoveAll(g.root)
 }
 
-func fakeGIT(name string, files map[string]string, enforceLocalServer bool) (*FakeGIT, error) {
+func newFakeGit(name string, files map[string]string, enforceLocalServer bool) (*fakeGit, error) {
 	ctx, err := fakeContextWithFiles(files)
 	if err != nil {
 		return nil, err
@@ -1112,7 +1148,7 @@ func fakeGIT(name string, files map[string]string, enforceLocalServer bool) (*Fa
 		return nil, err
 	}
 
-	var server GitServer
+	var server gitServer
 	if !enforceLocalServer {
 		// use fakeStorage server, which might be local or remote (at test daemon)
 		server, err = fakeStorageWithContext(fakeContextFromDir(root))
@@ -1120,11 +1156,11 @@ func fakeGIT(name string, files map[string]string, enforceLocalServer bool) (*Fa
 			return nil, fmt.Errorf("cannot start fake storage: %v", err)
 		}
 	} else {
-		// always start a local http server on CLI test machin
+		// always start a local http server on CLI test machine
 		httpServer := httptest.NewServer(http.FileServer(http.Dir(root)))
 		server = &localGitServer{httpServer}
 	}
-	return &FakeGIT{
+	return &fakeGit{
 		root:    root,
 		server:  server,
 		RepoURL: fmt.Sprintf("%s/%s.git", server.URL(), name),
@@ -1134,36 +1170,29 @@ func fakeGIT(name string, files map[string]string, enforceLocalServer bool) (*Fa
 // Write `content` to the file at path `dst`, creating it if necessary,
 // as well as any missing directories.
 // The file is truncated if it already exists.
-// Call c.Fatal() at the first error.
+// Fail the test when error occurs.
 func writeFile(dst, content string, c *check.C) {
 	// Create subdirectories if necessary
-	if err := os.MkdirAll(path.Dir(dst), 0700); err != nil && !os.IsExist(err) {
-		c.Fatal(err)
-	}
+	c.Assert(os.MkdirAll(path.Dir(dst), 0700), check.IsNil)
 	f, err := os.OpenFile(dst, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0700)
-	if err != nil {
-		c.Fatal(err)
-	}
+	c.Assert(err, check.IsNil)
 	defer f.Close()
 	// Write content (truncate if it exists)
-	if _, err := io.Copy(f, strings.NewReader(content)); err != nil {
-		c.Fatal(err)
-	}
+	_, err = io.Copy(f, strings.NewReader(content))
+	c.Assert(err, check.IsNil)
 }
 
 // Return the contents of file at path `src`.
-// Call c.Fatal() at the first error (including if the file doesn't exist)
+// Fail the test when error occurs.
 func readFile(src string, c *check.C) (content string) {
 	data, err := ioutil.ReadFile(src)
-	if err != nil {
-		c.Fatal(err)
-	}
+	c.Assert(err, check.IsNil)
 
 	return string(data)
 }
 
-func containerStorageFile(containerId, basename string) string {
-	return filepath.Join("/var/lib/docker/containers", containerId, basename)
+func containerStorageFile(containerID, basename string) string {
+	return filepath.Join(containerStoragePath, containerID, basename)
 }
 
 // docker commands that use this function must be run with the '-d' switch.
@@ -1173,15 +1202,17 @@ func runCommandAndReadContainerFile(filename string, cmd *exec.Cmd) ([]byte, err
 		return nil, fmt.Errorf("%v: %q", err, out)
 	}
 
-	time.Sleep(1 * time.Second)
-
 	contID := strings.TrimSpace(out)
+
+	if err := waitRun(contID); err != nil {
+		return nil, fmt.Errorf("%v: %q", contID, err)
+	}
 
 	return readContainerFile(contID, filename)
 }
 
-func readContainerFile(containerId, filename string) ([]byte, error) {
-	f, err := os.Open(containerStorageFile(containerId, filename))
+func readContainerFile(containerID, filename string) ([]byte, error) {
+	f, err := os.Open(containerStorageFile(containerID, filename))
 	if err != nil {
 		return nil, err
 	}
@@ -1195,8 +1226,8 @@ func readContainerFile(containerId, filename string) ([]byte, error) {
 	return content, nil
 }
 
-func readContainerFileWithExec(containerId, filename string) ([]byte, error) {
-	out, _, err := runCommandWithOutput(exec.Command(dockerBinary, "exec", containerId, "cat", filename))
+func readContainerFileWithExec(containerID, filename string) ([]byte, error) {
+	out, _, err := runCommandWithOutput(exec.Command(dockerBinary, "exec", containerID, "cat", filename))
 	return []byte(out), err
 }
 
@@ -1207,49 +1238,48 @@ func daemonTime(c *check.C) time.Time {
 	}
 
 	status, body, err := sockRequest("GET", "/info", nil)
-	c.Assert(status, check.Equals, http.StatusOK)
 	c.Assert(err, check.IsNil)
+	c.Assert(status, check.Equals, http.StatusOK)
 
 	type infoJSON struct {
 		SystemTime string
 	}
 	var info infoJSON
-	if err = json.Unmarshal(body, &info); err != nil {
-		c.Fatalf("unable to unmarshal /info response: %v", err)
-	}
+	err = json.Unmarshal(body, &info)
+	c.Assert(err, check.IsNil, check.Commentf("unable to unmarshal GET /info response"))
 
 	dt, err := time.Parse(time.RFC3339Nano, info.SystemTime)
-	if err != nil {
-		c.Fatal(err)
-	}
+	c.Assert(err, check.IsNil, check.Commentf("invalid time format in GET /info response"))
 	return dt
 }
 
-func setupRegistry(c *check.C) *testRegistryV2 {
-	testRequires(c, RegistryHosting)
-	reg, err := newTestRegistryV2(c)
-	if err != nil {
-		c.Fatal(err)
-	}
+func setupRegistry(c *check.C, schema1 bool, auth, tokenURL string) *testRegistryV2 {
+	reg, err := newTestRegistryV2(c, schema1, auth, tokenURL)
+	c.Assert(err, check.IsNil)
 
 	// Wait for registry to be ready to serve requests.
-	for i := 0; i != 5; i++ {
+	for i := 0; i != 50; i++ {
 		if err = reg.Ping(); err == nil {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if err != nil {
-		c.Fatal("Timeout waiting for test registry to become available")
-	}
+	c.Assert(err, check.IsNil, check.Commentf("Timeout waiting for test registry to become available: %v", err))
 	return reg
+}
+
+func setupNotary(c *check.C) *testNotary {
+	ts, err := newTestNotary(c)
+	c.Assert(err, check.IsNil)
+
+	return ts
 }
 
 // appendBaseEnv appends the minimum set of environment variables to exec the
 // docker cli binary for testing with correct configuration to the given env
 // list.
-func appendBaseEnv(env []string) []string {
+func appendBaseEnv(isTLS bool, env ...string) []string {
 	preserveList := []string{
 		// preserve remote test host
 		"DOCKER_HOST",
@@ -1258,6 +1288,9 @@ func appendBaseEnv(env []string) []string {
 		// with "GetAddrInfoW: A non-recoverable error occurred during a database lookup."
 		"SystemRoot",
 	}
+	if isTLS {
+		preserveList = append(preserveList, "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")
+	}
 
 	for _, key := range preserveList {
 		if val := os.Getenv(key); val != "" {
@@ -1265,4 +1298,198 @@ func appendBaseEnv(env []string) []string {
 		}
 	}
 	return env
+}
+
+func createTmpFile(c *check.C, content string) string {
+	f, err := ioutil.TempFile("", "testfile")
+	c.Assert(err, check.IsNil)
+
+	filename := f.Name()
+
+	err = ioutil.WriteFile(filename, []byte(content), 0644)
+	c.Assert(err, check.IsNil)
+
+	return filename
+}
+
+func buildImageWithOutInDamon(socket string, name, dockerfile string, useCache bool) (string, error) {
+	args := []string{"--host", socket}
+	buildCmd := buildImageCmdArgs(args, name, dockerfile, useCache)
+	out, exitCode, err := runCommandWithOutput(buildCmd)
+	if err != nil || exitCode != 0 {
+		return out, fmt.Errorf("failed to build the image: %s, error: %v", out, err)
+	}
+	return out, nil
+}
+
+func buildImageCmdArgs(args []string, name, dockerfile string, useCache bool) *exec.Cmd {
+	args = append(args, []string{"-D", "build", "-t", name}...)
+	if !useCache {
+		args = append(args, "--no-cache")
+	}
+	args = append(args, "-")
+	buildCmd := exec.Command(dockerBinary, args...)
+	buildCmd.Stdin = strings.NewReader(dockerfile)
+	return buildCmd
+
+}
+
+func waitForContainer(contID string, args ...string) error {
+	args = append([]string{"run", "--name", contID}, args...)
+	cmd := exec.Command(dockerBinary, args...)
+	if _, err := runCommand(cmd); err != nil {
+		return err
+	}
+
+	if err := waitRun(contID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// waitRun will wait for the specified container to be running, maximum 5 seconds.
+func waitRun(contID string) error {
+	return waitInspect(contID, "{{.State.Running}}", "true", 5*time.Second)
+}
+
+// waitExited will wait for the specified container to state exit, subject
+// to a maximum time limit in seconds supplied by the caller
+func waitExited(contID string, duration time.Duration) error {
+	return waitInspect(contID, "{{.State.Status}}", "exited", duration)
+}
+
+// waitInspect will wait for the specified container to have the specified string
+// in the inspect output. It will wait until the specified timeout (in seconds)
+// is reached.
+func waitInspect(name, expr, expected string, timeout time.Duration) error {
+	return waitInspectWithArgs(name, expr, expected, timeout)
+}
+
+func waitInspectWithArgs(name, expr, expected string, timeout time.Duration, arg ...string) error {
+	after := time.After(timeout)
+
+	args := append(arg, "inspect", "-f", expr, name)
+	for {
+		cmd := exec.Command(dockerBinary, args...)
+		out, _, err := runCommandWithOutput(cmd)
+		if err != nil {
+			if !strings.Contains(out, "No such") {
+				return fmt.Errorf("error executing docker inspect: %v\n%s", err, out)
+			}
+			select {
+			case <-after:
+				return err
+			default:
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+		}
+
+		out = strings.TrimSpace(out)
+		if out == expected {
+			break
+		}
+
+		select {
+		case <-after:
+			return fmt.Errorf("condition \"%q == %q\" not true in time", out, expected)
+		default:
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil
+}
+
+func getInspectBody(c *check.C, version, id string) []byte {
+	endpoint := fmt.Sprintf("/%s/containers/%s/json", version, id)
+	status, body, err := sockRequest("GET", endpoint, nil)
+	c.Assert(err, check.IsNil)
+	c.Assert(status, check.Equals, http.StatusOK)
+	return body
+}
+
+// Run a long running idle task in a background container using the
+// system-specific default image and command.
+func runSleepingContainer(c *check.C, extraArgs ...string) (string, int) {
+	return runSleepingContainerInImage(c, defaultSleepImage, extraArgs...)
+}
+
+// Run a long running idle task in a background container using the specified
+// image and the system-specific command.
+func runSleepingContainerInImage(c *check.C, image string, extraArgs ...string) (string, int) {
+	args := []string{"run", "-d"}
+	args = append(args, extraArgs...)
+	args = append(args, image)
+	args = append(args, defaultSleepCommand...)
+	return dockerCmd(c, args...)
+}
+
+func getRootUIDGID() (int, int, error) {
+	uidgid := strings.Split(filepath.Base(dockerBasePath), ".")
+	if len(uidgid) == 1 {
+		//user namespace remapping is not turned on; return 0
+		return 0, 0, nil
+	}
+	uid, err := strconv.Atoi(uidgid[0])
+	if err != nil {
+		return 0, 0, err
+	}
+	gid, err := strconv.Atoi(uidgid[1])
+	if err != nil {
+		return 0, 0, err
+	}
+	return uid, gid, nil
+}
+
+// minimalBaseImage returns the name of the minimal base image for the current
+// daemon platform.
+func minimalBaseImage() string {
+	if daemonPlatform == "windows" {
+		return WindowsBaseImage
+	}
+	return "scratch"
+}
+
+func getGoroutineNumber() (int, error) {
+	i := struct {
+		NGoroutines int
+	}{}
+	status, b, err := sockRequest("GET", "/info", nil)
+	if err != nil {
+		return 0, err
+	}
+	if status != http.StatusOK {
+		return 0, fmt.Errorf("http status code: %d", status)
+	}
+	if err := json.Unmarshal(b, &i); err != nil {
+		return 0, err
+	}
+	return i.NGoroutines, nil
+}
+
+func waitForGoroutines(expected int) error {
+	t := time.After(30 * time.Second)
+	for {
+		select {
+		case <-t:
+			n, err := getGoroutineNumber()
+			if err != nil {
+				return err
+			}
+			if n > expected {
+				return fmt.Errorf("leaked goroutines: expected less than or equal to %d, got: %d", expected, n)
+			}
+		default:
+			n, err := getGoroutineNumber()
+			if err != nil {
+				return err
+			}
+			if n <= expected {
+				return nil
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
 }

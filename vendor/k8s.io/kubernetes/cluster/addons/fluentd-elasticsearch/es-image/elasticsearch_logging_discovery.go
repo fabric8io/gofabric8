@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,12 +19,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
 )
 
 func flattenSubsets(subsets []api.EndpointSubset) []string {
@@ -41,16 +43,29 @@ func main() {
 	flag.Parse()
 	glog.Info("Kubernetes Elasticsearch logging discovery")
 
-	c, err := client.NewInCluster()
+	cc, err := restclient.InClusterConfig()
 	if err != nil {
 		glog.Fatalf("Failed to make client: %v", err)
+	}
+	client, err := clientset.NewForConfig(cc)
+
+	if err != nil {
+		glog.Fatalf("Failed to make client: %v", err)
+	}
+	namespace := api.NamespaceSystem
+	envNamespace := os.Getenv("NAMESPACE")
+	if envNamespace != "" {
+		if _, err := client.Core().Namespaces().Get(envNamespace); err != nil {
+			glog.Fatalf("%s namespace doesn't exist: %v", envNamespace, err)
+		}
+		namespace = envNamespace
 	}
 
 	var elasticsearch *api.Service
 	// Look for endpoints associated with the Elasticsearch loggging service.
 	// First wait for the service to become available.
 	for t := time.Now(); time.Since(t) < 5*time.Minute; time.Sleep(10 * time.Second) {
-		elasticsearch, err = c.Services(api.NamespaceSystem).Get("elasticsearch-logging")
+		elasticsearch, err = client.Core().Services(namespace).Get("elasticsearch-logging")
 		if err == nil {
 			break
 		}
@@ -67,7 +82,7 @@ func main() {
 	// Wait for some endpoints.
 	count := 0
 	for t := time.Now(); time.Since(t) < 5*time.Minute; time.Sleep(10 * time.Second) {
-		endpoints, err = c.Endpoints(api.NamespaceSystem).Get("elasticsearch-logging")
+		endpoints, err = client.Core().Endpoints(namespace).Get("elasticsearch-logging")
 		if err != nil {
 			continue
 		}

@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@ var _ interfaces.ManagedZonesListCall = &ManagedZonesListCall{}
 type ManagedZonesListCall struct {
 	Service  *ManagedZonesService
 	Project  string
-	Response *interfaces.ManagedZonesListResponse // Use this to overide response if required
-	Error    *error                               // Use this to overide response if required
+	Response *interfaces.ManagedZonesListResponse // Use this to override response if required
+	Error    *error                               // Use this to override response if required
 	DnsName_ string
 }
 

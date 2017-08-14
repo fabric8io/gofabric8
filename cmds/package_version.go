@@ -17,15 +17,17 @@ package cmds
 
 import (
 	"fmt"
+
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 	kapi "k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-func NewCmdPackageVersions(f *cmdutil.Factory) *cobra.Command {
+func NewCmdPackageVersions(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "package-versions name",
 		Short: "Displays the versions available for a package",
@@ -62,7 +64,7 @@ func NewCmdPackageVersions(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func packageVersions(ns string, c *k8sclient.Client, name string) error {
+func packageVersions(ns string, c *clientset.Clientset, name string) error {
 	selector, err := createPackageSelector()
 	if err != nil {
 		return err

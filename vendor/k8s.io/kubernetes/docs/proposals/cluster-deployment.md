@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Objective
 
 Simplify the cluster provisioning process for a cluster with one master and multiple worker nodes.
@@ -61,7 +56,7 @@ ship with all of the requirements for the node specification by default.
 
 **Objective**: Generate security certificates used to configure secure communication between client, master and nodes
 
-TODO: Enumerate ceritificates which have to be generated.
+TODO: Enumerate certificates which have to be generated.
 
 ## Step 3: Deploy master
 
@@ -169,13 +164,6 @@ One disadvantage of using Ansible is that it adds a dependency on a machine whic
 this by distributing deployment scripts via a docker image so that user will run the following command to create a cluster:
 
 ```docker run gcr.io/google_containers/deploy_kubernetes:v1.2 up --num-nodes=3 --provider=aws```
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

@@ -29,7 +29,7 @@ type cleanUpJenkinsFlags struct {
 }
 
 // NewCmdCleanUpJenkins delete files in the tenants content repository
-func NewCmdCleanUpJenkins(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCleanUpJenkins(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "jenkins",
 		Short:   "Deletes all the jenkins jobs in your tenant Jenkins service",
@@ -51,7 +51,7 @@ func NewCmdCleanUpJenkins(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *cleanUpJenkinsFlags) cleanUpJenkins(f *cmdutil.Factory) error {
+func (p *cleanUpJenkinsFlags) cleanUpJenkins(f cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)

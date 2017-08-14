@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,8 +28,8 @@ type ManagedZonesGetCall struct {
 	Service  *ManagedZonesService
 	Project  string
 	ZoneName string
-	Response interfaces.ManagedZone // Use this to overide response if required
-	Error    *error                 // Use this to overide response if required
+	Response interfaces.ManagedZone // Use this to override response if required
+	Error    *error                 // Use this to override response if required
 	DnsName_ string
 }
 

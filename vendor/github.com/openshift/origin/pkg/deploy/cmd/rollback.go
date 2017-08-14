@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 
 	"k8s.io/kubernetes/pkg/kubectl"
@@ -24,13 +25,13 @@ var _ kubectl.Rollbacker = &DeploymentConfigRollbacker{}
 
 // Rollback the provided deployment config to a specific revision. If revision is zero, we will
 // rollback to the previous deployment.
-func (r *DeploymentConfigRollbacker) Rollback(namespace, name string, updatedAnnotations map[string]string, toRevision int64, obj runtime.Object) (string, error) {
+func (r *DeploymentConfigRollbacker) Rollback(obj runtime.Object, updatedAnnotations map[string]string, toRevision int64, dryRun bool) (string, error) {
 	config, ok := obj.(*deployapi.DeploymentConfig)
 	if !ok {
 		return "", fmt.Errorf("passed object is not a deployment config: %#v", obj)
 	}
 	if config.Spec.Paused {
-		return "", fmt.Errorf("cannot rollback a paused config; resume it first with '%[2]s rollout resume dc/%[1]s' and try again", config.Name, name)
+		return "", fmt.Errorf("cannot rollback a paused config; resume it first with 'rollout resume dc/%s' and try again", config.Name)
 	}
 
 	rollback := &deployapi.DeploymentConfigRollback{
@@ -45,6 +46,12 @@ func (r *DeploymentConfigRollbacker) Rollback(namespace, name string, updatedAnn
 	rolledback, err := r.dn.DeploymentConfigs(config.Namespace).Rollback(rollback)
 	if err != nil {
 		return "", err
+	}
+
+	if dryRun {
+		out := bytes.NewBuffer([]byte("\n"))
+		kubectl.DescribePodTemplate(rolledback.Spec.Template, out)
+		return out.String(), nil
 	}
 
 	_, err = r.dn.DeploymentConfigs(config.Namespace).Update(rolledback)

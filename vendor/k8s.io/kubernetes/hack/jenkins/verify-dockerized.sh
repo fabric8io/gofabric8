@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,5 +37,9 @@ export LOG_LEVEL=4
 
 cd /go/src/k8s.io/kubernetes
 
+# hack/verify-client-go.sh requires all dependencies exist in the GOPATH.
+# the retry helps avoid flakes while keeping total time bounded.
+godep restore || godep restore
+
 ./hack/install-etcd.sh
-./hack/verify-all.sh -v
+make verify

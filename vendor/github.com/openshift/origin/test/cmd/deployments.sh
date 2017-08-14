@@ -107,6 +107,12 @@ os::cmd::expect_failure 'oc rollback dc/database --to-version=1 --dry-run'
 os::cmd::expect_failure 'oc rollback database-1 -o=yaml'
 os::cmd::expect_failure 'oc rollback rc/database-1 -o=yaml'
 os::cmd::expect_failure 'oc rollback database -o yaml'
+# trigger a new deployment with 'foo' image
+os::cmd::expect_success 'oc set image dc/database ruby-helloworld-database=foo --source=docker'
+# wait for the new deployment
+os::cmd::try_until_success 'oc rollout history dc/database --revision=2'
+# undo --dry-run should report the original image
+os::cmd::expect_success_and_text 'oc rollout undo dc/database --dry-run' 'mysql-57-centos7'
 echo "rollback: ok"
 os::test::junit::declare_suite_end
 
@@ -132,11 +138,23 @@ os::cmd::expect_success 'oc delete hpa/test-deployment-config'
 echo "autoscale: ok"
 os::test::junit::declare_suite_end
 
+os::test::junit::declare_suite_start "cmd/deployments/setimage"
+os::cmd::expect_success 'oc create -f test/integration/testdata/test-deployment-config.yaml'
+os::cmd::expect_success 'oc set image dc/test-deployment-config ruby-helloworld=myshinynewimage --source=docker'
+os::cmd::expect_success_and_text "oc get dc/test-deployment-config -o jsonpath='{.spec.template.spec.containers[0].image}'" "myshinynewimage"
+os::cmd::expect_success 'oc delete dc/test-deployment-config'
+echo "set image: ok"
+os::test::junit::declare_suite_end
+
 os::test::junit::declare_suite_start "cmd/deployments/setdeploymenthook"
 # Validate the set deployment-hook command
 arg="-f test/integration/testdata/test-deployment-config.yaml"
 os::cmd::expect_failure_and_text "oc set deployment-hook" "error: one or more deployment configs"
 os::cmd::expect_failure_and_text "oc set deployment-hook ${arg}" "error: you must specify one of --pre, --mid, or --post"
+os::cmd::expect_failure_and_text "oc set deployment-hook ${arg} -o yaml --pre -- mycmd" 'deploymentconfigs "test-deployment-config" not found'
+os::cmd::expect_success_and_text "oc set deployment-hook ${arg} --local -o yaml --post -- mycmd" 'mycmd'
+os::cmd::expect_success_and_not_text "oc set deployment-hook ${arg} --local -o yaml --post -- mycmd | oc set deployment-hook -f - --local -o yaml --post --remove" 'mycmd'
+os::cmd::expect_success "oc create ${arg}"
 os::cmd::expect_success_and_text "oc set deployment-hook ${arg} --pre  -o yaml -- echo 'hello world'" 'pre:'
 os::cmd::expect_success_and_text "oc set deployment-hook ${arg} --pre  -o yaml -- echo 'hello world'" 'execNewPod:'
 os::cmd::expect_success_and_text "oc set deployment-hook ${arg} --pre  -o yaml -- echo 'hello world'" '\- echo'
@@ -156,6 +174,7 @@ os::cmd::expect_success_and_text "oc set deployment-hook ${arg} --pre --containe
 # Existing volume
 os::cmd::expect_success_and_not_text "oc set deployment-hook ${arg} --pre --volumes=vol1 -o yaml -- echo 'hello world'" 'does not have a volume named'
 os::cmd::expect_success_and_text "oc set deployment-hook ${arg} --pre --volumes=vol1 -o yaml -- echo 'hello world'" '\- vol1'
+os::cmd::expect_success 'oc delete dc/test-deployment-config'
 # Server object tests
 os::cmd::expect_success "oc create -f test/integration/testdata/test-deployment-config.yaml"
 os::cmd::expect_failure_and_text "oc set deployment-hook dc/test-deployment-config --pre" "you must specify a command"
@@ -168,6 +187,11 @@ os::cmd::expect_success_and_text "oc set deployment-hook --all --pre -- echo 'al
 os::cmd::expect_success_and_text "oc get dc -o yaml" "all dc"
 os::cmd::expect_success_and_text "oc set deployment-hook dc/test-deployment-config --pre --remove" "updated"
 os::cmd::expect_success_and_not_text "oc get dc/test-deployment-config -o yaml" "pre:"
+# Environment handling
+os::cmd::expect_success_and_text "oc set deployment-hook dc/test-deployment-config --pre -o yaml --environment X=Y,Z=W -- echo 'test'" "value: Y,Z=W"
+os::cmd::expect_success_and_text "oc set deployment-hook dc/test-deployment-config --pre -o yaml --environment X=Y,Z=W -- echo 'test'" "no longer accepts comma-separated list"
+os::cmd::expect_success_and_not_text "oc set deployment-hook dc/test-deployment-config --pre -o yaml --environment X=Y -- echo 'test'" "no longer accepts comma-separated list"
+
 os::cmd::expect_success "oc delete dc/test-deployment-config"
 echo "set deployment-hook: ok"
 os::test::junit::declare_suite_end

@@ -20,7 +20,7 @@ var _ = g.Describe("[builds][Conformance] remove all builds when build configura
 
 	g.JustBeforeEach(func() {
 		g.By("waiting for builder service account")
-		err := exutil.WaitForBuilderAccount(oc.KubeREST().ServiceAccounts(oc.Namespace()))
+		err := exutil.WaitForBuilderAccount(oc.KubeClient().Core().ServiceAccounts(oc.Namespace()))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		oc.Run("create").Args("-f", buildFixture).Execute()
 	})
@@ -47,7 +47,7 @@ var _ = g.Describe("[builds][Conformance] remove all builds when build configura
 			err = wait.Poll(3*time.Second, 3*time.Minute, func() (bool, error) {
 				out, err := oc.Run("get").Args("-o", "name", "builds").Output()
 				o.Expect(err).NotTo(o.HaveOccurred())
-				if len(out) == 0 {
+				if out == "No resources found." {
 					return true, nil
 				}
 				return false, nil

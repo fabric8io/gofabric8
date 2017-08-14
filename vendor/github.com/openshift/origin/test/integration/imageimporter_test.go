@@ -21,6 +21,7 @@ import (
 	kerrors "k8s.io/kubernetes/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/watch"
 
+	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/dockerregistry"
 	"github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/image/importer"
@@ -54,7 +55,7 @@ func TestImageStreamImport(t *testing.T) {
 		},
 		Spec: api.ImageStreamImportSpec{
 			Images: []api.ImageImportSpec{
-				{From: kapi.ObjectReference{Kind: "DockerImage", Name: "a/a/a/a/a/redis:latest"}, To: &kapi.LocalObjectReference{Name: "tag"}},
+				{From: kapi.ObjectReference{Kind: "DockerImage", Name: "///a/a/a/a/a/redis:latest"}, To: &kapi.LocalObjectReference{Name: "tag"}},
 				{From: kapi.ObjectReference{Kind: "DockerImage", Name: "redis:latest"}},
 			},
 		},
@@ -99,7 +100,7 @@ func TestImageStreamImport(t *testing.T) {
 		},
 	})
 	if err != nil || isi == nil || isi.Status.Import == nil {
-		t.Fatalf("unexpected responses: %v %#v %#v", err, isi, isi.Status.Import)
+		t.Fatalf("unexpected responses: %v %#v", err, isi)
 	}
 
 	if isi.Status.Images[0].Image == nil || isi.Status.Images[0].Image.DockerImageMetadata.Size == 0 || len(isi.Status.Images[0].Image.DockerImageLayers) == 0 {
@@ -182,7 +183,44 @@ func mockRegistryHandler(t *testing.T, requireAuth bool, count *int) http.Handle
 	})
 }
 
-func TestImageStreamImportOfV1ImageFromV2Repository(t *testing.T) {
+func testImageStreamImport(t *testing.T, c *client.Client, imageSize int64, imagestreamimport *api.ImageStreamImport) {
+	imageStreams := c.ImageStreams(testutil.Namespace())
+
+	isi, err := imageStreams.Import(imagestreamimport)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(isi.Status.Images) != 1 {
+		t.Errorf("imported unexpected number of images (%d != 1)", len(isi.Status.Images))
+	}
+
+	for i, image := range isi.Status.Images {
+		if image.Status.Status != unversioned.StatusSuccess {
+			t.Errorf("unexpected status %d: %#v", i, image.Status)
+		}
+
+		if image.Image == nil {
+			t.Errorf("unexpected empty image %d", i)
+		}
+
+		// the image name is always the sha256, and size is calculated
+		if image.Image.Name != convertedDigest {
+			t.Errorf("unexpected image %d: %#v (expect %q)", i, image.Image.Name, convertedDigest)
+		}
+
+		// the image size is calculated
+		if image.Image.DockerImageMetadata.Size == 0 {
+			t.Errorf("unexpected image size %d: %#v", i, image.Image.DockerImageMetadata.Size)
+		}
+
+		if image.Image.DockerImageMetadata.Size != imageSize {
+			t.Errorf("unexpected image size %d: %#v (expect %d)", i, image.Image.DockerImageMetadata.Size, imageSize)
+		}
+	}
+}
+
+func testImageStreamImportWithPath(t *testing.T, reponame string) {
 	imageDigest := "sha256:815d06b56f4138afacd0009b8e3799fcdce79f0507bf8d0588e219b93ab6fd4d"
 	descriptors := map[string]int64{
 		"sha256:a3ed95caeb02ffe68cdd9fd84406680ae93d633cb16422d00e8a7c22955b46d4": 3000,
@@ -219,9 +257,9 @@ func TestImageStreamImportOfV1ImageFromV2Repository(t *testing.T) {
 		switch r.URL.Path {
 		case "/v2/":
 			w.Write([]byte(`{}`))
-		case "/v2/test/image/tags/list":
-			w.Write([]byte("{\"name\": \"test/image\", \"tags\": [\"testtag\"]}"))
-		case "/v2/test/image/manifests/testtag", "/v2/test/image/manifests/" + imageDigest:
+		case "/v2/" + reponame + "/tags/list":
+			w.Write([]byte("{\"name\": \"" + reponame + "\", \"tags\": [\"testtag\"]}"))
+		case "/v2/" + reponame + "/manifests/testtag", "/v2/" + reponame + "/manifests/" + imageDigest:
 			if r.Method == "HEAD" {
 				w.Header().Set("Content-Length", fmt.Sprintf("%d", len(convertedManifest)))
 				w.Header().Set("Docker-Content-Digest", imageDigest)
@@ -230,9 +268,9 @@ func TestImageStreamImportOfV1ImageFromV2Repository(t *testing.T) {
 				w.Write([]byte(convertedManifest))
 			}
 		default:
-			if strings.HasPrefix(r.URL.Path, "/v2/test/image/blobs/") {
+			if strings.HasPrefix(r.URL.Path, "/v2/"+reponame+"/blobs/") {
 				for dgst, size := range descriptors {
-					if r.URL.Path != "/v2/test/image/blobs/"+dgst {
+					if r.URL.Path != "/v2/"+reponame+"/blobs/"+dgst {
 						continue
 					}
 					if r.Method == "HEAD" {
@@ -266,9 +304,7 @@ func TestImageStreamImportOfV1ImageFromV2Repository(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	imageStreams := c.ImageStreams(testutil.Namespace())
-
-	isi, err := imageStreams.Import(&api.ImageStreamImport{
+	testImageStreamImport(t, c, imageSize, &api.ImageStreamImport{
 		ObjectMeta: kapi.ObjectMeta{
 			Name: "test",
 		},
@@ -276,44 +312,47 @@ func TestImageStreamImportOfV1ImageFromV2Repository(t *testing.T) {
 			Import: true,
 			Images: []api.ImageImportSpec{
 				{
-					From:         kapi.ObjectReference{Kind: "DockerImage", Name: url.Host + "/test/image:testtag"},
+					From:         kapi.ObjectReference{Kind: "DockerImage", Name: url.Host + "/" + reponame + ":testtag"},
 					To:           &kapi.LocalObjectReference{Name: "other"},
 					ImportPolicy: api.TagImportPolicy{Insecure: true},
 				},
 			},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
+
+	if countStat != len(descriptors) {
+		t.Fatalf("unexpected number of blob stats %d (expected %d)", countStat, len(descriptors))
 	}
 
-	if len(isi.Status.Images) != 1 {
-		t.Errorf("imported unexpected number of images (%d != 1)", len(isi.Status.Images))
+	testImageStreamImport(t, c, imageSize, &api.ImageStreamImport{
+		ObjectMeta: kapi.ObjectMeta{
+			Name: "test1",
+		},
+		Spec: api.ImageStreamImportSpec{
+			Import: true,
+			Images: []api.ImageImportSpec{
+				{
+					From:         kapi.ObjectReference{Kind: "DockerImage", Name: url.Host + "/" + reponame + ":testtag"},
+					To:           &kapi.LocalObjectReference{Name: "other1"},
+					ImportPolicy: api.TagImportPolicy{Insecure: true},
+				},
+			},
+		},
+	})
+
+	// Test that the global layer cache is working. The counter shouldn't change
+	// because all the information is available in the cache.
+	if countStat != len(descriptors) {
+		t.Fatalf("the global layer cache is not working: unexpected number of blob stats %d (expected %d)", countStat, len(descriptors))
 	}
+}
 
-	for i, image := range isi.Status.Images {
-		if image.Status.Status != unversioned.StatusSuccess {
-			t.Errorf("unexpected status %d: %#v", i, image.Status)
-		}
+func TestImageStreamImportOfV1ImageFromV2Repository(t *testing.T) {
+	testImageStreamImportWithPath(t, "test/image")
+}
 
-		if image.Image == nil {
-			t.Errorf("unexpected empty image %d", i)
-		}
-
-		// the image name is always the sha256, and size is calculated
-		if image.Image.Name != convertedDigest {
-			t.Errorf("unexpected image %d: %#v (expect %q)", i, image.Image.Name, convertedDigest)
-		}
-
-		// the image size is calculated
-		if image.Image.DockerImageMetadata.Size == 0 {
-			t.Errorf("unexpected image size %d: %#v", i, image.Image.DockerImageMetadata.Size)
-		}
-
-		if image.Image.DockerImageMetadata.Size != imageSize {
-			t.Errorf("unexpected image size %d: %#v (expect %d)", i, image.Image.DockerImageMetadata.Size, imageSize)
-		}
-	}
+func TestImageStreamImportOfMultiSegmentDockerReference(t *testing.T) {
+	testImageStreamImportWithPath(t, "test/foo/bar/image")
 }
 
 func TestImageStreamImportAuthenticated(t *testing.T) {
@@ -406,7 +445,7 @@ func TestImageStreamImportAuthenticated(t *testing.T) {
 		t.Logf("testing %s host", host)
 
 		// add secrets for subsequent checks
-		_, err = kc.Secrets(testutil.Namespace()).Create(&kapi.Secret{
+		_, err = kc.Core().Secrets(testutil.Namespace()).Create(&kapi.Secret{
 			ObjectMeta: kapi.ObjectMeta{Name: fmt.Sprintf("secret-%d", i+1)},
 			Type:       kapi.SecretTypeDockerConfigJson,
 			Data: map[string][]byte{
@@ -540,7 +579,7 @@ func TestImageStreamImportTagsFromRepository(t *testing.T) {
 	}
 	for i, image := range isi.Status.Repository.Images {
 		switch i {
-		case 2:
+		case 1:
 			if image.Status.Status != unversioned.StatusSuccess {
 				t.Errorf("import of image %d did not succeed: %#v", i, image.Status)
 			}
@@ -560,7 +599,7 @@ func TestImageStreamImportTagsFromRepository(t *testing.T) {
 			if image.Status.Status != unversioned.StatusFailure || image.Status.Reason != unversioned.StatusReasonInternalError {
 				t.Fatalf("import of image %d did not report internal server error: %#v", i, image.Status)
 			}
-			expectedTags := []string{"latest", "v2"}[i]
+			expectedTags := []string{"latest", "", "v2"}[i]
 			if image.Tag != expectedTags {
 				t.Errorf("unexpected tag at position %d (%s != %s)", i, image.Tag, expectedTags)
 			}
@@ -782,7 +821,7 @@ func TestImageStreamImportDockerHub(t *testing.T) {
 	}
 
 	err := retryWhenUnreachable(t, func() error {
-		i := importer.NewImageStreamImporter(importCtx, 3, nil)
+		i := importer.NewImageStreamImporter(importCtx, 3, nil, nil)
 		if err := i.Import(gocontext.Background(), imports); err != nil {
 			return err
 		}
@@ -838,7 +877,7 @@ func TestImageStreamImportQuayIO(t *testing.T) {
 	}
 
 	err := retryWhenUnreachable(t, func() error {
-		i := importer.NewImageStreamImporter(importCtx, 3, nil)
+		i := importer.NewImageStreamImporter(importCtx, 3, nil, nil)
 		if err := i.Import(gocontext.Background(), imports); err != nil {
 			return err
 		}
@@ -891,7 +930,7 @@ func TestImageStreamImportRedHatRegistry(t *testing.T) {
 		},
 	}
 
-	i := importer.NewImageStreamImporter(importCtx, 3, nil)
+	i := importer.NewImageStreamImporter(importCtx, 3, nil, nil)
 	if err := i.Import(gocontext.Background(), imports); err != nil {
 		t.Fatal(err)
 	}
@@ -918,7 +957,7 @@ func TestImageStreamImportRedHatRegistry(t *testing.T) {
 	context := gocontext.WithValue(gocontext.Background(), importer.ContextKeyV1RegistryClient, dockerregistry.NewClient(20*time.Second, false))
 	importCtx = importer.NewContext(rt, nil).WithCredentials(importer.NoCredentials)
 	err := retryWhenUnreachable(t, func() error {
-		i = importer.NewImageStreamImporter(importCtx, 3, nil)
+		i = importer.NewImageStreamImporter(importCtx, 3, nil, nil)
 		if err := i.Import(context, imports); err != nil {
 			return err
 		}

@@ -3,50 +3,87 @@
 package runconfig
 
 import (
+	"fmt"
+	"runtime"
 	"strings"
+
+	"github.com/docker/engine-api/types/container"
 )
 
-// IsPrivate indicates whether container use it's private network stack
-func (n NetworkMode) IsPrivate() bool {
-	return !(n.IsHost() || n.IsContainer())
+// DefaultDaemonNetworkMode returns the default network stack the daemon should
+// use.
+func DefaultDaemonNetworkMode() container.NetworkMode {
+	return container.NetworkMode("bridge")
 }
 
-func (n NetworkMode) IsDefault() bool {
-	return n == "default"
+// IsPreDefinedNetwork indicates if a network is predefined by the daemon
+func IsPreDefinedNetwork(network string) bool {
+	n := container.NetworkMode(network)
+	return n.IsBridge() || n.IsHost() || n.IsNone() || n.IsDefault()
 }
 
-func DefaultDaemonNetworkMode() NetworkMode {
-	return NetworkMode("bridge")
-}
-
-func (n NetworkMode) NetworkName() string {
-	if n.IsBridge() {
-		return "bridge"
-	} else if n.IsHost() {
-		return "host"
-	} else if n.IsContainer() {
-		return "container"
-	} else if n.IsNone() {
-		return "none"
-	} else if n.IsDefault() {
-		return "default"
+// ValidateNetMode ensures that the various combinations of requested
+// network settings are valid.
+func ValidateNetMode(c *container.Config, hc *container.HostConfig) error {
+	// We may not be passed a host config, such as in the case of docker commit
+	if hc == nil {
+		return nil
 	}
-	return ""
+	parts := strings.Split(string(hc.NetworkMode), ":")
+	if parts[0] == "container" {
+		if len(parts) < 2 || parts[1] == "" {
+			return fmt.Errorf("--net: invalid net mode: invalid container format container:<name|id>")
+		}
+	}
+
+	if hc.NetworkMode.IsContainer() && c.Hostname != "" {
+		return ErrConflictNetworkHostname
+	}
+
+	if hc.UTSMode.IsHost() && c.Hostname != "" {
+		return ErrConflictUTSHostname
+	}
+
+	if hc.NetworkMode.IsHost() && len(hc.Links) > 0 {
+		return ErrConflictHostNetworkAndLinks
+	}
+
+	if hc.NetworkMode.IsContainer() && len(hc.Links) > 0 {
+		return ErrConflictContainerNetworkAndLinks
+	}
+
+	if (hc.NetworkMode.IsHost() || hc.NetworkMode.IsContainer()) && len(hc.DNS) > 0 {
+		return ErrConflictNetworkAndDNS
+	}
+
+	if (hc.NetworkMode.IsContainer() || hc.NetworkMode.IsHost()) && len(hc.ExtraHosts) > 0 {
+		return ErrConflictNetworkHosts
+	}
+
+	if (hc.NetworkMode.IsContainer() || hc.NetworkMode.IsHost()) && c.MacAddress != "" {
+		return ErrConflictContainerNetworkAndMac
+	}
+
+	if hc.NetworkMode.IsContainer() && (len(hc.PortBindings) > 0 || hc.PublishAllPorts == true) {
+		return ErrConflictNetworkPublishPorts
+	}
+
+	if hc.NetworkMode.IsContainer() && len(c.ExposedPorts) > 0 {
+		return ErrConflictNetworkExposePorts
+	}
+	return nil
 }
 
-func (n NetworkMode) IsBridge() bool {
-	return n == "bridge"
-}
-
-func (n NetworkMode) IsHost() bool {
-	return n == "host"
-}
-
-func (n NetworkMode) IsContainer() bool {
-	parts := strings.SplitN(string(n), ":", 2)
-	return len(parts) > 1 && parts[0] == "container"
-}
-
-func (n NetworkMode) IsNone() bool {
-	return n == "none"
+// ValidateIsolation performs platform specific validation of
+// isolation in the hostconfig structure. Linux only supports "default"
+// which is LXC container isolation
+func ValidateIsolation(hc *container.HostConfig) error {
+	// We may not be passed a host config, such as in the case of docker commit
+	if hc == nil {
+		return nil
+	}
+	if !hc.Isolation.IsValid() {
+		return fmt.Errorf("invalid --isolation: %q - %s only supports 'default'", hc.Isolation, runtime.GOOS)
+	}
+	return nil
 }

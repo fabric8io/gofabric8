@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Federated API Servers
 
 ## Abstract
@@ -21,7 +16,7 @@ federated servers.
 * Unblock new APIs from core kubernetes team review: A lot of new API proposals
   are currently blocked on review from the core kubernetes team. By allowing
   developers to expose their APIs as a separate server and enabling the cluster
-  admin to use it without any change to the core kubernetes reporsitory, we
+  admin to use it without any change to the core kubernetes repository, we
   unblock these APIs.
 * Place for staging experimental APIs: New APIs can remain in separate
   federated servers until they become stable, at which point, they can be moved
@@ -87,7 +82,7 @@ Cluster admins are also free to use any of the multiple open source API manageme
 provide a lot more functionality like: rate-limiting, caching, logging,
 transformations and authentication.
 In future, we can also use ingress. That will give cluster admins the flexibility to
-easily swap out the ingress controller by a Go reverse proxy, ngingx, haproxy
+easily swap out the ingress controller by a Go reverse proxy, nginx, haproxy
 or any other solution they might want.
 
 ### Storage
@@ -172,7 +167,7 @@ resource.
 
 This proposal is not enough for hosted cluster users, but allows us to improve
 that in the future.
-On a hosted kubernetes cluster, for eg on GKE - where Google manages the kubernetes
+On a hosted kubernetes cluster, for e.g. on GKE - where Google manages the kubernetes
 API server, users will have to bring up and maintain the proxy and federated servers
 themselves.
 Other system components like the various controllers, will not be aware of the
@@ -207,13 +202,6 @@ There were other alternatives that we had discussed.
   providing a centralised authentication and authorization service which all of
   the servers can use.
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

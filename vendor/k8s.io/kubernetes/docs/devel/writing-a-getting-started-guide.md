@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Writing a Getting Started Guide
 
 This page gives some advice for anyone planning to write or update a Getting Started Guide for Kubernetes.
@@ -48,7 +43,7 @@ These guidelines say *what* to do.  See the Rationale section for *why*.
 
 If you have a cluster partially working, but doing all the above steps seems like too much work,
 we still want to hear from you.  We suggest you write a blog post or a Gist, and we will link to it on our wiki page.
-Just file an issue or chat us on [Slack](../troubleshooting.md#slack) and one of the committers will link to it from the wiki.
+Just file an issue or chat us on [Slack](http://slack.kubernetes.io) and one of the committers will link to it from the wiki.
 
 ## Development Distro Guidelines
 
@@ -99,13 +94,6 @@ These guidelines say *what* to do.  See the Rationale section for *why*.
    if you use another Configuration Management tool -- you just have to do some manual steps
    during testing and deployment.
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

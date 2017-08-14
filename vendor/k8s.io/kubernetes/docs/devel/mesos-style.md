@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Building Mesos/Omega-style frameworks on Kubernetes
 
 ## Introduction
@@ -216,13 +211,6 @@ Omega is described [here](http://research.google.com/pubs/pub41684.html).
 Borg is described [here](http://research.google.com/pubs/pub43438.html).
 
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

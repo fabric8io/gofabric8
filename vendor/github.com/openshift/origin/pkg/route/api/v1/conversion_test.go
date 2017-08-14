@@ -39,22 +39,3 @@ func TestSupportingCamelConstants(t *testing.T) {
 		}
 	}
 }
-
-func TestDefaults(t *testing.T) {
-	obj := &v1.Route{
-		Spec: v1.RouteSpec{
-			To:  v1.RouteTargetReference{Name: "other"},
-			TLS: &v1.TLSConfig{},
-		},
-	}
-	out := &api.Route{}
-	if err := kapi.Scheme.Convert(obj, out, nil); err != nil {
-		t.Fatal(err)
-	}
-	if out.Spec.TLS.Termination != api.TLSTerminationEdge {
-		t.Errorf("did not default termination: %#v", out)
-	}
-	if out.Spec.To.Kind != "Service" {
-		t.Errorf("did not default object reference kind: %#v", out)
-	}
-}

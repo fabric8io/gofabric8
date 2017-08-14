@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 
 	"k8s.io/kubernetes/federation/pkg/dnsprovider"
 	"k8s.io/kubernetes/federation/pkg/dnsprovider/rrstype"
+	"strings"
 )
 
 const (
@@ -89,23 +90,60 @@ func (s *ServiceController) getClusterZoneNames(clusterName string) (zones []str
 	return client.cluster.Status.Zones, client.cluster.Status.Region, nil
 }
 
-// getFederationDNSZoneName returns the name of the managed DNS Zone configured for this federation
-func (s *ServiceController) getFederationDNSZoneName() (string, error) {
-	return s.zoneName, nil
+// getServiceDnsSuffix returns the DNS suffix to use when creating federated-service DNS records
+func (s *ServiceController) getServiceDnsSuffix() (string, error) {
+	return s.serviceDnsSuffix, nil
 }
 
-// getDnsZone is a hack around the fact that dnsprovider does not yet support a Get() method, only a List() method.  TODO:  Fix that.
-func getDnsZone(dnsZoneName string, dnsZonesInterface dnsprovider.Zones) (dnsprovider.Zone, error) {
+// getDnsZones returns the DNS zones matching dnsZoneName and dnsZoneID (if specified)
+func getDnsZones(dnsZoneName string, dnsZoneID string, dnsZonesInterface dnsprovider.Zones) ([]dnsprovider.Zone, error) {
+	// TODO: We need query-by-name and query-by-id functions
 	dnsZones, err := dnsZonesInterface.List()
 	if err != nil {
 		return nil, err
 	}
+
+	var matches []dnsprovider.Zone
+	findName := strings.TrimSuffix(dnsZoneName, ".")
 	for _, dnsZone := range dnsZones {
-		if dnsZone.Name() == dnsZoneName {
-			return dnsZone, nil
+		if dnsZoneID != "" {
+			if dnsZoneID != dnsZone.ID() {
+				continue
+			}
 		}
+		if findName != "" {
+			if strings.TrimSuffix(dnsZone.Name(), ".") != findName {
+				continue
+			}
+		}
+		matches = append(matches, dnsZone)
 	}
-	return nil, fmt.Errorf("DNS zone %s not found.", dnsZoneName)
+
+	return matches, nil
+}
+
+// getDnsZone returns the DNS zone, as identified by dnsZoneName and dnsZoneID
+// This is similar to getDnsZones, but returns an error if there are zero or multiple matching zones.
+func getDnsZone(dnsZoneName string, dnsZoneID string, dnsZonesInterface dnsprovider.Zones) (dnsprovider.Zone, error) {
+	dnsZones, err := getDnsZones(dnsZoneName, dnsZoneID, dnsZonesInterface)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(dnsZones) == 1 {
+		return dnsZones[0], nil
+	}
+
+	name := dnsZoneName
+	if dnsZoneID != "" {
+		name += "/" + dnsZoneID
+	}
+
+	if len(dnsZones) == 0 {
+		return nil, fmt.Errorf("DNS zone %s not found.", name)
+	} else {
+		return nil, fmt.Errorf("DNS zone %s is ambiguous (please specify zoneID).", name)
+	}
 }
 
 /* getRrset is a hack around the fact that dnsprovider.ResourceRecordSets interface does not yet include a Get() method, only a List() method.  TODO:  Fix that.
@@ -126,7 +164,7 @@ func getRrset(dnsName string, rrsetsInterface dnsprovider.ResourceRecordSets) (d
 	return returnVal, nil
 }
 
-/* getResolvedEndpoints perfoms DNS resolution on the provided slice of endpoints (which might be DNS names or IPv4 addresses)
+/* getResolvedEndpoints performs DNS resolution on the provided slice of endpoints (which might be DNS names or IPv4 addresses)
    and returns a list of IPv4 addresses.  If any of the endpoints are neither valid IPv4 addresses nor resolvable DNS names,
    non-nil error is also returned (possibly along with a partially complete list of resolved endpoints.
 */
@@ -135,7 +173,7 @@ func getResolvedEndpoints(endpoints []string) ([]string, error) {
 	for _, endpoint := range endpoints {
 		if net.ParseIP(endpoint) == nil {
 			// It's not a valid IP address, so assume it's a DNS name, and try to resolve it,
-			// replacing it's DNS name with it's IP addresses in expandedEndpoints
+			// replacing its DNS name with its IP addresses in expandedEndpoints
 			ipAddrs, err := net.LookupHost(endpoint)
 			if err != nil {
 				return resolvedEndpoints, err
@@ -152,11 +190,7 @@ func getResolvedEndpoints(endpoints []string) ([]string, error) {
 /* ensureDnsRrsets ensures (idempotently, and with minimum mutations) that all of the DNS resource record sets for dnsName are consistent with endpoints.
    if endpoints is nil or empty, a CNAME record to uplevelCname is ensured.
 */
-func (s *ServiceController) ensureDnsRrsets(dnsZoneName, dnsName string, endpoints []string, uplevelCname string) error {
-	dnsZone, err := getDnsZone(dnsZoneName, s.dnsZones)
-	if err != nil {
-		return err
-	}
+func (s *ServiceController) ensureDnsRrsets(dnsZone dnsprovider.Zone, dnsName string, endpoints []string, uplevelCname string) error {
 	rrsets, supported := dnsZone.ResourceRecordSets()
 	if !supported {
 		return fmt.Errorf("Failed to ensure DNS records for %s. DNS provider does not support the ResourceRecordSets interface.", dnsName)
@@ -173,7 +207,7 @@ func (s *ServiceController) ensureDnsRrsets(dnsZoneName, dnsName string, endpoin
 				glog.V(4).Infof("Creating CNAME to %q for %q", uplevelCname, dnsName)
 				newRrset := rrsets.New(dnsName, []string{uplevelCname}, minDnsTtl, rrstype.CNAME)
 				glog.V(4).Infof("Adding recordset %v", newRrset)
-				rrset, err = rrsets.Add(newRrset)
+				err = rrsets.StartChangeset().Add(newRrset).Apply()
 				if err != nil {
 					return err
 				}
@@ -192,7 +226,7 @@ func (s *ServiceController) ensureDnsRrsets(dnsZoneName, dnsName string, endpoin
 			}
 			newRrset := rrsets.New(dnsName, resolvedEndpoints, minDnsTtl, rrstype.A)
 			glog.V(4).Infof("Adding recordset %v", newRrset)
-			rrset, err = rrsets.Add(newRrset)
+			err = rrsets.StartChangeset().Add(newRrset).Apply()
 			if err != nil {
 				return err
 			}
@@ -205,24 +239,26 @@ func (s *ServiceController) ensureDnsRrsets(dnsZoneName, dnsName string, endpoin
 			// Need an appropriate CNAME record.  Check that we have it.
 			newRrset := rrsets.New(dnsName, []string{uplevelCname}, minDnsTtl, rrstype.CNAME)
 			glog.V(4).Infof("No healthy endpoints for %s.  Have recordset %v. Need recordset %v", dnsName, rrset, newRrset)
-			if rrset == newRrset {
-				// The existing rrset is equal to the required one - our work is done here
-				glog.V(4).Infof("Existing recordset %v is equal to needed recordset %v, our work is done here.", rrset, newRrset)
+			if dnsprovider.ResourceRecordSetsEquivalent(rrset, newRrset) {
+				// The existing rrset is equivalent to the required one - our work is done here
+				glog.V(4).Infof("Existing recordset %v is equivalent to needed recordset %v, our work is done here.", rrset, newRrset)
 				return nil
 			} else {
 				// Need to replace the existing one with a better one (or just remove it if we have no healthy endpoints).
-				// TODO: Ideally do these inside a transaction, or do an atomic update, but dnsprovider interface doesn't support that yet.
-				glog.V(4).Infof("Existing recordset %v is not equal to needed recordset %v, removing existing and adding needed.", rrset, newRrset)
-				if err = rrsets.Remove(rrset); err != nil {
-					return err
-				}
-				glog.V(4).Infof("Successfully removed existing recordset %v", rrset)
+				glog.V(4).Infof("Existing recordset %v not equivalent to needed recordset %v removing existing and adding needed.", rrset, newRrset)
+				changeSet := rrsets.StartChangeset()
+				changeSet.Remove(rrset)
 				if uplevelCname != "" {
-					if _, err = rrsets.Add(newRrset); err != nil {
+					changeSet.Add(newRrset)
+					if err := changeSet.Apply(); err != nil {
 						return err
 					}
-					glog.V(4).Infof("Successfully added needed recordset %v", newRrset)
+					glog.V(4).Infof("Successfully replaced needed recordset %v -> %v", rrset, newRrset)
 				} else {
+					if err := changeSet.Apply(); err != nil {
+						return err
+					}
+					glog.V(4).Infof("Successfully removed existing recordset %v", rrset)
 					glog.V(4).Infof("Uplevel CNAME is empty string. Not adding recordset %v", newRrset)
 				}
 			}
@@ -236,30 +272,30 @@ func (s *ServiceController) ensureDnsRrsets(dnsZoneName, dnsName string, endpoin
 			}
 			newRrset := rrsets.New(dnsName, resolvedEndpoints, minDnsTtl, rrstype.A)
 			glog.V(4).Infof("Have recordset %v. Need recordset %v", rrset, newRrset)
-			if rrset == newRrset {
-				glog.V(4).Infof("Existing recordset %v is equal to needed recordset %v, our work is done here.", rrset, newRrset)
+			if dnsprovider.ResourceRecordSetsEquivalent(rrset, newRrset) {
+				glog.V(4).Infof("Existing recordset %v is equivalent to needed recordset %v, our work is done here.", rrset, newRrset)
 				// TODO: We could be more thorough about checking for equivalence to avoid unnecessary updates, but in the
 				//       worst case we'll just replace what's there with an equivalent, if not exactly identical record set.
 				return nil
 			} else {
 				// Need to replace the existing one with a better one
-				// TODO: Ideally do these inside a transaction, or do an atomic update, but dnsprovider interface doesn't support that yet.
-				glog.V(4).Infof("Existing recordset %v is not equal to needed recordset %v, removing existing and adding needed.", rrset, newRrset)
-				if err = rrsets.Remove(rrset); err != nil {
+				glog.V(4).Infof("Existing recordset %v is not equivalent to needed recordset %v, removing existing and adding needed.", rrset, newRrset)
+				if err = rrsets.StartChangeset().Remove(rrset).Add(newRrset).Apply(); err != nil {
 					return err
 				}
-				glog.V(4).Infof("Successfully removed existing recordset %v", rrset)
-				if _, err = rrsets.Add(newRrset); err != nil {
-					return err
-				}
+				glog.V(4).Infof("Successfully replaced recordset %v -> %v", rrset, newRrset)
 			}
 		}
 	}
 	return nil
 }
 
-/* ensureDnsRecords ensures (idempotently, and with minimum mutations) that all of the DNS records for a service in a given cluster are correct, given the current state of that service in that cluster.  This should be called every time the state of a service might have changed (either w.r.t. it's loadblancer address, or if the number of healthy backend endpoints for that service transitioned from zero to non-zero (or vice verse).  Only shards of the service which have both a loadbalancer ingress IP address or hostname AND at least one healthy backend endpoint are included in DNS records for that service (at all of zone, region and global levels). All other addresses are removed.  Also, if no shards exist in the zone or region of the cluster, a CNAME reference to the next higher level is ensured to exist.
- */
+/* ensureDnsRecords ensures (idempotently, and with minimum mutations) that all of the DNS records for a service in a given cluster are correct,
+given the current state of that service in that cluster.  This should be called every time the state of a service might have changed
+(either w.r.t. it's loadbalancer address, or if the number of healthy backend endpoints for that service transitioned from zero to non-zero
+(or vice verse).  Only shards of the service which have both a loadbalancer ingress IP address or hostname AND at least one healthy backend endpoint
+are included in DNS records for that service (at all of zone, region and global levels). All other addresses are removed.  Also, if no shards exist
+in the zone or region of the cluster, a CNAME reference to the next higher level is ensured to exist. */
 func (s *ServiceController) ensureDnsRecords(clusterName string, cachedService *cachedService) error {
 	// Quinton: Pseudocode....
 	// See https://github.com/kubernetes/kubernetes/pull/25107#issuecomment-218026648
@@ -296,7 +332,7 @@ func (s *ServiceController) ensureDnsRecords(clusterName string, cachedService *
 	if zoneNames == nil {
 		return fmt.Errorf("failed to get cluster zone names")
 	}
-	dnsZoneName, err := s.getFederationDNSZoneName()
+	serviceDnsSuffix, err := s.getServiceDnsSuffix()
 	if err != nil {
 		return err
 	}
@@ -307,16 +343,21 @@ func (s *ServiceController) ensureDnsRecords(clusterName string, cachedService *
 	commonPrefix := serviceName + "." + namespaceName + "." + s.federationName + ".svc"
 	// dnsNames is the path up the DNS search tree, starting at the leaf
 	dnsNames := []string{
-		commonPrefix + "." + zoneNames[0] + "." + regionName + "." + dnsZoneName, // zone level - TODO might need other zone names for multi-zone clusters
-		commonPrefix + "." + regionName + "." + dnsZoneName,                      // region level, one up from zone level
-		commonPrefix + "." + dnsZoneName,                                         // global level, one up from region level
+		commonPrefix + "." + zoneNames[0] + "." + regionName + "." + serviceDnsSuffix, // zone level - TODO might need other zone names for multi-zone clusters
+		commonPrefix + "." + regionName + "." + serviceDnsSuffix,                      // region level, one up from zone level
+		commonPrefix + "." + serviceDnsSuffix,                                         // global level, one up from region level
 		"", // nowhere to go up from global level
 	}
 
 	endpoints := [][]string{zoneEndpoints, regionEndpoints, globalEndpoints}
 
+	dnsZone, err := getDnsZone(s.zoneName, s.zoneID, s.dnsZones)
+	if err != nil {
+		return err
+	}
+
 	for i, endpoint := range endpoints {
-		if err = s.ensureDnsRrsets(dnsZoneName, dnsNames[i], endpoint, dnsNames[i+1]); err != nil {
+		if err = s.ensureDnsRrsets(dnsZone, dnsNames[i], endpoint, dnsNames[i+1]); err != nil {
 			return err
 		}
 	}

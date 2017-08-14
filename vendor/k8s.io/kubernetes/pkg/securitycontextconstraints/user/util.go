@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import (
 	"strconv"
 
 	"k8s.io/kubernetes/pkg/api"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
 
 func AnnotationToIntPtr(sUID string) (*int64, error) {
@@ -32,9 +32,9 @@ func AnnotationToIntPtr(sUID string) (*int64, error) {
 	return &uid, nil
 }
 
-func GetAllocatedID(kClient client.Interface, pod *api.Pod, annotation string) (*int64, error) {
+func GetAllocatedID(kClient clientset.Interface, pod *api.Pod, annotation string) (*int64, error) {
 	if len(pod.Spec.ServiceAccountName) > 0 {
-		sa, err := kClient.ServiceAccounts(pod.Namespace).Get(pod.Spec.ServiceAccountName)
+		sa, err := kClient.Core().ServiceAccounts(pod.Namespace).Get(pod.Spec.ServiceAccountName)
 		if err != nil {
 			return nil, err
 		}
@@ -44,7 +44,7 @@ func GetAllocatedID(kClient client.Interface, pod *api.Pod, annotation string) (
 		}
 		return AnnotationToIntPtr(sUID)
 	} else {
-		ns, err := kClient.Namespaces().Get(pod.Namespace)
+		ns, err := kClient.Core().Namespaces().Get(pod.Namespace)
 		if err != nil {
 			return nil, err
 		}

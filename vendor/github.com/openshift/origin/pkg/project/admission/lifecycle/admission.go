@@ -4,20 +4,18 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
-	"strings"
 	"time"
 
 	"github.com/golang/glog"
 
 	"k8s.io/kubernetes/pkg/admission"
-	kapi "k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apimachinery/registered"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/util/sets"
 
-	"github.com/openshift/origin/pkg/api"
+	"github.com/openshift/origin/pkg/api/latest"
+	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	oadmission "github.com/openshift/origin/pkg/cmd/server/admission"
 	"github.com/openshift/origin/pkg/project/cache"
 	projectutil "github.com/openshift/origin/pkg/project/util"
@@ -36,22 +34,30 @@ type lifecycle struct {
 	cache  *cache.ProjectCache
 
 	// creatableResources is a set of resources that can be created even if the namespace is terminating
-	creatableResources sets.String
+	creatableResources map[unversioned.GroupResource]bool
 }
 
-var recommendedCreatableResources = sets.NewString("resourceaccessreviews", "localresourceaccessreviews")
+var recommendedCreatableResources = map[unversioned.GroupResource]bool{
+	authorizationapi.Resource("resourceaccessreviews"):      true,
+	authorizationapi.Resource("localresourceaccessreviews"): true,
+	authorizationapi.Resource("subjectaccessreviews"):       true,
+	authorizationapi.Resource("localsubjectaccessreviews"):  true,
+	authorizationapi.Resource("selfsubjectrulesreviews"):    true,
+	authorizationapi.Resource("subjectrulesreviews"):        true,
+}
 var _ = oadmission.WantsProjectCache(&lifecycle{})
-var _ = oadmission.Validator(&lifecycle{})
 
-// Admit enforces that a namespace must exist in order to associate content with it.
-// Admit enforces that a namespace that is terminating cannot accept new content being associated with it.
+// Admit enforces that a namespace must have the openshift finalizer associated with it in order to create origin API objects within it
 func (e *lifecycle) Admit(a admission.Attributes) (err error) {
 	if len(a.GetNamespace()) == 0 {
 		return nil
 	}
-	// always allow a SAR request through, the SAR will return information about
-	// the ability to take action on the object, no need to verify it here.
-	if isSubjectAccessReview(a) {
+	// only pay attention to origin resources
+	if !latest.OriginKind(a.GetKind()) {
+		return nil
+	}
+	// always allow creatable resources through.  These requests should always be allowed.
+	if e.creatableResources[a.GetResource().GroupResource()] {
 		return nil
 	}
 
@@ -68,17 +74,6 @@ func (e *lifecycle) Admit(a admission.Attributes) (err error) {
 		return nil
 	}
 
-	// we want to allow someone to delete something in case it was phantom created somehow
-	if a.GetOperation() == "DELETE" {
-		return nil
-	}
-
-	name := "Unknown"
-	obj := a.GetObject()
-	if obj != nil {
-		name, _ = meta.NewAccessor().Name(obj)
-	}
-
 	if !e.cache.Running() {
 		return admission.NewForbidden(a, err)
 	}
@@ -86,14 +81,6 @@ func (e *lifecycle) Admit(a admission.Attributes) (err error) {
 	namespace, err := e.cache.GetNamespace(a.GetNamespace())
 	if err != nil {
 		return admission.NewForbidden(a, err)
-	}
-
-	if a.GetOperation() != "CREATE" {
-		return nil
-	}
-
-	if namespace.Status.Phase == kapi.NamespaceTerminating && !e.creatableResources.Has(strings.ToLower(a.GetResource().Resource)) {
-		return apierrors.NewForbidden(a.GetResource().GroupResource(), name, fmt.Errorf("Namespace %s is terminating", a.GetNamespace()))
 	}
 
 	// in case of concurrency issues, we will retry this logic
@@ -125,7 +112,7 @@ func (e *lifecycle) Admit(a admission.Attributes) (err error) {
 }
 
 func (e *lifecycle) Handles(operation admission.Operation) bool {
-	return true
+	return operation == admission.Create
 }
 
 func (e *lifecycle) SetProjectCache(c *cache.ProjectCache) {
@@ -139,18 +126,9 @@ func (e *lifecycle) Validate() error {
 	return nil
 }
 
-func NewLifecycle(client clientset.Interface, creatableResources sets.String) (admission.Interface, error) {
+func NewLifecycle(client clientset.Interface, creatableResources map[unversioned.GroupResource]bool) (admission.Interface, error) {
 	return &lifecycle{
 		client:             client,
 		creatableResources: creatableResources,
 	}, nil
-}
-
-var (
-	sar  = api.Kind("SubjectAccessReview")
-	lsar = api.Kind("LocalSubjectAccessReview")
-)
-
-func isSubjectAccessReview(a admission.Attributes) bool {
-	return a.GetKind().GroupKind() == sar || a.GetKind().GroupKind() == lsar
 }

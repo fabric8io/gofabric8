@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Job Controller
 
 ## Abstract
@@ -93,7 +88,7 @@ type JobSpec struct {
 }
 ```
 
-`JobStatus` structure is defined to contain informations about pods executing
+`JobStatus` structure is defined to contain information about pods executing
 specified job.  The structure holds information about pods currently executing
 the job.
 
@@ -157,13 +152,6 @@ Below are the possible future extensions to the Job controller:
 * Be able to inspect Pods running a Job, especially after a Job has finished, e.g.
   by providing pointers to Pods in the JobStatus ([see comment](https://github.com/kubernetes/kubernetes/pull/11746/files#r37142628)).
 * help users avoid non-unique label selectors ([see this proposal](../../docs/design/selector-generation.md))
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

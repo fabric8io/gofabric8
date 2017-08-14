@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Admission control plugin: LimitRanger
 
 ## Background
@@ -18,6 +13,7 @@ as part of admission control.
 4. Ability to specify default resource limits for a container
 5. Ability to specify default resource requests for a container
 6. Ability to enforce a ratio between request and limit for a resource.
+7. Ability to enforce min/max storage requests for persistent volume claims
 
 ## Data Model
 
@@ -71,12 +67,12 @@ type LimitRange struct {
   TypeMeta `json:",inline"`
   // Standard object's metadata.
   // More info: 
-  //    http://releases.k8s.io/release-1.3/docs/devel/api-conventions.md#metadata
+  //    http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#metadata
   ObjectMeta `json:"metadata,omitempty"`
 
   // Spec defines the limits enforced.
   // More info:
-  //   http://releases.k8s.io/release-1.3/docs/devel/api-conventions.md#spec-and-status
+  //   http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#spec-and-status
   Spec LimitRangeSpec `json:"spec,omitempty"`
 }
 
@@ -85,12 +81,12 @@ type LimitRangeList struct {
   TypeMeta `json:",inline"`
   // Standard list metadata.
   // More info: 
-  //   http://releases.k8s.io/release-1.3/docs/devel/api-conventions.md#types-kinds
+  //   http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#types-kinds
   ListMeta `json:"metadata,omitempty"`
 
   // Items is a list of LimitRange objects.
   // More info:
-  //   http://releases.k8s.io/release-1.3/docs/design/admission_control_limit_range.md
+  //   http://releases.k8s.io/HEAD/docs/design/admission_control_limit_range.md
   Items []LimitRange `json:"items"`
 }
 ```
@@ -180,6 +176,23 @@ Across all containers in pod, the following must hold true
 | Max | Limit (required) <= Max |
 | LimitRequestRatio | LimitRequestRatio <= ( Limit (required, non-zero) / Request (non-zero) ) |
 
+**Type: PersistentVolumeClaim**
+
+Supported Resources:
+
+1. storage
+
+Supported Constraints:
+
+Across all claims in a namespace, the following must hold true:
+
+| Constraint | Behavior |
+| ---------- | -------- |
+| Min | Min >= Request (required) |
+| Max | Max <= Request (required) |
+
+Supported Defaults: None. Storage is a required field in `PersistentVolumeClaim`, so defaults are not applied at this time.
+
 ## Run-time configuration
 
 The default ```LimitRange``` that is applied via Salt configuration will be
@@ -214,13 +227,6 @@ the following would happen.
 2. The incoming container memory would request 250Mi with a limit of 500Mi
 3. If the container is later resized, it's cpu would be constrained to between
 .1 and 1 and the ratio of limit to request could not exceed 4.
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/design/admission_control_limit_range.md?pixel)]()

@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 .PHONY: all netexec image push clean
 
-TAG = 1.5
+TAG = 1.7
 PREFIX = gcr.io/google_containers
 
 
@@ -24,10 +24,10 @@ netexec: netexec.go
 	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w' ./netexec.go
 
 image: netexec
-	docker build -t $(PREFIX)/netexec:$(TAG) .
+	docker build --pull -t $(PREFIX)/netexec:$(TAG) .
 
 push: image
-	gcloud docker push $(PREFIX)/netexec:$(TAG)
+	gcloud docker -- push $(PREFIX)/netexec:$(TAG)
 
 clean:
 	rm -f netexec

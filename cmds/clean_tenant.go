@@ -29,7 +29,7 @@ type cleanUpTenantFlags struct {
 }
 
 // NewCmdCleanUpTenant delete files in the tenants content repository
-func NewCmdCleanUpTenant(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCleanUpTenant(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tenant",
 		Short: "Hard delete of your tenant pipelines, apps, jobs and releases",
@@ -50,7 +50,7 @@ func NewCmdCleanUpTenant(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *cleanUpTenantFlags) cleanTenant(f *cmdutil.Factory) error {
+func (p *cleanUpTenantFlags) cleanTenant(f cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)

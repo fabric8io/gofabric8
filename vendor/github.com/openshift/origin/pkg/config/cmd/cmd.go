@@ -35,22 +35,34 @@ type Mapper interface {
 	InfoForObject(obj runtime.Object, preferredGVKs []unversioned.GroupVersionKind) (*resource.Info, error)
 }
 
+// IgnoreErrorFunc provides a way to filter errors during the Bulk.Run.  If this function returns
+// true the error will NOT be added to the slice of errors returned by Bulk.Run.
+//
+// This may be used in conjunction with
+// BulkAction.WithMessageAndPrefix if you are reporting some errors as warnings.
+type IgnoreErrorFunc func(e error) bool
+
 // Bulk provides helpers for iterating over a list of items
 type Bulk struct {
 	Mapper Mapper
 
-	Op    OpFunc
-	After AfterFunc
-	Retry RetryFunc
+	Op          OpFunc
+	After       AfterFunc
+	Retry       RetryFunc
+	IgnoreError IgnoreErrorFunc
 }
 
-// Create attempts to create each item generically, gathering all errors in the
+// Run attempts to create each item generically, gathering all errors in the
 // event a failure occurs. The contents of list will be updated to include the
 // version from the server.
 func (b *Bulk) Run(list *kapi.List, namespace string) []error {
 	after := b.After
 	if after == nil {
 		after = func(*resource.Info, error) bool { return false }
+	}
+	ignoreError := b.IgnoreError
+	if ignoreError == nil {
+		ignoreError = func(e error) bool { return false }
 	}
 
 	errs := []error{}
@@ -70,7 +82,9 @@ func (b *Bulk) Run(list *kapi.List, namespace string) []error {
 			}
 		}
 		if err != nil {
-			errs = append(errs, err)
+			if !ignoreError(err) {
+				errs = append(errs, err)
+			}
 			if after(info, err) {
 				break
 			}
@@ -85,26 +99,22 @@ func (b *Bulk) Run(list *kapi.List, namespace string) []error {
 	return errs
 }
 
-func NewPrintNameOrErrorAfter(mapper meta.RESTMapper, short bool, operation string, out, errs io.Writer) AfterFunc {
-	return NewPrintNameOrErrorAfterIndent(mapper, short, operation, out, errs, "")
-}
-
-func NewPrintNameOrErrorAfterIndent(mapper meta.RESTMapper, short bool, operation string, out, errs io.Writer, indent string) AfterFunc {
+func NewPrintNameOrErrorAfterIndent(mapper meta.RESTMapper, short bool, operation string, out, errs io.Writer, dryRun bool, indent string, prefixForError PrefixForError) AfterFunc {
 	return func(info *resource.Info, err error) bool {
 		if err == nil {
 			fmt.Fprintf(out, indent)
-			cmdutil.PrintSuccess(mapper, short, out, info.Mapping.Resource, info.Name, operation)
+			cmdutil.PrintSuccess(mapper, short, out, info.Mapping.Resource, info.Name, dryRun, operation)
 		} else {
-			fmt.Fprintf(errs, "%serror: %v\n", indent, err)
+			fmt.Fprintf(errs, "%s%s: %v\n", indent, prefixForError(err), err)
 		}
 		return false
 	}
 }
 
-func NewPrintErrorAfter(mapper meta.RESTMapper, errs io.Writer) func(*resource.Info, error) bool {
+func NewPrintErrorAfter(mapper meta.RESTMapper, errs io.Writer, prefixForError PrefixForError) func(*resource.Info, error) bool {
 	return func(info *resource.Info, err error) bool {
 		if err != nil {
-			fmt.Fprintf(errs, "error: %v\n", err)
+			fmt.Fprintf(errs, "%s: %v\n", prefixForError(err), err)
 		}
 		return false
 	}
@@ -121,6 +131,9 @@ func HaltOnError(fn AfterFunc) AfterFunc {
 
 // Create is the default create operation for a generic resource.
 func Create(info *resource.Info, namespace string, obj runtime.Object) (runtime.Object, error) {
+	if len(info.Namespace) > 0 {
+		namespace = info.Namespace
+	}
 	return resource.NewHelper(info.Client, info.Mapping).Create(namespace, false, obj)
 }
 
@@ -165,6 +178,8 @@ func (b *BulkAction) BindForAction(flags *pflag.FlagSet) {
 func (b *BulkAction) BindForOutput(flags *pflag.FlagSet) {
 	flags.StringVarP(&b.Output, "output", "o", "", "Output results as yaml or json instead of executing, or use name for succint output (resource/name).")
 	flags.BoolVar(&b.DryRun, "dry-run", false, "If true, show the result of the operation without performing it.")
+	flags.Bool("no-headers", false, "Omit table headers for default output.")
+	flags.MarkHidden("no-headers")
 }
 
 // Compact sets the output to a minimal set
@@ -188,22 +203,29 @@ func (b *BulkAction) DefaultIndent() string {
 	return ""
 }
 
-func (b BulkAction) WithMessage(action, individual string) Runner {
+// PrefixForError allows customization of the prefix that will be printed for any error that occurs in the BulkAction.
+type PrefixForError func(e error) string
+
+func (b BulkAction) WithMessageAndPrefix(action, individual string, prefixForError PrefixForError) Runner {
 	b.Action = action
 	switch {
 	// TODO: this should be b printer
 	case b.Output == "":
-		b.Bulk.After = NewPrintNameOrErrorAfterIndent(b.Bulk.Mapper, false, individual, b.Out, b.ErrOut, b.DefaultIndent())
+		b.Bulk.After = NewPrintNameOrErrorAfterIndent(b.Bulk.Mapper, false, individual, b.Out, b.ErrOut, b.DryRun, b.DefaultIndent(), prefixForError)
 	// TODO: needs to be unified with the name printer (incremental vs exact execution), possibly by creating b synthetic printer?
 	case b.Output == "name":
-		b.Bulk.After = NewPrintNameOrErrorAfterIndent(b.Bulk.Mapper, true, individual, b.Out, b.ErrOut, b.DefaultIndent())
+		b.Bulk.After = NewPrintNameOrErrorAfterIndent(b.Bulk.Mapper, true, individual, b.Out, b.ErrOut, b.DryRun, b.DefaultIndent(), prefixForError)
 	default:
-		b.Bulk.After = NewPrintErrorAfter(b.Bulk.Mapper, b.ErrOut)
+		b.Bulk.After = NewPrintErrorAfter(b.Bulk.Mapper, b.ErrOut, prefixForError)
 		if b.StopOnError {
 			b.Bulk.After = HaltOnError(b.Bulk.After)
 		}
 	}
 	return &b
+}
+
+func (b BulkAction) WithMessage(action, individual string) Runner {
+	return b.WithMessageAndPrefix(action, individual, func(e error) string { return "error" })
 }
 
 func (b *BulkAction) Run(list *kapi.List, namespace string) []error {
@@ -216,7 +238,7 @@ func (b *BulkAction) Run(list *kapi.List, namespace string) []error {
 	var modifier string
 	if b.DryRun {
 		run.Op = NoOp
-		modifier = " (DRY RUN)"
+		modifier = " (dry run)"
 	}
 
 	errs := run.Run(list, namespace)

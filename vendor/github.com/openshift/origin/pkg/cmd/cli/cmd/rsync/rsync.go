@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	"github.com/openshift/origin/pkg/util/fsnotification"
 )
@@ -20,27 +21,29 @@ const (
 	// RsyncRecommendedName is the recommended name for the rsync command
 	RsyncRecommendedName = "rsync"
 
-	rsyncLong = `
-Copy local files to or from a pod container
-
-This command will copy local files to or from a remote container.
-It only copies the changed files using the rsync command from your OS.
-To ensure optimum performance, install rsync locally. In UNIX systems,
-use your package manager. In Windows, install cwRsync from
-https://www.itefix.net/cwrsync.
-
-If no container is specified, the first container of the pod is used
-for the copy.`
-
-	rsyncExample = `
-  # Synchronize a local directory with a pod directory
-  %[1]s ./local/dir/ POD:/remote/dir
-
-  # Synchronize a pod directory with a local directory
-  %[1]s POD:/remote/dir/ ./local/dir`
-
 	noRsyncUnixWarning    = "WARNING: rsync command not found in path. Please use your package manager to install it.\n"
 	noRsyncWindowsWarning = "WARNING: rsync command not found in path. Download cwRsync for Windows and add it to your PATH.\n"
+)
+
+var (
+	rsyncLong = templates.LongDesc(`
+		Copy local files to or from a pod container
+
+		This command will copy local files to or from a remote container.
+		It only copies the changed files using the rsync command from your OS.
+		To ensure optimum performance, install rsync locally. In UNIX systems,
+		use your package manager. In Windows, install cwRsync from
+		https://www.itefix.net/cwrsync.
+
+		If no container is specified, the first container of the pod is used
+		for the copy.`)
+
+	rsyncExample = templates.Examples(`
+	  # Synchronize a local directory with a pod directory
+	  %[1]s ./local/dir/ POD:/remote/dir
+
+	  # Synchronize a pod directory with a local directory
+	  %[1]s POD:/remote/dir/ ./local/dir`)
 )
 
 // copyStrategy
@@ -112,11 +115,11 @@ func NewCmdRsync(name, parent string, f *clientcmd.Factory, out, errOut io.Write
 
 	// Flags for rsync options, Must match rsync flag names
 	cmd.Flags().BoolVarP(&o.Quiet, "quiet", "q", false, "Suppress non-error messages")
-	cmd.Flags().BoolVar(&o.Delete, "delete", false, "Delete files not present in source")
-	cmd.Flags().StringSliceVar(&o.RsyncExclude, "exclude", nil, "rsync - exclude files matching specified pattern")
-	cmd.Flags().StringSliceVar(&o.RsyncInclude, "include", nil, "rsync - include files matching specified pattern")
-	cmd.Flags().BoolVar(&o.RsyncProgress, "progress", false, "rsync - show progress during transfer")
-	cmd.Flags().BoolVar(&o.RsyncNoPerms, "no-perms", false, "rsync - do not transfer permissions")
+	cmd.Flags().BoolVar(&o.Delete, "delete", false, "If true, delete files not present in source")
+	cmd.Flags().StringSliceVar(&o.RsyncExclude, "exclude", nil, "If true, exclude files matching specified pattern")
+	cmd.Flags().StringSliceVar(&o.RsyncInclude, "include", nil, "If true, include files matching specified pattern")
+	cmd.Flags().BoolVar(&o.RsyncProgress, "progress", false, "If true, show progress during transfer")
+	cmd.Flags().BoolVar(&o.RsyncNoPerms, "no-perms", false, "If true, do not transfer permissions")
 	cmd.Flags().BoolVarP(&o.Watch, "watch", "w", false, "Watch directory for changes and resync automatically")
 	return cmd
 }

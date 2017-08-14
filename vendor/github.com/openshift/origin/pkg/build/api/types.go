@@ -19,6 +19,14 @@ const (
 	BuildCloneAnnotation = "openshift.io/build.clone-of"
 	// BuildPodNameAnnotation is an annotation whose value is the name of the pod running this build
 	BuildPodNameAnnotation = "openshift.io/build.pod-name"
+	// BuildJenkinsStatusJSONAnnotation is an annotation holding the Jenkins status information
+	BuildJenkinsStatusJSONAnnotation = "openshift.io/jenkins-status-json"
+	// BuildJenkinsLogURLAnnotation is an annotation holding a link to the Jenkins build console log
+	BuildJenkinsLogURLAnnotation = "openshift.io/jenkins-log-url"
+	// BuildJenkinsBuildURIAnnotation is an annotation holding a link to the Jenkins build
+	BuildJenkinsBuildURIAnnotation = "openshift.io/jenkins-build-uri"
+	// BuildSourceSecretMatchURIAnnotationPrefix is a prefix for annotations on a Secret which indicate a source URI against which the Secret can be used
+	BuildSourceSecretMatchURIAnnotationPrefix = "build.openshift.io/source-secret-match-uri-"
 	// BuildLabel is the key of a Pod label whose value is the Name of a Build which is run.
 	// NOTE: The value for this label may not contain the entire Build name because it will be
 	// truncated to maximum label length.
@@ -46,6 +54,11 @@ const (
 	// BuildConfigPausedAnnotation is an annotation that marks a BuildConfig as paused.
 	// New Builds cannot be instantiated from a paused BuildConfig.
 	BuildConfigPausedAnnotation = "openshift.io/build-config.paused"
+	// BuildAcceptedAnnotation is an annotation used to update a build that can now be
+	// run based on the RunPolicy (e.g. Serial). Updating the build with this annotation
+	// forces the build to be processed by the build controller queue without waiting
+	// for a resync.
+	BuildAcceptedAnnotation = "build.openshift.io/accepted"
 )
 
 // +genclient=true
@@ -106,7 +119,21 @@ type CommonSpec struct {
 	// be active on a node before the system actively tries to terminate the
 	// build; value must be positive integer.
 	CompletionDeadlineSeconds *int64
+
+	// NodeSelector is a selector which must be true for the build pod to fit on a node
+	// If nil, it can be overridden by default build nodeselector values for the cluster.
+	// If set to an empty map or a map with any values, default build nodeselector values
+	// are ignored.
+	NodeSelector map[string]string
 }
+
+const (
+	BuildTriggerCauseManualMsg  = "Manually triggered"
+	BuildTriggerCauseConfigMsg  = "Build configuration change"
+	BuildTriggerCauseImageMsg   = "Image change"
+	BuildTriggerCauseGithubMsg  = "GitHub WebHook"
+	BuildTriggerCauseGenericMsg = "Generic WebHook"
+)
 
 // BuildTriggerCause holds information about a triggered build. It is used for
 // displaying build trigger data for each build and build configuration in oc
@@ -198,6 +225,9 @@ type BuildStatus struct {
 
 	// Config is an ObjectReference to the BuildConfig this Build is based on.
 	Config *kapi.ObjectReference
+
+	// Output describes the Docker image the build has produced.
+	Output BuildStatusOutput
 }
 
 // BuildPhase represents the status of a build at a point in time.
@@ -240,33 +270,101 @@ const (
 
 	// StatusReasonCannotCreateBuildPodSpec is an error condition when the build
 	// strategy cannot create a build pod spec.
-	StatusReasonCannotCreateBuildPodSpec = "CannotCreateBuildPodSpec"
+	StatusReasonCannotCreateBuildPodSpec StatusReason = "CannotCreateBuildPodSpec"
 
 	// StatusReasonCannotCreateBuildPod is an error condition when a build pod
 	// cannot be created.
-	StatusReasonCannotCreateBuildPod = "CannotCreateBuildPod"
+	StatusReasonCannotCreateBuildPod StatusReason = "CannotCreateBuildPod"
 
 	// StatusReasonInvalidOutputReference is an error condition when the build
 	// output is an invalid reference.
-	StatusReasonInvalidOutputReference = "InvalidOutputReference"
+	StatusReasonInvalidOutputReference StatusReason = "InvalidOutputReference"
 
 	// StatusReasonCancelBuildFailed is an error condition when cancelling a build
 	// fails.
-	StatusReasonCancelBuildFailed = "CancelBuildFailed"
+	StatusReasonCancelBuildFailed StatusReason = "CancelBuildFailed"
 
 	// StatusReasonBuildPodDeleted is an error condition when the build pod is
 	// deleted before build completion.
-	StatusReasonBuildPodDeleted = "BuildPodDeleted"
+	StatusReasonBuildPodDeleted StatusReason = "BuildPodDeleted"
 
 	// StatusReasonExceededRetryTimeout is an error condition when the build has
 	// not completed and retrying the build times out.
-	StatusReasonExceededRetryTimeout = "ExceededRetryTimeout"
+	StatusReasonExceededRetryTimeout StatusReason = "ExceededRetryTimeout"
 
 	// StatusReasonMissingPushSecret indicates that the build is missing required
 	// secret for pushing the output image.
 	// The build will stay in the pending state until the secret is created, or the build times out.
-	StatusReasonMissingPushSecret = "MissingPushSecret"
+	StatusReasonMissingPushSecret StatusReason = "MissingPushSecret"
+
+	// StatusReasonPostCommitHookFailed indicates the post-commit hook failed.
+	StatusReasonPostCommitHookFailed StatusReason = "PostCommitHookFailed"
+
+	// StatusReasonPushImageToRegistryFailed indicates that an image failed to be
+	// pushed to the registry.
+	StatusReasonPushImageToRegistryFailed StatusReason = "PushImageToRegistryFailed"
+
+	// StatusReasonPullBuilderImageFailed indicates that we failed to pull the
+	// builder image.
+	StatusReasonPullBuilderImageFailed StatusReason = "PullBuilderImageFailed"
+
+	// StatusReasonFetchSourceFailed indicates that fetching the source of the
+	// build has failed.
+	StatusReasonFetchSourceFailed StatusReason = "FetchSourceFailed"
+
+	// StatusReasonInvalidContextDirectory indicates that the supplied
+	// contextDir does not exist
+	StatusReasonInvalidContextDirectory StatusReason = "InvalidContextDirectory"
+
+	// StatusReasonCancelledBuild indicates that the build was cancelled by the
+	// user.
+	StatusReasonCancelledBuild StatusReason = "CancelledBuild"
+
+	// StatusReasonDockerBuildFailed indicates that the docker build strategy has
+	// failed.
+	StatusReasonDockerBuildFailed StatusReason = "DockerBuildFailed"
+
+	// StatusReasonBuildPodExists indicates that the build tried to create a
+	// build pod but one was already present.
+	StatusReasonBuildPodExists StatusReason = "BuildPodExists"
 )
+
+// NOTE: These messages might change.
+const (
+	StatusMessageCannotCreateBuildPodSpec  = "Failed to create pod spec."
+	StatusMessageCannotCreateBuildPod      = "Failed creating build pod."
+	StatusMessageInvalidOutputRef          = "Output image could not be resolved."
+	StatusMessageCancelBuildFailed         = "Failed to cancel build."
+	StatusMessageBuildPodDeleted           = "The pod for this build was deleted before the build completed."
+	StatusMessageExceededRetryTimeout      = "Build did not complete and retrying timed out."
+	StatusMessageMissingPushSecret         = "Missing push secret."
+	StatusMessagePostCommitHookFailed      = "Build failed because of post commit hook."
+	StatusMessagePushImageToRegistryFailed = "Failed to push the image to the registry."
+	StatusMessagePullBuilderImageFailed    = "Failed pulling builder image."
+	StatusMessageFetchSourceFailed         = "Failed to fetch the input source."
+	StatusMessageInvalidContextDirectory   = "The supplied context directory does not exist."
+	StatusMessageCancelledBuild            = "The build was cancelled by the user."
+	StatusMessageDockerBuildFailed         = "Docker build strategy has failed."
+	StatusMessageBuildPodExists            = "The pod for this build already exists and is older than the build."
+)
+
+// BuildStatusOutput contains the status of the built image.
+type BuildStatusOutput struct {
+	// To describes the status of the built image being pushed to a registry.
+	To *BuildStatusOutputTo
+}
+
+// BuildStatusOutputTo describes the status of the built image with regards to
+// image registry to which it was supposed to be pushed.
+type BuildStatusOutputTo struct {
+	// ImageDigest is the digest of the built Docker image. The digest uniquely
+	// identifies the image in the registry to which it was pushed.
+	//
+	// Please note that this field may not always be set even if the push
+	// completes successfully - e.g. when the registry returns no digest or
+	// returns it in a format that the builder doesn't understand.
+	ImageDigest string
+}
 
 // BuildSource is the input used for the build.
 type BuildSource struct {
@@ -387,6 +485,18 @@ type GitSourceRevision struct {
 	Message string
 }
 
+// ProxyConfig defines what proxies to use for an operation
+type ProxyConfig struct {
+	// HTTPProxy is a proxy used to reach the git repository over http
+	HTTPProxy *string
+
+	// HTTPSProxy is a proxy used to reach the git repository over https
+	HTTPSProxy *string
+
+	// NoProxy is the list of domains for which the proxy should not be used
+	NoProxy *string
+}
+
 // GitBuildSource defines the parameters of a Git SCM
 type GitBuildSource struct {
 	// URI points to the source that will be built. The structure of the source
@@ -396,11 +506,8 @@ type GitBuildSource struct {
 	// Ref is the branch/tag/ref to build.
 	Ref string
 
-	// HTTPProxy is a proxy used to reach the git repository over http
-	HTTPProxy *string
-
-	// HTTPSProxy is a proxy used to reach the git repository over https
-	HTTPSProxy *string
+	// ProxyConfig defines the proxies to use for the git clone operation
+	ProxyConfig
 }
 
 // SourceControlUser defines the identity of a user of source control
@@ -646,6 +753,19 @@ type BuildOutput struct {
 	// up the authentication for executing the Docker push to authentication
 	// enabled Docker Registry (or Docker Hub).
 	PushSecret *kapi.LocalObjectReference
+
+	// ImageLabels define a list of labels that are applied to the resulting image. If there
+	// are multiple labels with the same name then the last one in the list is used.
+	ImageLabels []ImageLabel
+}
+
+// ImageLabel represents a label applied to the resulting image.
+type ImageLabel struct {
+	// Name defines the name of the label. It must have non-zero length.
+	Name string
+
+	// Value defines the literal value of the label.
+	Value string
 }
 
 // BuildConfig is a template which can be used to create new builds.
@@ -806,6 +926,7 @@ type GitInfo struct {
 	// Refs is a list of GitRefs for the provided repo - generally sent
 	// when used from a post-receive hook. This field is optional and is
 	// used when sending multiple refs
+	// +k8s:conversion-gen=false
 	Refs []GitRefInfo
 }
 

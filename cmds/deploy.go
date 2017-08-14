@@ -68,8 +68,9 @@ import (
 	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/apis/extensions/v1beta1"
-	"k8s.io/kubernetes/pkg/client/restclient"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	restclient "k8s.io/kubernetes/pkg/client/restclient"
+
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/runtime"
 )
@@ -175,7 +176,7 @@ type DefaultFabric8Deployment struct {
 	storageclassWait   bool
 }
 
-type createFunc func(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error)
+type createFunc func(c *clientset.Clientset, f cmdutil.Factory, name string) (Result, error)
 
 func isFlag(cmd *cobra.Command, name string) bool {
 	flag := cmd.Flags().Lookup(name)
@@ -185,7 +186,7 @@ func isFlag(cmd *cobra.Command, name string) bool {
 	return false
 }
 
-func NewCmdDeploy(f *cmdutil.Factory) *cobra.Command {
+func NewCmdDeploy(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deploy",
 		Short: "Deploy fabric8 to your Kubernetes or OpenShift environment",
@@ -289,7 +290,7 @@ func initSchema() {
 	oauthapiv1.AddToScheme(api.Scheme)
 }
 
-func deploy(f *cmdutil.Factory, d DefaultFabric8Deployment) {
+func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	if len(d.namespace) > 0 {
@@ -547,7 +548,7 @@ oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:in
 	}
 }
 
-func deployPackage(packageName, mavenRepo, domain, apiserver string, legacyPackage bool, d DefaultFabric8Deployment, typeOfMaster util.MasterType, ns string, c *k8sclient.Client, oc *oclient.Client, params map[string]string) (bool, error) {
+func deployPackage(packageName, mavenRepo, domain, apiserver string, legacyPackage bool, d DefaultFabric8Deployment, typeOfMaster util.MasterType, ns string, c *clientset.Clientset, oc *oclient.Client, params map[string]string) (bool, error) {
 
 	uri, legacyPackage, err := getTemplateURI(packageName, mavenRepo, legacyPackage, d, typeOfMaster)
 	if err != nil {
@@ -684,7 +685,7 @@ func waitForStorageClass() {
 	}
 }
 
-func validateSystemKubernetesVersion(c *k8sclient.Client) error {
+func validateSystemKubernetesVersion(c *clientset.Clientset) error {
 	info, err := c.ServerVersion()
 	if err != nil {
 		return fmt.Errorf("Could not load the ServerVersion due to %v", err)
@@ -722,14 +723,14 @@ func logPackageVersion(packageName string, version string) {
 	util.Info("\n\n")
 }
 
-func updateExposeControllerConfig(c *k8sclient.Client, ns string, apiserver string, domain string, mini bool, useLoadBalancer bool) {
+func updateExposeControllerConfig(c *clientset.Clientset, ns string, apiserver string, domain string, mini bool, useLoadBalancer bool) {
 	// create a populate the exposecontroller config map
 	cfgms := c.ConfigMaps(ns)
 
 	_, err := cfgms.Get(exposecontrollerCM)
 	if err == nil {
 		util.Infof("\nRecreating configmap %s \n", exposecontrollerCM)
-		err = cfgms.Delete(exposecontrollerCM)
+		err = cfgms.Delete(exposecontrollerCM, nil)
 		if err != nil {
 			printError("\nError deleting ConfigMap: "+exposecontrollerCM, err)
 		}
@@ -761,7 +762,7 @@ func updateExposeControllerConfig(c *k8sclient.Client, ns string, apiserver stri
 	}
 }
 
-func createMissingPVs(c *k8sclient.Client, ns string) {
+func createMissingPVs(c *clientset.Clientset, ns string) {
 	found, pvcs, pendingClaimNames := findPendingPVs(c, ns)
 	if found {
 		sshCommand := ""
@@ -770,7 +771,7 @@ func createMissingPVs(c *k8sclient.Client, ns string) {
 		for _, item := range items {
 			status := item.Status.Phase
 			if status == api.ClaimPending || status == api.ClaimLost {
-				err := c.PersistentVolumeClaims(ns).Delete(item.ObjectMeta.Name)
+				err := c.PersistentVolumeClaims(ns).Delete(item.ObjectMeta.Name, nil)
 				if err != nil {
 					util.Infof("Error deleting PVC %s\n", item.ObjectMeta.Name)
 				} else {
@@ -797,7 +798,7 @@ func createMissingPVs(c *k8sclient.Client, ns string) {
 	}
 }
 
-func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns string, domain string, c *k8sclient.Client) {
+func printSummary(typeOfMaster util.MasterType, externalNodeName string, ns string, domain string, c *clientset.Clientset) {
 	util.Info("\n")
 	util.Info("-------------------------\n")
 	util.Info("\n")
@@ -834,7 +835,7 @@ func getClientTypeName(typeOfMaster util.MasterType) string {
 	return "kubectl"
 }
 
-func addIngressInfraLabel(c *k8sclient.Client, ns string) string {
+func addIngressInfraLabel(c *clientset.Clientset, ns string) string {
 	nodeClient := c.Nodes()
 	nodes, err := nodeClient.List(api.ListOptions{})
 	if err != nil {
@@ -886,7 +887,7 @@ func hasExistingLabel(nodes *api.NodeList, label string) (bool, string) {
 	return false, ""
 }
 
-func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, pv bool, create bool, params map[string]string) {
+func runTemplate(c *clientset.Clientset, oc *oclient.Client, appToRun string, ns string, domain string, apiserver string, pv bool, create bool, params map[string]string) {
 	util.Info("\n\nInstalling: ")
 	util.Successf("%s\n\n", appToRun)
 	typeOfMaster := util.TypeOfMaster(c)
@@ -913,7 +914,7 @@ func runTemplate(c *k8sclient.Client, oc *oclient.Client, appToRun string, ns st
 	}
 }
 
-func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *oclient.Client) ([]byte, string, error) {
+func loadTemplateData(ns string, templateName string, c *clientset.Clientset, oc *oclient.Client) ([]byte, string, error) {
 	typeOfMaster := util.TypeOfMaster(c)
 	if typeOfMaster == util.Kubernetes {
 		catalogName := "catalog-" + templateName
@@ -941,7 +942,7 @@ func loadTemplateData(ns string, templateName string, c *k8sclient.Client, oc *o
 	}
 }
 
-func createTemplate(jsonData []byte, format, templateName, ns, domain, apiserver string, c *k8sclient.Client, oc *oclient.Client, pv bool, create bool, params map[string]string) {
+func createTemplate(jsonData []byte, format, templateName, ns, domain, apiserver string, c *clientset.Clientset, oc *oclient.Client, pv bool, create bool, params map[string]string) {
 	var v1tmpl tapiv1.Template
 	var err error
 	if format == "yaml" {
@@ -1081,7 +1082,7 @@ func processTemplate(tmpl *tapi.Template, ns, domain, apiserver string, params m
 	}
 }
 
-func processData(jsonData []byte, format string, templateName string, ns string, c *k8sclient.Client, oc *oclient.Client, pv bool, create bool) {
+func processData(jsonData []byte, format string, templateName string, ns string, c *clientset.Clientset, oc *oclient.Client, pv bool, create bool) {
 	// lets check if its an RC / ReplicaSet or something
 	o, groupVersionKind, err := api.Codecs.UniversalDeserializer().Decode(jsonData, nil, nil)
 	if err != nil {
@@ -1197,7 +1198,7 @@ func removePVCVolumes(jsonData []byte, format string, templateName string, kind 
 	return jsonData
 }
 
-func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, ns string, pv bool, create bool) error {
+func processItem(c *clientset.Clientset, oc *oclient.Client, item *runtime.Object, ns string, pv bool, create bool) error {
 	/*
 		groupVersionKind, err := api.Scheme.ObjectKind(*item)
 		if err != nil {
@@ -1277,7 +1278,7 @@ func processItem(c *k8sclient.Client, oc *oclient.Client, item *runtime.Object, 
 	return nil
 }
 
-func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) error {
+func ensureNamespaceExists(c *clientset.Clientset, oc *oclient.Client, ns string) error {
 	typeOfMaster := util.TypeOfMaster(c)
 	if typeOfMaster == util.Kubernetes {
 		nss := c.Namespaces()
@@ -1316,7 +1317,7 @@ func ensureNamespaceExists(c *k8sclient.Client, oc *oclient.Client, ns string) e
 	return nil
 }
 
-func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns string, name string, kind string, create bool) error {
+func processResource(c *clientset.Clientset, oc *oclient.Client, b []byte, ns string, name string, kind string, create bool) error {
 	util.Infof("Processing resource kind: %s in namespace %s name %s\n", kind, ns, name)
 	var paths []string
 	kinds := strings.ToLower(kind + "s")
@@ -1337,7 +1338,7 @@ func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns strin
 	updatePaths := append(paths, name)
 	if !create {
 		// lets check if the resource already exists
-		req2 := c.Get().AbsPath(updatePaths...)
+		req2 := c.Core().RESTClient().Get().AbsPath(updatePaths...)
 		res2 := req2.Do()
 		data, err := res2.Raw()
 		if err != nil {
@@ -1480,10 +1481,10 @@ func processResource(c *k8sclient.Client, oc *oclient.Client, b []byte, ns strin
 	}
 	var req *restclient.Request
 	if create {
-		req = c.Post().Body(b)
+		req = c.Core().RESTClient().Post().Body(b)
 
 	} else {
-		req = c.Put().Body(b)
+		req = c.Core().RESTClient().Put().Body(b)
 	}
 	req.AbsPath(paths...)
 	res := req.Do()
@@ -1592,7 +1593,7 @@ func adaptFabric8ImagesInResourceDescriptor(jsonData []byte, dockerRegistry stri
 	}
 	return r.ReplaceAll(jsonData, []byte("${1}"+registryReplacePart+"${2}"+suffix+"${3}\"")), nil
 }
-func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory, ns string) (Result, error) {
+func deployFabric8SecurityContextConstraints(c *clientset.Clientset, f cmdutil.Factory, ns string) (Result, error) {
 	name := Fabric8SCC
 	if ns != "default" {
 		name += "-" + ns
@@ -1628,7 +1629,7 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 	}
 	_, err := c.SecurityContextConstraints().Get(name)
 	if err == nil {
-		err = c.SecurityContextConstraints().Delete(name)
+		err = c.SecurityContextConstraints().Delete(name, nil)
 		if err != nil {
 			return Failure, err
 		}
@@ -1643,7 +1644,7 @@ func deployFabric8SecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Fac
 	return Success, err
 }
 
-func deployFabric8SASSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory, ns string) (Result, error) {
+func deployFabric8SASSecurityContextConstraints(c *clientset.Clientset, f cmdutil.Factory, ns string) (Result, error) {
 	name := Fabric8SASSCC
 	scc := kapi.SecurityContextConstraints{
 		ObjectMeta: kapi.ObjectMeta{
@@ -1660,7 +1661,7 @@ func deployFabric8SASSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.
 	}
 	_, err := c.SecurityContextConstraints().Get(name)
 	if err == nil {
-		err = c.SecurityContextConstraints().Delete(name)
+		err = c.SecurityContextConstraints().Delete(name, nil)
 		if err != nil {
 			return Failure, err
 		}
@@ -1679,7 +1680,7 @@ func deployFabric8SASSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.
 //
 // if `restricted does not exist lets create it
 // otherwise if needed lets modify the RunAsUser
-func verifyRestrictedSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.Factory) (Result, error) {
+func verifyRestrictedSecurityContextConstraints(c *clientset.Clientset, f cmdutil.Factory) (Result, error) {
 	name := RestrictedSCC
 	ns, _, e := f.DefaultNamespace()
 	if e != nil {
@@ -1725,14 +1726,14 @@ func verifyRestrictedSecurityContextConstraints(c *k8sclient.Client, f *cmdutil.
 	return Success, err
 }
 
-func printAddServiceAccount(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error) {
+func printAddServiceAccount(c *clientset.Clientset, f cmdutil.Factory, name string) (Result, error) {
 	r, err := addServiceAccount(c, f, name)
 	message := fmt.Sprintf("addServiceAccount %s", name)
 	printResult(message, r, err)
 	return r, err
 }
 
-func addServiceAccount(c *k8sclient.Client, f *cmdutil.Factory, name string) (Result, error) {
+func addServiceAccount(c *clientset.Clientset, f cmdutil.Factory, name string) (Result, error) {
 	ns, _, e := f.DefaultNamespace()
 	if e != nil {
 		util.Fatal("No default namespace")
@@ -1758,7 +1759,7 @@ func addServiceAccount(c *k8sclient.Client, f *cmdutil.Factory, name string) (Re
 	return r, err
 }
 
-func printAddClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) (Result, error) {
+func printAddClusterRoleToUser(c *oclient.Client, f cmdutil.Factory, roleName string, userName string) (Result, error) {
 	err := addClusterRoleToUser(c, f, roleName, userName)
 	message := fmt.Sprintf("addClusterRoleToUser %s %s", roleName, userName)
 	r := Success
@@ -1769,7 +1770,7 @@ func printAddClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName s
 	return r, err
 }
 
-func printAddClusterRoleToGroup(c *oclient.Client, f *cmdutil.Factory, roleName string, groupName string) (Result, error) {
+func printAddClusterRoleToGroup(c *oclient.Client, f cmdutil.Factory, roleName string, groupName string) (Result, error) {
 	err := addClusterRoleToGroup(c, f, roleName, groupName)
 	message := fmt.Sprintf("addClusterRoleToGroup %s %s", roleName, groupName)
 	r := Success
@@ -1781,7 +1782,7 @@ func printAddClusterRoleToGroup(c *oclient.Client, f *cmdutil.Factory, roleName 
 }
 
 // simulates: oadm policy add-cluster-role-to-user roleName userName
-func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string, userName string) error {
+func addClusterRoleToUser(c *oclient.Client, f cmdutil.Factory, roleName string, userName string) error {
 	options := policy.RoleModificationOptions{
 		RoleName:            roleName,
 		RoleBindingAccessor: policy.NewClusterRoleBindingAccessor(c),
@@ -1792,7 +1793,7 @@ func addClusterRoleToUser(c *oclient.Client, f *cmdutil.Factory, roleName string
 }
 
 // simulates: oadm policy add-cluster-role-to-group roleName groupName
-func addClusterRoleToGroup(c *oclient.Client, f *cmdutil.Factory, roleName string, groupName string) error {
+func addClusterRoleToGroup(c *oclient.Client, f cmdutil.Factory, roleName string, groupName string) error {
 	options := policy.RoleModificationOptions{
 		RoleName:            roleName,
 		RoleBindingAccessor: policy.NewClusterRoleBindingAccessor(c),
@@ -1847,7 +1848,7 @@ func versionForUrl(v string, metadataUrl string) string {
 	return ""
 }
 
-func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) string {
+func defaultExposeRule(c *clientset.Clientset, mini bool, useLoadBalancer bool) string {
 	if util.TypeOfMaster(c) == util.OpenShift {
 		return route
 	}
@@ -1860,7 +1861,7 @@ func defaultExposeRule(c *k8sclient.Client, mini bool, useLoadBalancer bool) str
 	return ingress
 }
 
-func checkIfPVCsPending(c *k8sclient.Client, ns string) (bool, error) {
+func checkIfPVCsPending(c *clientset.Clientset, ns string) (bool, error) {
 	timeout := time.After(20 * time.Second)
 	tick := time.Tick(2 * time.Second)
 	util.Info("Checking if PersistentVolumeClaims bind to a PersistentVolume ")

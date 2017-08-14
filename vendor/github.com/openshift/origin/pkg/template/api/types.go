@@ -26,6 +26,11 @@ type Template struct {
 	Parameters []Parameter
 
 	// objects is an array of resources to include in this template.
+	// If a namespace value is hardcoded in the object, it will be removed
+	// during template instantiation, however if the namespace value
+	// is, or contains, a ${PARAMETER_REFERENCE}, the resolved
+	// value after parameter substitution will be respected and the object
+	// will be created in that namespace.
 	Objects []runtime.Object
 
 	// objectLabels is an optional set of labels that are applied to every
@@ -70,9 +75,3 @@ type Parameter struct {
 	// Optional: Indicates the parameter must have a value.  Defaults to false.
 	Required bool
 }
-
-// These constants represent annotations keys affixed to templates
-const (
-	// TemplateDisplayName is an optional annotation that stores the name displayed by a UI when referencing a template.
-	TemplateDisplayName = "openshift.io/display-name"
-)

@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ func TestAuthPluginWrapTransport(t *testing.T) {
 		if len(tc.plugin) != 0 {
 			c.AuthProvider = &clientcmdapi.AuthProviderConfig{Name: tc.plugin}
 		}
-		tConfig, err := c.transportConfig()
+		tConfig, err := c.TransportConfig()
 		if err != nil {
 			// Unknown/bad plugins are expected to fail here.
 			if !tc.expectErr {

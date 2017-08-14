@@ -2,33 +2,37 @@ package plugin
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	log "github.com/golang/glog"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	kubetypes "k8s.io/kubernetes/pkg/kubelet/container"
-	kerrors "k8s.io/kubernetes/pkg/util/errors"
-	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
+	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/util/sets"
 	utilwait "k8s.io/kubernetes/pkg/util/wait"
-	"k8s.io/kubernetes/pkg/watch"
 
+	osclient "github.com/openshift/origin/pkg/client"
 	osapi "github.com/openshift/origin/pkg/sdn/api"
 )
 
 type nodeVNIDMap struct {
+	policy   osdnPolicy
+	osClient *osclient.Client
+
 	// Synchronizes add or remove ids/namespaces
 	lock       sync.Mutex
 	ids        map[string]uint32
+	mcEnabled  map[string]bool
 	namespaces map[uint32]sets.String
 }
 
-func newNodeVNIDMap() *nodeVNIDMap {
+func newNodeVNIDMap(policy osdnPolicy, osClient *osclient.Client) *nodeVNIDMap {
 	return &nodeVNIDMap{
+		policy:     policy,
+		osClient:   osClient,
 		ids:        make(map[string]uint32),
+		mcEnabled:  make(map[string]bool),
 		namespaces: make(map[uint32]sets.String),
 	}
 }
@@ -72,6 +76,22 @@ func (vmap *nodeVNIDMap) GetVNID(name string) (uint32, error) {
 	return 0, fmt.Errorf("Failed to find netid for namespace: %s in vnid map", name)
 }
 
+func (vmap *nodeVNIDMap) GetMulticastEnabled(id uint32) bool {
+	vmap.lock.Lock()
+	defer vmap.lock.Unlock()
+
+	set, exists := vmap.namespaces[id]
+	if !exists || set.Len() == 0 {
+		return false
+	}
+	for _, ns := range set.List() {
+		if !vmap.mcEnabled[ns] {
+			return false
+		}
+	}
+	return true
+}
+
 // Nodes asynchronously watch for both NetNamespaces and services
 // NetNamespaces populates vnid map and services/pod-setup depend on vnid map
 // If for some reason, vnid map propagation from master to node is slow
@@ -79,20 +99,25 @@ func (vmap *nodeVNIDMap) GetVNID(name string) (uint32, error) {
 // So, use this method to alleviate this problem. This method will
 // retry vnid lookup before giving up.
 func (vmap *nodeVNIDMap) WaitAndGetVNID(name string) (uint32, error) {
-	// Try few times up to 2 seconds
-	retries := 20
-	retryInterval := 100 * time.Millisecond
-	for i := 0; i < retries; i++ {
-		if id, err := vmap.GetVNID(name); err == nil {
-			return id, nil
-		}
-		time.Sleep(retryInterval)
+	var id uint32
+	backoff := utilwait.Backoff{
+		Duration: 100 * time.Millisecond,
+		Factor:   1.5,
+		Steps:    5,
 	}
-
-	return 0, fmt.Errorf("Failed to find netid for namespace: %s in vnid map", name)
+	err := utilwait.ExponentialBackoff(backoff, func() (bool, error) {
+		var err error
+		id, err = vmap.GetVNID(name)
+		return err == nil, nil
+	})
+	if err == nil {
+		return id, nil
+	} else {
+		return 0, fmt.Errorf("Failed to find netid for namespace: %s in vnid map", name)
+	}
 }
 
-func (vmap *nodeVNIDMap) setVNID(name string, id uint32) {
+func (vmap *nodeVNIDMap) setVNID(name string, id uint32, mcEnabled bool) {
 	vmap.lock.Lock()
 	defer vmap.lock.Unlock()
 
@@ -100,9 +125,10 @@ func (vmap *nodeVNIDMap) setVNID(name string, id uint32) {
 		vmap.removeNamespaceFromSet(name, oldId)
 	}
 	vmap.ids[name] = id
+	vmap.mcEnabled[name] = mcEnabled
 	vmap.addNamespaceToSet(name, id)
 
-	log.Infof("Associate netid %d to namespace %q", id, name)
+	log.Infof("Associate netid %d to namespace %q with mcEnabled %v", id, name, mcEnabled)
 }
 
 func (vmap *nodeVNIDMap) unsetVNID(name string) (id uint32, err error) {
@@ -115,178 +141,64 @@ func (vmap *nodeVNIDMap) unsetVNID(name string) (id uint32, err error) {
 	}
 	vmap.removeNamespaceFromSet(name, id)
 	delete(vmap.ids, name)
+	delete(vmap.mcEnabled, name)
 	log.Infof("Dissociate netid %d from namespace %q", id, name)
 	return id, nil
 }
 
-func (vmap *nodeVNIDMap) populateVNIDs(registry *Registry) error {
-	nets, err := registry.GetNetNamespaces()
+func netnsIsMulticastEnabled(netns *osapi.NetNamespace) bool {
+	enabled, ok := netns.Annotations[osapi.MulticastEnabledAnnotation]
+	return enabled == "true" && ok
+}
+
+func (vmap *nodeVNIDMap) populateVNIDs() error {
+	nets, err := vmap.osClient.NetNamespaces().List(kapi.ListOptions{})
 	if err != nil {
 		return err
 	}
 
-	for _, net := range nets {
-		vmap.setVNID(net.Name, net.NetID)
+	for _, net := range nets.Items {
+		vmap.setVNID(net.Name, net.NetID, netnsIsMulticastEnabled(&net))
 	}
 	return nil
 }
 
-//------------------ Node Methods --------------------
-
-func (node *OsdnNode) VnidStartNode() error {
+func (vmap *nodeVNIDMap) Start() error {
 	// Populate vnid map synchronously so that existing services can fetch vnid
-	err := node.vnids.populateVNIDs(node.registry)
+	err := vmap.populateVNIDs()
 	if err != nil {
 		return err
 	}
 
-	go utilwait.Forever(node.watchNetNamespaces, 0)
-	go utilwait.Forever(node.watchServices, 0)
+	go utilwait.Forever(vmap.watchNetNamespaces, 0)
 	return nil
 }
 
-func (node *OsdnNode) updatePodNetwork(namespace string, oldNetID, netID uint32) error {
-	// FIXME: this is racy; traffic coming from the pods gets switched to the new
-	// VNID before the service and firewall rules are updated to match. We need
-	// to do the updates as a single transaction (ovs-ofctl --bundle).
+func (vmap *nodeVNIDMap) watchNetNamespaces() {
+	RunEventQueue(vmap.osClient, NetNamespaces, func(delta cache.Delta) error {
+		netns := delta.Object.(*osapi.NetNamespace)
 
-	pods, err := node.GetLocalPods(namespace)
-	if err != nil {
-		return err
-	}
-	services, err := node.registry.GetServicesForNamespace(namespace)
-	if err != nil {
-		return err
-	}
-
-	errList := []error{}
-
-	// Update OF rules for the existing/old pods in the namespace
-	for _, pod := range pods {
-		err = node.UpdatePod(pod.Namespace, pod.Name, kubetypes.DockerID(getPodContainerID(&pod)))
-		if err != nil {
-			errList = append(errList, err)
-		}
-	}
-
-	// Update OF rules for the old services in the namespace
-	for _, svc := range services {
-		if err = node.DeleteServiceRules(&svc); err != nil {
-			log.Error(err)
-		}
-		if err = node.AddServiceRules(&svc, netID); err != nil {
-			errList = append(errList, err)
-		}
-	}
-
-	// Update namespace references in egress firewall rules
-	if err = node.UpdateEgressNetworkPolicyVNID(namespace, oldNetID, netID); err != nil {
-		errList = append(errList, err)
-	}
-
-	return kerrors.NewAggregate(errList)
-}
-
-func (node *OsdnNode) watchNetNamespaces() {
-	eventQueue := node.registry.RunEventQueue(NetNamespaces)
-
-	for {
-		eventType, obj, err := eventQueue.Pop()
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("EventQueue failed for network namespaces: %v", err))
-			return
-		}
-		netns := obj.(*osapi.NetNamespace)
-
-		log.V(5).Infof("Watch %s event for NetNamespace %q", strings.Title(string(eventType)), netns.ObjectMeta.Name)
-		switch eventType {
-		case watch.Added, watch.Modified:
-			// Skip this event if the old and new network ids are same
-			var oldNetID uint32
-			oldNetID, err = node.vnids.GetVNID(netns.NetName)
-			if (err == nil) && (oldNetID == netns.NetID) {
-				continue
+		log.V(5).Infof("Watch %s event for NetNamespace %q", delta.Type, netns.ObjectMeta.Name)
+		switch delta.Type {
+		case cache.Sync, cache.Added, cache.Updated:
+			// Skip this event if nothing has changed
+			oldNetID, err := vmap.GetVNID(netns.NetName)
+			oldMCEnabled := vmap.mcEnabled[netns.NetName]
+			mcEnabled := netnsIsMulticastEnabled(netns)
+			if err == nil && oldNetID == netns.NetID && oldMCEnabled == mcEnabled {
+				break
 			}
-			node.vnids.setVNID(netns.NetName, netns.NetID)
+			vmap.setVNID(netns.NetName, netns.NetID, mcEnabled)
 
-			err = node.updatePodNetwork(netns.NetName, oldNetID, netns.NetID)
-			if err != nil {
-				log.Errorf("Failed to update pod network for namespace '%s', error: %s", netns.NetName, err)
-				node.vnids.setVNID(netns.NetName, oldNetID)
-				continue
+			if delta.Type == cache.Added {
+				vmap.policy.AddNetNamespace(netns)
+			} else {
+				vmap.policy.UpdateNetNamespace(netns, oldNetID)
 			}
-		case watch.Deleted:
-			// updatePodNetwork needs vnid, so unset vnid after this call
-			err = node.updatePodNetwork(netns.NetName, netns.NetID, osapi.GlobalVNID)
-			if err != nil {
-				log.Errorf("Failed to update pod network for namespace '%s', error: %s", netns.NetName, err)
-			}
-			node.vnids.unsetVNID(netns.NetName)
+		case cache.Deleted:
+			vmap.policy.DeleteNetNamespace(netns)
+			vmap.unsetVNID(netns.NetName)
 		}
-	}
-}
-
-func isServiceChanged(oldsvc, newsvc *kapi.Service) bool {
-	if len(oldsvc.Spec.Ports) == len(newsvc.Spec.Ports) {
-		for i := range oldsvc.Spec.Ports {
-			if oldsvc.Spec.Ports[i].Protocol != newsvc.Spec.Ports[i].Protocol ||
-				oldsvc.Spec.Ports[i].Port != newsvc.Spec.Ports[i].Port {
-				return true
-			}
-		}
-		return false
-	}
-	return true
-}
-
-func (node *OsdnNode) watchServices() {
-	services := make(map[string]*kapi.Service)
-	eventQueue := node.registry.RunEventQueue(Services)
-
-	for {
-		eventType, obj, err := eventQueue.Pop()
-		if err != nil {
-			utilruntime.HandleError(fmt.Errorf("EventQueue failed for services: %v", err))
-			return
-		}
-		serv := obj.(*kapi.Service)
-
-		// Ignore headless services
-		if !kapi.IsServiceIPSet(serv) {
-			continue
-		}
-
-		log.V(5).Infof("Watch %s event for Service %q", strings.Title(string(eventType)), serv.ObjectMeta.Name)
-		switch eventType {
-		case watch.Added, watch.Modified:
-			oldsvc, exists := services[string(serv.UID)]
-			if exists {
-				if !isServiceChanged(oldsvc, serv) {
-					continue
-				}
-				if err = node.DeleteServiceRules(oldsvc); err != nil {
-					log.Error(err)
-				}
-			}
-
-			var netid uint32
-			netid, err = node.vnids.WaitAndGetVNID(serv.Namespace)
-			if err != nil {
-				log.Errorf("Skipped adding service rules for serviceEvent: %v, Error: %v", eventType, err)
-				continue
-			}
-
-			if err = node.AddServiceRules(serv, netid); err != nil {
-				log.Error(err)
-				continue
-			}
-			services[string(serv.UID)] = serv
-		case watch.Deleted:
-			delete(services, string(serv.UID))
-
-			if err = node.DeleteServiceRules(serv); err != nil {
-				log.Error(err)
-			}
-		}
-	}
+		return nil
+	})
 }

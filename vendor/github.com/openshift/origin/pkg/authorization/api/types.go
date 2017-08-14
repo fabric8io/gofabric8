@@ -49,7 +49,9 @@ var DiscoveryRule = PolicyRule{
 		"/api", "/api/*",
 		"/apis", "/apis/*",
 		"/oapi", "/oapi/*",
+		"/swaggerapi", "/swaggerapi/*",
 		"/osapi", "/osapi/", // these cannot be removed until we can drop support for pre 3.1 clients
+		"/.well-known", "/.well-known/*",
 	),
 }
 
@@ -159,6 +161,27 @@ type SelfSubjectRulesReviewSpec struct {
 	Scopes []string
 }
 
+// SubjectRulesReview is a resource you can create to determine which actions another user can perform in a namespace
+type SubjectRulesReview struct {
+	unversioned.TypeMeta
+
+	// Spec adds information about how to conduct the check
+	Spec SubjectRulesReviewSpec
+
+	// Status is completed by the server to tell which permissions you have
+	Status SubjectRulesReviewStatus
+}
+
+// SubjectRulesReviewSpec adds information about how to conduct the check
+type SubjectRulesReviewSpec struct {
+	// User is optional.  At least one of User and Groups must be specified.
+	User string
+	// Groups is optional.  Groups is the list of groups to which the User belongs.  At least one of User and Groups must be specified.
+	Groups []string
+	// Scopes to use for the evaluation.  Empty means "use the unscoped (full) permissions of the user/groups".
+	Scopes []string
+}
+
 // SubjectRulesReviewStatus is contains the result of a rules check
 type SubjectRulesReviewStatus struct {
 	// Rules is the list of rules (no particular sort) that are allowed for the subject
@@ -175,10 +198,10 @@ type ResourceAccessReviewResponse struct {
 	// Namespace is the namespace used for the access review
 	Namespace string
 	// Users is the list of users who can perform the action
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	Users sets.String
 	// Groups is the list of groups who can perform the action
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	Groups sets.String
 
 	// EvaluationError is an indication that some error occurred during resolution, but partial results can still be returned.
@@ -221,7 +244,7 @@ type SubjectAccessReview struct {
 	// User is optional.  If both User and Groups are empty, the current authenticated user is used.
 	User string
 	// Groups is optional.  Groups is the list of groups to which the User belongs.
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	Groups sets.String
 	// Scopes to use for the evaluation.  Empty means "use the unscoped (full) permissions of the user/groups".
 	// Nil for a self-SAR, means "use the scopes on this request".
@@ -246,7 +269,7 @@ type LocalSubjectAccessReview struct {
 	// User is optional.  If both User and Groups are empty, the current authenticated user is used.
 	User string
 	// Groups is optional.  Groups is the list of groups to which the User belongs.
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	Groups sets.String
 	// Scopes to use for the evaluation.  Empty means "use the unscoped (full) permissions of the user/groups".
 	// Nil for a self-SAR, means "use the scopes on this request".
@@ -268,6 +291,10 @@ type Action struct {
 	Resource string
 	// ResourceName is the name of the resource being requested for a "get" or deleted for a "delete"
 	ResourceName string
+	// Path is the path of a non resource URL
+	Path string
+	// IsNonResourceURL is true if this is a request for a non-resource URL (outside of the resource hieraarchy)
+	IsNonResourceURL bool
 	// Content is the actual content of the request for create and update
 	Content kruntime.Object
 }
@@ -411,4 +438,94 @@ type ClusterRoleList struct {
 
 	// Items is a list of ClusterRoles
 	Items []ClusterRole
+}
+
+// RoleBindingRestriction is an object that can be matched against a subject
+// (user, group, or service account) to determine whether rolebindings on that
+// subject are allowed in the namespace to which the RoleBindingRestriction
+// belongs.  If any one of those RoleBindingRestriction objects matches
+// a subject, rolebindings on that subject in the namespace are allowed.
+type RoleBindingRestriction struct {
+	unversioned.TypeMeta
+
+	// Standard object's metadata.
+	kapi.ObjectMeta
+
+	// Spec defines the matcher.
+	Spec RoleBindingRestrictionSpec
+}
+
+// RoleBindingRestrictionSpec defines a rolebinding restriction.  Exactly one
+// field must be non-nil.
+type RoleBindingRestrictionSpec struct {
+	// UserRestriction matches against user subjects.
+	UserRestriction *UserRestriction
+
+	// GroupRestriction matches against group subjects.
+	GroupRestriction *GroupRestriction
+
+	// ServiceAccountRestriction matches against service-account subjects.
+	ServiceAccountRestriction *ServiceAccountRestriction
+}
+
+// RoleBindingRestrictionList is a collection of RoleBindingRestriction objects.
+type RoleBindingRestrictionList struct {
+	unversioned.TypeMeta
+
+	// Standard object's metadata.
+	unversioned.ListMeta
+
+	// Items is a list of RoleBindingRestriction objects.
+	Items []RoleBindingRestriction
+}
+
+// UserRestriction matches a user either by a string match on the user name,
+// a string match on the name of a group to which the user belongs, or a label
+// selector applied to the user labels.
+type UserRestriction struct {
+	// Users specifies a list of literal user names.
+	Users []string
+
+	// Groups is a list of groups used to match against an individual user's
+	// groups. If the user is a member of one of the whitelisted groups, the user
+	// is allowed to be bound to a role.
+	Groups []string
+
+	// Selectors specifies a list of label selectors over user labels.
+	Selectors []unversioned.LabelSelector
+}
+
+// GroupRestriction matches a group either by a string match on the group name
+// or a label selector applied to group labels.
+type GroupRestriction struct {
+	// Groups specifies a list of literal group names.
+	Groups []string
+
+	// Selectors specifies a list of label selectors over group labels.
+	Selectors []unversioned.LabelSelector
+}
+
+// ServiceAccountRestriction matches a service account by a string match on
+// either the service-account name or the name of the service account's
+// namespace.
+type ServiceAccountRestriction struct {
+	// ServiceAccounts specifies a list of literal service-account names.
+	ServiceAccounts []ServiceAccountReference
+
+	// Namespaces specifies a list of literal namespace names.  ServiceAccounts
+	// from inside the whitelisted namespaces are allowed to be bound to roles.
+	Namespaces []string
+}
+
+// ServiceAccountReference specifies a service account and namespace by their
+// names.
+type ServiceAccountReference struct {
+	// Name is the name of the service account.
+	Name string
+
+	// Namespace is the namespace of the service account.  Service accounts from
+	// inside the whitelisted namespaces are allowed to be bound to roles.  If
+	// Namespace is empty, then the namespace of the RoleBindingRestriction in
+	// which the ServiceAccountReference is embedded is used.
+	Namespace string
 }

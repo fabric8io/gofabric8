@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,11 +37,11 @@ container: image
 
 image:
 	$(if $(TAG),,$(error TAG is not defined. Use 'make tag' after committing changes to see a suggestion))
-	docker build -t $(PREFIX)/porter:$(TAG) .
+	docker build --pull -t $(PREFIX)/porter:$(TAG) .
 
 push:
 	$(if $(TAG),,$(error TAG is not defined. Use 'make tag' after committing changes to see a suggestion))
-	gcloud docker push $(PREFIX)/porter:$(TAG)
+	gcloud docker -- push $(PREFIX)/porter:$(TAG)
 
 clean:
 	rm -f porter

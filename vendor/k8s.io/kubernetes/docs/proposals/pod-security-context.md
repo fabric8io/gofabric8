@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Abstract
 
 A proposal for refactoring `SecurityContext` to have pod-level and container-level attributes in
@@ -61,7 +56,7 @@ attributes.
 Some use cases require the containers in a pod to run with different security settings.  As an
 example, a user may want to have a pod with two containers, one of which runs as root with the
 privileged setting, and one that runs as a non-root UID.  To support use cases like this, it should
-be possible to override appropriate (ie, not intrinsically pod-level) security settings for
+be possible to override appropriate (i.e., not intrinsically pod-level) security settings for
 individual containers.
 
 ## Proposed Design
@@ -373,13 +368,6 @@ E2E test cases will be added to test the correct determination of the security c
 1.  The Kubelet will use the new fields on the `PodSecurityContext` for host namespace control
 2.  The Kubelet will be modified to correctly implement the backward compatibility and effective
     security context determination defined here
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/proposals/pod-security-context.md?pixel)]()

@@ -2,6 +2,7 @@ package builds
 
 import (
 	"strings"
+	"time"
 
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
@@ -24,7 +25,7 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 
 	g.JustBeforeEach(func() {
 		g.By("waiting for builder service account")
-		err := exutil.WaitForBuilderAccount(oc.KubeREST().ServiceAccounts(oc.Namespace()))
+		err := exutil.WaitForBuilderAccount(oc.KubeClient().Core().ServiceAccounts(oc.Namespace()))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		// Create all fixtures
 		oc.Run("create").Args("-f", exutil.FixturePath("testdata", "run_policy")).Execute()
@@ -39,7 +40,7 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 			)
 			bcName := "sample-parallel-build"
 
-			buildWatch, err := oc.REST().Builds(oc.Namespace()).Watch(kapi.ListOptions{
+			buildWatch, err := oc.Client().Builds(oc.Namespace()).Watch(kapi.ListOptions{
 				LabelSelector: buildutil.BuildConfigSelector(bcName),
 			})
 			defer buildWatch.Stop()
@@ -86,7 +87,7 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 				// TODO: This might introduce flakes in case the first build complete
 				// sooner or fail.
 				if build.Status.Phase == buildapi.BuildPhasePending {
-					c := buildclient.NewOSClientBuildClient(oc.REST())
+					c := buildclient.NewOSClientBuildClient(oc.Client())
 					firstBuildRunning := false
 					_, err := buildutil.BuildConfigBuilds(c, oc.Namespace(), bcName, func(b buildapi.Build) bool {
 						if b.Name == startedBuilds[0] && b.Status.Phase == buildapi.BuildPhaseRunning {
@@ -125,7 +126,7 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 				startedBuilds = append(startedBuilds, strings.TrimSpace(strings.Split(stdout, "/")[1]))
 			}
 
-			buildWatch, err := oc.REST().Builds(oc.Namespace()).Watch(kapi.ListOptions{
+			buildWatch, err := oc.Client().Builds(oc.Namespace()).Watch(kapi.ListOptions{
 				LabelSelector: buildutil.BuildConfigSelector(bcName),
 			})
 			defer buildWatch.Stop()
@@ -142,7 +143,7 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 					}
 					// Verify there are no other running or pending builds than this
 					// build as serial build always runs alone.
-					c := buildclient.NewOSClientBuildClient(oc.REST())
+					c := buildclient.NewOSClientBuildClient(oc.Client())
 					builds, err := buildutil.BuildConfigBuilds(c, oc.Namespace(), bcName, func(b buildapi.Build) bool {
 						if b.Name == build.Name {
 							return false
@@ -168,6 +169,49 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 		})
 	})
 
+	g.Describe("build configuration with Serial build run policy handling cancellation", func() {
+		g.It("starts the next build immediately after one is canceled", func() {
+			g.By("starting multiple builds")
+			bcName := "sample-serial-build"
+
+			for i := 0; i < 3; i++ {
+				_, _, err := exutil.StartBuild(oc, bcName)
+				o.Expect(err).NotTo(o.HaveOccurred())
+			}
+
+			buildWatch, err := oc.Client().Builds(oc.Namespace()).Watch(kapi.ListOptions{
+				LabelSelector: buildutil.BuildConfigSelector(bcName),
+			})
+			defer buildWatch.Stop()
+			o.Expect(err).NotTo(o.HaveOccurred())
+
+			var cancelTime, cancelTime2 time.Time
+			for {
+				event := <-buildWatch.ResultChan()
+				build := event.Object.(*buildapi.Build)
+				if build.Status.Phase == buildapi.BuildPhasePending {
+					if build.Name == "sample-serial-build-1" {
+						err := oc.Run("cancel-build").Args("sample-serial-build-1").Execute()
+						o.Expect(err).ToNot(o.HaveOccurred())
+						cancelTime = time.Now()
+					}
+					if build.Name == "sample-serial-build-2" {
+						duration := time.Now().Sub(cancelTime)
+						o.Expect(duration).To(o.BeNumerically("<", 10*time.Second), "next build should have started less than 10s after canceled build")
+						err := oc.Run("cancel-build").Args("sample-serial-build-2").Execute()
+						o.Expect(err).ToNot(o.HaveOccurred())
+						cancelTime2 = time.Now()
+					}
+					if build.Name == "sample-serial-build-3" {
+						duration := time.Now().Sub(cancelTime2)
+						o.Expect(duration).To(o.BeNumerically("<", 10*time.Second), "next build should have started less than 10s after canceled build")
+						break
+					}
+				}
+			}
+		})
+	})
+
 	g.Describe("build configuration with SerialLatestOnly build run policy", func() {
 		g.It("runs the builds in serial order but cancel previous builds", func() {
 			g.By("starting multiple builds")
@@ -179,7 +223,7 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 
 			bcName := "sample-serial-latest-only-build"
 			buildVerified := map[string]bool{}
-			buildWatch, err := oc.REST().Builds(oc.Namespace()).Watch(kapi.ListOptions{
+			buildWatch, err := oc.Client().Builds(oc.Namespace()).Watch(kapi.ListOptions{
 				LabelSelector: buildutil.BuildConfigSelector(bcName),
 			})
 			defer buildWatch.Stop()
@@ -233,7 +277,7 @@ var _ = g.Describe("[builds][Slow] using build configuration runPolicy", func() 
 					}
 					// Verify there are no other running or pending builds than this
 					// build as serial build always runs alone.
-					c := buildclient.NewOSClientBuildClient(oc.REST())
+					c := buildclient.NewOSClientBuildClient(oc.Client())
 					builds, err := buildutil.BuildConfigBuilds(c, oc.Namespace(), bcName, func(b buildapi.Build) bool {
 						e2e.Logf("[%s] build %s is %s", build.Name, b.Name, b.Status.Phase)
 						if b.Name == build.Name {

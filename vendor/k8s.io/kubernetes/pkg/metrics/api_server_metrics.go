@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ func parseApiServerMetrics(data string) (ApiServerMetrics, error) {
 }
 
 func (g *MetricsGrabber) getMetricsFromApiServer() (string, error) {
-	rawOutput, err := g.client.Get().RequestURI("/metrics").Do().Raw()
+	rawOutput, err := g.client.Core().RESTClient().Get().RequestURI("/metrics").Do().Raw()
 	if err != nil {
 		return "", err
 	}

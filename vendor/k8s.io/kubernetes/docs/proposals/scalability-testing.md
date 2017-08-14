@@ -1,9 +1,4 @@
 
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Background
 
 We have a goal to be able to scale to 1000-node clusters by end of 2015.
@@ -70,13 +65,6 @@ register back with the master via the introspective service using modified names
 as not to collide.
 
 Complications may currently exist around container tracking and ownership in docker.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

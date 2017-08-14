@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # How to update docs for new kubernetes features
 
 This document describes things to consider when updating Kubernetes docs for new features or changes to existing features (including removing features).
@@ -16,7 +11,7 @@ Anyone making user facing changes to kubernetes.  This is especially important f
 ### When making Api changes
 
 *e.g. adding Deployments*
-* Always make sure docs for downstream effects are updated *(PetSet -> PVC, Deployment -> ReplicationController)*
+* Always make sure docs for downstream effects are updated *(StatefulSet -> PVC, Deployment -> ReplicationController)*
 * Add or update the corresponding *[Glossary](http://kubernetes.io/docs/reference/)* item
 * Verify the guides / walkthroughs do not require any changes:
   * **If your change will be recommended over the approaches shown in these guides, then they must be updated to reflect your change**
@@ -74,13 +69,6 @@ Anyone making user facing changes to kubernetes.  This is especially important f
 * Document what concepts will be covered in the document
 * Include screen shots or pictures in documents for GUIs
 * *TODO once we have a standard widget set we are happy with* - include diagrams to help describe complex ideas (not required yet)
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

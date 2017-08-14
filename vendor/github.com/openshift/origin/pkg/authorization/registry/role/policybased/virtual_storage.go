@@ -3,12 +3,13 @@ package policybased
 import (
 	"errors"
 	"fmt"
+	"sort"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/rest"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/retry"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/registry/generic/registry"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -26,14 +27,17 @@ import (
 type VirtualStorage struct {
 	PolicyStorage policyregistry.Registry
 
-	RuleResolver   rulevalidation.AuthorizationRuleResolver
+	RuleResolver       rulevalidation.AuthorizationRuleResolver
+	CachedRuleResolver rulevalidation.AuthorizationRuleResolver
+
 	CreateStrategy rest.RESTCreateStrategy
 	UpdateStrategy rest.RESTUpdateStrategy
+	Resource       unversioned.GroupResource
 }
 
 // NewVirtualStorage creates a new REST for policies.
-func NewVirtualStorage(policyStorage policyregistry.Registry, ruleResolver rulevalidation.AuthorizationRuleResolver) roleregistry.Storage {
-	return &VirtualStorage{policyStorage, ruleResolver, roleregistry.LocalStrategy, roleregistry.LocalStrategy}
+func NewVirtualStorage(policyStorage policyregistry.Registry, ruleResolver, cachedRuleResolver rulevalidation.AuthorizationRuleResolver, resource unversioned.GroupResource) roleregistry.Storage {
+	return &VirtualStorage{policyStorage, ruleResolver, cachedRuleResolver, roleregistry.LocalStrategy, roleregistry.LocalStrategy, resource}
 }
 
 func (m *VirtualStorage) New() runtime.Object {
@@ -44,7 +48,7 @@ func (m *VirtualStorage) NewList() runtime.Object {
 }
 
 func (m *VirtualStorage) List(ctx kapi.Context, options *kapi.ListOptions) (runtime.Object, error) {
-	policyList, err := m.PolicyStorage.ListPolicies(ctx, options)
+	policyList, err := m.PolicyStorage.ListPolicies(ctx, &kapi.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -61,13 +65,14 @@ func (m *VirtualStorage) List(ctx kapi.Context, options *kapi.ListOptions) (runt
 		}
 	}
 
+	sort.Sort(byName(roleList.Items))
 	return roleList, nil
 }
 
 func (m *VirtualStorage) Get(ctx kapi.Context, name string) (runtime.Object, error) {
 	policy, err := m.PolicyStorage.GetPolicy(ctx, authorizationapi.PolicyName)
 	if kapierrors.IsNotFound(err) {
-		return nil, kapierrors.NewNotFound(authorizationapi.Resource("role"), name)
+		return nil, kapierrors.NewNotFound(m.Resource, name)
 	}
 	if err != nil {
 		return nil, err
@@ -75,7 +80,7 @@ func (m *VirtualStorage) Get(ctx kapi.Context, name string) (runtime.Object, err
 
 	role, exists := policy.Roles[name]
 	if !exists {
-		return nil, kapierrors.NewNotFound(authorizationapi.Resource("role"), name)
+		return nil, kapierrors.NewNotFound(m.Resource, name)
 	}
 
 	return role, nil
@@ -83,17 +88,17 @@ func (m *VirtualStorage) Get(ctx kapi.Context, name string) (runtime.Object, err
 
 // Delete(ctx api.Context, name string) (runtime.Object, error)
 func (m *VirtualStorage) Delete(ctx kapi.Context, name string, options *kapi.DeleteOptions) (runtime.Object, error) {
-	if err := kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		policy, err := m.PolicyStorage.GetPolicy(ctx, authorizationapi.PolicyName)
 		if kapierrors.IsNotFound(err) {
-			return kapierrors.NewNotFound(authorizationapi.Resource("role"), name)
+			return kapierrors.NewNotFound(m.Resource, name)
 		}
 		if err != nil {
 			return err
 		}
 
 		if _, exists := policy.Roles[name]; !exists {
-			return kapierrors.NewNotFound(authorizationapi.Resource("role"), name)
+			return kapierrors.NewNotFound(m.Resource, name)
 		}
 
 		delete(policy.Roles, name)
@@ -129,18 +134,18 @@ func (m *VirtualStorage) createRole(ctx kapi.Context, obj runtime.Object, allowE
 
 	role := obj.(*authorizationapi.Role)
 	if !allowEscalation {
-		if err := rulevalidation.ConfirmNoEscalation(ctx, authorizationapi.Resource("role"), role.Name, m.RuleResolver, authorizationinterfaces.NewLocalRoleAdapter(role)); err != nil {
+		if err := rulevalidation.ConfirmNoEscalation(ctx, m.Resource, role.Name, m.RuleResolver, m.CachedRuleResolver, authorizationinterfaces.NewLocalRoleAdapter(role)); err != nil {
 			return nil, err
 		}
 	}
 
-	if err := kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		policy, err := m.EnsurePolicy(ctx)
 		if err != nil {
 			return err
 		}
 		if _, exists := policy.Roles[role.Name]; exists {
-			return kapierrors.NewAlreadyExists(authorizationapi.Resource("role"), role.Name)
+			return kapierrors.NewAlreadyExists(m.Resource, role.Name)
 		}
 
 		role.ResourceVersion = policy.ResourceVersion
@@ -167,10 +172,10 @@ func (m *VirtualStorage) updateRole(ctx kapi.Context, name string, objInfo rest.
 	var roleConflicted = false
 
 	// Retry if the policy update hits a conflict
-	if err := kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		policy, err := m.PolicyStorage.GetPolicy(ctx, authorizationapi.PolicyName)
 		if kapierrors.IsNotFound(err) {
-			return kapierrors.NewNotFound(authorizationapi.Resource("role"), name)
+			return kapierrors.NewNotFound(m.Resource, name)
 		}
 		if err != nil {
 			return err
@@ -178,7 +183,7 @@ func (m *VirtualStorage) updateRole(ctx kapi.Context, name string, objInfo rest.
 
 		oldRole, exists := policy.Roles[name]
 		if !exists {
-			return kapierrors.NewNotFound(authorizationapi.Resource("role"), name)
+			return kapierrors.NewNotFound(m.Resource, name)
 		}
 
 		obj, err := objInfo.UpdatedObject(ctx, oldRole)
@@ -200,7 +205,7 @@ func (m *VirtualStorage) updateRole(ctx kapi.Context, name string, objInfo rest.
 		}
 
 		if !allowEscalation {
-			if err := rulevalidation.ConfirmNoEscalation(ctx, authorizationapi.Resource("role"), role.Name, m.RuleResolver, authorizationinterfaces.NewLocalRoleAdapter(role)); err != nil {
+			if err := rulevalidation.ConfirmNoEscalation(ctx, m.Resource, role.Name, m.RuleResolver, m.CachedRuleResolver, authorizationinterfaces.NewLocalRoleAdapter(role)); err != nil {
 				return err
 			}
 		}
@@ -279,3 +284,9 @@ func NewEmptyPolicy(namespace string) *authorizationapi.Policy {
 
 	return policy
 }
+
+type byName []authorizationapi.Role
+
+func (r byName) Len() int           { return len(r) }
+func (r byName) Swap(i, j int)      { r[i], r[j] = r[j], r[i] }
+func (r byName) Less(i, j int) bool { return r[i].Name < r[j].Name }

@@ -9,13 +9,13 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/rest"
-	"k8s.io/kubernetes/pkg/client/unversioned"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	"k8s.io/kubernetes/pkg/controller"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/registry/core/pod"
 	genericrest "k8s.io/kubernetes/pkg/registry/generic/rest"
-	"k8s.io/kubernetes/pkg/registry/pod"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/wait"
 
@@ -28,7 +28,7 @@ import (
 
 const (
 	// defaultTimeout is the default time to wait for the logs of a deployment.
-	defaultTimeout time.Duration = 20 * time.Second
+	defaultTimeout time.Duration = 60 * time.Second
 	// defaultInterval is the default interval for polling a not found deployment.
 	defaultInterval time.Duration = 1 * time.Second
 )
@@ -36,7 +36,7 @@ const (
 // podGetter implements the ResourceGetter interface. Used by LogLocation to
 // retrieve the deployer pod
 type podGetter struct {
-	pn unversioned.PodsNamespacer
+	pn kcoreclient.PodsGetter
 }
 
 // Get is responsible for retrieving the deployer pod
@@ -51,8 +51,8 @@ func (g *podGetter) Get(ctx kapi.Context, name string) (runtime.Object, error) {
 // REST is an implementation of RESTStorage for the api server.
 type REST struct {
 	dn       client.DeploymentConfigsNamespacer
-	rn       unversioned.ReplicationControllersNamespacer
-	pn       unversioned.PodsNamespacer
+	rn       kcoreclient.ReplicationControllersGetter
+	pn       kcoreclient.PodsGetter
 	connInfo kubeletclient.ConnectionInfoGetter
 	timeout  time.Duration
 	interval time.Duration
@@ -65,7 +65,7 @@ var _ = rest.GetterWithOptions(&REST{})
 // one for deployments (replication controllers) and one for pods to get the necessary
 // attributes to assemble the URL to which the request shall be redirected in order to
 // get the deployment logs.
-func NewREST(dn client.DeploymentConfigsNamespacer, rn unversioned.ReplicationControllersNamespacer, pn unversioned.PodsNamespacer, connectionInfo kubeletclient.ConnectionInfoGetter) *REST {
+func NewREST(dn client.DeploymentConfigsNamespacer, rn kcoreclient.ReplicationControllersGetter, pn kcoreclient.PodsGetter, connectionInfo kubeletclient.ConnectionInfoGetter) *REST {
 	return &REST{
 		dn:       dn,
 		rn:       rn,
@@ -162,7 +162,7 @@ func (r *REST) Get(ctx kapi.Context, name string, opts runtime.Object) (runtime.
 		if !ok {
 			return nil, errors.NewServerTimeout(kapi.Resource("ReplicationController"), "get", 2)
 		}
-		if deployutil.DeploymentStatusFor(latest) == deployapi.DeploymentStatusComplete {
+		if deployutil.IsCompleteDeployment(latest) {
 			podName, err = r.returnApplicationPodName(target)
 			if err != nil {
 				return nil, err

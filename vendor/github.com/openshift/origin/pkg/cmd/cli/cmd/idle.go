@@ -10,42 +10,42 @@ import (
 
 	"github.com/spf13/cobra"
 
-	cmdutil "github.com/openshift/origin/pkg/cmd/util"
-	utilerrors "github.com/openshift/origin/pkg/util/errors"
-	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-
-	osclient "github.com/openshift/origin/pkg/client"
-	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
-	deployapi "github.com/openshift/origin/pkg/deploy/api"
-	deployclient "github.com/openshift/origin/pkg/deploy/client/clientset_generated/internalclientset/typed/core/unversioned"
-	unidlingapi "github.com/openshift/origin/pkg/unidling/api"
-	utilunidling "github.com/openshift/origin/pkg/unidling/util"
-	"k8s.io/kubernetes/pkg/api"
+	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/apis/extensions"
-	clientset "k8s.io/kubernetes/pkg/client/unversioned/adapters/internalclientset"
-	"k8s.io/kubernetes/pkg/controller"
+	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util/strategicpatch"
+
+	osclient "github.com/openshift/origin/pkg/client"
+	"github.com/openshift/origin/pkg/cmd/templates"
+	cmdutil "github.com/openshift/origin/pkg/cmd/util"
+	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deployclient "github.com/openshift/origin/pkg/deploy/client/clientset_generated/internalclientset/typed/core/internalversion"
+	unidlingapi "github.com/openshift/origin/pkg/unidling/api"
+	utilunidling "github.com/openshift/origin/pkg/unidling/util"
+	utilerrors "github.com/openshift/origin/pkg/util/errors"
 )
 
-const (
-	idleLong = `
-Idle scalable resources.
+var (
+	idleLong = templates.LongDesc(`
+		Idle scalable resources
 
-Idling discovers the scalable resources (such as deployment configs and replication controllers)
-associated with a series of services by examining the endpoints of the service.
-Each service is then marked as idled, the associated resources are recorded, and the resources
-are scaled down to zero replicas.
+		Idling discovers the scalable resources (such as deployment configs and replication controllers)
+		associated with a series of services by examining the endpoints of the service.
+		Each service is then marked as idled, the associated resources are recorded, and the resources
+		are scaled down to zero replicas.
 
-Upon receiving network traffic, the services (and any associated routes) will "wake up" the
-associated resources by scaling them back up to their previous scale.`
+		Upon receiving network traffic, the services (and any associated routes) will "wake up" the
+		associated resources by scaling them back up to their previous scale.`)
 
-	idleExample = `  # Idle the scalable controllers associated with the services listed in to-idle.txt
-  $ %[1]s idle --resource-names-file to-idle.txt`
+	idleExample = templates.Examples(`
+		# Idle the scalable controllers associated with the services listed in to-idle.txt
+	  $ %[1]s idle --resource-names-file to-idle.txt`)
 )
 
 // NewCmdIdle implements the OpenShift cli idle command
@@ -74,8 +74,8 @@ func NewCmdIdle(fullName string, f *clientcmd.Factory, out, errOut io.Writer) *c
 	cmd.Flags().BoolVar(&o.dryRun, "dry-run", false, "If true, only print the annotations that would be written, without annotating or idling the relevant objects")
 	cmd.Flags().StringVar(&o.filename, "resource-names-file", o.filename, "file containing list of services whose scalable resources to idle")
 	cmd.Flags().StringVarP(&o.selector, "selector", "l", o.selector, "Selector (label query) to use to select services")
-	cmd.Flags().BoolVar(&o.all, "all", o.all, "Select all services in the namespace")
-	cmd.Flags().BoolVar(&o.allNamespaces, "all-namespaces", o.allNamespaces, "Select services across all namespaces")
+	cmd.Flags().BoolVar(&o.all, "all", o.all, "if true, select all services in the namespace")
+	cmd.Flags().BoolVar(&o.allNamespaces, "all-namespaces", o.allNamespaces, "if true, select services across all namespaces")
 	cmd.MarkFlagFilename("resource-names-file")
 
 	// TODO: take the `-o name` argument, and only print out names instead of the summary
@@ -113,8 +113,8 @@ func (o *IdleOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, args []
 		return fmt.Errorf("resource names, selectors, and the all flag may not be be specified if a filename is specified")
 	}
 
-	mapper, typer := f.Object(false)
-	o.svcBuilder = resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), api.Codecs.UniversalDecoder()).
+	mapper, typer := f.Object()
+	o.svcBuilder = resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder()).
 		ContinueOnError().
 		NamespaceParam(namespace).DefaultNamespace().AllNamespaces(o.allNamespaces).
 		Flatten().
@@ -180,7 +180,7 @@ func scanLinesFromFile(filename string) ([]string, error) {
 // idleUpdateInfo contains the required info to annotate an endpoints object
 // with the scalable resources that it should unidle
 type idleUpdateInfo struct {
-	obj       *api.Endpoints
+	obj       *kapi.Endpoints
 	scaleRefs map[unidlingapi.CrossGroupObjectReference]struct{}
 }
 
@@ -190,15 +190,15 @@ type idleUpdateInfo struct {
 // name of the associated service.
 func (o *IdleOptions) calculateIdlableAnnotationsByService(f *clientcmd.Factory) (map[types.NamespacedName]idleUpdateInfo, map[unidlingapi.CrossGroupObjectReference]types.NamespacedName, error) {
 	// load our set of services
-	client, err := f.Client()
+	client, err := f.ClientSet()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	mapper, _ := f.Object(false)
+	mapper, _ := f.Object()
 
-	podsLoaded := make(map[api.ObjectReference]*api.Pod)
-	getPod := func(ref api.ObjectReference) (*api.Pod, error) {
+	podsLoaded := make(map[kapi.ObjectReference]*kapi.Pod)
+	getPod := func(ref kapi.ObjectReference) (*kapi.Pod, error) {
 		if pod, ok := podsLoaded[ref]; ok {
 			return pod, nil
 		}
@@ -212,9 +212,9 @@ func (o *IdleOptions) calculateIdlableAnnotationsByService(f *clientcmd.Factory)
 		return pod, nil
 	}
 
-	controllersLoaded := make(map[api.ObjectReference]runtime.Object)
+	controllersLoaded := make(map[kapi.ObjectReference]runtime.Object)
 	helpers := make(map[unversioned.GroupKind]*resource.Helper)
-	getController := func(ref api.ObjectReference) (runtime.Object, error) {
+	getController := func(ref kapi.ObjectReference) (runtime.Object, error) {
 		if controller, ok := controllersLoaded[ref]; ok {
 			return controller, nil
 		}
@@ -260,7 +260,7 @@ func (o *IdleOptions) calculateIdlableAnnotationsByService(f *clientcmd.Factory)
 			return err
 		}
 
-		endpoints, isEndpoints := info.Object.(*api.Endpoints)
+		endpoints, isEndpoints := info.Object.(*kapi.Endpoints)
 		if !isEndpoints {
 			return fmt.Errorf("you must specify endpoints, not %v (view available endpoints with \"%s get endpoints\").", info.Mapping.Resource, o.cmdFullName)
 		}
@@ -294,7 +294,7 @@ func (o *IdleOptions) calculateIdlableAnnotationsByService(f *clientcmd.Factory)
 // getControllerRef returns a subresource reference to the owning controller of the given object.
 // It will use both the CreatedByAnnotation from Kubernetes, as well as the DeploymentConfigAnnotation
 // from Origin to look this up.  If neither are found, it will return nil.
-func getControllerRef(obj runtime.Object, decoder runtime.Decoder) (*api.ObjectReference, error) {
+func getControllerRef(obj runtime.Object, decoder runtime.Decoder) (*kapi.ObjectReference, error) {
 	objMeta, err := meta.Accessor(obj)
 	if err != nil {
 		return nil, err
@@ -302,7 +302,7 @@ func getControllerRef(obj runtime.Object, decoder runtime.Decoder) (*api.ObjectR
 
 	annotations := objMeta.GetAnnotations()
 
-	creatorRefRaw, creatorListed := annotations[controller.CreatedByAnnotation]
+	creatorRefRaw, creatorListed := annotations[kapi.CreatedByAnnotation]
 	if !creatorListed {
 		// if we don't have a creator listed, try the openshift-specific Deployment annotation
 		dcName, dcNameListed := annotations[deployapi.DeploymentConfigAnnotation]
@@ -310,14 +310,14 @@ func getControllerRef(obj runtime.Object, decoder runtime.Decoder) (*api.ObjectR
 			return nil, nil
 		}
 
-		return &api.ObjectReference{
+		return &kapi.ObjectReference{
 			Name:      dcName,
 			Namespace: objMeta.GetNamespace(),
 			Kind:      "DeploymentConfig",
 		}, nil
 	}
 
-	serializedRef := &api.SerializedReference{}
+	serializedRef := &kapi.SerializedReference{}
 	if err := runtime.DecodeInto(decoder, []byte(creatorRefRaw), serializedRef); err != nil {
 		return nil, fmt.Errorf("could not decoded pod's creator reference: %v", err)
 	}
@@ -325,7 +325,7 @@ func getControllerRef(obj runtime.Object, decoder runtime.Decoder) (*api.ObjectR
 	return &serializedRef.Reference, nil
 }
 
-func makeCrossGroupObjRef(ref *api.ObjectReference) (unidlingapi.CrossGroupObjectReference, error) {
+func makeCrossGroupObjRef(ref *kapi.ObjectReference) (unidlingapi.CrossGroupObjectReference, error) {
 	gv, err := unversioned.ParseGroupVersion(ref.APIVersion)
 	if err != nil {
 		return unidlingapi.CrossGroupObjectReference{}, err
@@ -342,9 +342,9 @@ func makeCrossGroupObjRef(ref *api.ObjectReference) (unidlingapi.CrossGroupObjec
 // scalable objects by checking each address in each subset to see if it has a pod
 // reference, and the following that pod reference to find the owning controller,
 // and returning the unique set of controllers found this way.
-func findScalableResourcesForEndpoints(endpoints *api.Endpoints, decoder runtime.Decoder, getPod func(api.ObjectReference) (*api.Pod, error), getController func(api.ObjectReference) (runtime.Object, error)) (map[unidlingapi.CrossGroupObjectReference]struct{}, error) {
+func findScalableResourcesForEndpoints(endpoints *kapi.Endpoints, decoder runtime.Decoder, getPod func(kapi.ObjectReference) (*kapi.Pod, error), getController func(kapi.ObjectReference) (runtime.Object, error)) (map[unidlingapi.CrossGroupObjectReference]struct{}, error) {
 	// To find all RCs and DCs for an endpoint, we first figure out which pods are pointed to by that endpoint...
-	podRefs := map[api.ObjectReference]*api.Pod{}
+	podRefs := map[kapi.ObjectReference]*kapi.Pod{}
 	for _, subset := range endpoints.Subsets {
 		for _, addr := range subset.Addresses {
 			if addr.TargetRef != nil && addr.TargetRef.Kind == "Pod" {
@@ -361,7 +361,7 @@ func findScalableResourcesForEndpoints(endpoints *api.Endpoints, decoder runtime
 	}
 
 	// ... then, for each pod, we check the controller, and find the set of unique controllers...
-	immediateControllerRefs := make(map[api.ObjectReference]struct{})
+	immediateControllerRefs := make(map[kapi.ObjectReference]struct{})
 	for _, pod := range podRefs {
 		controllerRef, err := getControllerRef(pod, decoder)
 		if err != nil {
@@ -382,7 +382,7 @@ func findScalableResourcesForEndpoints(endpoints *api.Endpoints, decoder runtime
 		}
 
 		if controller != nil {
-			var parentControllerRef *api.ObjectReference
+			var parentControllerRef *kapi.ObjectReference
 			parentControllerRef, err = getControllerRef(controller, decoder)
 			if err != nil {
 				return nil, fmt.Errorf("unable to load the creator of %s %q: %v", controllerRef.Kind, controllerRef.Name, err)
@@ -499,7 +499,7 @@ func patchObj(obj runtime.Object, metadata meta.Object, oldData []byte, mapping 
 	}
 	helper := resource.NewHelper(client, mapping)
 
-	return helper.Patch(metadata.GetNamespace(), metadata.GetName(), api.StrategicMergePatchType, patchBytes)
+	return helper.Patch(metadata.GetNamespace(), metadata.GetName(), kapi.StrategicMergePatchType, patchBytes)
 }
 
 type scaleInfo struct {
@@ -515,6 +515,11 @@ func (o *IdleOptions) RunIdle(f *clientcmd.Factory) error {
 	hadError := false
 	nowTime := time.Now().UTC()
 
+	dryRunText := ""
+	if o.dryRun {
+		dryRunText = "(dry run)"
+	}
+
 	// figure out which endpoints and resources we need to idle
 	byService, byScalable, err := o.calculateIdlableAnnotationsByService(f)
 
@@ -522,7 +527,7 @@ func (o *IdleOptions) RunIdle(f *clientcmd.Factory) error {
 		if len(byService) == 0 || len(byScalable) == 0 {
 			return fmt.Errorf("no valid scalable resources found to idle: %v", err)
 		}
-		fmt.Fprintf(o.errOut, "warning: continuing on for valid scalable resources, but an error occured while finding scalable resources to idle: %v", err)
+		fmt.Fprintf(o.errOut, "warning: continuing on for valid scalable resources, but an error occurred while finding scalable resources to idle: %v", err)
 	}
 
 	oclient, kclient, err := f.Clients()
@@ -530,11 +535,10 @@ func (o *IdleOptions) RunIdle(f *clientcmd.Factory) error {
 		return err
 	}
 
-	delegScaleGetter := osclient.NewDelegatingScaleNamespacer(oclient, kclient)
+	delegScaleGetter := osclient.NewDelegatingScaleNamespacer(oclient, kclient.Extensions())
 	dcGetter := deployclient.New(oclient.RESTClient)
-	rcGetter := clientset.FromUnversionedClient(kclient)
 
-	scaleAnnotater := utilunidling.NewScaleAnnotater(delegScaleGetter, dcGetter, rcGetter, func(currentReplicas int32, annotations map[string]string) {
+	scaleAnnotater := utilunidling.NewScaleAnnotater(delegScaleGetter, dcGetter, kclient.Core(), func(currentReplicas int32, annotations map[string]string) {
 		annotations[unidlingapi.IdledAtAnnotation] = nowTime.UTC().Format(time.RFC3339)
 		annotations[unidlingapi.PreviousScaleAnnotation] = fmt.Sprintf("%v", currentReplicas)
 	})
@@ -542,7 +546,7 @@ func (o *IdleOptions) RunIdle(f *clientcmd.Factory) error {
 	replicas := make(map[unidlingapi.CrossGroupObjectReference]int32, len(byScalable))
 	toScale := make(map[unidlingapi.CrossGroupObjectReference]scaleInfo)
 
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 
 	// first, collect the scale info
 	for scaleRef, svcName := range byScalable {
@@ -565,57 +569,61 @@ func (o *IdleOptions) RunIdle(f *clientcmd.Factory) error {
 		}
 		refsWithScale, err := pairScalesWithScaleRefs(serviceName, info.obj.Annotations, info.scaleRefs, replicas)
 		if err != nil {
-			fmt.Fprintf(o.errOut, "error: unable to mark service %s as idled: %v", serviceName.String(), err)
+			fmt.Fprintf(o.errOut, "error: unable to mark service %q as idled: %v", serviceName.String(), err)
 			continue
 		}
 
 		if !o.dryRun {
 			if len(info.scaleRefs) == 0 {
-				fmt.Fprintf(o.errOut, "error: no scalable resources marked as idled for service %s, not marking as idled\n", serviceName.String())
+				fmt.Fprintf(o.errOut, "error: unable to mark the service %q as idled.\n", serviceName.String())
+				fmt.Fprintf(o.errOut, "Make sure that the service is not already marked as idled and that it is associated with resources that can be scaled.\n")
+				fmt.Fprintf(o.errOut, "See 'oc idle -h' for help and examples.\n")
 				hadError = true
 				continue
 			}
 
 			metadata, err := meta.Accessor(info.obj)
 			if err != nil {
-				fmt.Fprintf(o.errOut, "error: unable to mark service %s as idled: %v", serviceName.String(), err)
+				fmt.Fprintf(o.errOut, "error: unable to mark service %q as idled: %v", serviceName.String(), err)
 				hadError = true
 				continue
 			}
 			gvks, _, err := typer.ObjectKinds(info.obj)
 			if err != nil {
-				fmt.Fprintf(o.errOut, "error: unable to mark service %s as idled: %v", serviceName.String(), err)
+				fmt.Fprintf(o.errOut, "error: unable to mark service %q as idled: %v", serviceName.String(), err)
 				hadError = true
 				continue
 			}
 			oldData, err := json.Marshal(info.obj)
 			if err != nil {
-				fmt.Fprintf(o.errOut, "error: unable to mark service %s as idled: %v", serviceName.String(), err)
+				fmt.Fprintf(o.errOut, "error: unable to mark service %q as idled: %v", serviceName.String(), err)
 				hadError = true
 				continue
 			}
 
 			mapping, err := mapper.RESTMapping(gvks[0].GroupKind(), gvks[0].Version)
 			if err != nil {
-				fmt.Fprintf(o.errOut, "error: unable to mark service %s as idled: %v", serviceName.String(), err)
+				fmt.Fprintf(o.errOut, "error: unable to mark service %q as idled: %v", serviceName.String(), err)
 				hadError = true
 				continue
 			}
 
 			if err = setIdleAnnotations(serviceName, info.obj.Annotations, refsWithScale, nowTime); err != nil {
-				fmt.Fprintf(o.errOut, "error: unable to mark service %s as idled: %v", serviceName.String(), err)
+				fmt.Fprintf(o.errOut, "error: unable to mark service %q as idled: %v", serviceName.String(), err)
 				hadError = true
 				continue
 			}
 			if _, err := patchObj(info.obj, metadata, oldData, mapping, f); err != nil {
-				fmt.Fprintf(o.errOut, "error: unable to mark service %s as idled: %v", serviceName.String(), err)
+				fmt.Fprintf(o.errOut, "error: unable to mark service %q as idled: %v", serviceName.String(), err)
 				hadError = true
 				continue
 			}
 		}
 
+		fmt.Fprintf(o.out, "The service %q has been marked as idled %s\n", serviceName.String(), dryRunText)
+
 		for _, scaleRef := range refsWithScale {
-			fmt.Fprintf(o.out, "Marked service %s to unidle resource %s %s/%s (unidle to %v replicas)\n", serviceName.String(), scaleRef.Kind, serviceName.Namespace, scaleRef.Name, scaleRef.Replicas)
+			fmt.Fprintf(o.out, "The service will unidle %s \"%s/%s\" to %v replicas once it receives traffic %s\n", scaleRef.Kind, serviceName.Namespace, scaleRef.Name, scaleRef.Replicas, dryRunText)
 		}
 	}
 
@@ -624,14 +632,15 @@ func (o *IdleOptions) RunIdle(f *clientcmd.Factory) error {
 	for scaleRef, info := range toScale {
 		if !o.dryRun {
 			info.scale.Spec.Replicas = 0
-			if err := scaleAnnotater.UpdateObjectScale(info.namespace, scaleRef, info.obj, info.scale); err != nil {
+			scaleUpdater := utilunidling.NewScaleUpdater(f.JSONEncoder(), info.namespace, dcGetter, kclient.Core())
+			if err := scaleAnnotater.UpdateObjectScale(scaleUpdater, info.namespace, scaleRef, info.obj, info.scale); err != nil {
 				fmt.Fprintf(o.errOut, "error: unable to scale %s %s/%s to 0, but still listed as target for unidling: %v\n", scaleRef.Kind, info.namespace, scaleRef.Name, err)
 				hadError = true
 				continue
 			}
 		}
 
-		fmt.Fprintf(o.out, "Idled %s %s/%s\n", scaleRef.Kind, info.namespace, scaleRef.Name)
+		fmt.Fprintf(o.out, "%s \"%s/%s\" has been idled %s\n", scaleRef.Kind, info.namespace, scaleRef.Name, dryRunText)
 	}
 
 	if hadError {

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Kubernetes "User Support" Rotation
 
 ### Traffic sources and responsibilities
@@ -35,7 +30,7 @@ redirect users to Slack. Also check out the
 In general, try to direct support questions to:
 
 1. Documentation, such as the [user guide](../user-guide/README.md) and
-[troubleshooting guide](../troubleshooting.md)
+[troubleshooting guide](http://kubernetes.io/docs/troubleshooting/)
 
 2. Stackoverflow
 
@@ -62,8 +57,8 @@ ensure your questions don't go unanswered.
 Before posting a new question, please search stackoverflow for answers to
 similar questions, and also familiarize yourself with:
 
-  * [user guide](http://kubernetes.io/v1.1/)
-  * [troubleshooting guide](http://kubernetes.io/v1.1/docs/troubleshooting.html)
+  * [user guide](http://kubernetes.io/docs/user-guide/)
+  * [troubleshooting guide](http://kubernetes.io/docs/troubleshooting/)
 
 Again, thanks for using Kubernetes.
 
@@ -87,13 +82,6 @@ please correct any FAQ entries that you see contain out-of-date information).
 [@k8s-support-oncall](https://github.com/k8s-support-oncall) will reach the
 current person on call.
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

@@ -10,11 +10,14 @@ load(
 go_library(
     name = "go_default_library",
     srcs = [
+        "deepcopy.go",
         "doc.go",
         "generated.pb.go",
         "register.go",
         "types.go",
+        "types_swagger_doc_generated.go",
         "zz_generated.deepcopy.go",
+        "zz_generated.defaults.go",
     ],
     tags = ["automanaged"],
     deps = [

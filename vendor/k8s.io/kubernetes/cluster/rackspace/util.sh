@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors All rights reserved.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -128,7 +128,7 @@ prep_known_tokens() {
 
 rax-boot-master() {
 
-  DISCOVERY_URL=$(curl https://discovery.etcd.io/new)
+  DISCOVERY_URL=$(curl https://discovery.etcd.io/new?size=1)
   DISCOVERY_ID=$(echo "${DISCOVERY_URL}" | cut -f 4 -d /)
   echo "cluster/rackspace/util.sh: etcd discovery URL: ${DISCOVERY_URL}"
 
@@ -138,6 +138,7 @@ rax-boot-master() {
       -e "s|KUBE_USER|${KUBE_USER}|" \
       -e "s|KUBE_PASSWORD|${KUBE_PASSWORD}|" \
       -e "s|SERVICE_CLUSTER_IP_RANGE|${SERVICE_CLUSTER_IP_RANGE}|" \
+      -e "s|KUBE_NETWORK|${KUBE_NETWORK}|" \
       -e "s|OS_AUTH_URL|${OS_AUTH_URL}|" \
       -e "s|OS_USERNAME|${OS_USERNAME}|" \
       -e "s|OS_PASSWORD|${OS_PASSWORD}|" \

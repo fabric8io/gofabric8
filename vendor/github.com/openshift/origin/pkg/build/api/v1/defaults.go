@@ -44,8 +44,9 @@ func SetDefaults_BuildTriggerPolicy(obj *BuildTriggerPolicy) {
 	}
 }
 
-func addDefaultingFuncs(scheme *runtime.Scheme) {
-	err := scheme.AddDefaultingFuncs(
+func addDefaultingFuncs(scheme *runtime.Scheme) error {
+	RegisterDefaults(scheme)
+	return scheme.AddDefaultingFuncs(
 		SetDefaults_BuildConfigSpec,
 		SetDefaults_BuildSource,
 		SetDefaults_BuildStrategy,
@@ -54,7 +55,4 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 		SetDefaults_CustomBuildStrategy,
 		SetDefaults_BuildTriggerPolicy,
 	)
-	if err != nil {
-		panic(err)
-	}
 }

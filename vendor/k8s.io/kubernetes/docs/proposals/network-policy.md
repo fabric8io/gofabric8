@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # NetworkPolicy
 
 ## Abstract
@@ -23,7 +18,7 @@ chosen networking solution.
 
 ## Implementation
 
-The implmentation in Kubernetes consists of:
+The implementation in Kubernetes consists of:
 - A v1beta1 NetworkPolicy API object
 - A structure on the `Namespace` object to control policy, to be developed as an annotation for now.
 
@@ -178,14 +173,12 @@ type NetworkPolicyPeer struct {
 
 	// This is a label selector which selects Pods in this namespace.
 	// This field follows standard unversioned.LabelSelector semantics.
-	// If not provided, this selector selects no pods.
 	// If present but empty, this selector selects all pods in this namespace.
 	PodSelector *unversioned.LabelSelector `json:"podSelector,omitempty"`
 	
 	// Selects Namespaces using cluster scoped-labels.  This 
 	// matches all pods in all namespaces selected by this label selector. 
 	// This field follows standard unversioned.LabelSelector semantics.
-	// If omited, this selector selects no namespaces.
 	// If present but empty, this selector selects all namespaces.
 	NamespaceSelector *unversioned.LabelSelector `json:"namespaceSelector,omitempty"`
 }
@@ -292,23 +285,18 @@ spec:
 
 ```yaml
 kind: NetworkPolicy
-apiVersion: extensions/v1beta1 
+apiVersion: extensions/v1beta1
 metadata:
   name: allow-all
 spec:
-  podSelector:            
+  podSelector:
+  ingress:
+  - {}
 ```
 
 ## References
 
 - https://github.com/kubernetes/kubernetes/issues/22469 tracks network policy in kubernetes.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

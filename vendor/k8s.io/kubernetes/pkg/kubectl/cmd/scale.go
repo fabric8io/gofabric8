@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,49 +25,50 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl"
+	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 )
 
-// ScaleOptions is the start of the data required to perform the operation.  As new fields are added, add them here instead of
-// referencing the cmd.Flags()
-type ScaleOptions struct {
-	Filenames []string
-	Recursive bool
-}
+var (
+	scale_long = templates.LongDesc(`
+		Set a new size for a Deployment, ReplicaSet, Replication Controller, or Job.
 
-const (
-	scale_long = `Set a new size for a Deployment, ReplicaSet, Replication Controller, or Job.
+		Scale also allows users to specify one or more preconditions for the scale action.
 
-Scale also allows users to specify one or more preconditions for the scale action.
-If --current-replicas or --resource-version is specified, it is validated before the
-scale is attempted, and it is guaranteed that the precondition holds true when the
-scale is sent to the server.`
-	scale_example = `# Scale a replicaset named 'foo' to 3.
-kubectl scale --replicas=3 rs/foo
+		If --current-replicas or --resource-version is specified, it is validated before the
+		scale is attempted, and it is guaranteed that the precondition holds true when the
+		scale is sent to the server.`)
 
-# Scale a resource identified by type and name specified in "foo.yaml" to 3.
-kubectl scale --replicas=3 -f foo.yaml
+	scale_example = templates.Examples(`
+		# Scale a replicaset named 'foo' to 3.
+		kubectl scale --replicas=3 rs/foo
 
-# If the deployment named mysql's current size is 2, scale mysql to 3.
-kubectl scale --current-replicas=2 --replicas=3 deployment/mysql
+		# Scale a resource identified by type and name specified in "foo.yaml" to 3.
+		kubectl scale --replicas=3 -f foo.yaml
 
-# Scale multiple replication controllers.
-kubectl scale --replicas=5 rc/foo rc/bar rc/baz
+		# If the deployment named mysql's current size is 2, scale mysql to 3.
+		kubectl scale --current-replicas=2 --replicas=3 deployment/mysql
 
-# Scale job named 'cron' to 3.
-kubectl scale --replicas=3 job/cron`
+		# Scale multiple replication controllers.
+		kubectl scale --replicas=5 rc/foo rc/bar rc/baz
+
+		# Scale job named 'cron' to 3.
+		kubectl scale --replicas=3 job/cron`)
 )
 
 // NewCmdScale returns a cobra command with the appropriate configuration and flags to run scale
-func NewCmdScale(f *cmdutil.Factory, out io.Writer) *cobra.Command {
-	options := &ScaleOptions{}
+func NewCmdScale(f cmdutil.Factory, out io.Writer) *cobra.Command {
+	options := &resource.FilenameOptions{}
+
+	validArgs := []string{"deployment", "replicaset", "replicationcontroller", "job"}
+	argAliases := kubectl.ResourceAliases(validArgs)
 
 	cmd := &cobra.Command{
 		Use: "scale [--resource-version=version] [--current-replicas=count] --replicas=COUNT (-f FILENAME | TYPE NAME)",
 		// resize is deprecated
 		Aliases: []string{"resize"},
-		Short:   "Set a new size for a Deployment, ReplicaSet, Replication Controller, or Job.",
+		Short:   "Set a new size for a Deployment, ReplicaSet, Replication Controller, or Job",
 		Long:    scale_long,
 		Example: scale_example,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -76,6 +77,8 @@ func NewCmdScale(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 			err := RunScale(f, out, cmd, args, shortOutput, options)
 			cmdutil.CheckErr(err)
 		},
+		ValidArgs:  validArgs,
+		ArgAliases: argAliases,
 	}
 	cmd.Flags().String("resource-version", "", "Precondition for resource version. Requires that the current resource version match this value in order to scale.")
 	cmd.Flags().Int("current-replicas", -1, "Precondition for current size. Requires that the current size of the resource match this value in order to scale.")
@@ -86,21 +89,15 @@ func NewCmdScale(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmdutil.AddRecordFlag(cmd)
 	cmdutil.AddInclude3rdPartyFlags(cmd)
 
-	usage := "Filename, directory, or URL to a file identifying the resource to set a new size"
-	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
-	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
+	usage := "identifying the resource to set a new size"
+	cmdutil.AddFilenameOptionFlags(cmd, options, usage)
 	return cmd
 }
 
 // RunScale executes the scaling
-func RunScale(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []string, shortOutput bool, options *ScaleOptions) error {
+func RunScale(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []string, shortOutput bool, options *resource.FilenameOptions) error {
 	if len(os.Args) > 1 && os.Args[1] == "resize" {
 		printDeprecationWarning("scale", "resize")
-	}
-
-	count := cmdutil.GetFlagInt(cmd, "replicas")
-	if count < 0 {
-		return cmdutil.UsageError(cmd, "--replicas=COUNT is required, and COUNT must be greater than or equal to 0")
 	}
 
 	cmdNamespace, enforceNamespace, err := f.DefaultNamespace()
@@ -108,17 +105,25 @@ func RunScale(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []stri
 		return err
 	}
 
-	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.Object()
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(enforceNamespace, options.Recursive, options.Filenames...).
+		FilenameParam(enforceNamespace, options).
 		ResourceTypeOrNameArgs(false, args...).
 		Flatten().
 		Do()
 	err = r.Err()
+	if resource.IsUsageError(err) {
+		return cmdutil.UsageError(cmd, err.Error())
+	}
 	if err != nil {
 		return err
+	}
+
+	count := cmdutil.GetFlagInt(cmd, "replicas")
+	if count < 0 {
+		return cmdutil.UsageError(cmd, "The --replicas=COUNT flag is required, and COUNT must be greater than or equal to 0")
 	}
 
 	infos := []*resource.Info{}
@@ -175,7 +180,7 @@ func RunScale(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []stri
 			}
 		}
 		counter++
-		cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, "scaled")
+		cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, false, "scaled")
 		return nil
 	})
 	if err != nil {

@@ -37,7 +37,7 @@ import (
 	oclient "github.com/openshift/origin/pkg/client"
 	osapi "github.com/openshift/origin/pkg/project/api"
 	k8api "k8s.io/kubernetes/pkg/api/unversioned"
-	k8client "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -58,7 +58,7 @@ const (
 	DefaultDomain = ""
 )
 
-func defaultNamespace(cmd *cobra.Command, f *cmdutil.Factory) (string, error) {
+func defaultNamespace(cmd *cobra.Command, f cmdutil.Factory) (string, error) {
 	ns := cmd.Flags().Lookup(namespaceCommandFlag).Value.String()
 	if len(ns) > 0 {
 		return ns, nil
@@ -89,7 +89,7 @@ func defaultNamespace(cmd *cobra.Command, f *cmdutil.Factory) (string, error) {
 
 // ensureDeploymentOrDCHasReplicas ensures that the given Deployment or DeploymentConfig has at least the right number
 // of replicas
-func ensureDeploymentOrDCHasReplicas(c *k8client.Client, oc *oclient.Client, ns string, name string, minRelicas int32) error {
+func ensureDeploymentOrDCHasReplicas(c *clientset.Clientset, oc *oclient.Client, ns string, name string, minRelicas int32) error {
 	typeOfMaster := util.TypeOfMaster(c)
 	if typeOfMaster == util.OpenShift {
 		dc, err := oc.DeploymentConfigs(ns).Get(name)
@@ -118,7 +118,7 @@ func ensureDeploymentOrDCHasReplicas(c *k8client.Client, oc *oclient.Client, ns 
 
 // waitForReadyPodForDeploymentOrDC waits for a ready pod in a Deployment or DeploymentConfig
 // in the given namespace with the given name
-func waitForReadyPodForDeploymentOrDC(c *k8client.Client, oc *oclient.Client, ns string, name string) (string, error) {
+func waitForReadyPodForDeploymentOrDC(c *clientset.Clientset, oc *oclient.Client, ns string, name string) (string, error) {
 	typeOfMaster := util.TypeOfMaster(c)
 	if typeOfMaster == util.OpenShift {
 		dc, err := oc.DeploymentConfigs(ns).Get(name)
@@ -162,7 +162,7 @@ func waitForBCDeleted(c *oclient.Client, ns string, name string) {
 	}
 }
 
-func waitForReadyPodForSelector(c *k8client.Client, oc *oclient.Client, ns string, labels map[string]string) (string, error) {
+func waitForReadyPodForSelector(c *clientset.Clientset, oc *oclient.Client, ns string, labels map[string]string) (string, error) {
 	selector, err := unversioned.LabelSelectorAsSelector(&unversioned.LabelSelector{MatchLabels: labels})
 	if err != nil {
 		return "", err
@@ -240,7 +240,7 @@ func watchAndWaitForBuild(c *oclient.Client, ns string, name string, timeout tim
 	return nil
 }
 
-func detectCurrentUserNamespace(ns string, c *k8client.Client, oc *oclient.Client) (string, error) {
+func detectCurrentUserNamespace(ns string, c *clientset.Clientset, oc *oclient.Client) (string, error) {
 	typeOfMaster := util.TypeOfMaster(c)
 	if typeOfMaster == util.OpenShift {
 		projects, err := oc.Projects().List(api.ListOptions{})
@@ -258,7 +258,7 @@ func detectCurrentUserNamespace(ns string, c *k8client.Client, oc *oclient.Clien
 }
 
 // detectCurrentUserProject finds the user namespace name from the given current projects
-func detectCurrentUserNamespaceFromNamespaces(current string, items []api.Namespace, c *k8client.Client) (chosenone string) {
+func detectCurrentUserNamespaceFromNamespaces(current string, items []api.Namespace, c *clientset.Clientset) (chosenone string) {
 	names := []string{}
 	for _, p := range items {
 		names = append(names, p.Name)
@@ -266,7 +266,7 @@ func detectCurrentUserNamespaceFromNamespaces(current string, items []api.Namesp
 	return detectCurrentUserNamespaceFromNames(current, names, c)
 }
 
-func detectCurrentUserProject(current string, items []osapi.Project, c *k8client.Client) (chosenone string) {
+func detectCurrentUserProject(current string, items []osapi.Project, c *clientset.Clientset) (chosenone string) {
 	names := []string{}
 	for _, p := range items {
 		names = append(names, p.Name)
@@ -274,7 +274,7 @@ func detectCurrentUserProject(current string, items []osapi.Project, c *k8client
 	return detectCurrentUserNamespaceFromNames(current, names, c)
 }
 
-func detectCurrentUserNamespaceFromNames(current string, items []string, c *k8client.Client) (chosenone string) {
+func detectCurrentUserNamespaceFromNames(current string, items []string, c *clientset.Clientset) (chosenone string) {
 	var detected []string
 	var prefixes = []string{"che", "jenkins", "run", "stage"}
 
@@ -408,7 +408,7 @@ func showBanner() {
 	ct.ResetColor()
 }
 
-func defaultParameters(c *k8client.Client, exposer string, githubClientID string, githubClientSecret string, ns string, appName string) map[string]string {
+func defaultParameters(c *clientset.Clientset, exposer string, githubClientID string, githubClientSecret string, ns string, appName string) map[string]string {
 	typeOfMaster := util.TypeOfMaster(c)
 	if len(exposer) == 0 {
 		if typeOfMaster == util.Kubernetes {
@@ -460,7 +460,7 @@ func defaultParameters(c *k8client.Client, exposer string, githubClientID string
 	}
 }
 
-func getTLSAcmeEmail(c *k8client.Client, tlsAcmeEmail string) map[string]string {
+func getTLSAcmeEmail(c *clientset.Clientset, tlsAcmeEmail string) map[string]string {
 	if len(tlsAcmeEmail) == 0 {
 		tlsAcmeEmail = os.Getenv("TLS_ACME_EMAIL")
 	}

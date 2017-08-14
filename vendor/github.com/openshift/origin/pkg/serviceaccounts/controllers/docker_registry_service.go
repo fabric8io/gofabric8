@@ -11,9 +11,8 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/controller"
-	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/credentialprovider"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -40,7 +39,7 @@ type DockerRegistryServiceControllerOptions struct {
 }
 
 // NewDockerRegistryServiceController returns a new *DockerRegistryServiceController.
-func NewDockerRegistryServiceController(cl client.Interface, options DockerRegistryServiceControllerOptions) *DockerRegistryServiceController {
+func NewDockerRegistryServiceController(cl kclientset.Interface, options DockerRegistryServiceControllerOptions) *DockerRegistryServiceController {
 	e := &DockerRegistryServiceController{
 		client:                cl,
 		dockercfgController:   options.DockercfgController,
@@ -51,20 +50,20 @@ func NewDockerRegistryServiceController(cl client.Interface, options DockerRegis
 		dockerURLsIntialized:  options.DockerURLsIntialized,
 	}
 
-	e.serviceCache, e.serviceController = framework.NewInformer(
+	e.serviceCache, e.serviceController = cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(opts kapi.ListOptions) (runtime.Object, error) {
 				opts.FieldSelector = fields.OneTermEqualSelector("metadata.name", options.RegistryServiceName)
-				return e.client.Services(options.RegistryNamespace).List(opts)
+				return e.client.Core().Services(options.RegistryNamespace).List(opts)
 			},
 			WatchFunc: func(opts kapi.ListOptions) (watch.Interface, error) {
 				opts.FieldSelector = fields.OneTermEqualSelector("metadata.name", options.RegistryServiceName)
-				return e.client.Services(options.RegistryNamespace).Watch(opts)
+				return e.client.Core().Services(options.RegistryNamespace).Watch(opts)
 			},
 		},
 		&kapi.Service{},
 		options.Resync,
-		framework.ResourceEventHandlerFuncs{
+		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				e.enqueueRegistryLocationQueue()
 			},
@@ -80,18 +79,18 @@ func NewDockerRegistryServiceController(cl client.Interface, options DockerRegis
 	e.syncRegistryLocationHandler = e.syncRegistryLocationChange
 
 	dockercfgOptions := kapi.ListOptions{FieldSelector: fields.SelectorFromSet(map[string]string{kapi.SecretTypeField: string(kapi.SecretTypeDockercfg)})}
-	e.secretCache, e.secretController = framework.NewInformer(
+	e.secretCache, e.secretController = cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(opts kapi.ListOptions) (runtime.Object, error) {
-				return e.client.Secrets(kapi.NamespaceAll).List(dockercfgOptions)
+				return e.client.Core().Secrets(kapi.NamespaceAll).List(dockercfgOptions)
 			},
 			WatchFunc: func(opts kapi.ListOptions) (watch.Interface, error) {
-				return e.client.Secrets(kapi.NamespaceAll).Watch(dockercfgOptions)
+				return e.client.Core().Secrets(kapi.NamespaceAll).Watch(dockercfgOptions)
 			},
 		},
 		&kapi.Secret{},
 		options.Resync,
-		framework.ResourceEventHandlerFuncs{},
+		cache.ResourceEventHandlerFuncs{},
 	)
 	e.secretsSynced = e.secretController.HasSynced
 	e.syncSecretHandler = e.syncSecretUpdate
@@ -101,19 +100,19 @@ func NewDockerRegistryServiceController(cl client.Interface, options DockerRegis
 
 // DockerRegistryServiceController manages ServiceToken secrets for Service objects
 type DockerRegistryServiceController struct {
-	client client.Interface
+	client kclientset.Interface
 
 	serviceName      string
 	serviceNamespace string
 
 	dockercfgController *DockercfgController
 
-	serviceController           *framework.Controller
+	serviceController           *cache.Controller
 	serviceCache                cache.Store
 	servicesSynced              func() bool
 	syncRegistryLocationHandler func(key string) error
 
-	secretController  *framework.Controller
+	secretController  *cache.Controller
 	secretCache       cache.Store
 	secretsSynced     func() bool
 	syncSecretHandler func(key string) error
@@ -243,8 +242,8 @@ func (e *DockerRegistryServiceController) getDockerRegistryLocations() []string 
 	}
 	service := obj.(*kapi.Service)
 
-	hasPortalIP := (len(service.Spec.ClusterIP) > 0) && (net.ParseIP(service.Spec.ClusterIP) != nil)
-	if hasPortalIP && len(service.Spec.Ports) > 0 {
+	hasClusterIP := (len(service.Spec.ClusterIP) > 0) && (net.ParseIP(service.Spec.ClusterIP) != nil)
+	if hasClusterIP && len(service.Spec.Ports) > 0 {
 		return []string{
 			net.JoinHostPort(service.Spec.ClusterIP, fmt.Sprintf("%d", service.Spec.Ports[0].Port)),
 			net.JoinHostPort(fmt.Sprintf("%s.%s.svc", service.Name, service.Namespace), fmt.Sprintf("%d", service.Spec.Ports[0].Port)),
@@ -376,7 +375,7 @@ func (e *DockerRegistryServiceController) syncSecretUpdate(key string) error {
 	}
 	dockercfgSecret.Data[kapi.DockerConfigKey] = dockercfgContent
 
-	if _, err := e.client.Secrets(dockercfgSecret.Namespace).Update(dockercfgSecret); err != nil {
+	if _, err := e.client.Core().Secrets(dockercfgSecret.Namespace).Update(dockercfgSecret); err != nil {
 		return err
 	}
 

@@ -1,7 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
 Getting started locally
 -----------------------
 
@@ -28,7 +24,7 @@ Getting started locally
 
 #### Linux
 
-Not running Linux? Consider running Linux in a local virtual machine with [Vagrant](../getting-started-guides/vagrant.md), or on a cloud provider like [Google Compute Engine](../getting-started-guides/gce.md).
+Not running Linux? Consider running [Minikube](http://kubernetes.io/docs/getting-started-guides/minikube/), or on a cloud provider like [Google Compute Engine](../getting-started-guides/gce.md).
 
 #### Docker
 
@@ -73,6 +69,12 @@ hack/local-up-cluster.sh
 This will build and start a lightweight local cluster, consisting of a master
 and a single node. Type Control-C to shut it down.
 
+If you've already compiled the Kubernetes components, then you can avoid rebuilding them with this script by using the `-O` flag.
+
+```sh
+./hack/local-up-cluster.sh -O
+```
+
 You can use the cluster/kubectl.sh script to interact with the local cluster. hack/local-up-cluster.sh will
 print the commands to run to point kubectl at the local cluster.
 
@@ -114,7 +116,7 @@ However you cannot view the nginx start page on localhost. To verify that nginx 
 You can control the specifications of a pod via a user defined manifest, and reach nginx through your browser on the port specified therein:
 
 ```sh
-cluster/kubectl.sh create -f docs/user-guide/pod.yaml
+cluster/kubectl.sh create -f test/fixtures/doc-yaml/user-guide/pod.yaml
 ```
 
 Congratulations!
@@ -141,7 +143,7 @@ You are running a single node setup.  This has the limitation of only supporting
 
 ```sh
 cd kubernetes
-hack/build-go.sh
+make
 hack/local-up-cluster.sh
 ```
 
@@ -161,13 +163,6 @@ KUBE_DNS_REPLICAS=1
 ```
 
 To know more on DNS service you can look [here](http://issue.k8s.io/6667). Related documents can be found [here](../../build/kube-dns/#how-do-i-configure-it)
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ IMAGE = example-dns-frontend
 all: push
 
 image:
-	docker build -t $(PREFIX)/$(IMAGE):$(TAG) .
+	docker build --pull -t $(PREFIX)/$(IMAGE):$(TAG) .
 
 push: image
-	gcloud docker push $(PREFIX)/$(IMAGE)
+	gcloud docker -- push $(PREFIX)/$(IMAGE)
 
 clean:

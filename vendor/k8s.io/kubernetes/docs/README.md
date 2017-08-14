@@ -1,9 +1,4 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
-# Kubernetes Documentation: releases.k8s.io/release-1.3
+# Kubernetes Documentation: releases.k8s.io/HEAD
 
 * The [User's guide](user-guide/README.md) is for anyone who wants to run programs and
   services on an existing Kubernetes cluster.
@@ -26,17 +21,10 @@
 * There are example files and walkthroughs in the [examples](../examples/)
   folder.
 
-* If something went wrong, see the [troubleshooting](troubleshooting.md) document for how to debug.
+* If something went wrong, see the [troubleshooting](http://kubernetes.io/docs/troubleshooting/) guide for how to debug.
 You should also check the [known issues for the release](../CHANGELOG.md) you're using.
 
 * To report a security issue, see [Reporting a Security Issue](reporting-security-issues.md).
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

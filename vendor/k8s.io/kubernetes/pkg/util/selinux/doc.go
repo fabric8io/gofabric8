@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,5 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package selinux contains selinux utility functions.
-package selinux
+// Package selinux contains wrapper functions for the libcontainer SELinux
+// package.  A NOP implementation is provided for non-linux platforms.
+package selinux // import "k8s.io/kubernetes/pkg/util/selinux"

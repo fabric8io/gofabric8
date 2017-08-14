@@ -33,6 +33,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/jsonpath"
 	"k8s.io/kubernetes/pkg/watch"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	"github.com/openshift/origin/pkg/util/proc"
 )
@@ -61,101 +62,100 @@ var (
 	)
 )
 
-const (
-	observeLong = `
-Observe changes to resources and take action on them
+var (
+	observeLong = templates.LongDesc(`
+		Observe changes to resources and take action on them
 
-This command assists in building scripted reactions to changes that occur in
-Kubernetes or OpenShift resources. This is frequently referred to as a
-'controller' in Kubernetes and acts to ensure particular conditions are
-maintained. On startup, observe will list all of the resources of a
-particular type and execute the provided script on each one. Observe watches
-the server for changes, and will reexecute the script for each update.
+		This command assists in building scripted reactions to changes that occur in
+		Kubernetes or OpenShift resources. This is frequently referred to as a
+		'controller' in Kubernetes and acts to ensure particular conditions are
+		maintained. On startup, observe will list all of the resources of a
+		particular type and execute the provided script on each one. Observe watches
+		the server for changes, and will reexecute the script for each update.
 
-Observe works best for problems of the form "for every resource X, make sure
-Y is true". Some examples of ways observe can be used include:
+		Observe works best for problems of the form "for every resource X, make sure
+		Y is true". Some examples of ways observe can be used include:
 
-* Ensure every namespace has a quota or limit range object
-* Ensure every service is registered in DNS by making calls to a DNS API
-* Send an email alert whenever a node reports 'NotReady'
-* Watch for the 'FailedScheduling' event and write an IRC message
-* Dynamically provision persistent volumes when a new PVC is created
-* Delete pods that have reached successful completion after a period of time.
+		* Ensure every namespace has a quota or limit range object
+		* Ensure every service is registered in DNS by making calls to a DNS API
+		* Send an email alert whenever a node reports 'NotReady'
+		* Watch for the 'FailedScheduling' event and write an IRC message
+		* Dynamically provision persistent volumes when a new PVC is created
+		* Delete pods that have reached successful completion after a period of time.
 
-The simplest pattern is maintaining an invariant on an object - for instance,
-"every namespace should have an annotation that indicates its owner". If the
-object is deleted no reaction is necessary. A variation on that pattern is
-creating another object: "every namespace should have a quota object based
-on the resources allowed for an owner".
+		The simplest pattern is maintaining an invariant on an object - for instance,
+		"every namespace should have an annotation that indicates its owner". If the
+		object is deleted no reaction is necessary. A variation on that pattern is
+		creating another object: "every namespace should have a quota object based
+		on the resources allowed for an owner".
 
-  $ cat set_owner.sh
-  #!/bin/sh
-  if [[ "$(%[1]s get namespace "$1" --template='{{ .metadata.annotations.owner }}')" == "" ]]; then
-    %[1]s annotate namespace "$1" owner=bob
-  fi
+		    $ cat set_owner.sh
+		    #!/bin/sh
+		    if [[ "$(%[1]s get namespace "$1" --template='{{ .metadata.annotations.owner }}')" == "" ]]; then
+		      %[1]s annotate namespace "$1" owner=bob
+		    fi
 
-  $ %[1]s observe namespaces -- ./set_owner.sh
+		    $ %[1]s observe namespaces -- ./set_owner.sh
 
-The set_owner.sh script is invoked with a single argument (the namespace name)
-for each namespace. This simple script ensures that any user without the
-"owner" annotation gets one set, but preserves any existing value.
+		The set_owner.sh script is invoked with a single argument (the namespace name)
+		for each namespace. This simple script ensures that any user without the
+		"owner" annotation gets one set, but preserves any existing value.
 
-The next common of controller pattern is provisioning - making changes in an
-external system to match the state of a Kubernetes resource. These scripts need
-to account for deletions that may take place while the observe command is not
-running. You can provide the list of known objects via the --names command,
-which should return a newline-delimited list of names or namespace/name pairs.
-Your command will be invoked whenever observe checks the latest state on the
-server - any resources returned by --names that are not found on the server
-will be passed to your --delete command.
+		The next common of controller pattern is provisioning - making changes in an
+		external system to match the state of a Kubernetes resource. These scripts need
+		to account for deletions that may take place while the observe command is not
+		running. You can provide the list of known objects via the --names command,
+		which should return a newline-delimited list of names or namespace/name pairs.
+		Your command will be invoked whenever observe checks the latest state on the
+		server - any resources returned by --names that are not found on the server
+		will be passed to your --delete command.
 
-For example, you may wish to ensure that every node that is added to Kubernetes
-is added to your cluster inventory along with its IP:
+		For example, you may wish to ensure that every node that is added to Kubernetes
+		is added to your cluster inventory along with its IP:
 
-  $ cat add_to_inventory.sh
-  #!/bin/sh
-  echo "$1 $2" >> inventory
-  sort -u inventory -o inventory
+		    $ cat add_to_inventory.sh
+		    #!/bin/sh
+		    echo "$1 $2" >> inventory
+		    sort -u inventory -o inventory
 
-  $ cat remove_from_inventory.sh
-  #!/bin/sh
-  grep -vE "^$1 " inventory > /tmp/newinventory
-  mv -f /tmp/newinventory inventory
+		    $ cat remove_from_inventory.sh
+		    #!/bin/sh
+		    grep -vE "^$1 " inventory > /tmp/newinventory
+		    mv -f /tmp/newinventory inventory
 
-  $ cat known_nodes.sh
-  #!/bin/sh
-  touch inventory
-  cut -f 1-1 -d ' ' inventory
+		    $ cat known_nodes.sh
+		    #!/bin/sh
+		    touch inventory
+		    cut -f 1-1 -d ' ' inventory
 
-  $ %[1]s observe nodes -a '{ .status.addresses[0].address }' \
-      --names ./known_nodes.sh \
-      --delete ./remove_from_inventory.sh \
-      -- ./add_to_inventory.sh
+		    $ %[1]s observe nodes -a '{ .status.addresses[0].address }' \
+		      --names ./known_nodes.sh \
+		      --delete ./remove_from_inventory.sh \
+		      -- ./add_to_inventory.sh
 
+		If you stop the observe command and then delete a node, when you launch observe
+		again the contents of inventory will be compared to the list of nodes from the
+		server, and any node in the inventory file that no longer exists will trigger
+		a call to remove_from_inventory.sh with the name of the node.
 
-If you stop the observe command and then delete a node, when you launch observe
-again the contents of inventory will be compared to the list of nodes from the
-server, and any node in the inventory file that no longer exists will trigger
-a call to remove_from_inventory.sh with the name of the node.
+		Important: when handling deletes, the previous state of the object may not be
+		available and only the name/namespace of the object will be passed to	your
+		--delete command as arguments (all custom arguments are omitted).
 
-Important: when handling deletes, the previous state of the object may not be
-  available and only the name/namespace of the object will be passed to	your
-	--delete command as arguments (all custom arguments are omitted).
+		More complicated interactions build on the two examples above - your inventory
+		script could make a call to allocate storage on your infrastructure as a
+		service, or register node names in DNS, or set complex firewalls. The more
+		complex your integration, the more important it is to record enough data in the
+		remote system that you can identify when resources on either side are deleted.
 
-More complicated interactions build on the two examples above - your inventory
-script could make a call to allocate storage on your infrastructure as a
-service, or register node names in DNS, or set complex firewalls. The more
-complex your integration, the more important it is to record enough data in the
-remote system that you can identify when resources on either side are deleted.
+		Experimental: This command is under active development and may change without notice.`)
 
-Experimental: This command is under active development and may change without notice.`
+	observeExample = templates.Examples(`
+		# Observe changes to services
+	  %[1]s observe services
 
-	observeExample = `	# observe changes to services
-	%[1]s observe services
-
-	# observe changes to services, including the clusterIP and invoke a script for each
-	%[1]s observe services -a '{ .spec.clusterIP }' -- register_dns.sh
-`
+	  # Observe changes to services, including the clusterIP and invoke a script for each
+	  %[1]s observe services -a '{ .spec.clusterIP }' -- register_dns.sh`)
 )
 
 // NewCmdObserve creates the observe command.
@@ -189,10 +189,10 @@ func NewCmdObserve(fullName string, f *clientcmd.Factory, out, errOut io.Writer)
 	}
 
 	// flags controlling what to select
-	cmd.Flags().BoolVar(&options.allNamespaces, "all-namespaces", false, "If present, list the requested object(s) across all projects. Project in current context is ignored.")
+	cmd.Flags().BoolVar(&options.allNamespaces, "all-namespaces", false, "If true, list the requested object(s) across all projects. Project in current context is ignored.")
 
 	// to perform deletion synchronization
-	cmd.Flags().VarP(&options.deleteCommand, "delete", "d", "A command to run when resources are deleted. Specify mulitple times to add arguments.")
+	cmd.Flags().VarP(&options.deleteCommand, "delete", "d", "A command to run when resources are deleted. Specify multiple times to add arguments.")
 	cmd.Flags().Var(&options.nameSyncCommand, "names", "A command that will list all of the currently known names, optional. Specify multiple times to add arguments. Use to get notifications when objects are deleted.")
 
 	// add additional arguments / info to the server
@@ -208,14 +208,14 @@ func NewCmdObserve(fullName string, f *clientcmd.Factory, out, errOut io.Writer)
 	cmd.Flags().IntVar(&options.retryCount, "retry-count", options.retryCount, "The number of times to retry a failing command before continuing.")
 
 	// control observe program behavior
-	cmd.Flags().BoolVar(&options.once, "once", false, "Exit with a status code 0 after all current objects have been processed.")
+	cmd.Flags().BoolVar(&options.once, "once", false, "If true, exit with a status code 0 after all current objects have been processed.")
 	cmd.Flags().DurationVar(&options.exitAfterPeriod, "exit-after", 0, "Exit with status code 0 after the provided duration, optional.")
 	cmd.Flags().DurationVar(&options.resyncPeriod, "resync-period", 0, "When non-zero, periodically reprocess every item from the server as a Sync event. Use to ensure external systems are kept up to date. Requires --names")
-	cmd.Flags().BoolVar(&options.printMetricsOnExit, "print-metrics-on-exit", false, "On exit write all metrics to stdout.")
+	cmd.Flags().BoolVar(&options.printMetricsOnExit, "print-metrics-on-exit", false, "If true, on exit write all metrics to stdout.")
 	cmd.Flags().StringVar(&options.listenAddr, "listen-addr", options.listenAddr, "The name of an interface to listen on to expose metrics and health checking.")
 
 	// additional debug output
-	cmd.Flags().BoolVar(&options.noHeaders, "no-headers", false, "Skip printing information about each event prior to executing the command.")
+	cmd.Flags().BoolVar(&options.noHeaders, "no-headers", false, "If true, skip printing information about each event prior to executing the command.")
 
 	return cmd
 }
@@ -290,11 +290,11 @@ func (o *ObserveOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, args
 	}
 
 	gr := unversioned.ParseGroupResource(args[0])
-	if gr.IsEmpty() {
+	if gr.Empty() {
 		return fmt.Errorf("unknown resource argument")
 	}
 
-	mapper, _ := f.Object(true)
+	mapper, _ := f.Object()
 
 	version, err := mapper.KindFor(gr.WithVersion(""))
 	if err != nil {
@@ -431,6 +431,7 @@ func (o *ObserveOptions) Run() error {
 		go func() {
 			<-time.After(o.exitAfterPeriod)
 			lock.Lock()
+			defer lock.Unlock()
 			o.dumpMetrics()
 			fmt.Fprintf(o.errOut, "Shutting down after %s ...\n", o.exitAfterPeriod)
 			os.Exit(0)
@@ -467,39 +468,44 @@ func (o *ObserveOptions) Run() error {
 
 			deltas := obj.(cache.Deltas)
 			for _, delta := range deltas {
-				lock.Lock()
+				if err := func() error {
+					lock.Lock()
+					defer lock.Unlock()
 
-				// handle before and after observe notification
-				switch {
-				case !syncing && delta.Type == cache.Sync:
-					if err := o.startSync(); err != nil {
+					// handle before and after observe notification
+					switch {
+					case !syncing && delta.Type == cache.Sync:
+						if err := o.startSync(); err != nil {
+							return err
+						}
+						syncing = true
+					case syncing && delta.Type != cache.Sync:
+						if err := o.finishSync(); err != nil {
+							return err
+						}
+						syncing = false
+					}
+
+					// require the user to provide a name function in order to get events beyond added / updated
+					if !syncing && o.knownObjects == nil && !(delta.Type == cache.Added || delta.Type == cache.Updated) {
+						return nil
+					}
+
+					observeCounts.WithLabelValues(string(delta.Type)).Inc()
+
+					// calculate the arguments for the delta and then invoke any command
+					object, arguments, output, err := o.calculateArguments(delta)
+					if err != nil {
 						return err
 					}
-					syncing = true
-				case syncing && delta.Type != cache.Sync:
-					if err := o.finishSync(); err != nil {
+					if err := o.next(delta.Type, object, output, arguments); err != nil {
 						return err
 					}
-					syncing = false
-				}
 
-				// require the user to provide a name function in order to get events beyond added / updated
-				if !syncing && o.knownObjects == nil && !(delta.Type == cache.Added || delta.Type == cache.Updated) {
-					continue
-				}
-
-				observeCounts.WithLabelValues(string(delta.Type)).Inc()
-
-				// calculate the arguments for the delta and then invoke any command
-				object, arguments, output, err := o.calculateArguments(delta)
-				if err != nil {
+					return nil
+				}(); err != nil {
 					return err
 				}
-				if err := o.next(delta.Type, object, output, arguments); err != nil {
-					return err
-				}
-
-				lock.Unlock()
 			}
 			return nil
 		})
@@ -843,7 +849,7 @@ func (p *GoTemplateColumnPrinter) Print(obj interface{}) ([]string, []byte, erro
 			return nil, nil, fmt.Errorf("error executing template '%v': '%v'\n----data----\n%+v\n", p.rawTemplates[i], err, obj)
 		}
 		// if the template resolves to the special <no value> result, return it as an empty string
-		// most arguments will prefer empty vs an arbitary constant, and we are making gotemplates consistent with
+		// most arguments will prefer empty vs an arbitrary constant, and we are making gotemplates consistent with
 		// jsonpath
 		if p.buf.String() == "<no value>" {
 			if p.strict {

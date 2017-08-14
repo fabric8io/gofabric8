@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 **Author**: Vishnu Kannan
 
 **Last** **Updated**: 11/16/2015
@@ -122,7 +117,7 @@ Identical files are hardlinked between images.
 
 The image layers contain all their data under a `root` subdirectory.
 
-Everything under  `/var/lib/docker/overlay/<container-id>` are files required for running the container, including its writable layer.
+Everything under  `/var/lib/docker/overlay/<id>` are files required for running the container, including its writable layer.
 
 ### Improve disk accounting
 
@@ -613,13 +608,6 @@ Capacity in MB = 1638400 * 512 * 128 bytes = 100 GB
 
 * If you use a non-default location for docker storage, change `/var/lib/docker` in the examples to your storage location.
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

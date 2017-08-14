@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Security Contexts
 
 ## Abstract
@@ -57,7 +52,7 @@ shared disks.
 constraints to isolate containers from their host. Different use cases need
 different settings.
 * The concept of a security context should not be tied to a particular security
-mechanism or platform (ie. SELinux, AppArmor)
+mechanism or platform (i.e. SELinux, AppArmor)
 * Applying a different security context to a scope (namespace or pod) requires
 a solution such as the one proposed for [service accounts](service_accounts.md).
 
@@ -190,13 +185,6 @@ security contexts will only allow a context that has defined capabilities or
 privileged. Contexts that attempt to define a UID or SELinux options will be
 denied by default. In the future the admission plugin will base this decision
 upon configurable policies that reside within the [service account](http://pr.k8s.io/2297).
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

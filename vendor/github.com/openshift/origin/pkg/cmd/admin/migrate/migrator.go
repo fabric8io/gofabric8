@@ -79,7 +79,7 @@ func (o *ResourceOptions) Bind(c *cobra.Command) {
 func (o *ResourceOptions) Complete(f *clientcmd.Factory, c *cobra.Command) error {
 	switch {
 	case len(o.Output) > 0:
-		printer, _, err := kubectl.GetPrinter(o.Output, "")
+		printer, _, err := kubectl.GetPrinter(o.Output, "", false, true)
 		if err != nil {
 			return err
 		}
@@ -104,7 +104,7 @@ func (o *ResourceOptions) Complete(f *clientcmd.Factory, c *cobra.Command) error
 		o.DryRun = true
 	}
 
-	namespace, explicitNamespace, err := f.Factory.DefaultNamespace()
+	namespace, explicitNamespace, err := f.DefaultNamespace()
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func (o *ResourceOptions) Complete(f *clientcmd.Factory, c *cobra.Command) error
 	if err != nil {
 		return err
 	}
-	mapper, _ := f.Object(false)
+	mapper, _ := f.Object()
 
 	resourceNames := sets.NewString()
 	for i, s := range o.Include {
@@ -187,9 +187,9 @@ func (o *ResourceOptions) Complete(f *clientcmd.Factory, c *cobra.Command) error
 		break
 	}
 
-	o.Builder = f.Factory.NewBuilder(false).
+	o.Builder = f.NewBuilder().
 		AllNamespaces(allNamespaces).
-		FilenameParam(false, false, o.Filenames...).
+		FilenameParam(false, &resource.FilenameOptions{Recursive: false, Filenames: o.Filenames}).
 		ContinueOnError().
 		DefaultNamespace().
 		RequireObject(true).
@@ -289,7 +289,7 @@ func (o *ResourceVisitor) Visit(fn MigrateVisitFunc) error {
 
 	if summarize {
 		if dryRun {
-			fmt.Fprintf(out, "summary (DRY RUN): total=%d errors=%d ignored=%d unchanged=%d migrated=%d\n", t.found, t.errors, t.ignored, t.unchanged, t.found-t.errors-t.unchanged-t.ignored)
+			fmt.Fprintf(out, "summary (dry run): total=%d errors=%d ignored=%d unchanged=%d migrated=%d\n", t.found, t.errors, t.ignored, t.unchanged, t.found-t.errors-t.unchanged-t.ignored)
 		} else {
 			fmt.Fprintf(out, "summary: total=%d errors=%d ignored=%d unchanged=%d migrated=%d\n", t.found, t.errors, t.ignored, t.unchanged, t.found-t.errors-t.unchanged-t.ignored)
 		}
@@ -403,7 +403,7 @@ func (t *migrateTracker) attempt(info *resource.Info, retries int) {
 	case result == attemptResultSuccess:
 		if glog.V(1) {
 			if t.dryRun {
-				t.report("migrated (DRY RUN):", info, nil)
+				t.report("migrated (dry run):", info, nil)
 			} else {
 				t.report("migrated:", info, nil)
 			}

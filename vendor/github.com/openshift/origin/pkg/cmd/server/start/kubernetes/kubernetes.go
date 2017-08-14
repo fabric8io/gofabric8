@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"runtime"
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
+
+	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	"github.com/openshift/origin/pkg/cmd/cli/cmd"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
@@ -21,15 +22,12 @@ The primary Kubernetes server components can be started individually using their
 arguments. No configuration settings will be used when launching these components.
 `
 
-func NewCommand(name, fullName string, out io.Writer) *cobra.Command {
+func NewCommand(name, fullName string, out, errOut io.Writer) *cobra.Command {
 	cmds := &cobra.Command{
 		Use:   name,
 		Short: "Kubernetes server components",
 		Long:  fmt.Sprintf(kubernetesLong),
-		Run: func(c *cobra.Command, args []string) {
-			c.SetOutput(os.Stdout)
-			c.Help()
-		},
+		Run:   kcmdutil.DefaultSubCommandRun(errOut),
 	}
 
 	cmds.AddCommand(NewAPIServerCommand("apiserver", fullName+" apiserver", out))
@@ -48,9 +46,10 @@ func startProfiler() {
 	if cmdutil.Env("OPENSHIFT_PROFILE", "") == "web" {
 		go func() {
 			runtime.SetBlockProfileRate(1)
-			profile_port := cmdutil.Env("OPENSHIFT_PROFILE_PORT", "6060")
-			glog.Infof(fmt.Sprintf("Starting profiling endpoint at http://127.0.0.1:%s/debug/pprof/", profile_port))
-			glog.Fatal(http.ListenAndServe(fmt.Sprintf("127.0.0.1:%s", profile_port), nil))
+			profilePort := cmdutil.Env("OPENSHIFT_PROFILE_PORT", "6060")
+			profileHost := cmdutil.Env("OPENSHIFT_PROFILE_HOST", "127.0.0.1")
+			glog.Infof(fmt.Sprintf("Starting profiling endpoint at http://%s:%s/debug/pprof/", profileHost, profilePort))
+			glog.Fatal(http.ListenAndServe(fmt.Sprintf("%s:%s", profileHost, profilePort), nil))
 		}()
 	}
 }

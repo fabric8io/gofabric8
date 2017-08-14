@@ -18,11 +18,12 @@ import (
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/master/ports"
 	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/util/crypto"
+	"k8s.io/kubernetes/pkg/util/cert"
 
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	latestconfigapi "github.com/openshift/origin/pkg/cmd/server/api/latest"
+	"github.com/openshift/origin/pkg/cmd/server/crypto"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/variable"
 )
@@ -39,6 +40,7 @@ type CreateNodeConfigOptions struct {
 	VolumeDir           string
 	ImageTemplate       variable.ImageTemplate
 	AllowDisabledDocker bool
+	DNSBindAddress      string
 	DNSDomain           string
 	DNSIP               string
 	ListenAddr          flagtypes.Addr
@@ -47,6 +49,7 @@ type CreateNodeConfigOptions struct {
 	ClientKeyFile     string
 	ServerCertFile    string
 	ServerKeyFile     string
+	ExpireDays        int
 	NodeClientCAFile  string
 	APIServerCAFiles  []string
 	APIServerURL      string
@@ -66,7 +69,7 @@ func NewCommandNodeConfig(commandName string, fullName string, out io.Writer) *c
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
 			}
 
-			if err := options.CreateNodeFolder(); err != nil {
+			if _, err := options.CreateNodeFolder(); err != nil {
 				kcmdutil.CheckErr(err)
 			}
 		},
@@ -84,6 +87,7 @@ func NewCommandNodeConfig(commandName string, fullName string, out io.Writer) *c
 	flags.StringVar(&options.ImageTemplate.Format, "images", options.ImageTemplate.Format, "When fetching the network container image, use this format. The latest release will be used by default.")
 	flags.BoolVar(&options.ImageTemplate.Latest, "latest-images", options.ImageTemplate.Latest, "If true, attempt to use the latest images for the cluster instead of the latest release.")
 	flags.BoolVar(&options.AllowDisabledDocker, "allow-disabled-docker", options.AllowDisabledDocker, "Allow the node to start without docker being available.")
+	flags.StringVar(&options.DNSBindAddress, "dns-bind-address", options.DNSBindAddress, "An address to bind DNS to.")
 	flags.StringVar(&options.DNSDomain, "dns-domain", options.DNSDomain, "DNS domain for the cluster.")
 	flags.StringVar(&options.DNSIP, "dns-ip", options.DNSIP, "DNS server IP for the cluster.")
 	flags.Var(&options.ListenAddr, "listen", "The address to listen for connections on (scheme://host:port).")
@@ -92,6 +96,7 @@ func NewCommandNodeConfig(commandName string, fullName string, out io.Writer) *c
 	flags.StringVar(&options.ClientKeyFile, "client-key", "", "The client key file for the node to contact the API.")
 	flags.StringVar(&options.ServerCertFile, "server-certificate", "", "The server cert file for the node to serve secure traffic.")
 	flags.StringVar(&options.ServerKeyFile, "server-key", "", "The server key file for the node to serve secure traffic.")
+	flags.IntVar(&options.ExpireDays, "expire-days", options.ExpireDays, "Validity of the certificates in days (defaults to 2 years). WARNING: extending this above default value is highly discouraged.")
 	flags.StringVar(&options.NodeClientCAFile, "node-client-certificate-authority", options.NodeClientCAFile, "The file containing signing authorities to use to verify requests to the node. If empty, all requests will be allowed.")
 	flags.StringVar(&options.APIServerURL, "master", options.APIServerURL, "The API server's URL.")
 	flags.StringSliceVar(&options.APIServerCAFiles, "certificate-authority", options.APIServerCAFiles, "Files containing signing authorities to use to verify the API server's serving certificate.")
@@ -111,7 +116,10 @@ func NewCommandNodeConfig(commandName string, fullName string, out io.Writer) *c
 }
 
 func NewDefaultCreateNodeConfigOptions() *CreateNodeConfigOptions {
-	options := &CreateNodeConfigOptions{SignerCertOptions: NewDefaultSignerCertOptions()}
+	options := &CreateNodeConfigOptions{
+		SignerCertOptions: NewDefaultSignerCertOptions(),
+		ExpireDays:        crypto.DefaultCertificateLifetimeInDays,
+	}
 	options.VolumeDir = "openshift.local.volumes"
 	// TODO: replace me with a proper round trip of config options through decode
 	options.DNSDomain = "cluster.local"
@@ -160,7 +168,7 @@ func (o CreateNodeConfigOptions) Validate(args []string) error {
 		return fmt.Errorf("--certificate-authority must be a valid certificate file")
 	} else {
 		for _, caFile := range o.APIServerCAFiles {
-			if _, err := crypto.CertPoolFromFile(caFile); err != nil {
+			if _, err := cert.NewPool(caFile); err != nil {
 				return fmt.Errorf("--certificate-authority must be a valid certificate file: %v", err)
 			}
 		}
@@ -197,6 +205,10 @@ func (o CreateNodeConfigOptions) Validate(args []string) error {
 		}
 	}
 
+	if o.ExpireDays < 0 {
+		return errors.New("expire-days must be valid number of days")
+	}
+
 	return nil
 }
 
@@ -228,7 +240,7 @@ func CopyFile(src, dest string, permissions os.FileMode) error {
 	return nil
 }
 
-func (o CreateNodeConfigOptions) CreateNodeFolder() error {
+func (o CreateNodeConfigOptions) CreateNodeFolder() (string, error) {
 	servingCertInfo := DefaultNodeServingCertInfo(o.NodeConfigDir)
 	clientCertInfo := DefaultNodeClientCertInfo(o.NodeConfigDir)
 
@@ -247,34 +259,34 @@ func (o CreateNodeConfigOptions) CreateNodeFolder() error {
 	fmt.Fprintf(o.Output, "Generating node credentials ...\n")
 
 	if err := o.MakeClientCert(clientCertFile, clientKeyFile); err != nil {
-		return err
+		return "", err
 	}
 	if o.UseTLS() {
 		if err := o.MakeAndWriteServerCert(serverCertFile, serverKeyFile); err != nil {
-			return err
+			return "", err
 		}
 		if o.UseNodeClientCA() {
 			if err := o.MakeNodeClientCA(nodeClientCAFile); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
 	if err := o.MakeAPIServerCA(apiServerCAFile); err != nil {
-		return err
+		return "", err
 	}
 	if err := o.MakeKubeConfig(clientCertFile, clientKeyFile, apiServerCAFile, kubeConfigFile); err != nil {
-		return err
+		return "", err
 	}
 	if err := o.MakeNodeConfig(serverCertFile, serverKeyFile, nodeClientCAFile, kubeConfigFile, nodeConfigFile); err != nil {
-		return err
+		return "", err
 	}
 	if err := o.MakeNodeJSON(nodeJSONFile); err != nil {
-		return err
+		return "", err
 	}
 
 	fmt.Fprintf(o.Output, "Created node config for %s in %s\n", o.NodeName, o.NodeConfigDir)
 
-	return nil
+	return nodeConfigFile, nil
 }
 
 func (o CreateNodeConfigOptions) MakeClientCert(clientCertFile, clientKeyFile string) error {
@@ -284,6 +296,8 @@ func (o CreateNodeConfigOptions) MakeClientCert(clientCertFile, clientKeyFile st
 
 			CertFile: clientCertFile,
 			KeyFile:  clientKeyFile,
+
+			ExpireDays: o.ExpireDays,
 
 			User:   "system:node:" + o.NodeName,
 			Groups: []string{bootstrappolicy.NodesGroup},
@@ -316,6 +330,8 @@ func (o CreateNodeConfigOptions) MakeAndWriteServerCert(serverCertFile, serverKe
 
 			CertFile: serverCertFile,
 			KeyFile:  serverKeyFile,
+
+			ExpireDays: o.ExpireDays,
 
 			Hostnames: o.Hostnames,
 			Output:    o.Output,
@@ -395,8 +411,9 @@ func (o CreateNodeConfigOptions) MakeNodeConfig(serverCertFile, serverKeyFile, n
 			Latest: o.ImageTemplate.Latest,
 		},
 
-		DNSDomain: o.DNSDomain,
-		DNSIP:     o.DNSIP,
+		DNSBindAddress: o.DNSBindAddress,
+		DNSDomain:      o.DNSDomain,
+		DNSIP:          o.DNSIP,
 
 		MasterKubeConfig: kubeConfigFile,
 
@@ -438,6 +455,7 @@ func (o CreateNodeConfigOptions) MakeNodeConfig(serverCertFile, serverKeyFile, n
 	if err != nil {
 		return err
 	}
+	kapi.Scheme.Default(ext)
 	internal, err := configapi.Scheme.ConvertToVersion(ext, configapi.SchemeGroupVersion)
 	if err != nil {
 		return err

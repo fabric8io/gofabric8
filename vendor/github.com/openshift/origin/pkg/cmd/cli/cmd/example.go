@@ -9,17 +9,18 @@ import (
 
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
-const (
-	internalTYPELong = `
-Single line title
+var (
+	internalTYPELong = templates.LongDesc(`
+		Single line title
 
-Description body`
+		Description body`)
 
-	internalTYPEExample = `%s`
+	internalTYPEExample = templates.Examples(`%s`)
 )
 
 type TYPEOptions struct {
@@ -44,7 +45,7 @@ func NewCmdTYPE(fullName string, f *clientcmd.Factory, in io.Reader, out, errout
 			kcmdutil.CheckErr(options.Complete(f, cmd, args))
 			kcmdutil.CheckErr(options.Validate())
 			if err := options.Run(); err != nil {
-				// TODO: move met to kcmdutil
+				// TODO: move me to kcmdutil
 				if err == cmdutil.ErrExit {
 					os.Exit(1)
 				}

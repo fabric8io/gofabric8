@@ -5,10 +5,13 @@ import (
 
 	"github.com/golang/glog"
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/watch"
 
 	routeapi "github.com/openshift/origin/pkg/route/api"
+	"github.com/openshift/origin/pkg/router/controller"
+	"github.com/openshift/origin/pkg/util/netutils"
 )
 
 // F5Plugin holds state for the f5 plugin.
@@ -16,6 +19,10 @@ type F5Plugin struct {
 	// F5Client is the object that represents the F5 BIG-IP host, holds state,
 	// and provides an interface to manipulate F5 BIG-IP.
 	F5Client *f5LTM
+
+	// VtepMap is a map of node ids and their ip addresses
+	// helps to sync events at router start vs node status update events
+	VtepMap map[types.UID]string
 }
 
 // F5PluginConfig holds configuration for the f5 plugin.
@@ -52,25 +59,38 @@ type F5PluginConfig struct {
 	// PartitionPath specifies the F5 partition path to use. This is used
 	// to create an access control boundary for users and applications.
 	PartitionPath string
+
+	// VxlanGateway is the ip address assigned to the local tunnel interface
+	// inside F5 box. This address is the one that the packets generated from F5
+	// will carry. The pods will return the packets to this address itself.
+	// It is important that the gateway be one of the ip addresses of the subnet
+	// that has been generated for F5.
+	VxlanGateway string
+
+	// InternalAddress is the ip address of the vtep interface used to connect to
+	// VxLAN overlay. It is the hostIP address listed in the subnet generated for F5
+	InternalAddress string
 }
 
 // NewF5Plugin makes a new f5 router plugin.
 func NewF5Plugin(cfg F5PluginConfig) (*F5Plugin, error) {
 	f5LTMCfg := f5LTMCfg{
-		host:          cfg.Host,
-		username:      cfg.Username,
-		password:      cfg.Password,
-		httpVserver:   cfg.HttpVserver,
-		httpsVserver:  cfg.HttpsVserver,
-		privkey:       cfg.PrivateKey,
-		insecure:      cfg.Insecure,
-		partitionPath: cfg.PartitionPath,
+		host:            cfg.Host,
+		username:        cfg.Username,
+		password:        cfg.Password,
+		httpVserver:     cfg.HttpVserver,
+		httpsVserver:    cfg.HttpsVserver,
+		privkey:         cfg.PrivateKey,
+		insecure:        cfg.Insecure,
+		partitionPath:   cfg.PartitionPath,
+		vxlanGateway:    cfg.VxlanGateway,
+		internalAddress: cfg.InternalAddress,
 	}
 	f5, err := newF5LTM(f5LTMCfg)
 	if err != nil {
 		return nil, err
 	}
-	return &F5Plugin{f5}, f5.Initialize()
+	return &F5Plugin{f5, map[types.UID]string{}}, f5.Initialize()
 }
 
 // ensurePoolExists checks whether the named pool already exists in F5 BIG-IP
@@ -276,6 +296,21 @@ func (p *F5Plugin) HandleEndpoints(eventType watch.EventType,
 				return err
 			}
 		}
+	case watch.Deleted:
+		poolname := poolName(endpoints.Namespace, endpoints.Name)
+		// presumably, the endpoints are a nil subnet now, reset it anyway
+		endpoints.Subsets = nil
+		err := p.updatePool(poolname, endpoints)
+		if err != nil {
+			return err
+		}
+
+		glog.V(4).Infof("Deleting pool %s", poolname)
+
+		err = p.deletePool(poolname)
+		if err != nil {
+			return err
+		}
 	}
 
 	glog.V(4).Infof("Done processing Endpoints for Name: %v.", endpoints.Name)
@@ -286,7 +321,8 @@ func (p *F5Plugin) HandleEndpoints(eventType watch.EventType,
 // routeName returns a string that can be used as a rule name in F5 BIG-IP and
 // is distinct for the given route.
 func routeName(route routeapi.Route) string {
-	return fmt.Sprintf("openshift_route_%s_%s", route.Namespace, route.Name)
+	name := controller.GetSafeRouteName(route.Name)
+	return fmt.Sprintf("openshift_route_%s_%s", route.Namespace, name)
 }
 
 // In order to map OpenShift routes to F5 objects, we must divide routes into
@@ -466,8 +502,60 @@ func (p *F5Plugin) deleteRoute(routename string) error {
 	return nil
 }
 
+func getNodeIP(node *kapi.Node) (string, error) {
+	if len(node.Status.Addresses) > 0 && node.Status.Addresses[0].Address != "" {
+		return node.Status.Addresses[0].Address, nil
+	} else {
+		return netutils.GetNodeIP(node.Name)
+	}
+}
+
 func (p *F5Plugin) HandleNamespaces(namespaces sets.String) error {
 	return fmt.Errorf("namespace limiting for F5 is not implemented")
+}
+
+func (p *F5Plugin) HandleNode(eventType watch.EventType, node *kapi.Node) error {
+	// The F5 appliance, if hooked to use the VxLAN encapsulation
+	// should have its FDB updated depending on nodes arriving and leaving the cluster
+	switch eventType {
+	case watch.Added, watch.Modified:
+		// New VTEP created, add the record to the vxlan fdb
+		ip, err := getNodeIP(node)
+		if err != nil {
+			// just log the error
+			glog.Warningf("Error in obtaining IP address of newly added node %s - %v", node.Name, err)
+			return nil
+		}
+
+		// check and find if the node has already been processed
+		// if yes, then break, or just add the new vtep
+		uid := node.ObjectMeta.UID
+		if oldNodeIP, ok := p.VtepMap[uid]; ok && (oldNodeIP == ip) {
+			break
+		}
+		err = p.F5Client.AddVtep(ip)
+		if err != nil {
+			glog.Errorf("Error in adding node '%s' to F5s FDB - %v", ip, err)
+			return err
+		}
+		p.VtepMap[uid] = ip
+	case watch.Deleted:
+		// VTEP deleted, delete the record from vxlan fdb
+		ip, err := getNodeIP(node)
+		if err != nil {
+			// just log the error
+			glog.Warningf("Error in obtaining IP address of deleted node %s - %v", node.Name, err)
+			return nil
+		}
+		err = p.F5Client.RemoveVtep(ip)
+		if err != nil {
+			glog.Errorf("Error in removing node '%s' from F5s FDB - %v", ip, err)
+			return err
+		}
+		uid := node.ObjectMeta.UID
+		delete(p.VtepMap, uid)
+	}
+	return nil
 }
 
 // HandleRoute processes watch events on the Route resource and
@@ -478,7 +566,7 @@ func (p *F5Plugin) HandleRoute(eventType watch.EventType,
 		route.Spec.To, route)
 
 	// Name of the pool in F5.
-	poolname := poolName(route.Namespace, route.Name)
+	poolname := poolName(route.Namespace, route.Spec.To.Name)
 
 	// Virtual hostname for policy rule in F5.
 	hostname := route.Spec.Host
@@ -544,6 +632,6 @@ func (p *F5Plugin) HandleRoute(eventType watch.EventType,
 }
 
 // No-op since f5 configuration can be updated piecemeal
-func (p *F5Plugin) SetLastSyncProcessed(processed bool) error {
+func (p *F5Plugin) Commit() error {
 	return nil
 }

@@ -1,7 +1,6 @@
 package util
 
 import (
-	rflag "flag"
 	"fmt"
 	"os"
 	"path"
@@ -18,8 +17,10 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	apierrs "k8s.io/kubernetes/pkg/api/errors"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/retry"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
+	"k8s.io/kubernetes/pkg/util/wait"
 	e2e "k8s.io/kubernetes/test/e2e/framework"
 
 	"github.com/openshift/origin/pkg/client"
@@ -34,6 +35,8 @@ var (
 	quiet          bool
 )
 
+var TestContext *e2e.TestContextType = &e2e.TestContext
+
 // init initialize the extended testing suite.
 // You can set these environment variables to configure extended tests:
 // KUBECONFIG - Path to kubeconfig containing embedded authinfo
@@ -42,6 +45,9 @@ var (
 func InitTest() {
 	// Add hooks to skip all kubernetes or origin tests
 	ginkgo.BeforeEach(checkSuiteSkips)
+
+	e2e.RegisterCommonFlags()
+	e2e.RegisterClusterFlags()
 
 	extendedOutputDir := filepath.Join(os.TempDir(), "openshift-extended-tests")
 	os.MkdirAll(extendedOutputDir, 0777)
@@ -73,15 +79,10 @@ func InitTest() {
 	}
 
 	quiet = os.Getenv("TEST_OUTPUT_QUIET") == "true"
-	//flag.StringVar(&TestContext.KubeConfig, clientcmd.RecommendedConfigPathFlag, KubeConfigPath(), "Path to kubeconfig containing embedded authinfo.")
 	flag.StringVar(&TestContext.OutputDir, "extended-tests-output-dir", extendedOutputDir, "Output directory for interesting/useful test data, like performance data, benchmarks, and other metrics.")
-	rflag.StringVar(&config.GinkgoConfig.FocusString, "focus", "", "DEPRECATED: use --ginkgo.focus")
 
 	// Ensure that Kube tests run privileged (like they do upstream)
 	TestContext.CreateTestingNS = createTestingNS
-
-	// Override the default Kubernetes E2E configuration
-	e2e.TestContext = TestContext
 }
 
 func ExecuteTest(t *testing.T, suite string) {
@@ -149,7 +150,7 @@ func setCreateTestingNSFunc(baseName string, fn e2e.CreateTestingNSFn) {
 
 // createTestingNS delegates to custom namespace creation functions if registered.
 // otherwise, it ensures that kubernetes e2e tests have their service accounts in the privileged and anyuid SCCs
-func createTestingNS(baseName string, c *kclient.Client, labels map[string]string) (*kapi.Namespace, error) {
+func createTestingNS(baseName string, c kclientset.Interface, labels map[string]string) (*kapi.Namespace, error) {
 	// If a custom function exists, call it
 	if fn, exists := customCreateTestingNSFuncs[baseName]; exists {
 		return fn(baseName, c, labels)
@@ -164,13 +165,16 @@ func createTestingNS(baseName string, c *kclient.Client, labels map[string]strin
 	// Add anyuid and privileged permissions for upstream tests
 	if isKubernetesE2ETest() && !skipTestNamespaceCustomization() {
 		e2e.Logf("About to run a Kube e2e test, ensuring namespace is privileged")
-		// add to the "privileged" scc to ensure pods that explicitly
+		// add the "privileged" scc to ensure pods that explicitly
 		// request extra capabilities are not rejected
 		addE2EServiceAccountsToSCC(c, []kapi.Namespace{*ns}, "privileged")
-		// add to the "anyuid" scc to ensure pods that don't specify a
+		// add the "anyuid" scc to ensure pods that don't specify a
 		// uid don't get forced into a range (mimics upstream
 		// behavior)
 		addE2EServiceAccountsToSCC(c, []kapi.Namespace{*ns}, "anyuid")
+		// add the "hostmount-anyuid" scc to ensure pods using hostPath
+		// can execute tests
+		addE2EServiceAccountsToSCC(c, []kapi.Namespace{*ns}, "hostmount-anyuid")
 
 		// The intra-pod test requires that the service account have
 		// permission to retrieve service endpoints.
@@ -179,6 +183,13 @@ func createTestingNS(baseName string, c *kclient.Client, labels map[string]strin
 			return ns, err
 		}
 		addRoleToE2EServiceAccounts(osClient, []kapi.Namespace{*ns}, bootstrappolicy.ViewRoleName)
+	}
+
+	// some test suites assume they can schedule to all nodes
+	switch {
+	case isPackage("/kubernetes/test/e2e/scheduler_predicates.go"), isPackage("/kubernetes/test/e2e/rescheduler.go"),
+		isPackage("/kubernetes/test/e2e/kubelet.go"), isPackage("/kubernetes/test/e2e/common/networking.go"):
+		allowAllNodeScheduling(c, ns.Name)
 	}
 
 	return ns, err
@@ -198,9 +209,32 @@ func checkSuiteSkips() {
 	}
 }
 
-func addE2EServiceAccountsToSCC(c *kclient.Client, namespaces []kapi.Namespace, sccName string) {
-	err := kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
-		scc, err := c.SecurityContextConstraints().Get(sccName)
+var longRetry = wait.Backoff{Steps: 100}
+
+// allowAllNodeScheduling sets the annotation on namespace that allows all nodes to be scheduled onto.
+func allowAllNodeScheduling(c kclientset.Interface, namespace string) {
+	err := retry.RetryOnConflict(longRetry, func() error {
+		ns, err := c.Core().Namespaces().Get(namespace)
+		if err != nil {
+			return err
+		}
+		if ns.Annotations == nil {
+			ns.Annotations = make(map[string]string)
+		}
+		ns.Annotations["openshift.io/node-selector"] = ""
+		_, err = c.Core().Namespaces().Update(ns)
+		return err
+	})
+	if err != nil {
+		FatalErr(err)
+	}
+}
+
+func addE2EServiceAccountsToSCC(c kclientset.Interface, namespaces []kapi.Namespace, sccName string) {
+	// Because updates can race, we need to set the backoff retries to be > than the number of possible
+	// parallel jobs starting at once. Set very high to allow future high parallelism.
+	err := retry.RetryOnConflict(longRetry, func() error {
+		scc, err := c.Core().SecurityContextConstraints().Get(sccName)
 		if err != nil {
 			if apierrs.IsNotFound(err) {
 				return nil
@@ -213,7 +247,7 @@ func addE2EServiceAccountsToSCC(c *kclient.Client, namespaces []kapi.Namespace, 
 				scc.Groups = append(scc.Groups, fmt.Sprintf("system:serviceaccounts:%s", ns.Name))
 			}
 		}
-		if _, err := c.SecurityContextConstraints().Update(scc); err != nil {
+		if _, err := c.Core().SecurityContextConstraints().Update(scc); err != nil {
 			return err
 		}
 		return nil
@@ -224,7 +258,7 @@ func addE2EServiceAccountsToSCC(c *kclient.Client, namespaces []kapi.Namespace, 
 }
 
 func addRoleToE2EServiceAccounts(c *client.Client, namespaces []kapi.Namespace, roleName string) {
-	err := kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
+	err := retry.RetryOnConflict(longRetry, func() error {
 		for _, ns := range namespaces {
 			if strings.HasPrefix(ns.Name, "e2e-") && ns.Status.Phase != kapi.NamespaceTerminating {
 				sa := fmt.Sprintf("system:serviceaccount:%s:default", ns.Name)

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Coding Conventions
 
 Updated: 5/3/2016
@@ -22,7 +17,7 @@ Updated: 5/3/2016
 
   - Bash
 
-    - https://google-styleguide.googlecode.com/svn/trunk/shell.xml
+    - https://google.github.io/styleguide/shell.xml
 
     - Ensure that build, release, test, and cluster-management scripts run on
 OS X
@@ -80,7 +75,7 @@ following Go conventions - `stateLock`, `mapLock` etc.
 tests
 
   - Table-driven tests are preferred for testing multiple scenarios/inputs; for
-example, see [TestNamespaceAuthorization](../../test/integration/auth_test.go)
+example, see [TestNamespaceAuthorization](../../test/integration/auth/auth_test.go)
 
   - Significant features should come with integration (test/integration) and/or
 [end-to-end (test/e2e) tests](e2e-tests.md)
@@ -145,13 +140,6 @@ using the system](../user-guide/config-best-practices.md)
   - Go
 
     - [Go landmines](https://gist.github.com/lavalamp/4bd23295a9f32706a48f)
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

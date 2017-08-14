@@ -15,7 +15,11 @@ import (
 	"github.com/openshift/origin/pkg/util/stringreplace"
 )
 
-var parameterExp = regexp.MustCompile(`\$\{([a-zA-Z0-9\_]+)\}`)
+// match ${KEY}, KEY will be grouped
+var stringParameterExp = regexp.MustCompile(`\$\{([a-zA-Z0-9\_]+?)\}`)
+
+// match ${{KEY}} exact match only, KEY will be grouped
+var nonStringParameterExp = regexp.MustCompile(`^\$\{\{([a-zA-Z0-9\_]+)\}\}$`)
 
 // Processor process the Template into the List with substituted parameters
 type Processor struct {
@@ -46,7 +50,7 @@ func (p *Processor) Process(template *api.Template) field.ErrorList {
 
 	// Perform parameter substitution on the template's user message. This can be used to
 	// instruct a user on next steps for the template.
-	template.Message = p.EvaluateParameterSubstitution(paramMap, template.Message)
+	template.Message, _ = p.EvaluateParameterSubstitution(paramMap, template.Message)
 
 	itemPath := field.NewPath("item")
 	for i, item := range template.Objects {
@@ -61,15 +65,16 @@ func (p *Processor) Process(template *api.Template) field.ErrorList {
 			item = decodedObj
 		}
 
+		// If an object definition's metadata includes a hardcoded namespace field, the field will be stripped out of
+		// the definition during template instantiation.  Namespace fields that contain a ${PARAMETER_REFERENCE}
+		// will be left in place, resolved during parameter substition, and the object will be created in the
+		// referenced namespace.
+		stripNamespace(item)
+
 		newItem, err := p.SubstituteParameters(paramMap, item)
 		if err != nil {
 			templateErrors = append(templateErrors, field.Invalid(idxPath.Child("parameters"), template.Parameters, err.Error()))
 		}
-		// If an object definition's metadata includes a namespace field, the field will be stripped out of
-		// the definition during template instantiation.  This is necessary because all objects created during
-		// instantiation are placed into the target namespace, so it would be invalid for the object to declare
-		//a different namespace.
-		stripNamespace(newItem)
 		if err := util.AddObjectLabels(newItem, template.ObjectLabels); err != nil {
 			templateErrors = append(templateErrors, field.Invalid(idxPath.Child("labels"),
 				template.ObjectLabels, fmt.Sprintf("label could not be applied: %v", err)))
@@ -81,8 +86,8 @@ func (p *Processor) Process(template *api.Template) field.ErrorList {
 }
 
 func stripNamespace(obj runtime.Object) {
-	// Remove namespace from the item
-	if itemMeta, err := meta.Accessor(obj); err == nil && len(itemMeta.GetNamespace()) > 0 {
+	// Remove namespace from the item unless it contains a ${PARAMETER_REFERENCE}
+	if itemMeta, err := meta.Accessor(obj); err == nil && len(itemMeta.GetNamespace()) > 0 && !stringParameterExp.MatchString(itemMeta.GetNamespace()) {
 		itemMeta.SetNamespace("")
 		return
 	}
@@ -90,13 +95,13 @@ func stripNamespace(obj runtime.Object) {
 	if unstruct, ok := obj.(*runtime.Unstructured); ok && unstruct.Object != nil {
 		if obj, ok := unstruct.Object["metadata"]; ok {
 			if m, ok := obj.(map[string]interface{}); ok {
-				if _, ok := m["namespace"]; ok {
+				if _, ok := m["namespace"]; ok && !stringParameterExp.MatchString(m["namespace"].(string)) {
 					m["namespace"] = ""
 				}
 			}
 			return
 		}
-		if _, ok := unstruct.Object["namespace"]; ok {
+		if _, ok := unstruct.Object["namespace"]; ok && stringParameterExp.MatchString(unstruct.Object["namespace"].(string)) {
 			unstruct.Object["namespace"] = ""
 			return
 		}
@@ -125,16 +130,36 @@ func GetParameterByName(t *api.Template, name string) *api.Parameter {
 }
 
 // EvaluateParameterSubstitution replaces escaped parameters in a string with values from the
-// provided map.
-func (p *Processor) EvaluateParameterSubstitution(params map[string]api.Parameter, in string) string {
-	for _, match := range parameterExp.FindAllStringSubmatch(in, -1) {
+// provided map.  Returns the substituted value (if any substitution applied) and a boolean
+// indicating if the resulting value should be treated as a string(true) or a non-string
+// value(false) for purposes of json encoding.
+func (p *Processor) EvaluateParameterSubstitution(params map[string]api.Parameter, in string) (string, bool) {
+	out := in
+	// First check if the value matches the "${{KEY}}" substitution syntax, which
+	// means replace and drop the quotes because the parameter value is to be used
+	// as a non-string value.  If we hit a match here, we're done because the
+	// "${{KEY}}" syntax is exact match only, it cannot be used in a value like
+	// "FOO_${{KEY}}_BAR", no substitution will be performed if it is used in that way.
+	for _, match := range nonStringParameterExp.FindAllStringSubmatch(in, -1) {
 		if len(match) > 1 {
 			if paramValue, found := params[match[1]]; found {
-				in = strings.Replace(in, match[0], paramValue.Value, 1)
+				out = strings.Replace(out, match[0], paramValue.Value, 1)
+				return out, false
 			}
 		}
 	}
-	return in
+
+	// If we didn't do a non-string substitution above, do normal string substitution
+	// on the value here if it contains a "${KEY}" reference.  This substitution does
+	// allow multiple matches and prefix/postfix, eg "FOO_${KEY1}_${KEY2}_BAR"
+	for _, match := range stringParameterExp.FindAllStringSubmatch(in, -1) {
+		if len(match) > 1 {
+			if paramValue, found := params[match[1]]; found {
+				out = strings.Replace(out, match[0], paramValue.Value, 1)
+			}
+		}
+	}
+	return out, true
 }
 
 // SubstituteParameters loops over all values defined in structured
@@ -144,7 +169,7 @@ func (p *Processor) EvaluateParameterSubstitution(params map[string]api.Paramete
 //   - ${PARAMETER_NAME}
 //
 func (p *Processor) SubstituteParameters(params map[string]api.Parameter, item runtime.Object) (runtime.Object, error) {
-	stringreplace.VisitObjectStrings(item, func(in string) string {
+	stringreplace.VisitObjectStrings(item, func(in string) (string, bool) {
 		return p.EvaluateParameterSubstitution(params, in)
 	})
 	return item, nil

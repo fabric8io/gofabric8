@@ -8,42 +8,44 @@ import (
 	"io/ioutil"
 	"strings"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"k8s.io/kubernetes/pkg/api"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	"k8s.io/kubernetes/pkg/credentialprovider"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	"github.com/spf13/cobra"
 )
 
-const (
-	CreateDockerConfigSecretRecommendedName = "new-dockercfg"
+const CreateDockerConfigSecretRecommendedName = "new-dockercfg"
 
-	createDockercfgLong = `
-Create a new dockercfg secret
+var (
+	createDockercfgLong = templates.LongDesc(`
+    Create a new dockercfg secret
 
-Dockercfg secrets are used to authenticate against Docker registries.
+    Dockercfg secrets are used to authenticate against Docker registries.
 
-When using the Docker command line to push images, you can authenticate to a given registry by running
-  'docker login DOCKER_REGISTRY_SERVER --username=DOCKER_USER --password=DOCKER_PASSWORD --email=DOCKER_EMAIL'.
-That produces a ~/.dockercfg file that is used by subsequent 'docker push' and 'docker pull' commands to
-authenticate to the registry.
+    When using the Docker command line to push images, you can authenticate to a given registry by running
+    'docker login DOCKER_REGISTRY_SERVER --username=DOCKER_USER --password=DOCKER_PASSWORD --email=DOCKER_EMAIL'.
+    That produces a ~/.dockercfg file that is used by subsequent 'docker push' and 'docker pull' commands to
+    authenticate to the registry.
 
-When creating applications, you may have a Docker registry that requires authentication.  In order for the
-nodes to pull images on your behalf, they have to have the credentials.  You can provide this information
-by creating a dockercfg secret and attaching it to your service account.`
+    When creating applications, you may have a Docker registry that requires authentication.  In order for the
+    nodes to pull images on your behalf, they have to have the credentials.  You can provide this information
+    by creating a dockercfg secret and attaching it to your service account.`)
 
-	createDockercfgExample = `  # Create a new .dockercfg secret:
-  %[1]s SECRET --docker-server=DOCKER_REGISTRY_SERVER --docker-username=DOCKER_USER --docker-password=DOCKER_PASSWORD --docker-email=DOCKER_EMAIL
+	createDockercfgExample = templates.Examples(`
+    # Create a new .dockercfg secret:
+    %[1]s SECRET --docker-server=DOCKER_REGISTRY_SERVER --docker-username=DOCKER_USER --docker-password=DOCKER_PASSWORD --docker-email=DOCKER_EMAIL
 
-  # Create a new .dockercfg secret from an existing file:
-  %[2]s SECRET path/to/.dockercfg
+    # Create a new .dockercfg secret from an existing file:
+    %[2]s SECRET path/to/.dockercfg
 
-  # Create a new .docker/config.json secret from an existing file:
-  %[2]s SECRET .dockerconfigjson=path/to/.docker/config.json
+    # Create a new .docker/config.json secret from an existing file:
+    %[2]s SECRET .dockerconfigjson=path/to/.docker/config.json
 
-  # To add new secret to 'imagePullSecrets' for the node, or 'secrets' for builds, use:
-  %[3]s SERVICE_ACCOUNT`
+    # To add new secret to 'imagePullSecrets' for the node, or 'secrets' for builds, use:
+    %[3]s SERVICE_ACCOUNT`)
 )
 
 type CreateDockerConfigOptions struct {
@@ -53,13 +55,13 @@ type CreateDockerConfigOptions struct {
 	Password         string
 	EmailAddress     string
 
-	SecretsInterface client.SecretsInterface
+	SecretsInterface kcoreclient.SecretInterface
 
 	Out io.Writer
 }
 
 // NewCmdCreateDockerConfigSecret creates a command object for making a dockercfg secret
-func NewCmdCreateDockerConfigSecret(name, fullName string, f *kcmdutil.Factory, out io.Writer, newSecretFullName, ocEditFullName string) *cobra.Command {
+func NewCmdCreateDockerConfigSecret(name, fullName string, f kcmdutil.Factory, out io.Writer, newSecretFullName, ocEditFullName string) *cobra.Command {
 	o := &CreateDockerConfigOptions{Out: out}
 
 	cmd := &cobra.Command{
@@ -80,7 +82,7 @@ func NewCmdCreateDockerConfigSecret(name, fullName string, f *kcmdutil.Factory, 
 				secret, err := o.NewDockerSecret()
 				kcmdutil.CheckErr(err)
 
-				mapper, _ := f.Object(false)
+				mapper, _ := f.Object()
 				kcmdutil.CheckErr(f.PrintObject(c, mapper, secret, out))
 				return
 			}
@@ -139,13 +141,13 @@ func (o CreateDockerConfigOptions) NewDockerSecret() (*api.Secret, error) {
 	return secret, nil
 }
 
-func (o *CreateDockerConfigOptions) Complete(f *kcmdutil.Factory, args []string) error {
+func (o *CreateDockerConfigOptions) Complete(f kcmdutil.Factory, args []string) error {
 	if len(args) != 1 {
 		return errors.New("must have exactly one argument: secret name")
 	}
 	o.SecretName = args[0]
 
-	client, err := f.Client()
+	client, err := f.ClientSet()
 	if err != nil {
 		return err
 	}
@@ -154,7 +156,7 @@ func (o *CreateDockerConfigOptions) Complete(f *kcmdutil.Factory, args []string)
 		return err
 	}
 
-	o.SecretsInterface = client.Secrets(namespace)
+	o.SecretsInterface = client.Core().Secrets(namespace)
 
 	return nil
 }

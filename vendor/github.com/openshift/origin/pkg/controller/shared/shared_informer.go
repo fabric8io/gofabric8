@@ -7,8 +7,8 @@ import (
 
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/cache"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/controller/framework"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/controller/informers"
 
 	oclient "github.com/openshift/origin/pkg/client"
 )
@@ -19,22 +19,22 @@ type InformerFactory interface {
 	// StartCore starts core informers that must initialize in order for the API server to start
 	StartCore(stopCh <-chan struct{})
 
-	Pods() PodInformer
-	Namespaces() NamespaceInformer
-	Nodes() NodeInformer
-	PersistentVolumes() PersistentVolumeInformer
-	PersistentVolumeClaims() PersistentVolumeClaimInformer
-	ReplicationControllers() ReplicationControllerInformer
-
 	ClusterPolicies() ClusterPolicyInformer
 	ClusterPolicyBindings() ClusterPolicyBindingInformer
 	Policies() PolicyInformer
 	PolicyBindings() PolicyBindingInformer
 
 	DeploymentConfigs() DeploymentConfigInformer
+	BuildConfigs() BuildConfigInformer
 	ImageStreams() ImageStreamInformer
 	SecurityContextConstraints() SecurityContextConstraintsInformer
 	ClusterResourceQuotas() ClusterResourceQuotaInformer
+
+	KubernetesInformers() informers.SharedInformerFactory
+
+	// TODO switch to the generated upstream informers once the kube 1.6 rebase is
+	// in
+	ReplicationControllers() ReplicationControllerInformer
 }
 
 // ListerWatcherOverrides allows a caller to specify special behavior for particular ListerWatchers
@@ -51,28 +51,30 @@ func (o DefaultListerWatcherOverrides) GetListerWatcher(resource unversioned.Gro
 	return o[resource]
 }
 
-func NewInformerFactory(kubeClient kclient.Interface, originClient oclient.Interface, customListerWatchers ListerWatcherOverrides, defaultResync time.Duration) InformerFactory {
+func NewInformerFactory(kubeInformers informers.SharedInformerFactory, kubeClient kclientset.Interface, originClient oclient.Interface, customListerWatchers ListerWatcherOverrides, defaultResync time.Duration) InformerFactory {
 	return &sharedInformerFactory{
+		kubeInformers:        kubeInformers,
 		kubeClient:           kubeClient,
 		originClient:         originClient,
 		customListerWatchers: customListerWatchers,
 		defaultResync:        defaultResync,
 
-		informers:            map[reflect.Type]framework.SharedIndexInformer{},
-		coreInformers:        map[reflect.Type]framework.SharedIndexInformer{},
+		informers:            map[reflect.Type]cache.SharedIndexInformer{},
+		coreInformers:        map[reflect.Type]cache.SharedIndexInformer{},
 		startedInformers:     map[reflect.Type]bool{},
 		startedCoreInformers: map[reflect.Type]bool{},
 	}
 }
 
 type sharedInformerFactory struct {
-	kubeClient           kclient.Interface
+	kubeInformers        informers.SharedInformerFactory
+	kubeClient           kclientset.Interface
 	originClient         oclient.Interface
 	customListerWatchers ListerWatcherOverrides
 	defaultResync        time.Duration
 
-	informers            map[reflect.Type]framework.SharedIndexInformer
-	coreInformers        map[reflect.Type]framework.SharedIndexInformer
+	informers            map[reflect.Type]cache.SharedIndexInformer
+	coreInformers        map[reflect.Type]cache.SharedIndexInformer
 	startedInformers     map[reflect.Type]bool
 	startedCoreInformers map[reflect.Type]bool
 	lock                 sync.Mutex
@@ -102,30 +104,6 @@ func (f *sharedInformerFactory) StartCore(stopCh <-chan struct{}) {
 	}
 }
 
-func (f *sharedInformerFactory) Pods() PodInformer {
-	return &podInformer{sharedInformerFactory: f}
-}
-
-func (f *sharedInformerFactory) Nodes() NodeInformer {
-	return &nodeInformer{sharedInformerFactory: f}
-}
-
-func (f *sharedInformerFactory) PersistentVolumes() PersistentVolumeInformer {
-	return &persistentVolumeInformer{sharedInformerFactory: f}
-}
-
-func (f *sharedInformerFactory) PersistentVolumeClaims() PersistentVolumeClaimInformer {
-	return &persistentVolumeClaimInformer{sharedInformerFactory: f}
-}
-
-func (f *sharedInformerFactory) ReplicationControllers() ReplicationControllerInformer {
-	return &replicationControllerInformer{sharedInformerFactory: f}
-}
-
-func (f *sharedInformerFactory) Namespaces() NamespaceInformer {
-	return &namespaceInformer{sharedInformerFactory: f}
-}
-
 func (f *sharedInformerFactory) ClusterPolicies() ClusterPolicyInformer {
 	return &clusterPolicyInformer{sharedInformerFactory: f}
 }
@@ -146,6 +124,10 @@ func (f *sharedInformerFactory) DeploymentConfigs() DeploymentConfigInformer {
 	return &deploymentConfigInformer{sharedInformerFactory: f}
 }
 
+func (f *sharedInformerFactory) BuildConfigs() BuildConfigInformer {
+	return &buildConfigInformer{sharedInformerFactory: f}
+}
+
 func (f *sharedInformerFactory) ImageStreams() ImageStreamInformer {
 	return &imageStreamInformer{sharedInformerFactory: f}
 }
@@ -156,4 +138,13 @@ func (f *sharedInformerFactory) SecurityContextConstraints() SecurityContextCons
 
 func (f *sharedInformerFactory) ClusterResourceQuotas() ClusterResourceQuotaInformer {
 	return &clusterResourceQuotaInformer{sharedInformerFactory: f}
+}
+
+func (f *sharedInformerFactory) KubernetesInformers() informers.SharedInformerFactory {
+	return f.kubeInformers
+}
+
+// TODO switch to upstream generated informers once kube 1.6 is in and remove these.
+func (f *sharedInformerFactory) ReplicationControllers() ReplicationControllerInformer {
+	return &replicationControllerInformer{sharedInformerFactory: f}
 }

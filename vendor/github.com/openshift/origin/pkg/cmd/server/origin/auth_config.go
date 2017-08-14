@@ -7,14 +7,13 @@ import (
 
 	"github.com/pborman/uuid"
 
-	"k8s.io/kubernetes/pkg/api/unversioned"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/storage"
 
 	"github.com/openshift/origin/pkg/auth/server/session"
+	osclient "github.com/openshift/origin/pkg/client"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/cmd/server/api/latest"
-	"github.com/openshift/origin/pkg/cmd/server/etcd"
 	identityregistry "github.com/openshift/origin/pkg/user/registry/identity"
 	identityetcd "github.com/openshift/origin/pkg/user/registry/identity/etcd"
 	userregistry "github.com/openshift/origin/pkg/user/registry/user"
@@ -29,7 +28,10 @@ type AuthConfig struct {
 	AssetPublicAddresses []string
 
 	// KubeClient is kubeclient with enough permission for the auth API
-	KubeClient kclient.Interface
+	KubeClient kclientset.Interface
+
+	// OpenShiftClient is osclient with enough permission for the auth API
+	OpenShiftClient osclient.Interface
 
 	// RESTOptionsGetter provides storage and RESTOption lookup
 	RESTOptionsGetter restoptions.Getter
@@ -49,26 +51,7 @@ type AuthConfig struct {
 
 func BuildAuthConfig(masterConfig *MasterConfig) (*AuthConfig, error) {
 	options := masterConfig.Options
-	kubeClient := masterConfig.KubeClient()
-
-	groupVersion := unversioned.GroupVersion{Group: "", Version: options.EtcdStorageConfig.OpenShiftStorageVersion}
-
-	// TODO: need to build this per-resource to make sure we're hitting the right etcds
-	// Build a list of storage.Interface objects, each of which only speaks to one of the etcd backends
-	etcdBackends := []storage.Interface{}
-	for _, url := range options.EtcdClientInfo.URLs {
-		backendClientInfo := options.EtcdClientInfo
-		backendClientInfo.URLs = []string{url}
-		backendClient, err := etcd.MakeNewEtcdClient(backendClientInfo)
-		if err != nil {
-			return nil, err
-		}
-		backendEtcdHelper, err := NewEtcdStorage(backendClient, groupVersion, options.EtcdStorageConfig.OpenShiftStoragePrefix)
-		if err != nil {
-			return nil, fmt.Errorf("Error setting up server storage: %v", err)
-		}
-		etcdBackends = append(etcdBackends, backendEtcdHelper)
-	}
+	osClient, kubeClient := masterConfig.OAuthServerClients()
 
 	var sessionAuth *session.Authenticator
 	var sessionHandlerWrapper handlerWrapper
@@ -83,11 +66,9 @@ func BuildAuthConfig(masterConfig *MasterConfig) (*AuthConfig, error) {
 	}
 
 	// Build the list of valid redirect_uri prefixes for a login using the openshift-web-console client to redirect to
-	// TODO: allow configuring this
-	// TODO: remove hard-coding of development UI server
 	assetPublicURLs := []string{}
 	if !options.DisabledFeatures.Has(configapi.FeatureWebConsole) {
-		assetPublicURLs = []string{options.OAuthConfig.AssetPublicURL, "http://localhost:9000", "https://localhost:9000"}
+		assetPublicURLs = []string{options.OAuthConfig.AssetPublicURL}
 	}
 
 	userStorage, err := useretcd.NewREST(masterConfig.RESTOptionsGetter)
@@ -107,9 +88,10 @@ func BuildAuthConfig(masterConfig *MasterConfig) (*AuthConfig, error) {
 
 		KubeClient: kubeClient,
 
+		OpenShiftClient: osClient,
+
 		AssetPublicAddresses: assetPublicURLs,
 		RESTOptionsGetter:    masterConfig.RESTOptionsGetter,
-		EtcdBackends:         etcdBackends,
 
 		IdentityRegistry: identityRegistry,
 		UserRegistry:     userRegistry,

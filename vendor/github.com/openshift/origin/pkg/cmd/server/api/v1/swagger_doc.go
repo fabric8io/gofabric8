@@ -75,8 +75,12 @@ func (AssetExtensionsConfig) SwaggerDoc() map[string]string {
 }
 
 var map_AuditConfig = map[string]string{
-	"":        "AuditConfig holds configuration for the audit capabilities",
-	"enabled": "If this flag is set, basic audit log will be printed in the logs. The logs contains, method, user and a requested URL.",
+	"":                         "AuditConfig holds configuration for the audit capabilities",
+	"enabled":                  "If this flag is set, audit log will be printed in the logs. The logs contains, method, user and a requested URL.",
+	"auditFilePath":            "All requests coming to the apiserver will be logged to this file.",
+	"maximumFileRetentionDays": "Maximum number of days to retain old log files based on the timestamp encoded in their filename.",
+	"maximumRetainedFiles":     "Maximum number of old log files to retain.",
+	"maximumFileSizeMegabytes": "Maximum size in megabytes of the log file before it gets rotated. Defaults to 100MB.",
 }
 
 func (AuditConfig) SwaggerDoc() map[string]string {
@@ -213,6 +217,7 @@ var map_GitHubIdentityProvider = map[string]string{
 	"clientID":      "ClientID is the oauth client ID",
 	"clientSecret":  "ClientSecret is the oauth client secret",
 	"organizations": "Organizations optionally restricts which organizations are allowed to log in",
+	"teams":         "Teams optionally restricts which teams are allowed to log in. Format is <org>/<team>.",
 }
 
 func (GitHubIdentityProvider) SwaggerDoc() map[string]string {
@@ -308,7 +313,7 @@ func (ImagePolicyConfig) SwaggerDoc() map[string]string {
 
 var map_JenkinsPipelineConfig = map[string]string{
 	"": "JenkinsPipelineConfig holds configuration for the Jenkins pipeline strategy",
-	"autoProvisionEnabled": "AutoProvisionEnabled determines whether a Jenkins server will be spawned from the provided template when the first build config in the project with type JenkinsPipeline is created. When not specified this option defaults to false.",
+	"autoProvisionEnabled": "AutoProvisionEnabled determines whether a Jenkins server will be spawned from the provided template when the first build config in the project with type JenkinsPipeline is created. When not specified this option defaults to true.",
 	"templateNamespace":    "TemplateNamespace contains the namespace name where the Jenkins template is stored",
 	"templateName":         "TemplateName is the name of the default Jenkins template",
 	"serviceName":          "ServiceName is the name of the Jenkins service OpenShift uses to detect whether a Jenkins pipeline handler has already been installed in a project. This value *must* match a service name in the provided template.",
@@ -526,8 +531,10 @@ var map_NodeConfig = map[string]string{
 	"servingInfo":                     "ServingInfo describes how to start serving",
 	"masterKubeConfig":                "MasterKubeConfig is a filename for the .kubeconfig file that describes how to connect this node to the master",
 	"masterClientConnectionOverrides": "MasterClientConnectionOverrides provides overrides to the client connection used to connect to the master.",
-	"dnsDomain":                       "DNSDomain holds the domain suffix",
-	"dnsIP":                           "DNSIP holds the IP",
+	"dnsDomain":                       "DNSDomain holds the domain suffix that will be used for the DNS search path inside each container. Defaults to 'cluster.local'.",
+	"dnsIP":                           "DNSIP is the IP address that pods will use to access cluster DNS. Defaults to the service IP of the Kubernetes master. This IP must be listening on port 53 for compatibility with libc resolvers (which cannot be configured to resolve names from any other port). When running more complex local DNS configurations, this is often set to the local address of a DNS proxy like dnsmasq, which then will consult either the local DNS (see dnsBindAddress) or the master DNS.",
+	"dnsBindAddress":                  "DNSBindAddress is the ip:port to serve DNS on. If this is not set, the DNS server will not be started. Because most DNS resolvers will only listen on port 53, if you select an alternative port you will need a DNS proxy like dnsmasq to answer queries for containers. A common configuration is dnsmasq configured on a node IP listening on 53 and delegating queries for dnsDomain to this process, while sending other queries to the host environments nameservers.",
+	"dnsNameservers":                  "DNSNameservers is a list of ip:port values of recursive nameservers to forward queries to when running a local DNS server if dnsBindAddress is set. If this value is empty, the DNS server will default to the nameservers listed in /etc/resolv.conf. If you have configured dnsmasq or another DNS proxy on the system, this value should be set to the upstream nameservers dnsmasq resolves with.",
 	"networkPluginName":               "Deprecated and maintained for backward compatibility, use NetworkConfig.NetworkPluginName instead",
 	"networkConfig":                   "NetworkConfig provides network options for the node",
 	"volumeDirectory":                 "VolumeDirectory is the directory that volumes will be stored under",
@@ -758,6 +765,8 @@ var map_ServingInfo = map[string]string{
 	"bindNetwork":       "BindNetwork is the type of network to bind to - defaults to \"tcp4\", accepts \"tcp\", \"tcp4\", and \"tcp6\"",
 	"clientCA":          "ClientCA is the certificate bundle for all the signers that you'll recognize for incoming client certificates",
 	"namedCertificates": "NamedCertificates is a list of certificates to use to secure requests to specific hostnames",
+	"minTLSVersion":     "MinTLSVersion is the minimum TLS version supported. Values must match version names from https://golang.org/pkg/crypto/tls/#pkg-constants",
+	"cipherSuites":      "CipherSuites contains an overridden list of ciphers for the server to support. Values must match cipher suite IDs from https://golang.org/pkg/crypto/tls/#pkg-constants",
 }
 
 func (ServingInfo) SwaggerDoc() map[string]string {
@@ -835,7 +844,7 @@ func (UserAgentDenyRule) SwaggerDoc() map[string]string {
 
 var map_UserAgentMatchRule = map[string]string{
 	"":          "UserAgentMatchRule describes how to match a given request based on User-Agent and HTTPVerb",
-	"regex":     "UserAgentRegex is a regex that is checked against the User-Agent. Known variants of oc clients 1. oc accessing kube resources: oc/v1.2.0 (linux/amd64) kubernetes/bc4550d 2. oc accessing openshift resources: oc/v1.1.3 (linux/amd64) openshift/b348c2f 3. openshift kubectl accessing kube resources:  openshift/v1.2.0 (linux/amd64) kubernetes/bc4550d 4. openshit kubectl accessing openshift resources: openshift/v1.1.3 (linux/amd64) openshift/b348c2f 5. oadm accessing kube resources: oadm/v1.2.0 (linux/amd64) kubernetes/bc4550d 6. oadm accessing openshift resources: oadm/v1.1.3 (linux/amd64) openshift/b348c2f 7. openshift cli accessing kube resources: openshift/v1.2.0 (linux/amd64) kubernetes/bc4550d 8. openshift cli accessing openshift resources: openshift/v1.1.3 (linux/amd64) openshift/b348c2f",
+	"regex":     "UserAgentRegex is a regex that is checked against the User-Agent. Known variants of oc clients 1. oc accessing kube resources: oc/v1.2.0 (linux/amd64) kubernetes/bc4550d 2. oc accessing openshift resources: oc/v1.1.3 (linux/amd64) openshift/b348c2f 3. openshift kubectl accessing kube resources:  openshift/v1.2.0 (linux/amd64) kubernetes/bc4550d 4. openshift kubectl accessing openshift resources: openshift/v1.1.3 (linux/amd64) openshift/b348c2f 5. oadm accessing kube resources: oadm/v1.2.0 (linux/amd64) kubernetes/bc4550d 6. oadm accessing openshift resources: oadm/v1.1.3 (linux/amd64) openshift/b348c2f 7. openshift cli accessing kube resources: openshift/v1.2.0 (linux/amd64) kubernetes/bc4550d 8. openshift cli accessing openshift resources: openshift/v1.1.3 (linux/amd64) openshift/b348c2f",
 	"httpVerbs": "HTTPVerbs specifies which HTTP verbs should be matched.  An empty list means \"match all verbs\".",
 }
 

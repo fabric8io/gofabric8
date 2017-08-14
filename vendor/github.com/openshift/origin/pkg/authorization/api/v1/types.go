@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"fmt"
+
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	kapi "k8s.io/kubernetes/pkg/api/v1"
 	kruntime "k8s.io/kubernetes/pkg/runtime"
@@ -51,28 +53,41 @@ type Role struct {
 
 // OptionalNames is an array that may also be left nil to distinguish between set and unset.
 // +protobuf.nullable=true
+// +protobuf.options.(gogoproto.goproto_stringer)=false
 type OptionalNames []string
 
+func (t OptionalNames) String() string {
+	return fmt.Sprintf("%v", []string(t))
+}
+
 // RoleBinding references a Role, but not contain it.  It can reference any Role in the same namespace or in the global namespace.
-// It adds who information via Users and Groups and namespace information by which namespace it exists in.  RoleBindings in a given
-// namespace only have effect in that namespace (excepting the master namespace which has power in all namespaces).
+// It adds who information via (Users and Groups) OR Subjects and namespace information by which namespace it exists in.
+// RoleBindings in a given namespace only have effect in that namespace (excepting the master namespace which has power in all namespaces).
 type RoleBinding struct {
 	unversioned.TypeMeta `json:",inline"`
 	// Standard object's metadata.
 	kapi.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// UserNames holds all the usernames directly bound to the role
-	// +genconversion=false
+	// UserNames holds all the usernames directly bound to the role.
+	// This field should only be specified when supporting legacy clients and servers.
+	// See Subjects for further details.
+	// +k8s:conversion-gen=false
 	UserNames OptionalNames `json:"userNames" protobuf:"bytes,2,rep,name=userNames"`
-	// GroupNames holds all the groups directly bound to the role
-	// +genconversion=false
+	// GroupNames holds all the groups directly bound to the role.
+	// This field should only be specified when supporting legacy clients and servers.
+	// See Subjects for further details.
+	// +k8s:conversion-gen=false
 	GroupNames OptionalNames `json:"groupNames" protobuf:"bytes,3,rep,name=groupNames"`
-	// Subjects hold object references to authorize with this rule
+	// Subjects hold object references to authorize with this rule.
+	// This field is ignored if UserNames or GroupNames are specified to support legacy clients and servers.
+	// Thus newer clients that do not need to support backwards compatibility should send
+	// only fully qualified Subjects and should omit the UserNames and GroupNames fields.
+	// Clients that need to support backwards compatibility can use this field to build the UserNames and GroupNames.
 	Subjects []kapi.ObjectReference `json:"subjects" protobuf:"bytes,4,rep,name=subjects"`
 
-	// RoleRef can only reference the current namespace and the global namespace
+	// RoleRef can only reference the current namespace and the global namespace.
 	// If the RoleRef cannot be resolved, the Authorizer must return an error.
-	// Since Policy is a singleton, this is sufficient knowledge to locate a role
+	// Since Policy is a singleton, this is sufficient knowledge to locate a role.
 	RoleRef kapi.ObjectReference `json:"roleRef" protobuf:"bytes,5,opt,name=roleRef"`
 }
 
@@ -146,6 +161,27 @@ type SelfSubjectRulesReviewSpec struct {
 	Scopes OptionalScopes `json:"scopes" protobuf:"bytes,1,rep,name=scopes"`
 }
 
+// SubjectRulesReview is a resource you can create to determine which actions another user can perform in a namespace
+type SubjectRulesReview struct {
+	unversioned.TypeMeta `json:",inline"`
+
+	// Spec adds information about how to conduct the check
+	Spec SubjectRulesReviewSpec `json:"spec" protobuf:"bytes,1,opt,name=spec"`
+
+	// Status is completed by the server to tell which permissions you have
+	Status SubjectRulesReviewStatus `json:"status,omitempty" protobuf:"bytes,2,opt,name=status"`
+}
+
+// SubjectRulesReviewSpec adds information about how to conduct the check
+type SubjectRulesReviewSpec struct {
+	// User is optional.  At least one of User and Groups must be specified.
+	User string `json:"user" protobuf:"bytes,1,opt,name=user"`
+	// Groups is optional.  Groups is the list of groups to which the User belongs.  At least one of User and Groups must be specified.
+	Groups []string `json:"groups" protobuf:"bytes,2,rep,name=groups"`
+	// Scopes to use for the evaluation.  Empty means "use the unscoped (full) permissions of the user/groups".
+	Scopes OptionalScopes `json:"scopes" protobuf:"bytes,3,opt,name=scopes"`
+}
+
 // SubjectRulesReviewStatus is contains the result of a rules check
 type SubjectRulesReviewStatus struct {
 	// Rules is the list of rules (no particular sort) that are allowed for the subject
@@ -162,10 +198,10 @@ type ResourceAccessReviewResponse struct {
 	// Namespace is the namespace used for the access review
 	Namespace string `json:"namespace,omitempty" protobuf:"bytes,1,opt,name=namespace"`
 	// UsersSlice is the list of users who can perform the action
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	UsersSlice []string `json:"users" protobuf:"bytes,2,rep,name=users"`
 	// GroupsSlice is the list of groups who can perform the action
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	GroupsSlice []string `json:"groups" protobuf:"bytes,3,rep,name=groups"`
 
 	// EvaluationError is an indication that some error occurred during resolution, but partial results can still be returned.
@@ -201,7 +237,12 @@ type SubjectAccessReviewResponse struct {
 
 // OptionalScopes is an array that may also be left nil to distinguish between set and unset.
 // +protobuf.nullable=true
+// +protobuf.options.(gogoproto.goproto_stringer)=false
 type OptionalScopes []string
+
+func (t OptionalScopes) String() string {
+	return fmt.Sprintf("%v", []string(t))
+}
 
 // SubjectAccessReview is an object for requesting information about whether a user or group can perform an action
 type SubjectAccessReview struct {
@@ -212,7 +253,7 @@ type SubjectAccessReview struct {
 	// User is optional. If both User and Groups are empty, the current authenticated user is used.
 	User string `json:"user" protobuf:"bytes,2,opt,name=user"`
 	// GroupsSlice is optional. Groups is the list of groups to which the User belongs.
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	GroupsSlice []string `json:"groups" protobuf:"bytes,3,rep,name=groups"`
 	// Scopes to use for the evaluation.  Empty means "use the unscoped (full) permissions of the user/groups".
 	// Nil for a self-SAR, means "use the scopes on this request".
@@ -237,7 +278,7 @@ type LocalSubjectAccessReview struct {
 	// User is optional.  If both User and Groups are empty, the current authenticated user is used.
 	User string `json:"user" protobuf:"bytes,2,opt,name=user"`
 	// Groups is optional.  Groups is the list of groups to which the User belongs.
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	GroupsSlice []string `json:"groups" protobuf:"bytes,3,rep,name=groups"`
 	// Scopes to use for the evaluation.  Empty means "use the unscoped (full) permissions of the user/groups".
 	// Nil for a self-SAR, means "use the scopes on this request".
@@ -261,6 +302,10 @@ type Action struct {
 	Resource string `json:"resource" protobuf:"bytes,5,opt,name=resource"`
 	// ResourceName is the name of the resource being requested for a "get" or deleted for a "delete"
 	ResourceName string `json:"resourceName" protobuf:"bytes,6,opt,name=resourceName"`
+	// Path is the path of a non resource URL
+	Path string `json:"path" protobuf:"bytes,8,opt,name=path"`
+	// IsNonResourceURL is true if this is a request for a non-resource URL (outside of the resource hieraarchy)
+	IsNonResourceURL bool `json:"isNonResourceURL" protobuf:"varint,9,opt,name=isNonResourceURL"`
 	// Content is the actual content of the request for create and update
 	Content kruntime.RawExtension `json:"content,omitempty" protobuf:"bytes,7,opt,name=content"`
 }
@@ -316,25 +361,33 @@ type ClusterRole struct {
 }
 
 // ClusterRoleBinding references a ClusterRole, but not contain it.  It can reference any ClusterRole in the same namespace or in the global namespace.
-// It adds who information via Users and Groups and namespace information by which namespace it exists in.  ClusterRoleBindings in a given
-// namespace only have effect in that namespace (excepting the master namespace which has power in all namespaces).
+// It adds who information via (Users and Groups) OR Subjects and namespace information by which namespace it exists in.
+// ClusterRoleBindings in a given namespace only have effect in that namespace (excepting the master namespace which has power in all namespaces).
 type ClusterRoleBinding struct {
 	unversioned.TypeMeta `json:",inline"`
 	// Standard object's metadata.
 	kapi.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
-	// UserNames holds all the usernames directly bound to the role
-	// +genconversion=false
+	// UserNames holds all the usernames directly bound to the role.
+	// This field should only be specified when supporting legacy clients and servers.
+	// See Subjects for further details.
+	// +k8s:conversion-gen=false
 	UserNames OptionalNames `json:"userNames" protobuf:"bytes,2,rep,name=userNames"`
-	// GroupNames holds all the groups directly bound to the role
-	// +genconversion=false
+	// GroupNames holds all the groups directly bound to the role.
+	// This field should only be specified when supporting legacy clients and servers.
+	// See Subjects for further details.
+	// +k8s:conversion-gen=false
 	GroupNames OptionalNames `json:"groupNames" protobuf:"bytes,3,rep,name=groupNames"`
-	// Subjects hold object references to authorize with this rule
+	// Subjects hold object references to authorize with this rule.
+	// This field is ignored if UserNames or GroupNames are specified to support legacy clients and servers.
+	// Thus newer clients that do not need to support backwards compatibility should send
+	// only fully qualified Subjects and should omit the UserNames and GroupNames fields.
+	// Clients that need to support backwards compatibility can use this field to build the UserNames and GroupNames.
 	Subjects []kapi.ObjectReference `json:"subjects" protobuf:"bytes,4,rep,name=subjects"`
 
-	// RoleRef can only reference the current namespace and the global namespace
+	// RoleRef can only reference the current namespace and the global namespace.
 	// If the ClusterRoleRef cannot be resolved, the Authorizer must return an error.
-	// Since Policy is a singleton, this is sufficient knowledge to locate a role
+	// Since Policy is a singleton, this is sufficient knowledge to locate a role.
 	RoleRef kapi.ObjectReference `json:"roleRef" protobuf:"bytes,5,opt,name=roleRef"`
 }
 
@@ -426,4 +479,93 @@ type ClusterRoleList struct {
 
 	// Items is a list of ClusterRoles
 	Items []ClusterRole `json:"items" protobuf:"bytes,2,rep,name=items"`
+}
+
+// RoleBindingRestriction is an object that can be matched against a subject
+// (user, group, or service account) to determine whether rolebindings on that
+// subject are allowed in the namespace to which the RoleBindingRestriction
+// belongs.  If any one of those RoleBindingRestriction objects matches
+// a subject, rolebindings on that subject in the namespace are allowed.
+type RoleBindingRestriction struct {
+	unversioned.TypeMeta `json:",inline"`
+
+	// Standard object's metadata.
+	kapi.ObjectMeta `json:"metadata" protobuf:"bytes,1,opt,name=metadata"`
+
+	// Spec defines the matcher.
+	Spec RoleBindingRestrictionSpec `json:"spec" protobuf:"bytes,2,opt,name=spec"`
+}
+
+// RoleBindingRestrictionSpec defines a rolebinding restriction.  Exactly one
+// field must be non-nil.
+type RoleBindingRestrictionSpec struct {
+	// UserRestriction matches against user subjects.
+	UserRestriction *UserRestriction `json:"userrestriction" protobuf:"bytes,1,opt,name=userrestriction"`
+
+	// GroupRestriction matches against group subjects.
+	GroupRestriction *GroupRestriction `json:"grouprestriction" protobuf:"bytes,2,opt,name=grouprestriction"`
+
+	// ServiceAccountRestriction matches against service-account subjects.
+	ServiceAccountRestriction *ServiceAccountRestriction `json:"serviceaccountrestriction" protobuf:"bytes,3,opt,name=serviceaccountrestriction"`
+}
+
+// RoleBindingRestrictionList is a collection of RoleBindingRestriction objects.
+type RoleBindingRestrictionList struct {
+	unversioned.TypeMeta `json:",inline"`
+
+	// Standard object's metadata.
+	unversioned.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	// Items is a list of RoleBindingRestriction objects.
+	Items []RoleBindingRestriction `json:"items" protobuf:"bytes,2,rep,name=items"`
+}
+
+// UserRestriction matches a user either by a string match on the user name,
+// a string match on the name of a group to which the user belongs, or a label
+// selector applied to the user labels.
+type UserRestriction struct {
+	// Users specifies a list of literal user names.
+	Users []string `json:"users" protobuf:"bytes,1,rep,name=users"`
+
+	// Groups specifies a list of literal group names.
+	Groups []string `json:"groups" protobuf:"bytes,2,rep,name=groups"`
+
+	// Selectors specifies a list of label selectors over user labels.
+	Selectors []unversioned.LabelSelector `json:"labels" protobuf:"bytes,3,rep,name=labels"`
+}
+
+// GroupRestriction matches a group either by a string match on the group name
+// or a label selector applied to group labels.
+type GroupRestriction struct {
+	// Groups is a list of groups used to match against an individual user's
+	// groups. If the user is a member of one of the whitelisted groups, the user
+	// is allowed to be bound to a role.
+	Groups []string `json:"groups" protobuf:"bytes,1,rep,name=groups"`
+
+	// Selectors specifies a list of label selectors over group labels.
+	Selectors []unversioned.LabelSelector `json:"labels" protobuf:"bytes,2,rep,name=labels"`
+}
+
+// ServiceAccountRestriction matches a service account by a string match on
+// either the service-account name or the name of the service account's
+// namespace.
+type ServiceAccountRestriction struct {
+	// ServiceAccounts specifies a list of literal service-account names.
+	ServiceAccounts []ServiceAccountReference `json:"serviceaccounts" protobuf:"bytes,1,rep,name=serviceaccounts"`
+
+	// Namespaces specifies a list of literal namespace names.
+	Namespaces []string `json:"namespaces" protobuf:"bytes,2,rep,name=namespaces"`
+}
+
+// ServiceAccountReference specifies a service account and namespace by their
+// names.
+type ServiceAccountReference struct {
+	// Name is the name of the service account.
+	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
+
+	// Namespace is the namespace of the service account.  Service accounts from
+	// inside the whitelisted namespaces are allowed to be bound to roles.  If
+	// Namespace is empty, then the namespace of the RoleBindingRestriction in
+	// which the ServiceAccountReference is embedded is used.
+	Namespace string `json:"namespace" protobuf:"bytes,2,opt,name=namespace"`
 }

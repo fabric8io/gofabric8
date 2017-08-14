@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,7 +83,7 @@ type (
 		// CreationTime() string // TODO: Add as needed
 		// Description() string // TODO: Add as needed
 		DnsName() string
-		// Id()  uint64 // TODO: Add as needed
+		Id() uint64
 		// Kind() string // TODO: Add as needed
 		Name() string
 		// NameServerSet() string // TODO: Add as needed

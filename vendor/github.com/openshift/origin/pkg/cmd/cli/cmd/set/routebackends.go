@@ -19,53 +19,55 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	routeapi "github.com/openshift/origin/pkg/route/api"
 )
 
-const (
-	backendsLong = `
-Set and adjust route backends
+var (
+	backendsLong = templates.LongDesc(`
+		Set and adjust route backends
 
-Routes may have one or more optional backend services with weights controlling how much
-traffic flows to each service. Traffic is assigned proportional to the combined weights
-of each backend. A weight of zero means that the backend will receive no traffic. If all
-weights are zero the route will not send traffic to any backends.
+		Routes may have one or more optional backend services with weights controlling how much
+		traffic flows to each service. Traffic is assigned proportional to the combined weights
+		of each backend. A weight of zero means that the backend will receive no traffic. If all
+		weights are zero the route will not send traffic to any backends.
 
-When setting backends, the first backend is the primary and the other backends are
-considered alternates. For example:
+		When setting backends, the first backend is the primary and the other backends are
+		considered alternates. For example:
 
-    $ %[1]s route-backends web prod=99 canary=1
+		    $ %[1]s route-backends web prod=99 canary=1
 
-will set the primary backend to service "prod" with a weight of 99 and the first
-alternate backend to service "canary" with a weight of 1. This means 99%% of traffic will
-be sent to the service "prod".
+		will set the primary backend to service "prod" with a weight of 99 and the first
+		alternate backend to service "canary" with a weight of 1. This means 99%% of traffic will
+		be sent to the service "prod".
 
-The --adjust flag allows you to alter the weight of an individual service relative to
-itself or to the primary backend. Specifying a percentage will adjust the backend
-relative to either the primary or the first alternate (if you specify the primary).
-If there are other backends their weights will be kept proportional to the changed.
+		The --adjust flag allows you to alter the weight of an individual service relative to
+		itself or to the primary backend. Specifying a percentage will adjust the backend
+		relative to either the primary or the first alternate (if you specify the primary).
+		If there are other backends their weights will be kept proportional to the changed.
 
-Not all routers may support multiple or weighted backends.`
+		Not all routers may support multiple or weighted backends.`)
 
-	backendsExample = `  # Print the backends on the route 'web'
-  %[1]s route-backends web
+	backendsExample = templates.Examples(`
+		# Print the backends on the route 'web'
+	  %[1]s route-backends web
 
-  # Set two backend services on route 'web' with 2/3rds of traffic going to 'a'
-  %[1]s route-backends web a=2 b=1
+	  # Set two backend services on route 'web' with 2/3rds of traffic going to 'a'
+	  %[1]s route-backends web a=2 b=1
 
-  # Increase the traffic percentage going to b by 10%% relative to a
-  %[1]s route-backends web --adjust b=+10%%
+	  # Increase the traffic percentage going to b by 10%% relative to a
+	  %[1]s route-backends web --adjust b=+10%%
 
-  # Set traffic percentage going to b to 10%% of the traffic going to a
-  %[1]s route-backends web --adjust b=10%%
+	  # Set traffic percentage going to b to 10%% of the traffic going to a
+	  %[1]s route-backends web --adjust b=10%%
 
-  # Set weight of b to 10
-  %[1]s route-backends web --adjust b=10
+	  # Set weight of b to 10
+	  %[1]s route-backends web --adjust b=10
 
-  # Set the weight to all backends to zero
-  %[1]s route-backends web --zero`
+	  # Set the weight to all backends to zero
+	  %[1]s route-backends web --zero`)
 )
 
 type BackendsOptions struct {
@@ -106,6 +108,7 @@ func NewCmdRouteBackends(fullName string, f *clientcmd.Factory, out, errOut io.W
 			kcmdutil.CheckErr(options.Complete(f, cmd, args))
 			kcmdutil.CheckErr(options.Validate())
 			err := options.Run()
+			// TODO: move me to kcmdutil
 			if err == cmdutil.ErrExit {
 				os.Exit(1)
 			}
@@ -115,12 +118,12 @@ func NewCmdRouteBackends(fullName string, f *clientcmd.Factory, out, errOut io.W
 
 	kcmdutil.AddPrinterFlags(cmd)
 	cmd.Flags().StringVarP(&options.Selector, "selector", "l", options.Selector, "Selector (label query) to filter on")
-	cmd.Flags().BoolVar(&options.All, "all", options.All, "Select all resources in the namespace of the specified resource types")
+	cmd.Flags().BoolVar(&options.All, "all", options.All, "If true, select all resources in the namespace of the specified resource types")
 	cmd.Flags().StringSliceVarP(&options.Filenames, "filename", "f", options.Filenames, "Filename, directory, or URL to file to use to edit the resource.")
 
 	cmd.Flags().BoolVar(&options.Transform.Adjust, "adjust", options.Transform.Adjust, "Adjust a single backend using an absolute or relative weight. If the primary backend is selected and there is more than one alternate an error will be returned.")
-	cmd.Flags().BoolVar(&options.Transform.Zero, "zero", options.Transform.Zero, "Set the weight of all backends to zero.")
-	cmd.Flags().BoolVar(&options.Transform.Equal, "equal", options.Transform.Equal, "Set the weight of all backends to 100.")
+	cmd.Flags().BoolVar(&options.Transform.Zero, "zero", options.Transform.Zero, "If true, set the weight of all backends to zero.")
+	cmd.Flags().BoolVar(&options.Transform.Equal, "equal", options.Transform.Equal, "If true, set the weight of all backends to 100.")
 
 	cmd.MarkFlagFilename("filename", "yaml", "yml", "json")
 
@@ -159,11 +162,11 @@ func (o *BackendsOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, arg
 
 	o.PrintTable = o.Transform.Empty()
 
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 	o.Builder = resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder()).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(explicit, false, o.Filenames...).
+		FilenameParam(explicit, &resource.FilenameOptions{Recursive: false, Filenames: o.Filenames}).
 		SelectorParam(o.Selector).
 		SelectAllParam(o.All).
 		ResourceNames("route", resources...).
@@ -192,9 +195,9 @@ func (o *BackendsOptions) Validate() error {
 // Run executes the BackendOptions or returns an error.
 func (o *BackendsOptions) Run() error {
 	infos := o.Infos
-	singular := len(o.Infos) <= 1
+	singleItemImplied := len(o.Infos) <= 1
 	if o.Builder != nil {
-		loaded, err := o.Builder.Do().IntoSingular(&singular).Infos()
+		loaded, err := o.Builder.Do().IntoSingleItemImplied(&singleItemImplied).Infos()
 		if err != nil {
 			return err
 		}
@@ -208,11 +211,11 @@ func (o *BackendsOptions) Run() error {
 	patches := CalculatePatches(infos, o.Encoder, func(info *resource.Info) (bool, error) {
 		return UpdateBackendsForObject(info.Object, o.Transform.Apply)
 	})
-	if singular && len(patches) == 0 {
+	if singleItemImplied && len(patches) == 0 {
 		return fmt.Errorf("%s/%s is not a deployment config or build config", infos[0].Mapping.Resource, infos[0].Name)
 	}
 	if o.PrintObject != nil {
-		object, err := resource.AsVersionedObject(infos, !singular, o.OutputVersion, kapi.Codecs.LegacyCodec(o.OutputVersion))
+		object, err := resource.AsVersionedObject(infos, !singleItemImplied, o.OutputVersion, kapi.Codecs.LegacyCodec(o.OutputVersion))
 		if err != nil {
 			return err
 		}
@@ -243,7 +246,7 @@ func (o *BackendsOptions) Run() error {
 		}
 
 		info.Refresh(obj, true)
-		kcmdutil.PrintSuccess(o.Mapper, o.ShortOutput, o.Out, info.Mapping.Resource, info.Name, "updated")
+		kcmdutil.PrintSuccess(o.Mapper, o.ShortOutput, o.Out, info.Mapping.Resource, info.Name, false, "updated")
 	}
 	if failed {
 		return cmdutil.ErrExit

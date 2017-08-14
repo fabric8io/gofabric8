@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubernetes Design Overview
 
 Kubernetes is a system for managing containerized applications across multiple
@@ -60,13 +55,6 @@ more complex use cases, one can just access the lower-level APIs in a fully
 transparent, composable manner.
 
 For more about the Kubernetes architecture, see [architecture](architecture.md).
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

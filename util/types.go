@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 
 	api "k8s.io/kubernetes/pkg/api/unversioned"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
 
 type MasterType string
@@ -29,8 +29,8 @@ const (
 	Kubernetes MasterType = "Kubernetes"
 )
 
-func TypeOfMaster(c *client.Client) MasterType {
-	res, err := c.Get().AbsPath("").DoRaw()
+func TypeOfMaster(c *clientset.Clientset) MasterType {
+	res, err := c.CoreClient.RESTClient().Get().AbsPath("").DoRaw()
 	if err != nil {
 		Fatalf("Could not discover the type of your installation: %v", err)
 	}

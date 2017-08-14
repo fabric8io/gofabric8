@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 <!-- BEGIN MUNGE: GENERATED_TOC -->
 
 - [Pull Request Process](#pull-request-process)
@@ -31,7 +26,7 @@ Either the [on call](on-call-rotations.md) manually or the [github "munger"](htt
 There are several requirements for the submit-queue to work:
 * Author must have signed CLA ("cla: yes" label added to PR)
 * No changes can be made since last lgtm label was applied
-* k8s-bot must have reported the GCE E2E build and test steps passed (Travis, Jenkins unit/integration, Jenkins e2e)
+* k8s-bot must have reported the GCE E2E build and test steps passed (Jenkins unit/integration, Jenkins e2e)
 
 Additionally, for infrequent or new contributors, we require the on call to apply the "ok-to-merge" label manually.  This is gated by the [whitelist](https://github.com/kubernetes/contrib/blob/master/mungegithub/whitelist.txt).
 
@@ -40,9 +35,9 @@ Additionally, for infrequent or new contributors, we require the on call to appl
 The following will save time for both you and your reviewer:
 
 * Enable [pre-commit hooks](development.md#committing-changes-to-your-fork) and verify they pass.
-* Verify `hack/verify-all.sh` passes.
-* Verify `hack/test-go.sh` passes.
-* Verify `hack/test-integration.sh` passes.
+* Verify `make verify` passes.
+* Verify `make test` passes.
+* Verify `make test-integration` passes.
 
 ## Release Notes
 
@@ -66,9 +61,8 @@ label is required for that non-master PR.
 
 ### Reviewing pre-release notes
 
-**NOTE: THIS TOOLING IS NOT YET AVAILABLE, BUT COMING SOON!**
-
 At any time, you can see what the release notes will look like on any branch.
+(NOTE: This only works on Linux for now)
 
 ```
 $ git pull https://github.com/kubernetes/release
@@ -76,7 +70,7 @@ $ RELNOTES=$PWD/release/relnotes
 $ cd /to/your/kubernetes/repo
 $ $RELNOTES -man # for details on how to use the tool
 # Show release notes from the last release on a branch to HEAD
-$ $RELNOTES --raw --branch=master
+$ $RELNOTES --branch=master
 ```
 
 ## Visual overview
@@ -104,13 +98,6 @@ request that subsequently needs to be reopened. We want to limit the total numbe
 
 We use a variety of automation to manage pull requests.  This automation is described in detail
 [elsewhere.](automation.md)
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

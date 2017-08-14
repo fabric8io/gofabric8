@@ -12,6 +12,7 @@ import (
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	uservalidation "github.com/openshift/origin/pkg/user/api/validation"
 )
@@ -28,12 +29,13 @@ const (
 	RemoveClusterRoleFromUserRecommendedName  = "remove-cluster-role-from-user"
 )
 
-const (
-	addRoleToUserExample = `  # Add the 'view' role to user1 for the current project
-  %[1]s view user1
+var (
+	addRoleToUserExample = templates.Examples(`
+		# Add the 'view' role to user1 for the current project
+	  %[1]s view user1
 
-  # Add the 'edit' role to serviceaccount1 for the current project
-  %[1]s edit -z serviceaccount1`
+	  # Add the 'edit' role to serviceaccount1 for the current project
+	  %[1]s edit -z serviceaccount1`)
 )
 
 type RoleModificationOptions struct {
@@ -41,6 +43,7 @@ type RoleModificationOptions struct {
 	RoleName            string
 	RoleBindingAccessor RoleBindingAccessor
 
+	Targets  []string
 	Users    []string
 	Groups   []string
 	Subjects []kapi.ObjectReference
@@ -61,7 +64,10 @@ func NewCmdAddRoleToGroup(name, fullName string, f *clientcmd.Factory, out io.Wr
 
 			if err := options.AddRole(); err != nil {
 				kcmdutil.CheckErr(err)
+				return
 			}
+			printSuccessForCommand(options.RoleName, true, "group", options.Targets, true, out)
+
 		},
 	}
 
@@ -81,13 +87,15 @@ func NewCmdAddRoleToUser(name, fullName string, f *clientcmd.Factory, out io.Wri
 		Long:    `Add a role to users or serviceaccounts for the current project`,
 		Example: fmt.Sprintf(addRoleToUserExample, fullName),
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := options.CompleteUserWithSA(f, args, saNames); err != nil {
+			if err := options.CompleteUserWithSA(f, args, saNames, true); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
 			}
 
 			if err := options.AddRole(); err != nil {
 				kcmdutil.CheckErr(err)
+				return
 			}
+			printSuccessForCommand(options.RoleName, true, "user", options.Targets, true, out)
 		},
 	}
 
@@ -112,7 +120,9 @@ func NewCmdRemoveRoleFromGroup(name, fullName string, f *clientcmd.Factory, out 
 
 			if err := options.RemoveRole(); err != nil {
 				kcmdutil.CheckErr(err)
+				return
 			}
+			printSuccessForCommand(options.RoleName, false, "group", options.Targets, true, out)
 		},
 	}
 
@@ -131,13 +141,15 @@ func NewCmdRemoveRoleFromUser(name, fullName string, f *clientcmd.Factory, out i
 		Short: "Remove a role from users for the current project",
 		Long:  `Remove a role from users for the current project`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := options.CompleteUserWithSA(f, args, saNames); err != nil {
+			if err := options.CompleteUserWithSA(f, args, saNames, true); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
 			}
 
 			if err := options.RemoveRole(); err != nil {
 				kcmdutil.CheckErr(err)
+				return
 			}
+			printSuccessForCommand(options.RoleName, false, "user", options.Targets, true, out)
 		},
 	}
 
@@ -162,7 +174,9 @@ func NewCmdAddClusterRoleToGroup(name, fullName string, f *clientcmd.Factory, ou
 
 			if err := options.AddRole(); err != nil {
 				kcmdutil.CheckErr(err)
+				return
 			}
+			printSuccessForCommand(options.RoleName, true, "group", options.Targets, false, out)
 		},
 	}
 
@@ -171,22 +185,27 @@ func NewCmdAddClusterRoleToGroup(name, fullName string, f *clientcmd.Factory, ou
 
 // NewCmdAddClusterRoleToUser implements the OpenShift cli add-cluster-role-to-user command
 func NewCmdAddClusterRoleToUser(name, fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
+	saNames := []string{}
 	options := &RoleModificationOptions{}
 
 	cmd := &cobra.Command{
-		Use:   name + " <role> <user> [user]...",
+		Use:   name + " <role> <user | -z serviceaccount> [user]...",
 		Short: "Add a role to users for all projects in the cluster",
 		Long:  `Add a role to users for all projects in the cluster`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := options.Complete(f, args, &options.Users, "user", false); err != nil {
+			if err := options.CompleteUserWithSA(f, args, saNames, false); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
 			}
 
 			if err := options.AddRole(); err != nil {
 				kcmdutil.CheckErr(err)
+				return
 			}
+			printSuccessForCommand(options.RoleName, true, "user", options.Targets, false, out)
 		},
 	}
+
+	cmd.Flags().StringSliceVarP(&saNames, "serviceaccount", "z", saNames, "service account in the current namespace to use as a user")
 
 	return cmd
 }
@@ -206,7 +225,9 @@ func NewCmdRemoveClusterRoleFromGroup(name, fullName string, f *clientcmd.Factor
 
 			if err := options.RemoveRole(); err != nil {
 				kcmdutil.CheckErr(err)
+				return
 			}
+			printSuccessForCommand(options.RoleName, false, "group", options.Targets, false, out)
 		},
 	}
 
@@ -215,6 +236,7 @@ func NewCmdRemoveClusterRoleFromGroup(name, fullName string, f *clientcmd.Factor
 
 // NewCmdRemoveClusterRoleFromUser implements the OpenShift cli remove-cluster-role-from-user command
 func NewCmdRemoveClusterRoleFromUser(name, fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
+	saNames := []string{}
 	options := &RoleModificationOptions{}
 
 	cmd := &cobra.Command{
@@ -222,20 +244,24 @@ func NewCmdRemoveClusterRoleFromUser(name, fullName string, f *clientcmd.Factory
 		Short: "Remove a role from users for all projects in the cluster",
 		Long:  `Remove a role from users for all projects in the cluster`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := options.Complete(f, args, &options.Users, "user", false); err != nil {
+			if err := options.CompleteUserWithSA(f, args, saNames, false); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
 			}
 
 			if err := options.RemoveRole(); err != nil {
 				kcmdutil.CheckErr(err)
+				return
 			}
+			printSuccessForCommand(options.RoleName, false, "user", options.Targets, false, out)
 		},
 	}
+
+	cmd.Flags().StringSliceVarP(&saNames, "serviceaccount", "z", saNames, "service account in the current namespace to use as a user")
 
 	return cmd
 }
 
-func (o *RoleModificationOptions) CompleteUserWithSA(f *clientcmd.Factory, args []string, saNames []string) error {
+func (o *RoleModificationOptions) CompleteUserWithSA(f *clientcmd.Factory, args []string, saNames []string, isNamespaced bool) error {
 	if len(args) < 1 {
 		return errors.New("you must specify a role")
 	}
@@ -244,6 +270,8 @@ func (o *RoleModificationOptions) CompleteUserWithSA(f *clientcmd.Factory, args 
 	if len(args) > 1 {
 		o.Users = append(o.Users, args[1:]...)
 	}
+
+	o.Targets = o.Users
 
 	if (len(o.Users) == 0) && (len(saNames) == 0) {
 		return errors.New("you must specify at least one user or service account")
@@ -258,9 +286,15 @@ func (o *RoleModificationOptions) CompleteUserWithSA(f *clientcmd.Factory, args 
 	if err != nil {
 		return err
 	}
-	o.RoleBindingAccessor = NewLocalRoleBindingAccessor(roleBindingNamespace, osClient)
+
+	if isNamespaced {
+		o.RoleBindingAccessor = NewLocalRoleBindingAccessor(roleBindingNamespace, osClient)
+	} else {
+		o.RoleBindingAccessor = NewClusterRoleBindingAccessor(osClient)
+	}
 
 	for _, sa := range saNames {
+		o.Targets = append(o.Targets, sa)
 		o.Subjects = append(o.Subjects, kapi.ObjectReference{Namespace: roleBindingNamespace, Name: sa, Kind: "ServiceAccount"})
 	}
 
@@ -274,6 +308,8 @@ func (o *RoleModificationOptions) Complete(f *clientcmd.Factory, args []string, 
 
 	o.RoleName = args[0]
 	*target = append(*target, args[1:]...)
+
+	o.Targets = *target
 
 	osClient, _, err := f.Clients()
 	if err != nil {
@@ -393,4 +429,24 @@ existingLoop:
 	}
 
 	return newSubjects
+}
+
+// prints affirmative output for role modification commands
+func printSuccessForCommand(role string, didAdd bool, targetName string, targets []string, isNamespaced bool, out io.Writer) {
+	verb := "removed"
+	clusterScope := "cluster "
+	allTargets := fmt.Sprintf("%q", targets)
+	if isNamespaced {
+		clusterScope = ""
+	}
+	if len(targets) > 1 {
+		targetName = fmt.Sprintf("%ss", targetName)
+	} else if len(targets) == 1 {
+		allTargets = fmt.Sprintf("%q", targets[0])
+	}
+	if didAdd {
+		verb = "added"
+	}
+
+	fmt.Fprintf(out, "%srole %q %s: %s\n", clusterScope, role, verb, allTargets)
 }

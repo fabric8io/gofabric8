@@ -16,16 +16,25 @@ export SHELLOPTS
 #
 # The EmptyDir test is a canary; it will fail if mount propagation is
 # not properly configured on the host.
-NETWORKING_E2E_FOCUS="${NETWORKING_E2E_FOCUS:-etworking|Services|EmptyDir volumes should support \(root,0644,tmpfs\)}"
+NETWORKING_E2E_FOCUS="${NETWORKING_E2E_FOCUS:-etworking|Services should be able to create a functioning NodePort service|EmptyDir volumes should support \(root,0644,tmpfs\)}"
 NETWORKING_E2E_SKIP="${NETWORKING_E2E_SKIP:-}"
+
+# Limit the scope of execution to minimize runtime
+NETWORKING_E2E_MINIMAL="${NETWORKING_E2E_MINIMAL:-}"
 
 DEFAULT_SKIP_LIST=(
   # TODO(marun) This should work with docker >= 1.10
   "openshift router"
   "\[Feature:Federation\]"
 
+  # Skipped until https://github.com/openshift/origin/issues/11042 is resolved
+  "should preserve source pod IP for traffic thru service cluster IP"
+
   # Panicing, needs investigation
   "Networking IPerf"
+
+  # Skipped due to origin returning 403 for some of the urls
+  "should provide unchanging, static URL paths for kubernetes api services"
 
   # DNS inside container fails in CI but works locally
   "should provide Internet connection for containers"
@@ -36,6 +45,15 @@ DEFAULT_SKIP_LIST=(
   "should work after restarting kube-proxy"
   "should work after restarting apiserver"
   "should be able to change the type and ports of a service"
+
+  # Assumes kube-proxy (aka OpenShift node) is serving /healthz at port 10249, which we currently
+  # have disabled
+  "Networking.*should check kube-proxy urls"
+)
+
+MINIMAL_SKIP_LIST=(
+  "OVS"
+  "multicast"
 )
 
 CLUSTER_CMD="${OS_ROOT}/hack/dind-cluster.sh"
@@ -69,7 +87,7 @@ function save-container-logs() {
     if [[ ! -d "${dest_dir}" ]]; then
       mkdir -p "${dest_dir}"
     fi
-    sudo docker exec -t "${container_name}" bash -c "journalctl -xe | \
+    sudo docker exec -t "${container_name}" bash -c "journalctl | \
 gzip > ${container_log_file}"
     sudo docker cp "${container_name}:${container_log_file}" "${dest_dir}"
     # Output container logs to stdout to ensure that jenkins has
@@ -104,26 +122,14 @@ function save-artifacts() {
 function deploy-cluster() {
   local name=$1
   local plugin=$2
-  local isolation=$3
-  local log_dir=$4
+  local log_dir=$3
 
   os::log::info "Launching a docker-in-docker cluster for the ${name} plugin"
-  export OPENSHIFT_NETWORK_PLUGIN="${plugin}"
   export OPENSHIFT_CONFIG_ROOT="${BASETMPDIR}/${name}"
-  export OPENSHIFT_NETWORK_ISOLATION="${isolation}"
-  # Images have already been built
-  export OPENSHIFT_DIND_BUILD_IMAGES=0
   DIND_CLEANUP_REQUIRED=1
 
   local exit_status=0
-
-  # Restart instead of start to ensure that an existing test cluster is
-  # always torn down.
-  if ${CLUSTER_CMD} restart; then
-    if ! ${CLUSTER_CMD} wait-for-cluster; then
-      exit_status=1
-    fi
-  else
+  if ! ${CLUSTER_CMD} start -r -n "${plugin}"; then
     exit_status=1
   fi
 
@@ -155,12 +161,13 @@ function test-osdn-plugin() {
   local deployment_failed=
   local tests_failed=
 
-  if deploy-cluster "${name}" "${plugin}" "${isolation}" "${log_dir}"; then
+  if deploy-cluster "${name}" "${plugin}" "${log_dir}"; then
     os::log::info "Running networking e2e tests against the ${name} plugin"
     export TEST_REPORT_FILE_NAME="${name}-junit"
 
     local kubeconfig="$(get-kubeconfig-from-root "${OPENSHIFT_CONFIG_ROOT}")"
     if ! TEST_REPORT_FILE_NAME=networking_${name}_${isolation} \
+         OPENSHIFT_NETWORK_ISOLATION="${isolation}" \
          run-extended-tests "${kubeconfig}" "${log_dir}/test.log"; then
       tests_failed=1
       os::log::error "e2e tests failed for plugin: ${plugin}"
@@ -181,7 +188,7 @@ function test-osdn-plugin() {
   os::log::info "Shutting down docker-in-docker cluster for the ${name} plugin"
   ${CLUSTER_CMD} stop
   DIND_CLEANUP_REQUIRED=0
-  rmdir "${OPENSHIFT_CONFIG_ROOT}"
+  rm -rf "${OPENSHIFT_CONFIG_ROOT}"
 }
 
 
@@ -196,7 +203,10 @@ function run-extended-tests() {
   local skip_regex="${NETWORKING_E2E_SKIP}"
 
   if [[ -z "${skip_regex}" ]]; then
-      skip_regex=$(join '|' "${DEFAULT_SKIP_LIST[@]}")
+    skip_regex="$(join '|' "${DEFAULT_SKIP_LIST[@]}")"
+    if [[ -n "${NETWORKING_E2E_MINIMAL}" ]]; then
+      skip_regex="${skip_regex}|$(join '|' "${MINIMAL_SKIP_LIST[@]}")"
+    fi
   fi
 
   export KUBECONFIG="${kubeconfig}"
@@ -207,14 +217,19 @@ function run-extended-tests() {
 
   if [[ -n "${dlv_debug}" ]]; then
     # run tests using delve debugger
-    local test_cmd="dlv exec ${TEST_BINARY} -- ${test_args}"
+    local extended_test; extended_test="$( os::util::find::built_binary extended.test )"
+    local test_cmd="dlv exec ${extended_test} -- ${test_args}"
   else
     # run tests normally
-    local test_cmd="${TEST_BINARY} ${test_args}"
+    local test_cmd="extended.test ${test_args}"
   fi
 
   if [[ -n "${log_path}" ]]; then
-    test_cmd="${test_cmd} | tee ${log_path}"
+    if [[ -n "${dlv_debug}" ]]; then
+      os::log::warn "Not logging to file since DLV_DEBUG is enabled"
+    else
+      test_cmd="${test_cmd} | tee ${log_path}"
+    fi
   fi
 
   pushd "${EXTENDED_TEST_PATH}/networking" > /dev/null
@@ -251,13 +266,35 @@ esac
 
 TEST_EXTRA_ARGS="$@"
 
-if [[ "${OPENSHIFT_SKIP_BUILD:-false}" = "true" ]] &&
-     [[ -n $(os::build::find-binary extended.test) ]]; then
-  os::log::warn "Skipping rebuild of test binary due to OPENSHIFT_SKIP_BUILD=true"
+if [[ -n "${OPENSHIFT_SKIP_BUILD:-}" ]] &&
+     os::util::find::built_binary 'extended.test' >/dev/null 2>&1; then
+  os::log::warn "Skipping rebuild of test binary due to OPENSHIFT_SKIP_BUILD=1"
 else
   hack/build-go.sh test/extended/extended.test
 fi
-TEST_BINARY="${OS_ROOT}/$(os::build::find-binary extended.test)"
+
+# enable-selinux/disable-selinux use the shared control variable
+# SELINUX_DISABLED to determine whether to re-enable selinux after it
+# has been disabled.  The goal is to allow temporary disablement of
+# selinux enforcement while avoiding enabling enforcement in an
+# environment where it is not already enabled.
+SELINUX_DISABLED=0
+
+function enable-selinux() {
+  if [ "${SELINUX_DISABLED}" = "1" ]; then
+    os::log::info "Re-enabling selinux enforcement"
+    sudo setenforce 1
+    SELINUX_DISABLED=0
+  fi
+}
+
+function disable-selinux() {
+  if selinuxenabled && [ "$(getenforce)" = "Enforcing" ]; then
+    os::log::info "Temporarily disabling selinux enforcement"
+    sudo setenforce 0
+    SELINUX_DISABLED=1
+  fi
+}
 
 os::log::info "Starting 'networking' extended tests"
 if [[ -n "${CONFIG_ROOT}" ]]; then
@@ -273,18 +310,24 @@ else
 
   # Use a unique instance prefix to ensure the names of the test dind
   # containers will not clash with the names of non-test containers.
-  export OPENSHIFT_INSTANCE_PREFIX="nettest"
+  export OPENSHIFT_CLUSTER_ID="nettest"
   # TODO(marun) Discover these names instead of hard-coding
   CONTAINER_NAMES=(
-    "${OPENSHIFT_INSTANCE_PREFIX}-master"
-    "${OPENSHIFT_INSTANCE_PREFIX}-node-1"
-    "${OPENSHIFT_INSTANCE_PREFIX}-node-2"
+    "${OPENSHIFT_CLUSTER_ID}-master"
+    "${OPENSHIFT_CLUSTER_ID}-node-1"
+    "${OPENSHIFT_CLUSTER_ID}-node-2"
   )
 
   os::util::environment::setup_tmpdir_vars "test-extended/networking"
-  reset_tmp_dir
 
-  os::log::start_system_logger
+  # Allow setting $JUNIT_REPORT to toggle output behavior
+  if [[ -n "${JUNIT_REPORT:-}" ]]; then
+    export JUNIT_REPORT_OUTPUT="${LOG_DIR}/raw_test_output.log"
+    # the Ginkgo tests also generate jUnit but expect different envars
+    export TEST_REPORT_DIR="${ARTIFACT_DIR}"
+  fi
+
+  os::log::system::start
 
   os::log::info "Building docker-in-docker images"
   ${CLUSTER_CMD} build-images
@@ -317,12 +360,12 @@ else
   # Docker-in-docker is not compatible with selinux
   disable-selinux
 
-  # Ignore deployment errors for a given plugin to allow other plugins
-  # to be tested.
-  test-osdn-plugin "subnet" "redhat/openshift-ovs-subnet" "false" || true
-
-  # Avoid unnecessary go builds for subsequent deployments
-  export OPENSHIFT_SKIP_BUILD=true
+  # Skip the subnet tests during a minimal test run
+  if [[ -z "${NETWORKING_E2E_MINIMAL}" ]]; then
+    # Ignore deployment errors for a given plugin to allow other plugins
+    # to be tested.
+    test-osdn-plugin "subnet" "redhat/openshift-ovs-subnet" "false" || true
+  fi
 
   test-osdn-plugin "multitenant" "redhat/openshift-ovs-multitenant" "true" || true
 fi

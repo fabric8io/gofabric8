@@ -1,9 +1,4 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
-# Kubernetes Examples: releases.k8s.io/release-1.3
+# Kubernetes Examples: releases.k8s.io/HEAD
 
 This directory contains a number of examples of how to run
 real applications with Kubernetes.
@@ -22,19 +17,12 @@ Name | Description | Notable Features Used | Complexity Level
 ------------- | ------------- | ------------ | ------------ | ------------
 [Guestbook](guestbook/) | PHP app with Redis | Replication Controller, Service | Beginner
 [WordPress](mysql-wordpress-pd/) | WordPress with MySQL | Deployment, Persistent Volume with Claim | Beginner
-[Cassandra](cassandra/) | Cloud Native Cassandra | Daemon Set | Intermediate
+[Cassandra](storage/cassandra/) | Cloud Native Cassandra | Daemon Set | Intermediate
 
 Note: Please add examples to the list above that are maintained.
 
 See [Example Guidelines](guidelines.md) for a description of what goes
 in this directory, and what examples should contain.
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/examples/README.md?pixel)]()

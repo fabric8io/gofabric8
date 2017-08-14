@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 
 	"github.com/openshift/origin/pkg/client/testclient"
 	imageapi "github.com/openshift/origin/pkg/image/api"
@@ -57,6 +58,17 @@ func TestCreateImageImport(t *testing.T) {
 				From: kapi.ObjectReference{Kind: "DockerImage", Name: "repo.com/somens/someimage"},
 				To:   &kapi.LocalObjectReference{Name: "latest"},
 			}},
+		},
+		"import from .spec.dockerImageRepository non-existing tag": {
+			name: "testis:nonexisting",
+			stream: &imageapi.ImageStream{
+				ObjectMeta: kapi.ObjectMeta{Name: "testis", Namespace: "other"},
+				Spec: imageapi.ImageStreamSpec{
+					DockerImageRepository: "repo.com/somens/someimage",
+					Tags: make(map[string]imageapi.TagReference),
+				},
+			},
+			err: `"nonexisting" does not exist on the image stream`,
 		},
 		"import all from .spec.dockerImageRepository": {
 			name: "testis",
@@ -341,7 +353,7 @@ func TestCreateImageImport(t *testing.T) {
 			All:      test.all,
 			Insecure: test.insecure,
 			Confirm:  test.confirm,
-			isClient: fake.ImageStreams(""),
+			isClient: fake.ImageStreams("other"),
 		}
 		// we need to run Validate, because it sets appropriate Name and Tag
 		if err := o.Validate(&cobra.Command{}); err != nil {
@@ -369,6 +381,44 @@ func TestCreateImageImport(t *testing.T) {
 		}
 		if !kapi.Semantic.DeepEqual(isi.Spec.Repository, test.expectedRepository) {
 			t.Errorf("%s: unexpected import repository, expected %#v, got %#v", name, test.expectedRepository, isi.Spec.Repository)
+		}
+	}
+}
+
+func TestWasError(t *testing.T) {
+	testCases := map[string]struct {
+		isi      *imageapi.ImageStreamImport
+		expected bool
+	}{
+		"no error": {
+			isi:      &imageapi.ImageStreamImport{},
+			expected: false,
+		},
+		"error importing images": {
+			isi: &imageapi.ImageStreamImport{
+				Status: imageapi.ImageStreamImportStatus{
+					Images: []imageapi.ImageImportStatus{
+						{Status: unversioned.Status{Status: unversioned.StatusFailure}},
+					},
+				},
+			},
+			expected: true,
+		},
+		"error importing repository": {
+			isi: &imageapi.ImageStreamImport{
+				Status: imageapi.ImageStreamImportStatus{
+					Repository: &imageapi.RepositoryImportStatus{
+						Status: unversioned.Status{Status: unversioned.StatusFailure},
+					},
+				},
+			},
+			expected: true,
+		},
+	}
+
+	for name, test := range testCases {
+		if a, e := wasError(test.isi), test.expected; a != e {
+			t.Errorf("%s: expected %v, got %v", name, e, a)
 		}
 	}
 }

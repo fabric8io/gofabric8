@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/record"
+	"k8s.io/kubernetes/pkg/kubelet/config"
 	"k8s.io/kubernetes/pkg/kubelet/container"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/pod"
@@ -31,6 +33,8 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/volumemanager/cache"
 	"k8s.io/kubernetes/pkg/kubelet/volumemanager/populator"
 	"k8s.io/kubernetes/pkg/kubelet/volumemanager/reconciler"
+	k8stypes "k8s.io/kubernetes/pkg/types"
+	"k8s.io/kubernetes/pkg/util/mount"
 	"k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/util/wait"
@@ -44,6 +48,10 @@ const (
 	// reconcilerLoopSleepPeriod is the amount of time the reconciler loop waits
 	// between successive executions
 	reconcilerLoopSleepPeriod time.Duration = 100 * time.Millisecond
+
+	// reconcilerSyncStatesSleepPeriod is the amount of time the reconciler reconstruct process
+	// waits between successive executions
+	reconcilerSyncStatesSleepPeriod time.Duration = 3 * time.Minute
 
 	// desiredStateOfWorldPopulatorLoopSleepPeriod is the amount of time the
 	// DesiredStateOfWorldPopulator loop waits between successive executions
@@ -75,6 +83,10 @@ const (
 	// operation is waiting it only blocks other operations on the same device,
 	// other devices are not affected.
 	waitForAttachTimeout time.Duration = 10 * time.Minute
+
+	// reconcilerStartGracePeriod is the maximum amount of time volume manager
+	// can wait to start reconciler
+	reconcilerStartGracePeriod time.Duration = 60 * time.Second
 )
 
 // VolumeManager runs a set of asynchronous loops that figure out which volumes
@@ -82,7 +94,7 @@ const (
 // this node and makes it so.
 type VolumeManager interface {
 	// Starts the volume manager and all the asynchronous loops that it controls
-	Run(stopCh <-chan struct{})
+	Run(sourcesReady config.SourcesReady, stopCh <-chan struct{})
 
 	// WaitForAttachAndMount processes the volumes referenced in the specified
 	// pod and blocks until they are all attached and mounted (reflected in
@@ -103,7 +115,7 @@ type VolumeManager interface {
 	// from annotations on persistent volumes that the pod depends on.
 	GetExtraSupplementalGroupsForPod(pod *api.Pod) []int64
 
-	// Returns a list of all volumes that implement the volume.Attacher
+	// GetVolumesInUse returns a list of all volumes that implement the volume.Attacher
 	// interface and are currently in use according to the actual and desired
 	// state of the world caches. A volume is considered "in use" as soon as it
 	// is added to the desired state of world, indicating it *should* be
@@ -113,6 +125,11 @@ type VolumeManager interface {
 	// TODO(#27653): VolumesInUse should be handled gracefully on kubelet'
 	// restarts.
 	GetVolumesInUse() []api.UniqueVolumeName
+
+	// ReconcilerStatesHasBeenSynced returns true only after the actual states in reconciler
+	// has been synced at least once after kubelet starts so that it is safe to update mounted
+	// volume list retrieved from actual state.
+	ReconcilerStatesHasBeenSynced() bool
 
 	// VolumeIsAttached returns true if the given volume is attached to this
 	// node.
@@ -132,30 +149,41 @@ type VolumeManager interface {
 //   Must be pre-initialized.
 func NewVolumeManager(
 	controllerAttachDetachEnabled bool,
-	hostName string,
+	nodeName k8stypes.NodeName,
 	podManager pod.Manager,
 	kubeClient internalclientset.Interface,
 	volumePluginMgr *volume.VolumePluginMgr,
-	kubeContainerRuntime kubecontainer.Runtime) (VolumeManager, error) {
+	kubeContainerRuntime kubecontainer.Runtime,
+	mounter mount.Interface,
+	kubeletPodsDir string,
+	recorder record.EventRecorder,
+	checkNodeCapabilitiesBeforeMount bool) (VolumeManager, error) {
+
 	vm := &volumeManager{
 		kubeClient:          kubeClient,
 		volumePluginMgr:     volumePluginMgr,
 		desiredStateOfWorld: cache.NewDesiredStateOfWorld(volumePluginMgr),
-		actualStateOfWorld:  cache.NewActualStateOfWorld(hostName, volumePluginMgr),
+		actualStateOfWorld:  cache.NewActualStateOfWorld(nodeName, volumePluginMgr),
 		operationExecutor: operationexecutor.NewOperationExecutor(
 			kubeClient,
-			volumePluginMgr),
+			volumePluginMgr,
+			recorder,
+			checkNodeCapabilitiesBeforeMount),
 	}
 
 	vm.reconciler = reconciler.NewReconciler(
 		kubeClient,
 		controllerAttachDetachEnabled,
 		reconcilerLoopSleepPeriod,
+		reconcilerSyncStatesSleepPeriod,
 		waitForAttachTimeout,
-		hostName,
+		nodeName,
 		vm.desiredStateOfWorld,
 		vm.actualStateOfWorld,
-		vm.operationExecutor)
+		vm.operationExecutor,
+		mounter,
+		volumePluginMgr,
+		kubeletPodsDir)
 	vm.desiredStateOfWorldPopulator = populator.NewDesiredStateOfWorldPopulator(
 		kubeClient,
 		desiredStateOfWorldPopulatorLoopSleepPeriod,
@@ -205,12 +233,14 @@ type volumeManager struct {
 	desiredStateOfWorldPopulator populator.DesiredStateOfWorldPopulator
 }
 
-func (vm *volumeManager) Run(stopCh <-chan struct{}) {
+func (vm *volumeManager) Run(sourcesReady config.SourcesReady, stopCh <-chan struct{}) {
 	defer runtime.HandleCrash()
-	glog.Infof("Starting Kubelet Volume Manager")
 
-	go vm.reconciler.Run(stopCh)
 	go vm.desiredStateOfWorldPopulator.Run(stopCh)
+	glog.V(2).Infof("The desired_state_of_world populator starts")
+
+	glog.Infof("Starting Kubelet Volume Manager")
+	go vm.reconciler.Run(sourcesReady, stopCh)
 
 	<-stopCh
 	glog.Infof("Shutting down Kubelet Volume Manager")
@@ -282,6 +312,10 @@ func (vm *volumeManager) GetVolumesInUse() []api.UniqueVolumeName {
 	return volumesToReportInUse
 }
 
+func (vm *volumeManager) ReconcilerStatesHasBeenSynced() bool {
+	return vm.reconciler.StatesHasBeenSynced()
+}
+
 func (vm *volumeManager) VolumeIsAttached(
 	volumeName api.UniqueVolumeName) bool {
 	return vm.actualStateOfWorld.VolumeExists(volumeName)
@@ -323,8 +357,8 @@ func (vm *volumeManager) WaitForAttachAndMount(pod *api.Pod) error {
 
 		return fmt.Errorf(
 			"timeout expired waiting for volumes to attach/mount for pod %q/%q. list of unattached/unmounted volumes=%v",
-			pod.Name,
 			pod.Namespace,
+			pod.Name,
 			ummountedVolumes)
 	}
 

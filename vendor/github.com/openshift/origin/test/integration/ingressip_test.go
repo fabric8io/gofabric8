@@ -8,8 +8,7 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
-	"k8s.io/kubernetes/pkg/controller/framework"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/watch"
@@ -52,18 +51,18 @@ func TestIngressIPAllocation(t *testing.T) {
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	t.Log("start informer to watch for sentinel")
-	_, informerController := framework.NewInformer(
+	_, informerController := cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(options kapi.ListOptions) (runtime.Object, error) {
-				return kc.Services(kapi.NamespaceAll).List(options)
+				return kc.Core().Services(kapi.NamespaceAll).List(options)
 			},
 			WatchFunc: func(options kapi.ListOptions) (watch.Interface, error) {
-				return kc.Services(kapi.NamespaceAll).Watch(options)
+				return kc.Core().Services(kapi.NamespaceAll).Watch(options)
 			},
 		},
 		&kapi.Service{},
 		time.Minute*10,
-		framework.ResourceEventHandlerFuncs{
+		cache.ResourceEventHandlerFuncs{
 			UpdateFunc: func(old, cur interface{}) {
 				service := cur.(*kapi.Service)
 				if service.Name == sentinelName && len(service.Spec.ExternalIPs) > 0 {
@@ -91,7 +90,7 @@ func TestIngressIPAllocation(t *testing.T) {
 
 	// Validate that all services of type load balancer have a unique
 	// ingress ip and corresponding external ip.
-	services, err := kc.Services(kapi.NamespaceDefault).List(kapi.ListOptions{})
+	services, err := kc.Core().Services(kapi.NamespaceDefault).List(kapi.ListOptions{})
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -128,7 +127,7 @@ const (
 	deleteOp
 )
 
-func generateServiceEvents(t *testing.T, kc kclient.Interface) {
+func generateServiceEvents(t *testing.T, kc kclientset.Interface) {
 	maxMillisecondInterval := 25
 	minServiceCount := 10
 	maxOperations := minServiceCount + 30
@@ -154,7 +153,7 @@ func generateServiceEvents(t *testing.T, kc kclient.Interface) {
 		case updateOp:
 			targetIndex := rand.Intn(len(services))
 			name := services[targetIndex].Name
-			s, err := kc.Services(kapi.NamespaceDefault).Get(name)
+			s, err := kc.Core().Services(kapi.NamespaceDefault).Get(name)
 			if err != nil {
 				continue
 			}
@@ -165,7 +164,7 @@ func generateServiceEvents(t *testing.T, kc kclient.Interface) {
 			} else {
 				s.Spec.Type = kapi.ServiceTypeLoadBalancer
 			}
-			s, err = kc.Services(kapi.NamespaceDefault).Update(s)
+			s, err = kc.Core().Services(kapi.NamespaceDefault).Update(s)
 			if err != nil {
 				continue
 			}
@@ -173,7 +172,7 @@ func generateServiceEvents(t *testing.T, kc kclient.Interface) {
 		case deleteOp:
 			targetIndex := rand.Intn(len(services))
 			name := services[targetIndex].Name
-			err := kc.Services(kapi.NamespaceDefault).Delete(name)
+			err := kc.Core().Services(kapi.NamespaceDefault).Delete(name, nil)
 			if err != nil {
 				continue
 			}
@@ -195,7 +194,7 @@ func generateServiceEvents(t *testing.T, kc kclient.Interface) {
 	}
 }
 
-func createService(kc kclient.Interface, name string, typeLoadBalancer bool) (*kapi.Service, error) {
+func createService(kc kclientset.Interface, name string, typeLoadBalancer bool) (*kapi.Service, error) {
 	serviceType := kapi.ServiceTypeClusterIP
 	if typeLoadBalancer {
 		serviceType = kapi.ServiceTypeLoadBalancer
@@ -213,5 +212,5 @@ func createService(kc kclient.Interface, name string, typeLoadBalancer bool) (*k
 			}},
 		},
 	}
-	return kc.Services(kapi.NamespaceDefault).Create(service)
+	return kc.Core().Services(kapi.NamespaceDefault).Create(service)
 }

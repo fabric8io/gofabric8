@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ package stubs
 import dns "google.golang.org/api/dns/v1"
 
 type (
-	// TODO: We dont' need these yet, so they remain unimplemented.  Add later as required.
+	// TODO: We don't need these yet, so they remain unimplemented.  Add later as required.
 	Project         struct{ impl *dns.Project }
 	ProjectsGetCall struct{ impl *dns.ProjectsGetCall }
 	ProjectsService struct{ impl *dns.ProjectsService }

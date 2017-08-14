@@ -38,11 +38,12 @@ func NewIPFailoverConfiguratorPlugin(name string, f *clientcmd.Factory, options 
 // GetWatchPort gets the port to monitor for the IP Failover configuration.
 func (p *KeepalivedPlugin) GetWatchPort() (int, error) {
 	port := p.Options.WatchPort
-	if port < 1 {
+	if port < 1 || port > 65535 {
+		glog.V(4).Infof("Warning: KeepAlived IP Failover config: %q - WatchPort: %d invalid, will default to %d", p.Name, port, ipfailover.DefaultWatchPort)
 		port = ipfailover.DefaultWatchPort
 	}
 
-	glog.V(4).Infof("KeepAlived IP Failover config: %q - WatchPort: %+v", p.Name, port)
+	glog.V(4).Infof("KeepAlived IP Failover config: %q - WatchPort: %d", p.Name, port)
 
 	return port, nil
 }
@@ -71,7 +72,7 @@ func (p *KeepalivedPlugin) GetSelector() (map[string]string, error) {
 
 // GetNamespace gets the namespace associated with this IP Failover configurator plugin.
 func (p *KeepalivedPlugin) GetNamespace() (string, error) {
-	namespace, _, err := p.Factory.OpenShiftClientConfig.Namespace()
+	namespace, _, err := p.Factory.DefaultNamespace()
 	if err != nil {
 		return "", err
 	}
@@ -115,7 +116,7 @@ func (p *KeepalivedPlugin) Generate() (*kapi.List, error) {
 	}
 
 	if len(p.Options.VirtualIPs) == 0 {
-		return nil, fmt.Errorf("you must specify at least one virtual IP address for keepalived to expose")
+		return nil, fmt.Errorf("you must specify at least one virtual IP address (--virtual-ips=) for keepalived to expose")
 	}
 
 	dc, err := GenerateDeploymentConfig(p.Name, p.Options, selector)

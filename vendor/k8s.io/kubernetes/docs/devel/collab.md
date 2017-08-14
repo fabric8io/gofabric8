@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # On Collaborative Development
 
 Kubernetes is open source, but many of the people working on it do so as their
@@ -85,13 +80,6 @@ time immediately may put a hold on a PR simply by saying so on the PR discussion
 and offering an ETA measured in single-digit days at most. Any PR that has a
 hold shall not be merged until the person who requested the hold acks the
 review, withdraws their hold, or is overruled by a preponderance of maintainers.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

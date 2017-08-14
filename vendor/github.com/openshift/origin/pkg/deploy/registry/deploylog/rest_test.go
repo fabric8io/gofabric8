@@ -1,7 +1,6 @@
 package deploylog
 
 import (
-	"net/http"
 	"net/url"
 	"reflect"
 	"testing"
@@ -10,10 +9,12 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
+	"k8s.io/kubernetes/pkg/client/testing/core"
 	kubeletclient "k8s.io/kubernetes/pkg/kubelet/client"
 	genericrest "k8s.io/kubernetes/pkg/registry/generic/rest"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/types"
 	"k8s.io/kubernetes/pkg/watch"
 
 	"github.com/openshift/origin/pkg/client/testclient"
@@ -81,14 +82,22 @@ var (
 	}
 )
 
+type fakeConnectionInfoGetter struct{}
+
+func (*fakeConnectionInfoGetter) GetConnectionInfo(ctx kapi.Context, nodeName types.NodeName) (*kubeletclient.ConnectionInfo, error) {
+	return &kubeletclient.ConnectionInfo{
+		Scheme:   "https",
+		Hostname: "some-host",
+		Port:     "12345",
+	}, nil
+}
+
 // mockREST mocks a DeploymentLog REST
 func mockREST(version, desired int64, status api.DeploymentStatus) *REST {
-	connectionInfo := &kubeletclient.HTTPKubeletClient{Config: &kubeletclient.KubeletClientConfig{EnableHttps: true, Port: 12345}, Client: &http.Client{}}
-
 	// Fake deploymentConfig
 	config := deploytest.OkDeploymentConfig(version)
 	fakeDn := testclient.NewSimpleFake(config)
-	fakeDn.PrependReactor("get", "deploymentconfigs", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	fakeDn.PrependReactor("get", "deploymentconfigs", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		return true, config, nil
 	})
 
@@ -96,33 +105,33 @@ func mockREST(version, desired int64, status api.DeploymentStatus) *REST {
 	if desired > version {
 		return &REST{
 			dn:       fakeDn,
-			connInfo: connectionInfo,
+			connInfo: &fakeConnectionInfoGetter{},
 			timeout:  defaultTimeout,
 		}
 	}
 
 	// Fake deployments
 	fakeDeployments := makeDeploymentList(version)
-	fakeRn := ktestclient.NewSimpleFake(fakeDeployments)
-	fakeRn.PrependReactor("get", "replicationcontrollers", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	fakeRn := fake.NewSimpleClientset(fakeDeployments)
+	fakeRn.PrependReactor("get", "replicationcontrollers", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		return true, &fakeDeployments.Items[desired-1], nil
 	})
 
 	// Fake watcher for deployments
 	fakeWatch := watch.NewFake()
-	fakeRn.PrependWatchReactor("replicationcontrollers", ktestclient.DefaultWatchReactor(fakeWatch, nil))
+	fakeRn.PrependWatchReactor("replicationcontrollers", core.DefaultWatchReactor(fakeWatch, nil))
 	obj := &fakeDeployments.Items[desired-1]
 	obj.Annotations[api.DeploymentStatusAnnotation] = string(status)
 	go fakeWatch.Add(obj)
 
-	fakePn := ktestclient.NewSimpleFake()
+	fakePn := fake.NewSimpleClientset()
 	if status == api.DeploymentStatusComplete {
 		// If the deployment is complete, we will try to get the logs from the oldest
 		// application pod...
-		fakePn.PrependReactor("list", "pods", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+		fakePn.PrependReactor("list", "pods", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 			return true, fakePodList, nil
 		})
-		fakePn.PrependReactor("get", "pods", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+		fakePn.PrependReactor("get", "pods", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 			return true, &fakePodList.Items[0], nil
 		})
 	} else {
@@ -144,16 +153,16 @@ func mockREST(version, desired int64, status api.DeploymentStatus) *REST {
 				Phase: kapi.PodRunning,
 			},
 		}
-		fakePn.PrependReactor("get", "pods", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+		fakePn.PrependReactor("get", "pods", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 			return true, fakeDeployer, nil
 		})
 	}
 
 	return &REST{
 		dn:       fakeDn,
-		rn:       fakeRn,
-		pn:       fakePn,
-		connInfo: connectionInfo,
+		rn:       fakeRn.Core(),
+		pn:       fakePn.Core(),
+		connInfo: &fakeConnectionInfoGetter{},
 		timeout:  defaultTimeout,
 	}
 }

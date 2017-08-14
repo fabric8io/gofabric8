@@ -4,11 +4,11 @@ import (
 	"archive/tar"
 	"bytes"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	mrand "math/rand"
+	"net/http"
 	"net/url"
 	"testing"
 	"time"
@@ -16,64 +16,49 @@ import (
 	"github.com/docker/distribution"
 	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/digest"
-	"github.com/docker/distribution/manifest"
 	"github.com/docker/distribution/reference"
 	distclient "github.com/docker/distribution/registry/client"
+	"github.com/docker/distribution/registry/client/auth"
+	"github.com/docker/distribution/registry/client/transport"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
-	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/runtime"
 
 	imageapi "github.com/openshift/origin/pkg/image/api"
 )
 
-func NewImageForManifest(repoName string, rawManifest string, managedByOpenShift bool) (*imageapi.Image, error) {
-	var versioned manifest.Versioned
-	if err := json.Unmarshal([]byte(rawManifest), &versioned); err != nil {
-		return nil, err
-	}
-
-	_, desc, err := distribution.UnmarshalManifest(versioned.MediaType, []byte(rawManifest))
-	if err != nil {
-		return nil, err
-	}
-
-	annotations := make(map[string]string)
-	if managedByOpenShift {
-		annotations[imageapi.ManagedByOpenShiftAnnotation] = "true"
-	}
-
-	img := &imageapi.Image{
-		ObjectMeta: kapi.ObjectMeta{
-			Name:        desc.Digest.String(),
-			Annotations: annotations,
-		},
-		DockerImageReference: fmt.Sprintf("localhost:5000/%s@%s", repoName, desc.Digest.String()),
-		DockerImageManifest:  string(rawManifest),
-	}
-
-	if err := imageapi.ImageWithMetadata(img); err != nil {
-		return nil, err
-	}
-
-	return img, nil
-}
-
-// UploadTestBlob generates a random tar file and uploads it to the given repository.
-func UploadTestBlob(serverURL *url.URL, repoName string) (distribution.Descriptor, []byte, error) {
-	rs, ds, err := CreateRandomTarFile()
-	if err != nil {
-		return distribution.Descriptor{}, nil, fmt.Errorf("unexpected error generating test layer file: %v", err)
-	}
-	dgst := digest.Digest(ds)
-
+// UploadTestBlobFromReader uploads a testing blob read from the given reader to the registry located at the
+// given URL.
+func UploadTestBlobFromReader(
+	dgst digest.Digest,
+	reader io.ReadSeeker,
+	serverURL *url.URL,
+	creds auth.CredentialStore,
+	repoName string,
+) (distribution.Descriptor, []byte, error) {
 	ctx := context.Background()
 	ref, err := reference.ParseNamed(repoName)
 	if err != nil {
 		return distribution.Descriptor{}, nil, err
 	}
-	repo, err := distclient.NewRepository(ctx, ref, serverURL.String(), nil)
+
+	var rt http.RoundTripper
+	if creds != nil {
+		challengeManager := auth.NewSimpleChallengeManager()
+		_, err := ping(challengeManager, serverURL.String()+"/v2/", "")
+		if err != nil {
+			return distribution.Descriptor{}, nil, err
+		}
+		rt = transport.NewTransport(
+			nil,
+			auth.NewAuthorizer(
+				challengeManager,
+				auth.NewTokenHandler(nil, creds, repoName, "pull", "push"),
+				auth.NewBasicHandler(creds)))
+	}
+	repo, err := distclient.NewRepository(ctx, ref, serverURL.String(), rt)
 	if err != nil {
 		return distribution.Descriptor{}, nil, fmt.Errorf("failed to get repository %q: %v", repoName, err)
 	}
@@ -82,7 +67,7 @@ func UploadTestBlob(serverURL *url.URL, repoName string) (distribution.Descripto
 	if err != nil {
 		return distribution.Descriptor{}, nil, err
 	}
-	if _, err := io.Copy(wr, rs); err != nil {
+	if _, err := io.Copy(wr, reader); err != nil {
 		return distribution.Descriptor{}, nil, fmt.Errorf("unexpected error copying to upload: %v", err)
 	}
 	desc, err := wr.Commit(ctx, distribution.Descriptor{Digest: dgst})
@@ -90,15 +75,42 @@ func UploadTestBlob(serverURL *url.URL, repoName string) (distribution.Descripto
 		return distribution.Descriptor{}, nil, err
 	}
 
-	if _, err := rs.Seek(0, 0); err != nil {
+	if _, err := reader.Seek(0, 0); err != nil {
 		return distribution.Descriptor{}, nil, fmt.Errorf("failed to seak blob reader: %v", err)
 	}
-	content, err := ioutil.ReadAll(rs)
+	content, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return distribution.Descriptor{}, nil, fmt.Errorf("failed to read blob content: %v", err)
 	}
 
 	return desc, content, nil
+}
+
+// UploadPayloadAsBlob uploads a given payload to the registry serving at the given URL.
+func UploadPayloadAsBlob(
+	payload []byte,
+	serverURL *url.URL,
+	creds auth.CredentialStore,
+	repoName string,
+) (distribution.Descriptor, error) {
+	reader := bytes.NewReader(payload)
+	dgst := digest.FromBytes(payload)
+	desc, _, err := UploadTestBlobFromReader(dgst, reader, serverURL, creds, repoName)
+	return desc, err
+}
+
+// UploadRandomTestBlob generates a random tar file and uploads it to the given repository.
+func UploadRandomTestBlob(
+	serverURL *url.URL,
+	creds auth.CredentialStore,
+	repoName string,
+) (distribution.Descriptor, []byte, error) {
+	rs, ds, err := CreateRandomTarFile()
+	if err != nil {
+		return distribution.Descriptor{}, nil, fmt.Errorf("unexpected error generating test layer file: %v", err)
+	}
+	dgst := digest.Digest(ds)
+	return UploadTestBlobFromReader(dgst, rs, serverURL, creds, repoName)
 }
 
 // createRandomTarFile creates a random tarfile, returning it as an io.ReadSeeker along with its digest. An
@@ -205,13 +217,13 @@ const SampleImageManifestSchema1 = `{
    ]
 }`
 
-// GetFakeImageGetHandler returns a reaction function for use with wake os client returning one of given image
+// GetFakeImageGetHandler returns a reaction function for use with fake os client returning one of given image
 // objects if found.
-func GetFakeImageGetHandler(t *testing.T, iss ...imageapi.Image) ktestclient.ReactionFunc {
-	return func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+func GetFakeImageGetHandler(t *testing.T, imgs ...imageapi.Image) core.ReactionFunc {
+	return func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		switch a := action.(type) {
-		case ktestclient.GetAction:
-			for _, is := range iss {
+		case core.GetAction:
+			for _, is := range imgs {
 				if a.GetName() == is.Name {
 					t.Logf("images get handler: returning image %s", is.Name)
 					return true, &is, nil
@@ -220,6 +232,28 @@ func GetFakeImageGetHandler(t *testing.T, iss ...imageapi.Image) ktestclient.Rea
 
 			err := kerrors.NewNotFound(kapi.Resource("images"), a.GetName())
 			t.Logf("image get handler: %v", err)
+			return true, nil, err
+		}
+		return false, nil, nil
+	}
+}
+
+// GetFakeImageStreamGetHandler creates a test handler to be used as a reactor with core.Fake client
+// that handles Get request on image stream resource. Matching is from given image stream list will be
+// returned if found. Additionally, a shared image stream may be requested.
+func GetFakeImageStreamGetHandler(t *testing.T, iss ...imageapi.ImageStream) core.ReactionFunc {
+	return func(action core.Action) (handled bool, ret runtime.Object, err error) {
+		switch a := action.(type) {
+		case core.GetAction:
+			for _, is := range iss {
+				if is.Namespace == a.GetNamespace() && a.GetName() == is.Name {
+					t.Logf("imagestream get handler: returning image stream %s/%s", is.Namespace, is.Name)
+					return true, &is, nil
+				}
+			}
+
+			err := kerrors.NewNotFound(kapi.Resource("imageStreams"), a.GetName())
+			t.Logf("imagestream get handler: %v", err)
 			return true, nil, err
 		}
 		return false, nil, nil
@@ -246,4 +280,90 @@ func TestNewImageStreamObject(namespace, name, tag, imageName, dockerImageRefere
 			},
 		},
 	}
+}
+
+// GetFakeImageStreamImageGetHandler returns a reaction function for use
+// with fake os client returning one of given imagestream image objects if found.
+func GetFakeImageStreamImageGetHandler(t *testing.T, iss *imageapi.ImageStream, imgs ...imageapi.Image) core.ReactionFunc {
+	return func(action core.Action) (handled bool, ret runtime.Object, err error) {
+		switch a := action.(type) {
+		case core.GetAction:
+			for _, is := range imgs {
+				name, imageID, err := imageapi.ParseImageStreamImageName(a.GetName())
+				if err != nil {
+					return true, nil, err
+				}
+
+				if imageID != is.Name {
+					continue
+				}
+
+				t.Logf("imagestreamimage get handler: returning image %s", is.Name)
+
+				isi := imageapi.ImageStreamImage{
+					ObjectMeta: kapi.ObjectMeta{
+						Namespace:         is.Namespace,
+						Name:              imageapi.MakeImageStreamImageName(name, imageID),
+						CreationTimestamp: is.ObjectMeta.CreationTimestamp,
+						Annotations:       iss.Annotations,
+					},
+					Image: is,
+				}
+
+				return true, &isi, nil
+			}
+
+			err := kerrors.NewNotFound(kapi.Resource("imagestreamimages"), a.GetName())
+			t.Logf("imagestreamimage get handler: %v", err)
+			return true, nil, err
+		}
+		return false, nil, nil
+	}
+}
+
+type testCredentialStore struct {
+	username      string
+	password      string
+	refreshTokens map[string]string
+}
+
+var _ auth.CredentialStore = &testCredentialStore{}
+
+// NewBasicCredentialStore returns a test credential store for use with registry token handler and/or basic
+// handler.
+func NewBasicCredentialStore(username, password string) auth.CredentialStore {
+	return &testCredentialStore{
+		username: username,
+		password: password,
+	}
+}
+
+func (tcs *testCredentialStore) Basic(*url.URL) (string, string) {
+	return tcs.username, tcs.password
+}
+
+func (tcs *testCredentialStore) RefreshToken(u *url.URL, service string) string {
+	return tcs.refreshTokens[service]
+}
+
+func (tcs *testCredentialStore) SetRefreshToken(u *url.URL, service string, token string) {
+	if tcs.refreshTokens != nil {
+		tcs.refreshTokens[service] = token
+	}
+}
+
+// ping pings the provided endpoint to determine its required authorization challenges.
+// If a version header is provided, the versions will be returned.
+func ping(manager auth.ChallengeManager, endpoint, versionHeader string) ([]auth.APIVersion, error) {
+	resp, err := http.Get(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if err := manager.AddResponse(resp); err != nil {
+		return nil, err
+	}
+
+	return auth.APIVersions(resp, versionHeader), err
 }

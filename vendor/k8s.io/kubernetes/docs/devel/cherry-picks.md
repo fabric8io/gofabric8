@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Overview
 
 This document explains cherry picks are managed on release branches within the
@@ -47,24 +42,6 @@ label.
 There is an [issue](https://github.com/kubernetes/kubernetes/issues/23347) open
 tracking the tool to automate the batching procedure.
 
-#### Cherrypicking a doc change
-
-If you are cherrypicking a change which adds a doc, then you also need to run
-`build/versionize-docs.sh` in the release branch to versionize that doc.
-Ideally, just running `hack/cherry_pick_pull.sh` should be enough, but we are
-not there yet: [#18861](https://github.com/kubernetes/kubernetes/issues/18861)
-
-To cherrypick PR 123456 to release-3.14, run the following commands after
-running `hack/cherry_pick_pull.sh` and before merging the PR:
-
-```
-$ git checkout -b automated-cherry-pick-of-#123456-upstream-release-3.14
-origin/automated-cherry-pick-of-#123456-upstream-release-3.14
-$ ./build/versionize-docs.sh release-3.14
-$ git commit -a -m "Running versionize docs"
-$ git push origin automated-cherry-pick-of-#123456-upstream-release-3.14
-```
-
 ## Cherry Pick Review
 
 Cherry pick pull requests are reviewed differently than normal pull requests. In
@@ -77,16 +54,9 @@ requested - this should not be the norm, but it may happen.
 See the [cherrypick queue dashboard](http://cherrypick.k8s.io/#/queue) for
 status of PRs labeled as `cherrypick-candidate`.
 
-[Contributor License Agreements](http://releases.k8s.io/release-1.3/CONTRIBUTING.md) is
+[Contributor License Agreements](http://releases.k8s.io/HEAD/CONTRIBUTING.md) is
 considered implicit for all code within cherry-pick pull requests, ***unless
 there is a large conflict***.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

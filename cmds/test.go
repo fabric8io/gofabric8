@@ -32,7 +32,7 @@ type testPipelineFlags struct {
 }
 
 // NewCmdTest performs a test pipeline to check an installation
-func NewCmdTest(f *cmdutil.Factory) *cobra.Command {
+func NewCmdTest(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "test",
 		Short:   "Runs the end to end system tests",
@@ -54,7 +54,7 @@ func NewCmdTest(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *testPipelineFlags) testPipeline(f *cmdutil.Factory) error {
+func (p *testPipelineFlags) testPipeline(f cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)

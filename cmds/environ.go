@@ -28,8 +28,9 @@ import (
 	yaml "gopkg.in/yaml.v2"
 	"k8s.io/kubernetes/pkg/api"
 	k8api "k8s.io/kubernetes/pkg/api/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	restclient "k8s.io/kubernetes/pkg/client/restclient"
-	k8client "k8s.io/kubernetes/pkg/client/unversioned"
+
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -39,7 +40,7 @@ type EnvironmentData struct {
 	Order     int    `yaml:"order"`
 }
 
-func NewCmdGetEnviron(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdGetEnviron(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "environ",
 		Short:   "Get environment from fabric8-environments configmap",
@@ -54,7 +55,7 @@ func NewCmdGetEnviron(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	return cmd
 }
 
-func getEnviron(cmd *cobra.Command, args []string, detectedNS string, c *k8client.Client) (err error) {
+func getEnviron(cmd *cobra.Command, args []string, detectedNS string, c *clientset.Clientset) (err error) {
 	selector, err := k8api.LabelSelectorAsSelector(
 		&k8api.LabelSelector{MatchLabels: map[string]string{"kind": "environments"}})
 	cmdutil.CheckErr(err)
@@ -77,7 +78,7 @@ func getEnviron(cmd *cobra.Command, args []string, detectedNS string, c *k8clien
 	return
 }
 
-func NewCmdCreateEnviron(f *cmdutil.Factory) (cmd *cobra.Command) {
+func NewCmdCreateEnviron(f cmdutil.Factory) (cmd *cobra.Command) {
 	cmd = &cobra.Command{
 		Use:     "environ",
 		Short:   "Create environment from fabric8-environments configmap",
@@ -94,7 +95,7 @@ func NewCmdCreateEnviron(f *cmdutil.Factory) (cmd *cobra.Command) {
 	return
 }
 
-func createEnviron(cmd *cobra.Command, args []string, detectedNS string, c *k8client.Client) (err error) {
+func createEnviron(cmd *cobra.Command, args []string, detectedNS string, c *clientset.Clientset) (err error) {
 	var ev EnvironmentData
 	var yamlData []byte
 	ev.Order = -1
@@ -153,7 +154,7 @@ func createEnviron(cmd *cobra.Command, args []string, detectedNS string, c *k8cl
 }
 
 // NewCmdDeleteEnviron is a command to delete an environ using: gofabric8 delete environ abcd
-func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
+func NewCmdDeleteEnviron(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "env",
 		Short:   "Delete environment from fabric8-environments configmap",
@@ -218,7 +219,7 @@ func NewCmdDeleteEnviron(f *cmdutil.Factory) *cobra.Command {
 
 // getOpenShiftClient Get an openshift client and detect the project we want to
 // be in
-func getOpenShiftClient(f *cmdutil.Factory, wp string) (detectedNS string, c *k8client.Client, cfg *restclient.Config) {
+func getOpenShiftClient(f cmdutil.Factory, wp string) (detectedNS string, c *clientset.Clientset, cfg *restclient.Config) {
 	c, cfg = client.NewClient(f)
 
 	// If the user has specified a userproject then don't do auto detection and

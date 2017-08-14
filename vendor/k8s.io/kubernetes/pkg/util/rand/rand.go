@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,8 +23,6 @@ import (
 	"time"
 )
 
-var letters = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
-var numLetters = len(letters)
 var rng = struct {
 	sync.Mutex
 	rand *rand.Rand
@@ -72,12 +70,16 @@ func Perm(n int) []int {
 	return rng.rand.Perm(n)
 }
 
-// String generates a random alphanumeric string n characters long.  This will
-// panic if n is less than zero.
+// We omit vowels from the set of available characters to reduce the chances
+// of "bad words" being formed.
+var alphanums = []rune("bcdfghjklmnpqrstvwxz0123456789")
+
+// String generates a random alphanumeric string, without vowels, which is n
+// characters long.  This will panic if n is less than zero.
 func String(length int) string {
 	b := make([]rune, length)
 	for i := range b {
-		b[i] = letters[Intn(numLetters)]
+		b[i] = alphanums[Intn(len(alphanums))]
 	}
 	return string(b)
 }

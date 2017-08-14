@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Table of Contents
 
 <!-- BEGIN MUNGE: GENERATED_TOC -->
@@ -113,13 +108,6 @@ We delete all existing docs before pulling in new ones to ensure that deleted
 docs go away.
 
 If the change added or deleted a doc, then update the corresponding `_includes/nav_vX.Y.html` file as well.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

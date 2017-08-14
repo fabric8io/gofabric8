@@ -11,14 +11,15 @@ import (
 	"github.com/spf13/cobra"
 
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/unversioned"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/kubectl"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/watch"
 
-	"github.com/openshift/origin/pkg/cmd/util"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	"github.com/openshift/origin/pkg/cmd/util/term"
 	"github.com/openshift/origin/pkg/serviceaccounts"
 	osautil "github.com/openshift/origin/pkg/serviceaccounts/util"
 )
@@ -28,31 +29,32 @@ const (
 
 	newServiceAccountTokenShort = `Generate a new token for a service account.`
 
-	newServiceAccountTokenLong = `
-Generate a new token for a service account.
-
-Service account API tokens are used by service accounts to authenticate to the API.
-This command will generate a new token, which could be used to compartmentalize service
-account actions by executing them with distinct tokens, to rotate out pre-existing token
-on the service account, or for use by an external client. If a label is provided, it will
-be applied to any created token so that tokens created with this command can be idenitifed.
-`
-
 	newServiceAccountTokenUsage = `%s SA-NAME`
+)
 
-	newServiceAccountTokenExamples = `  # Generate a new token for service account 'default'
-  %[1]s 'default'
+var (
+	newServiceAccountTokenLong = templates.LongDesc(`
+    Generate a new token for a service account.
 
-  # Generate a new token for service account 'default' and apply
-  # labels 'foo' and 'bar' to the new token for identification
-  # %[1]s 'default' --labels foo=foo-value,bar=bar-value
-`
+    Service account API tokens are used by service accounts to authenticate to the API.
+    This command will generate a new token, which could be used to compartmentalize service
+    account actions by executing them with distinct tokens, to rotate out pre-existing token
+    on the service account, or for use by an external client. If a label is provided, it will
+    be applied to any created token so that tokens created with this command can be idenitifed.`)
+
+	newServiceAccountTokenExamples = templates.Examples(`
+    # Generate a new token for service account 'default'
+    %[1]s 'default'
+
+    # Generate a new token for service account 'default' and apply
+    # labels 'foo' and 'bar' to the new token for identification
+    # %[1]s 'default' --labels foo=foo-value,bar=bar-value`)
 )
 
 type NewServiceAccountTokenOptions struct {
 	SAName        string
-	SAClient      unversioned.ServiceAccountsInterface
-	SecretsClient unversioned.SecretsInterface
+	SAClient      kcoreclient.ServiceAccountInterface
+	SecretsClient kcoreclient.SecretInterface
 
 	Labels map[string]string
 
@@ -77,9 +79,7 @@ func NewCommandNewServiceAccountToken(name, fullname string, f *clientcmd.Factor
 		Example: fmt.Sprintf(newServiceAccountTokenExamples, fullname),
 		Run: func(cmd *cobra.Command, args []string) {
 			cmdutil.CheckErr(options.Complete(args, requestedLabels, f, cmd))
-
 			cmdutil.CheckErr(options.Validate())
-
 			cmdutil.CheckErr(options.Run())
 		},
 	}
@@ -104,7 +104,7 @@ func (o *NewServiceAccountTokenOptions) Complete(args []string, requestedLabels 
 		o.Labels = labels
 	}
 
-	client, err := f.Client()
+	client, err := f.ClientSet()
 	if err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func (o *NewServiceAccountTokenOptions) Run() error {
 	}
 
 	fmt.Fprintf(o.Out, string(token))
-	if util.IsTerminalWriter(o.Out) {
+	if term.IsTerminalWriter(o.Out) {
 		// pretty-print for a TTY
 		fmt.Fprintf(o.Out, "\n")
 	}
@@ -184,7 +184,7 @@ func (o *NewServiceAccountTokenOptions) Run() error {
 }
 
 // waitForToken uses `cmd.Until` to wait for the service account controller to fulfill the token request
-func waitForToken(token *api.Secret, serviceAccount *api.ServiceAccount, timeout time.Duration, client unversioned.SecretsInterface) (*api.Secret, error) {
+func waitForToken(token *api.Secret, serviceAccount *api.ServiceAccount, timeout time.Duration, client kcoreclient.SecretInterface) (*api.Secret, error) {
 	// there is no provided rounding function, so we use Round(x) === Floor(x + 0.5)
 	timeoutSeconds := int64(math.Floor(timeout.Seconds() + 0.5))
 

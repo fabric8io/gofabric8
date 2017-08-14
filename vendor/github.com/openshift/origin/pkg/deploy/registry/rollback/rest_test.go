@@ -7,7 +7,8 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
-	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
+	"k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/runtime"
 
 	"github.com/openshift/origin/pkg/client/testclient"
@@ -56,11 +57,11 @@ func TestCreateInvalid(t *testing.T) {
 
 func TestCreateOk(t *testing.T) {
 	oc := &testclient.Fake{}
-	oc.AddReactor("get", "deploymentconfigs", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	oc.AddReactor("get", "deploymentconfigs", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		return true, deploytest.OkDeploymentConfig(2), nil
 	})
-	kc := &ktestclient.Fake{}
-	kc.AddReactor("get", "replicationcontrollers", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	kc := &fake.Clientset{}
+	kc.AddReactor("get", "replicationcontrollers", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		deployment, _ := deployutil.MakeDeployment(deploytest.OkDeploymentConfig(1), codec)
 		return true, deployment, nil
 	})
@@ -87,11 +88,11 @@ func TestCreateOk(t *testing.T) {
 
 func TestCreateGeneratorError(t *testing.T) {
 	oc := &testclient.Fake{}
-	oc.AddReactor("get", "deploymentconfigs", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	oc.AddReactor("get", "deploymentconfigs", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		return true, deploytest.OkDeploymentConfig(2), nil
 	})
-	kc := &ktestclient.Fake{}
-	kc.AddReactor("get", "replicationcontrollers", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	kc := &fake.Clientset{}
+	kc.AddReactor("get", "replicationcontrollers", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		deployment, _ := deployutil.MakeDeployment(deploytest.OkDeploymentConfig(1), codec)
 		return true, deployment, nil
 	})
@@ -99,7 +100,7 @@ func TestCreateGeneratorError(t *testing.T) {
 	rest := REST{
 		generator: &terribleGenerator{},
 		dn:        oc,
-		rn:        kc,
+		rn:        kc.Core(),
 		codec:     kapi.Codecs.LegacyCodec(deployv1.SchemeGroupVersion),
 	}
 
@@ -117,11 +118,11 @@ func TestCreateGeneratorError(t *testing.T) {
 
 func TestCreateMissingDeployment(t *testing.T) {
 	oc := &testclient.Fake{}
-	oc.AddReactor("get", "deploymentconfigs", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	oc.AddReactor("get", "deploymentconfigs", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		return true, deploytest.OkDeploymentConfig(2), nil
 	})
-	kc := &ktestclient.Fake{}
-	kc.AddReactor("get", "replicationcontrollers", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	kc := &fake.Clientset{}
+	kc.AddReactor("get", "replicationcontrollers", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		deployment, _ := deployutil.MakeDeployment(deploytest.OkDeploymentConfig(1), codec)
 		return true, nil, kerrors.NewNotFound(kapi.Resource("replicationController"), deployment.Name)
 	})
@@ -144,11 +145,11 @@ func TestCreateMissingDeployment(t *testing.T) {
 
 func TestCreateInvalidDeployment(t *testing.T) {
 	oc := &testclient.Fake{}
-	oc.AddReactor("get", "deploymentconfigs", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	oc.AddReactor("get", "deploymentconfigs", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		return true, deploytest.OkDeploymentConfig(2), nil
 	})
-	kc := &ktestclient.Fake{}
-	kc.AddReactor("get", "replicationcontrollers", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	kc := &fake.Clientset{}
+	kc.AddReactor("get", "replicationcontrollers", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		// invalidate the encoded config
 		deployment, _ := deployutil.MakeDeployment(deploytest.OkDeploymentConfig(1), codec)
 		deployment.Annotations[deployapi.DeploymentEncodedConfigAnnotation] = ""
@@ -173,12 +174,12 @@ func TestCreateInvalidDeployment(t *testing.T) {
 
 func TestCreateMissingDeploymentConfig(t *testing.T) {
 	oc := &testclient.Fake{}
-	oc.AddReactor("get", "deploymentconfigs", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	oc.AddReactor("get", "deploymentconfigs", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		dc := deploytest.OkDeploymentConfig(2)
 		return true, nil, kerrors.NewNotFound(deployapi.Resource("deploymentConfig"), dc.Name)
 	})
-	kc := &ktestclient.Fake{}
-	kc.AddReactor("get", "replicationcontrollers", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+	kc := &fake.Clientset{}
+	kc.AddReactor("get", "replicationcontrollers", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 		deployment, _ := deployutil.MakeDeployment(deploytest.OkDeploymentConfig(1), codec)
 		return true, deployment, nil
 	})

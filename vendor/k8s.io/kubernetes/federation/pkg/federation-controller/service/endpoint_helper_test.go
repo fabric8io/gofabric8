@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,11 +29,12 @@ var fakeDns, _ = clouddns.NewFakeInterface() // No need to check for unsupported
 var fakeDnsZones, _ = fakeDns.Zones()
 
 var fakeServiceController = ServiceController{
-	dns:            fakeDns,
-	dnsZones:       fakeDnsZones,
-	federationName: "fed1",
-	zoneName:       "example.com",
-	serviceCache:   &serviceCache{fedServiceMap: make(map[string]*cachedService)},
+	dns:              fakeDns,
+	dnsZones:         fakeDnsZones,
+	federationName:   "fed1",
+	zoneName:         "example.com",
+	serviceDnsSuffix: "federation.example.com",
+	serviceCache:     &serviceCache{fedServiceMap: make(map[string]*cachedService)},
 	clusterCache: &clusterClientCache{
 		clientMap: make(map[string]*clusterCache),
 	},

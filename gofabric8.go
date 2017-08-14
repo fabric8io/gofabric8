@@ -28,7 +28,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/util/homedir"
 )
 
 const (
@@ -47,7 +46,7 @@ func runHelp(cmd *cobra.Command, args []string) {
 	cmd.Help()
 }
 
-func NewGoFabric8Command(f *cmdutil.Factory, in io.Reader, out, err io.Writer) *cobra.Command {
+func NewGoFabric8Command(f cmdutil.Factory, in io.Reader, out, err io.Writer) *cobra.Command {
 	cmds := &cobra.Command{
 		Use:   "gofabric8",
 		Short: "gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment",
@@ -79,7 +78,7 @@ func NewGoFabric8Command(f *cmdutil.Factory, in io.Reader, out, err io.Writer) *
 			}
 
 			if !batch {
-				home := homedir.HomeDir()
+				home := os.Getenv("HOME")
 				if home == "" {
 					util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
 				}

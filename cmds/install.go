@@ -38,7 +38,6 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/spf13/cobra"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/util/homedir"
 )
 
 const (
@@ -77,7 +76,7 @@ type downloadProperties struct {
 }
 
 // NewCmdInstall installs the dependencies to run the fabric8 microservices platform
-func NewCmdInstall(f *cmdutil.Factory) *cobra.Command {
+func NewCmdInstall(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Installs the dependencies to locally run the fabric8 microservices platform",
@@ -451,7 +450,7 @@ func getLatestVersionFromGitHub(githubOwner, githubRepo string) (semver.Version,
 }
 
 func isInstalled(isMinishift bool) bool {
-	home := homedir.HomeDir()
+	home := os.Getenv("HOME")
 	if home == "" {
 		util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
 	}
@@ -514,7 +513,7 @@ func getDownloadProperties(isMinishift bool) downloadProperties {
 }
 
 func getFabric8BinLocation() string {
-	home := homedir.HomeDir()
+	home := os.Getenv("HOME")
 	if home == "" {
 		util.Fatalf("No user home environment variable found for OS %s", runtime.GOOS)
 	}

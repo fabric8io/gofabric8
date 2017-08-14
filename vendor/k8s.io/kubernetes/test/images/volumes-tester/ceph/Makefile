@@ -1,4 +1,4 @@
-# Copyright 2016 The Kubernetes Authors All rights reserved.
+# Copyright 2016 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,11 +20,11 @@ all: push
 container: image
 
 image:
-	docker build -t $(PREFIX)/volume-ceph . # Build new image and automatically tag it as latest
+	docker build --pull -t $(PREFIX)/volume-ceph . # Build new image and automatically tag it as latest
 	docker tag $(PREFIX)/volume-ceph $(PREFIX)/volume-ceph:$(TAG)  # Add the version tag to the latest image
 
 push: image
-	gcloud docker push $(PREFIX)/volume-ceph # Push image tagged as latest to repository
-	gcloud docker push $(PREFIX)/volume-ceph:$(TAG) # Push version tagged image to repository (since this image is already pushed it will simply create or update version tag)
+	gcloud docker -- push $(PREFIX)/volume-ceph # Push image tagged as latest to repository
+	gcloud docker -- push $(PREFIX)/volume-ceph:$(TAG) # Push version tagged image to repository (since this image is already pushed it will simply create or update version tag)
 
 clean:

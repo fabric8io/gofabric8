@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 <h2>Warning! This document might be outdated.</h2>
 
 # Horizontal Pod Autoscaling
@@ -15,7 +10,7 @@ is responsible for dynamically controlling the number of replicas of some
 collection (e.g. the pods of a ReplicationController) to meet some objective(s),
 for example a target per-pod CPU utilization.
 
-This design supersedes [autoscaling.md](http://releases.k8s.io/release-1.3/docs/proposals/autoscaling.md).
+This design supersedes [autoscaling.md](http://releases.k8s.io/release-1.0/docs/proposals/autoscaling.md).
 
 ## Overview
 
@@ -261,13 +256,6 @@ kill.** E.g.: if two or more pods from the same replication controller are on
 the same node, kill one of them. Discussed in issue [#4301](https://github.com/kubernetes/kubernetes/issues/4301).
 
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

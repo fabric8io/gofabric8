@@ -20,13 +20,13 @@ var _ = g.Describe("[builds][Slow] the s2i build should support proxies", func()
 
 	g.JustBeforeEach(func() {
 		g.By("waiting for builder service account")
-		err := exutil.WaitForBuilderAccount(oc.KubeREST().ServiceAccounts(oc.Namespace()))
+		err := exutil.WaitForBuilderAccount(oc.KubeClient().Core().ServiceAccounts(oc.Namespace()))
 		o.Expect(err).NotTo(o.HaveOccurred())
 		oc.Run("create").Args("-f", buildFixture).Execute()
 	})
 
 	g.Describe("start build with broken proxy", func() {
-		g.It("should start a build and wait for the build to to fail", func() {
+		g.It("should start a build and wait for the build to fail", func() {
 			g.By("starting the build")
 
 			br, _ := exutil.StartBuildAndWait(oc, "sample-build")
@@ -45,6 +45,14 @@ var _ = g.Describe("[builds][Slow] the s2i build should support proxies", func()
 
 			g.By("verifying the build sample-build-1 status")
 			o.Expect(br.Build.Status.Phase).Should(o.BeEquivalentTo(buildapi.BuildPhaseFailed))
+		})
+	})
+
+	g.Describe("start build with broken proxy and a no_proxy override", func() {
+		g.It("should start a build and wait for the build to succeed", func() {
+			g.By("starting the build")
+			br, _ := exutil.StartBuildAndWait(oc, "sample-build-noproxy")
+			br.AssertSuccess()
 		})
 
 	})

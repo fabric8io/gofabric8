@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/api/unversioned"
@@ -39,8 +40,8 @@ type Result struct {
 	err     error
 	visitor Visitor
 
-	sources  []Visitor
-	singular bool
+	sources           []Visitor
+	singleItemImplied bool
 
 	ignoreErrors []utilerrors.Matcher
 
@@ -81,10 +82,10 @@ func (r *Result) Visit(fn VisitorFunc) error {
 	return utilerrors.FilterOut(err, r.ignoreErrors...)
 }
 
-// IntoSingular sets the provided boolean pointer to true if the Builder input
-// reflected a single item, or multiple.
-func (r *Result) IntoSingular(b *bool) *Result {
-	*b = r.singular
+// IntoSingleItemImplied sets the provided boolean pointer to true if the Builder input
+// implies a single item, or multiple.
+func (r *Result) IntoSingleItemImplied(b *bool) *Result {
+	*b = r.singleItemImplied
 	return r
 }
 
@@ -135,7 +136,7 @@ func (r *Result) Object() (runtime.Object, error) {
 	}
 
 	if len(objects) == 1 {
-		if r.singular {
+		if r.singleItemImplied {
 			return objects[0], nil
 		}
 		// if the item is a list already, don't create another list
@@ -222,12 +223,24 @@ func AsVersionedObject(infos []*Info, forceList bool, version unversioned.GroupV
 		object = objects[0]
 	} else {
 		object = &api.List{Items: objects}
-		converted, err := tryConvert(api.Scheme, object, version, registered.GroupOrDie(api.GroupName).GroupVersion)
+		converted, err := TryConvert(api.Scheme, object, version, registered.GroupOrDie(api.GroupName).GroupVersion)
 		if err != nil {
 			return nil, err
 		}
 		object = converted
 	}
+
+	// validSpecifiedVersion resolves to true if the version passed to this function matches the
+	// version assigned to the converted object
+	actualVersion := object.GetObjectKind().GroupVersionKind()
+	if actualVersion.Version != version.Version {
+		defaultVersionInfo := ""
+		if len(actualVersion.Version) > 0 {
+			defaultVersionInfo = fmt.Sprintf("Defaulting to %q", actualVersion.Version)
+		}
+		glog.V(1).Infof("info: the output version specified is invalid. %s\n", defaultVersionInfo)
+	}
+
 	return object, nil
 }
 
@@ -250,7 +263,7 @@ func AsVersionedObjects(infos []*Info, version unversioned.GroupVersion, encoder
 
 		// objects that are not part of api.Scheme must be converted to JSON
 		// TODO: convert to map[string]interface{}, attach to runtime.Unknown?
-		if !version.IsEmpty() {
+		if !version.Empty() {
 			if _, _, err := api.Scheme.ObjectKinds(info.Object); runtime.IsNotRegisteredError(err) {
 				// TODO: ideally this would encode to version, but we don't expose multiple codecs here.
 				data, err := runtime.Encode(encoder, info.Object)
@@ -263,7 +276,7 @@ func AsVersionedObjects(infos []*Info, version unversioned.GroupVersion, encoder
 			}
 		}
 
-		converted, err := tryConvert(info.Mapping.ObjectConvertor, info.Object, version, info.Mapping.GroupVersionKind.GroupVersion())
+		converted, err := TryConvert(info.Mapping.ObjectConvertor, info.Object, version, info.Mapping.GroupVersionKind.GroupVersion())
 		if err != nil {
 			return nil, err
 		}
@@ -272,15 +285,15 @@ func AsVersionedObjects(infos []*Info, version unversioned.GroupVersion, encoder
 	return objects, nil
 }
 
-// tryConvert attempts to convert the given object to the provided versions in order. This function assumes
+// TryConvert attempts to convert the given object to the provided versions in order. This function assumes
 // the object is in internal version.
-func tryConvert(convertor runtime.ObjectConvertor, object runtime.Object, versions ...unversioned.GroupVersion) (runtime.Object, error) {
+func TryConvert(converter runtime.ObjectConvertor, object runtime.Object, versions ...unversioned.GroupVersion) (runtime.Object, error) {
 	var last error
 	for _, version := range versions {
-		if version.IsEmpty() {
+		if version.Empty() {
 			return object, nil
 		}
-		obj, err := convertor.ConvertToVersion(object, version)
+		obj, err := converter.ConvertToVersion(object, version)
 		if err != nil {
 			last = err
 			continue

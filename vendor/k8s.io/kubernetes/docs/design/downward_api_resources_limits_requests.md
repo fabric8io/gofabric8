@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Downward API for resource limits and requests
 
 ## Background
@@ -77,7 +72,7 @@ the values. As kubelet operates on internal objects (without json tags),
 and the selectors are part of versioned objects, retrieving values of
 the limits and requests can be handled using these two solutions:
 
-1. By converting an internal object to versioned obejct, and then using
+1. By converting an internal object to versioned object, and then using
 the json path library to retrieve the values from the versioned object
 by processing the selector.
 
@@ -384,8 +379,8 @@ to specify the output format of values of exposed resources. The default value o
 is `1` which means cores for cpu and bytes for memory. For cpu, divisor's valid
 values are `1m` (millicores), `1`(cores), and for memory, the valid values in fixed point integer
 (decimal) are `1`(bytes), `1k`(kilobytes), `1M`(megabytes), `1G`(gigabytes),
-`1T`(terabytes), `1P`(petabytes), `1E`(exabytes), and in their power-of-two equivalents `1Ki(kilobytes)`,
-`1Mi`(megabytes), `1Gi`(gigabytes), `1Ti`(terabytes), `1Pi`(petabytes), `1Ei`(exabytes).
+`1T`(terabytes), `1P`(petabytes), `1E`(exabytes), and in their power-of-two equivalents `1Ki(kibibytes)`,
+`1Mi`(mebibytes), `1Gi`(gibibytes), `1Ti`(tebibytes), `1Pi`(pebibytes), `1Ei`(exbibytes).
 For more information about these resource formats, [see details](resources.md).
 
 Also, the exposed values will be `ceiling` of the actual values in the requestd format in divisor.
@@ -621,13 +616,6 @@ and
 
 export GOMAXPROCS=$(CPU_LIMIT)"
 ```
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/design/downward_api_resources_limits_requests.md?pixel)]()

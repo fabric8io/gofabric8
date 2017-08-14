@@ -29,7 +29,7 @@ const (
 `
 )
 
-func NewCmdCreate(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdCreate(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a resource type",
@@ -40,7 +40,7 @@ func NewCmdCreate(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	return cmd
 }
 
-func NewCmdDelete(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdDelete(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete a resource type",
@@ -56,7 +56,7 @@ func NewCmdDelete(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	return cmd
 }
 
-func NewCmdCleanUp(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdCleanUp(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clean",
 		Short: "Clean up a resource type without deleting it",
@@ -73,7 +73,7 @@ func NewCmdCleanUp(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 	return cmd
 }
 
-func NewCmdGet(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdGet(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get",
 		Short: "Get a resource type",

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Owners files
 
 _Note_: This is a design for a feature that is not yet implemented.
@@ -97,13 +92,6 @@ for that directory.  OWNERSHIP is hierarchical, so if a directory does not conta
 parent's OWNERS file is used instead.  There will be a top-level OWNERS file to back-stop the system.
 
 Obviously changing the OWNERS file requires OWNERS permission.
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/devel/owners.md?pixel)]()

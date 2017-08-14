@@ -25,6 +25,8 @@
 		BuildSource
 		BuildSpec
 		BuildStatus
+		BuildStatusOutput
+		BuildStatusOutputTo
 		BuildStrategy
 		BuildTriggerCause
 		BuildTriggerPolicy
@@ -39,9 +41,12 @@
 		GitSourceRevision
 		ImageChangeCause
 		ImageChangeTrigger
+		ImageLabel
 		ImageSource
 		ImageSourcePath
 		JenkinsPipelineBuildStrategy
+		OptionalNodeSelector
+		ProxyConfig
 		SecretBuildSource
 		SecretSpec
 		SourceBuildStrategy
@@ -60,6 +65,9 @@ import k8s_io_kubernetes_pkg_api_v1 "k8s.io/kubernetes/pkg/api/v1"
 
 import time "time"
 
+import strings "strings"
+import reflect "reflect"
+
 import io "io"
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -67,161 +75,189 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-func (m *BinaryBuildRequestOptions) Reset()         { *m = BinaryBuildRequestOptions{} }
-func (m *BinaryBuildRequestOptions) String() string { return proto.CompactTextString(m) }
-func (*BinaryBuildRequestOptions) ProtoMessage()    {}
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+const _ = proto.GoGoProtoPackageIsVersion1
 
-func (m *BinaryBuildSource) Reset()         { *m = BinaryBuildSource{} }
-func (m *BinaryBuildSource) String() string { return proto.CompactTextString(m) }
-func (*BinaryBuildSource) ProtoMessage()    {}
+func (m *BinaryBuildRequestOptions) Reset()      { *m = BinaryBuildRequestOptions{} }
+func (*BinaryBuildRequestOptions) ProtoMessage() {}
+func (*BinaryBuildRequestOptions) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{0}
+}
 
-func (m *Build) Reset()         { *m = Build{} }
-func (m *Build) String() string { return proto.CompactTextString(m) }
-func (*Build) ProtoMessage()    {}
+func (m *BinaryBuildSource) Reset()                    { *m = BinaryBuildSource{} }
+func (*BinaryBuildSource) ProtoMessage()               {}
+func (*BinaryBuildSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{1} }
 
-func (m *BuildConfig) Reset()         { *m = BuildConfig{} }
-func (m *BuildConfig) String() string { return proto.CompactTextString(m) }
-func (*BuildConfig) ProtoMessage()    {}
+func (m *Build) Reset()                    { *m = Build{} }
+func (*Build) ProtoMessage()               {}
+func (*Build) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{2} }
 
-func (m *BuildConfigList) Reset()         { *m = BuildConfigList{} }
-func (m *BuildConfigList) String() string { return proto.CompactTextString(m) }
-func (*BuildConfigList) ProtoMessage()    {}
+func (m *BuildConfig) Reset()                    { *m = BuildConfig{} }
+func (*BuildConfig) ProtoMessage()               {}
+func (*BuildConfig) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{3} }
 
-func (m *BuildConfigSpec) Reset()         { *m = BuildConfigSpec{} }
-func (m *BuildConfigSpec) String() string { return proto.CompactTextString(m) }
-func (*BuildConfigSpec) ProtoMessage()    {}
+func (m *BuildConfigList) Reset()                    { *m = BuildConfigList{} }
+func (*BuildConfigList) ProtoMessage()               {}
+func (*BuildConfigList) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{4} }
 
-func (m *BuildConfigStatus) Reset()         { *m = BuildConfigStatus{} }
-func (m *BuildConfigStatus) String() string { return proto.CompactTextString(m) }
-func (*BuildConfigStatus) ProtoMessage()    {}
+func (m *BuildConfigSpec) Reset()                    { *m = BuildConfigSpec{} }
+func (*BuildConfigSpec) ProtoMessage()               {}
+func (*BuildConfigSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{5} }
 
-func (m *BuildList) Reset()         { *m = BuildList{} }
-func (m *BuildList) String() string { return proto.CompactTextString(m) }
-func (*BuildList) ProtoMessage()    {}
+func (m *BuildConfigStatus) Reset()                    { *m = BuildConfigStatus{} }
+func (*BuildConfigStatus) ProtoMessage()               {}
+func (*BuildConfigStatus) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{6} }
 
-func (m *BuildLog) Reset()         { *m = BuildLog{} }
-func (m *BuildLog) String() string { return proto.CompactTextString(m) }
-func (*BuildLog) ProtoMessage()    {}
+func (m *BuildList) Reset()                    { *m = BuildList{} }
+func (*BuildList) ProtoMessage()               {}
+func (*BuildList) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{7} }
 
-func (m *BuildLogOptions) Reset()         { *m = BuildLogOptions{} }
-func (m *BuildLogOptions) String() string { return proto.CompactTextString(m) }
-func (*BuildLogOptions) ProtoMessage()    {}
+func (m *BuildLog) Reset()                    { *m = BuildLog{} }
+func (*BuildLog) ProtoMessage()               {}
+func (*BuildLog) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{8} }
 
-func (m *BuildOutput) Reset()         { *m = BuildOutput{} }
-func (m *BuildOutput) String() string { return proto.CompactTextString(m) }
-func (*BuildOutput) ProtoMessage()    {}
+func (m *BuildLogOptions) Reset()                    { *m = BuildLogOptions{} }
+func (*BuildLogOptions) ProtoMessage()               {}
+func (*BuildLogOptions) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{9} }
 
-func (m *BuildPostCommitSpec) Reset()         { *m = BuildPostCommitSpec{} }
-func (m *BuildPostCommitSpec) String() string { return proto.CompactTextString(m) }
-func (*BuildPostCommitSpec) ProtoMessage()    {}
+func (m *BuildOutput) Reset()                    { *m = BuildOutput{} }
+func (*BuildOutput) ProtoMessage()               {}
+func (*BuildOutput) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{10} }
 
-func (m *BuildRequest) Reset()         { *m = BuildRequest{} }
-func (m *BuildRequest) String() string { return proto.CompactTextString(m) }
-func (*BuildRequest) ProtoMessage()    {}
+func (m *BuildPostCommitSpec) Reset()                    { *m = BuildPostCommitSpec{} }
+func (*BuildPostCommitSpec) ProtoMessage()               {}
+func (*BuildPostCommitSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{11} }
 
-func (m *BuildSource) Reset()         { *m = BuildSource{} }
-func (m *BuildSource) String() string { return proto.CompactTextString(m) }
-func (*BuildSource) ProtoMessage()    {}
+func (m *BuildRequest) Reset()                    { *m = BuildRequest{} }
+func (*BuildRequest) ProtoMessage()               {}
+func (*BuildRequest) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{12} }
 
-func (m *BuildSpec) Reset()         { *m = BuildSpec{} }
-func (m *BuildSpec) String() string { return proto.CompactTextString(m) }
-func (*BuildSpec) ProtoMessage()    {}
+func (m *BuildSource) Reset()                    { *m = BuildSource{} }
+func (*BuildSource) ProtoMessage()               {}
+func (*BuildSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{13} }
 
-func (m *BuildStatus) Reset()         { *m = BuildStatus{} }
-func (m *BuildStatus) String() string { return proto.CompactTextString(m) }
-func (*BuildStatus) ProtoMessage()    {}
+func (m *BuildSpec) Reset()                    { *m = BuildSpec{} }
+func (*BuildSpec) ProtoMessage()               {}
+func (*BuildSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{14} }
 
-func (m *BuildStrategy) Reset()         { *m = BuildStrategy{} }
-func (m *BuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*BuildStrategy) ProtoMessage()    {}
+func (m *BuildStatus) Reset()                    { *m = BuildStatus{} }
+func (*BuildStatus) ProtoMessage()               {}
+func (*BuildStatus) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{15} }
 
-func (m *BuildTriggerCause) Reset()         { *m = BuildTriggerCause{} }
-func (m *BuildTriggerCause) String() string { return proto.CompactTextString(m) }
-func (*BuildTriggerCause) ProtoMessage()    {}
+func (m *BuildStatusOutput) Reset()                    { *m = BuildStatusOutput{} }
+func (*BuildStatusOutput) ProtoMessage()               {}
+func (*BuildStatusOutput) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{16} }
 
-func (m *BuildTriggerPolicy) Reset()         { *m = BuildTriggerPolicy{} }
-func (m *BuildTriggerPolicy) String() string { return proto.CompactTextString(m) }
-func (*BuildTriggerPolicy) ProtoMessage()    {}
+func (m *BuildStatusOutputTo) Reset()                    { *m = BuildStatusOutputTo{} }
+func (*BuildStatusOutputTo) ProtoMessage()               {}
+func (*BuildStatusOutputTo) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{17} }
 
-func (m *CommonSpec) Reset()         { *m = CommonSpec{} }
-func (m *CommonSpec) String() string { return proto.CompactTextString(m) }
-func (*CommonSpec) ProtoMessage()    {}
+func (m *BuildStrategy) Reset()                    { *m = BuildStrategy{} }
+func (*BuildStrategy) ProtoMessage()               {}
+func (*BuildStrategy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{18} }
 
-func (m *CustomBuildStrategy) Reset()         { *m = CustomBuildStrategy{} }
-func (m *CustomBuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*CustomBuildStrategy) ProtoMessage()    {}
+func (m *BuildTriggerCause) Reset()                    { *m = BuildTriggerCause{} }
+func (*BuildTriggerCause) ProtoMessage()               {}
+func (*BuildTriggerCause) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{19} }
 
-func (m *DockerBuildStrategy) Reset()         { *m = DockerBuildStrategy{} }
-func (m *DockerBuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*DockerBuildStrategy) ProtoMessage()    {}
+func (m *BuildTriggerPolicy) Reset()                    { *m = BuildTriggerPolicy{} }
+func (*BuildTriggerPolicy) ProtoMessage()               {}
+func (*BuildTriggerPolicy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{20} }
 
-func (m *GenericWebHookCause) Reset()         { *m = GenericWebHookCause{} }
-func (m *GenericWebHookCause) String() string { return proto.CompactTextString(m) }
-func (*GenericWebHookCause) ProtoMessage()    {}
+func (m *CommonSpec) Reset()                    { *m = CommonSpec{} }
+func (*CommonSpec) ProtoMessage()               {}
+func (*CommonSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{21} }
 
-func (m *GenericWebHookEvent) Reset()         { *m = GenericWebHookEvent{} }
-func (m *GenericWebHookEvent) String() string { return proto.CompactTextString(m) }
-func (*GenericWebHookEvent) ProtoMessage()    {}
+func (m *CustomBuildStrategy) Reset()                    { *m = CustomBuildStrategy{} }
+func (*CustomBuildStrategy) ProtoMessage()               {}
+func (*CustomBuildStrategy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{22} }
 
-func (m *GitBuildSource) Reset()         { *m = GitBuildSource{} }
-func (m *GitBuildSource) String() string { return proto.CompactTextString(m) }
-func (*GitBuildSource) ProtoMessage()    {}
+func (m *DockerBuildStrategy) Reset()                    { *m = DockerBuildStrategy{} }
+func (*DockerBuildStrategy) ProtoMessage()               {}
+func (*DockerBuildStrategy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{23} }
 
-func (m *GitHubWebHookCause) Reset()         { *m = GitHubWebHookCause{} }
-func (m *GitHubWebHookCause) String() string { return proto.CompactTextString(m) }
-func (*GitHubWebHookCause) ProtoMessage()    {}
+func (m *GenericWebHookCause) Reset()                    { *m = GenericWebHookCause{} }
+func (*GenericWebHookCause) ProtoMessage()               {}
+func (*GenericWebHookCause) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{24} }
 
-func (m *GitInfo) Reset()         { *m = GitInfo{} }
-func (m *GitInfo) String() string { return proto.CompactTextString(m) }
-func (*GitInfo) ProtoMessage()    {}
+func (m *GenericWebHookEvent) Reset()                    { *m = GenericWebHookEvent{} }
+func (*GenericWebHookEvent) ProtoMessage()               {}
+func (*GenericWebHookEvent) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{25} }
 
-func (m *GitSourceRevision) Reset()         { *m = GitSourceRevision{} }
-func (m *GitSourceRevision) String() string { return proto.CompactTextString(m) }
-func (*GitSourceRevision) ProtoMessage()    {}
+func (m *GitBuildSource) Reset()                    { *m = GitBuildSource{} }
+func (*GitBuildSource) ProtoMessage()               {}
+func (*GitBuildSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{26} }
 
-func (m *ImageChangeCause) Reset()         { *m = ImageChangeCause{} }
-func (m *ImageChangeCause) String() string { return proto.CompactTextString(m) }
-func (*ImageChangeCause) ProtoMessage()    {}
+func (m *GitHubWebHookCause) Reset()                    { *m = GitHubWebHookCause{} }
+func (*GitHubWebHookCause) ProtoMessage()               {}
+func (*GitHubWebHookCause) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{27} }
 
-func (m *ImageChangeTrigger) Reset()         { *m = ImageChangeTrigger{} }
-func (m *ImageChangeTrigger) String() string { return proto.CompactTextString(m) }
-func (*ImageChangeTrigger) ProtoMessage()    {}
+func (m *GitInfo) Reset()                    { *m = GitInfo{} }
+func (*GitInfo) ProtoMessage()               {}
+func (*GitInfo) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{28} }
 
-func (m *ImageSource) Reset()         { *m = ImageSource{} }
-func (m *ImageSource) String() string { return proto.CompactTextString(m) }
-func (*ImageSource) ProtoMessage()    {}
+func (m *GitSourceRevision) Reset()                    { *m = GitSourceRevision{} }
+func (*GitSourceRevision) ProtoMessage()               {}
+func (*GitSourceRevision) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{29} }
 
-func (m *ImageSourcePath) Reset()         { *m = ImageSourcePath{} }
-func (m *ImageSourcePath) String() string { return proto.CompactTextString(m) }
-func (*ImageSourcePath) ProtoMessage()    {}
+func (m *ImageChangeCause) Reset()                    { *m = ImageChangeCause{} }
+func (*ImageChangeCause) ProtoMessage()               {}
+func (*ImageChangeCause) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{30} }
 
-func (m *JenkinsPipelineBuildStrategy) Reset()         { *m = JenkinsPipelineBuildStrategy{} }
-func (m *JenkinsPipelineBuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*JenkinsPipelineBuildStrategy) ProtoMessage()    {}
+func (m *ImageChangeTrigger) Reset()                    { *m = ImageChangeTrigger{} }
+func (*ImageChangeTrigger) ProtoMessage()               {}
+func (*ImageChangeTrigger) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{31} }
 
-func (m *SecretBuildSource) Reset()         { *m = SecretBuildSource{} }
-func (m *SecretBuildSource) String() string { return proto.CompactTextString(m) }
-func (*SecretBuildSource) ProtoMessage()    {}
+func (m *ImageLabel) Reset()                    { *m = ImageLabel{} }
+func (*ImageLabel) ProtoMessage()               {}
+func (*ImageLabel) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{32} }
 
-func (m *SecretSpec) Reset()         { *m = SecretSpec{} }
-func (m *SecretSpec) String() string { return proto.CompactTextString(m) }
-func (*SecretSpec) ProtoMessage()    {}
+func (m *ImageSource) Reset()                    { *m = ImageSource{} }
+func (*ImageSource) ProtoMessage()               {}
+func (*ImageSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{33} }
 
-func (m *SourceBuildStrategy) Reset()         { *m = SourceBuildStrategy{} }
-func (m *SourceBuildStrategy) String() string { return proto.CompactTextString(m) }
-func (*SourceBuildStrategy) ProtoMessage()    {}
+func (m *ImageSourcePath) Reset()                    { *m = ImageSourcePath{} }
+func (*ImageSourcePath) ProtoMessage()               {}
+func (*ImageSourcePath) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{34} }
 
-func (m *SourceControlUser) Reset()         { *m = SourceControlUser{} }
-func (m *SourceControlUser) String() string { return proto.CompactTextString(m) }
-func (*SourceControlUser) ProtoMessage()    {}
+func (m *JenkinsPipelineBuildStrategy) Reset()      { *m = JenkinsPipelineBuildStrategy{} }
+func (*JenkinsPipelineBuildStrategy) ProtoMessage() {}
+func (*JenkinsPipelineBuildStrategy) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{35}
+}
 
-func (m *SourceRevision) Reset()         { *m = SourceRevision{} }
-func (m *SourceRevision) String() string { return proto.CompactTextString(m) }
-func (*SourceRevision) ProtoMessage()    {}
+func (m *OptionalNodeSelector) Reset()                    { *m = OptionalNodeSelector{} }
+func (*OptionalNodeSelector) ProtoMessage()               {}
+func (*OptionalNodeSelector) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{36} }
 
-func (m *WebHookTrigger) Reset()         { *m = WebHookTrigger{} }
-func (m *WebHookTrigger) String() string { return proto.CompactTextString(m) }
-func (*WebHookTrigger) ProtoMessage()    {}
+func (m *ProxyConfig) Reset()                    { *m = ProxyConfig{} }
+func (*ProxyConfig) ProtoMessage()               {}
+func (*ProxyConfig) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{37} }
+
+func (m *SecretBuildSource) Reset()                    { *m = SecretBuildSource{} }
+func (*SecretBuildSource) ProtoMessage()               {}
+func (*SecretBuildSource) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{38} }
+
+func (m *SecretSpec) Reset()                    { *m = SecretSpec{} }
+func (*SecretSpec) ProtoMessage()               {}
+func (*SecretSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{39} }
+
+func (m *SourceBuildStrategy) Reset()                    { *m = SourceBuildStrategy{} }
+func (*SourceBuildStrategy) ProtoMessage()               {}
+func (*SourceBuildStrategy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{40} }
+
+func (m *SourceControlUser) Reset()                    { *m = SourceControlUser{} }
+func (*SourceControlUser) ProtoMessage()               {}
+func (*SourceControlUser) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{41} }
+
+func (m *SourceRevision) Reset()                    { *m = SourceRevision{} }
+func (*SourceRevision) ProtoMessage()               {}
+func (*SourceRevision) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{42} }
+
+func (m *WebHookTrigger) Reset()                    { *m = WebHookTrigger{} }
+func (*WebHookTrigger) ProtoMessage()               {}
+func (*WebHookTrigger) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{43} }
 
 func init() {
 	proto.RegisterType((*BinaryBuildRequestOptions)(nil), "github.com.openshift.origin.pkg.build.api.v1.BinaryBuildRequestOptions")
@@ -240,6 +276,8 @@ func init() {
 	proto.RegisterType((*BuildSource)(nil), "github.com.openshift.origin.pkg.build.api.v1.BuildSource")
 	proto.RegisterType((*BuildSpec)(nil), "github.com.openshift.origin.pkg.build.api.v1.BuildSpec")
 	proto.RegisterType((*BuildStatus)(nil), "github.com.openshift.origin.pkg.build.api.v1.BuildStatus")
+	proto.RegisterType((*BuildStatusOutput)(nil), "github.com.openshift.origin.pkg.build.api.v1.BuildStatusOutput")
+	proto.RegisterType((*BuildStatusOutputTo)(nil), "github.com.openshift.origin.pkg.build.api.v1.BuildStatusOutputTo")
 	proto.RegisterType((*BuildStrategy)(nil), "github.com.openshift.origin.pkg.build.api.v1.BuildStrategy")
 	proto.RegisterType((*BuildTriggerCause)(nil), "github.com.openshift.origin.pkg.build.api.v1.BuildTriggerCause")
 	proto.RegisterType((*BuildTriggerPolicy)(nil), "github.com.openshift.origin.pkg.build.api.v1.BuildTriggerPolicy")
@@ -254,9 +292,12 @@ func init() {
 	proto.RegisterType((*GitSourceRevision)(nil), "github.com.openshift.origin.pkg.build.api.v1.GitSourceRevision")
 	proto.RegisterType((*ImageChangeCause)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageChangeCause")
 	proto.RegisterType((*ImageChangeTrigger)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageChangeTrigger")
+	proto.RegisterType((*ImageLabel)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageLabel")
 	proto.RegisterType((*ImageSource)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageSource")
 	proto.RegisterType((*ImageSourcePath)(nil), "github.com.openshift.origin.pkg.build.api.v1.ImageSourcePath")
 	proto.RegisterType((*JenkinsPipelineBuildStrategy)(nil), "github.com.openshift.origin.pkg.build.api.v1.JenkinsPipelineBuildStrategy")
+	proto.RegisterType((*OptionalNodeSelector)(nil), "github.com.openshift.origin.pkg.build.api.v1.OptionalNodeSelector")
+	proto.RegisterType((*ProxyConfig)(nil), "github.com.openshift.origin.pkg.build.api.v1.ProxyConfig")
 	proto.RegisterType((*SecretBuildSource)(nil), "github.com.openshift.origin.pkg.build.api.v1.SecretBuildSource")
 	proto.RegisterType((*SecretSpec)(nil), "github.com.openshift.origin.pkg.build.api.v1.SecretSpec")
 	proto.RegisterType((*SourceBuildStrategy)(nil), "github.com.openshift.origin.pkg.build.api.v1.SourceBuildStrategy")
@@ -700,6 +741,18 @@ func (m *BuildOutput) MarshalTo(data []byte) (int, error) {
 		}
 		i += n13
 	}
+	if len(m.ImageLabels) > 0 {
+		for _, msg := range m.ImageLabels {
+			data[i] = 0x1a
+			i++
+			i = encodeVarintGenerated(data, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(data[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
 	return i, nil
 }
 
@@ -1046,6 +1099,64 @@ func (m *BuildStatus) MarshalTo(data []byte) (int, error) {
 		}
 		i += n25
 	}
+	data[i] = 0x52
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.Output.Size()))
+	n26, err := m.Output.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n26
+	return i, nil
+}
+
+func (m *BuildStatusOutput) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *BuildStatusOutput) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.To != nil {
+		data[i] = 0xa
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.To.Size()))
+		n27, err := m.To.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n27
+	}
+	return i, nil
+}
+
+func (m *BuildStatusOutputTo) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *BuildStatusOutputTo) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	data[i] = 0xa
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.ImageDigest)))
+	i += copy(data[i:], m.ImageDigest)
 	return i, nil
 }
 
@@ -1072,41 +1183,41 @@ func (m *BuildStrategy) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.DockerStrategy.Size()))
-		n26, err := m.DockerStrategy.MarshalTo(data[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n26
-	}
-	if m.SourceStrategy != nil {
-		data[i] = 0x1a
-		i++
-		i = encodeVarintGenerated(data, i, uint64(m.SourceStrategy.Size()))
-		n27, err := m.SourceStrategy.MarshalTo(data[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n27
-	}
-	if m.CustomStrategy != nil {
-		data[i] = 0x22
-		i++
-		i = encodeVarintGenerated(data, i, uint64(m.CustomStrategy.Size()))
-		n28, err := m.CustomStrategy.MarshalTo(data[i:])
+		n28, err := m.DockerStrategy.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n28
 	}
-	if m.JenkinsPipelineStrategy != nil {
-		data[i] = 0x2a
+	if m.SourceStrategy != nil {
+		data[i] = 0x1a
 		i++
-		i = encodeVarintGenerated(data, i, uint64(m.JenkinsPipelineStrategy.Size()))
-		n29, err := m.JenkinsPipelineStrategy.MarshalTo(data[i:])
+		i = encodeVarintGenerated(data, i, uint64(m.SourceStrategy.Size()))
+		n29, err := m.SourceStrategy.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n29
+	}
+	if m.CustomStrategy != nil {
+		data[i] = 0x22
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.CustomStrategy.Size()))
+		n30, err := m.CustomStrategy.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n30
+	}
+	if m.JenkinsPipelineStrategy != nil {
+		data[i] = 0x2a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.JenkinsPipelineStrategy.Size()))
+		n31, err := m.JenkinsPipelineStrategy.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n31
 	}
 	return i, nil
 }
@@ -1134,31 +1245,31 @@ func (m *BuildTriggerCause) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.GenericWebHook.Size()))
-		n30, err := m.GenericWebHook.MarshalTo(data[i:])
+		n32, err := m.GenericWebHook.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n30
+		i += n32
 	}
 	if m.GitHubWebHook != nil {
 		data[i] = 0x1a
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.GitHubWebHook.Size()))
-		n31, err := m.GitHubWebHook.MarshalTo(data[i:])
+		n33, err := m.GitHubWebHook.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n31
+		i += n33
 	}
 	if m.ImageChangeBuild != nil {
 		data[i] = 0x22
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.ImageChangeBuild.Size()))
-		n32, err := m.ImageChangeBuild.MarshalTo(data[i:])
+		n34, err := m.ImageChangeBuild.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n32
+		i += n34
 	}
 	return i, nil
 }
@@ -1186,31 +1297,31 @@ func (m *BuildTriggerPolicy) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.GitHubWebHook.Size()))
-		n33, err := m.GitHubWebHook.MarshalTo(data[i:])
+		n35, err := m.GitHubWebHook.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n33
+		i += n35
 	}
 	if m.GenericWebHook != nil {
 		data[i] = 0x1a
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.GenericWebHook.Size()))
-		n34, err := m.GenericWebHook.MarshalTo(data[i:])
+		n36, err := m.GenericWebHook.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n34
+		i += n36
 	}
 	if m.ImageChange != nil {
 		data[i] = 0x22
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.ImageChange.Size()))
-		n35, err := m.ImageChange.MarshalTo(data[i:])
+		n37, err := m.ImageChange.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n35
+		i += n37
 	}
 	return i, nil
 }
@@ -1237,57 +1348,67 @@ func (m *CommonSpec) MarshalTo(data []byte) (int, error) {
 	data[i] = 0x12
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Source.Size()))
-	n36, err := m.Source.MarshalTo(data[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n36
-	if m.Revision != nil {
-		data[i] = 0x1a
-		i++
-		i = encodeVarintGenerated(data, i, uint64(m.Revision.Size()))
-		n37, err := m.Revision.MarshalTo(data[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n37
-	}
-	data[i] = 0x22
-	i++
-	i = encodeVarintGenerated(data, i, uint64(m.Strategy.Size()))
-	n38, err := m.Strategy.MarshalTo(data[i:])
+	n38, err := m.Source.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
 	i += n38
-	data[i] = 0x2a
-	i++
-	i = encodeVarintGenerated(data, i, uint64(m.Output.Size()))
-	n39, err := m.Output.MarshalTo(data[i:])
-	if err != nil {
-		return 0, err
+	if m.Revision != nil {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.Revision.Size()))
+		n39, err := m.Revision.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n39
 	}
-	i += n39
-	data[i] = 0x32
+	data[i] = 0x22
 	i++
-	i = encodeVarintGenerated(data, i, uint64(m.Resources.Size()))
-	n40, err := m.Resources.MarshalTo(data[i:])
+	i = encodeVarintGenerated(data, i, uint64(m.Strategy.Size()))
+	n40, err := m.Strategy.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
 	i += n40
-	data[i] = 0x3a
+	data[i] = 0x2a
 	i++
-	i = encodeVarintGenerated(data, i, uint64(m.PostCommit.Size()))
-	n41, err := m.PostCommit.MarshalTo(data[i:])
+	i = encodeVarintGenerated(data, i, uint64(m.Output.Size()))
+	n41, err := m.Output.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
 	i += n41
+	data[i] = 0x32
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.Resources.Size()))
+	n42, err := m.Resources.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n42
+	data[i] = 0x3a
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.PostCommit.Size()))
+	n43, err := m.PostCommit.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n43
 	if m.CompletionDeadlineSeconds != nil {
 		data[i] = 0x40
 		i++
 		i = encodeVarintGenerated(data, i, uint64(*m.CompletionDeadlineSeconds))
+	}
+	if m.NodeSelector != nil {
+		data[i] = 0x4a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.NodeSelector.Size()))
+		n44, err := m.NodeSelector.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n44
 	}
 	return i, nil
 }
@@ -1310,20 +1431,20 @@ func (m *CustomBuildStrategy) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-	n42, err := m.From.MarshalTo(data[i:])
+	n45, err := m.From.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n42
+	i += n45
 	if m.PullSecret != nil {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.PullSecret.Size()))
-		n43, err := m.PullSecret.MarshalTo(data[i:])
+		n46, err := m.PullSecret.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n43
+		i += n46
 	}
 	if len(m.Env) > 0 {
 		for _, msg := range m.Env {
@@ -1391,21 +1512,21 @@ func (m *DockerBuildStrategy) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-		n44, err := m.From.MarshalTo(data[i:])
+		n47, err := m.From.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n44
+		i += n47
 	}
 	if m.PullSecret != nil {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.PullSecret.Size()))
-		n45, err := m.PullSecret.MarshalTo(data[i:])
+		n48, err := m.PullSecret.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n45
+		i += n48
 	}
 	data[i] = 0x18
 	i++
@@ -1461,11 +1582,11 @@ func (m *GenericWebHookCause) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Revision.Size()))
-		n46, err := m.Revision.MarshalTo(data[i:])
+		n49, err := m.Revision.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n46
+		i += n49
 	}
 	data[i] = 0x12
 	i++
@@ -1497,11 +1618,11 @@ func (m *GenericWebHookEvent) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Git.Size()))
-		n47, err := m.Git.MarshalTo(data[i:])
+		n50, err := m.Git.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n47
+		i += n50
 	}
 	if len(m.Env) > 0 {
 		for _, msg := range m.Env {
@@ -1541,18 +1662,14 @@ func (m *GitBuildSource) MarshalTo(data []byte) (int, error) {
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.Ref)))
 	i += copy(data[i:], m.Ref)
-	if m.HTTPProxy != nil {
-		data[i] = 0x1a
-		i++
-		i = encodeVarintGenerated(data, i, uint64(len(*m.HTTPProxy)))
-		i += copy(data[i:], *m.HTTPProxy)
+	data[i] = 0x1a
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.ProxyConfig.Size()))
+	n51, err := m.ProxyConfig.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
 	}
-	if m.HTTPSProxy != nil {
-		data[i] = 0x22
-		i++
-		i = encodeVarintGenerated(data, i, uint64(len(*m.HTTPSProxy)))
-		i += copy(data[i:], *m.HTTPSProxy)
-	}
+	i += n51
 	return i, nil
 }
 
@@ -1575,11 +1692,11 @@ func (m *GitHubWebHookCause) MarshalTo(data []byte) (int, error) {
 		data[i] = 0xa
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Revision.Size()))
-		n48, err := m.Revision.MarshalTo(data[i:])
+		n52, err := m.Revision.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n48
+		i += n52
 	}
 	data[i] = 0x12
 	i++
@@ -1606,19 +1723,19 @@ func (m *GitInfo) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.GitBuildSource.Size()))
-	n49, err := m.GitBuildSource.MarshalTo(data[i:])
+	n53, err := m.GitBuildSource.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n49
+	i += n53
 	data[i] = 0x12
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.GitSourceRevision.Size()))
-	n50, err := m.GitSourceRevision.MarshalTo(data[i:])
+	n54, err := m.GitSourceRevision.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n50
+	i += n54
 	return i, nil
 }
 
@@ -1644,19 +1761,19 @@ func (m *GitSourceRevision) MarshalTo(data []byte) (int, error) {
 	data[i] = 0x12
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Author.Size()))
-	n51, err := m.Author.MarshalTo(data[i:])
+	n55, err := m.Author.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n51
+	i += n55
 	data[i] = 0x1a
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Committer.Size()))
-	n52, err := m.Committer.MarshalTo(data[i:])
+	n56, err := m.Committer.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n52
+	i += n56
 	data[i] = 0x22
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.Message)))
@@ -1687,11 +1804,11 @@ func (m *ImageChangeCause) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.FromRef.Size()))
-		n53, err := m.FromRef.MarshalTo(data[i:])
+		n57, err := m.FromRef.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n53
+		i += n57
 	}
 	return i, nil
 }
@@ -1719,12 +1836,38 @@ func (m *ImageChangeTrigger) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-		n54, err := m.From.MarshalTo(data[i:])
+		n58, err := m.From.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n54
+		i += n58
 	}
+	return i, nil
+}
+
+func (m *ImageLabel) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *ImageLabel) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	data[i] = 0xa
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Name)))
+	i += copy(data[i:], m.Name)
+	data[i] = 0x12
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Value)))
+	i += copy(data[i:], m.Value)
 	return i, nil
 }
 
@@ -1746,11 +1889,11 @@ func (m *ImageSource) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-	n55, err := m.From.MarshalTo(data[i:])
+	n59, err := m.From.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n55
+	i += n59
 	if len(m.Paths) > 0 {
 		for _, msg := range m.Paths {
 			data[i] = 0x12
@@ -1767,11 +1910,11 @@ func (m *ImageSource) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x1a
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.PullSecret.Size()))
-		n56, err := m.PullSecret.MarshalTo(data[i:])
+		n60, err := m.PullSecret.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n56
+		i += n60
 	}
 	return i, nil
 }
@@ -1828,6 +1971,77 @@ func (m *JenkinsPipelineBuildStrategy) MarshalTo(data []byte) (int, error) {
 	return i, nil
 }
 
+func (m OptionalNodeSelector) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m OptionalNodeSelector) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m) > 0 {
+		for k := range m {
+			data[i] = 0xa
+			i++
+			v := m[k]
+			mapSize := 1 + len(k) + sovGenerated(uint64(len(k))) + 1 + len(v) + sovGenerated(uint64(len(v)))
+			i = encodeVarintGenerated(data, i, uint64(mapSize))
+			data[i] = 0xa
+			i++
+			i = encodeVarintGenerated(data, i, uint64(len(k)))
+			i += copy(data[i:], k)
+			data[i] = 0x12
+			i++
+			i = encodeVarintGenerated(data, i, uint64(len(v)))
+			i += copy(data[i:], v)
+		}
+	}
+	return i, nil
+}
+
+func (m *ProxyConfig) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *ProxyConfig) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.HTTPProxy != nil {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(len(*m.HTTPProxy)))
+		i += copy(data[i:], *m.HTTPProxy)
+	}
+	if m.HTTPSProxy != nil {
+		data[i] = 0x22
+		i++
+		i = encodeVarintGenerated(data, i, uint64(len(*m.HTTPSProxy)))
+		i += copy(data[i:], *m.HTTPSProxy)
+	}
+	if m.NoProxy != nil {
+		data[i] = 0x2a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(len(*m.NoProxy)))
+		i += copy(data[i:], *m.NoProxy)
+	}
+	return i, nil
+}
+
 func (m *SecretBuildSource) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
@@ -1846,11 +2060,11 @@ func (m *SecretBuildSource) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Secret.Size()))
-	n57, err := m.Secret.MarshalTo(data[i:])
+	n61, err := m.Secret.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n57
+	i += n61
 	data[i] = 0x12
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.DestinationDir)))
@@ -1876,11 +2090,11 @@ func (m *SecretSpec) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.SecretSource.Size()))
-	n58, err := m.SecretSource.MarshalTo(data[i:])
+	n62, err := m.SecretSource.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n58
+	i += n62
 	data[i] = 0x12
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.MountPath)))
@@ -1906,20 +2120,20 @@ func (m *SourceBuildStrategy) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-	n59, err := m.From.MarshalTo(data[i:])
+	n63, err := m.From.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n59
+	i += n63
 	if m.PullSecret != nil {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.PullSecret.Size()))
-		n60, err := m.PullSecret.MarshalTo(data[i:])
+		n64, err := m.PullSecret.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n60
+		i += n64
 	}
 	if len(m.Env) > 0 {
 		for _, msg := range m.Env {
@@ -1959,11 +2173,11 @@ func (m *SourceBuildStrategy) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x3a
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.RuntimeImage.Size()))
-		n61, err := m.RuntimeImage.MarshalTo(data[i:])
+		n65, err := m.RuntimeImage.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n61
+		i += n65
 	}
 	if len(m.RuntimeArtifacts) > 0 {
 		for _, msg := range m.RuntimeArtifacts {
@@ -2029,11 +2243,11 @@ func (m *SourceRevision) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Git.Size()))
-		n62, err := m.Git.MarshalTo(data[i:])
+		n66, err := m.Git.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n62
+		i += n66
 	}
 	return i, nil
 }
@@ -2245,6 +2459,12 @@ func (m *BuildOutput) Size() (n int) {
 		l = m.PushSecret.Size()
 		n += 1 + l + sovGenerated(uint64(l))
 	}
+	if len(m.ImageLabels) > 0 {
+		for _, e := range m.ImageLabels {
+			l = e.Size()
+			n += 1 + l + sovGenerated(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -2384,6 +2604,26 @@ func (m *BuildStatus) Size() (n int) {
 		l = m.Config.Size()
 		n += 1 + l + sovGenerated(uint64(l))
 	}
+	l = m.Output.Size()
+	n += 1 + l + sovGenerated(uint64(l))
+	return n
+}
+
+func (m *BuildStatusOutput) Size() (n int) {
+	var l int
+	_ = l
+	if m.To != nil {
+		l = m.To.Size()
+		n += 1 + l + sovGenerated(uint64(l))
+	}
+	return n
+}
+
+func (m *BuildStatusOutputTo) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.ImageDigest)
+	n += 1 + l + sovGenerated(uint64(l))
 	return n
 }
 
@@ -2472,6 +2712,10 @@ func (m *CommonSpec) Size() (n int) {
 	n += 1 + l + sovGenerated(uint64(l))
 	if m.CompletionDeadlineSeconds != nil {
 		n += 1 + sovGenerated(uint64(*m.CompletionDeadlineSeconds))
+	}
+	if m.NodeSelector != nil {
+		l = m.NodeSelector.Size()
+		n += 1 + l + sovGenerated(uint64(l))
 	}
 	return n
 }
@@ -2565,14 +2809,8 @@ func (m *GitBuildSource) Size() (n int) {
 	n += 1 + l + sovGenerated(uint64(l))
 	l = len(m.Ref)
 	n += 1 + l + sovGenerated(uint64(l))
-	if m.HTTPProxy != nil {
-		l = len(*m.HTTPProxy)
-		n += 1 + l + sovGenerated(uint64(l))
-	}
-	if m.HTTPSProxy != nil {
-		l = len(*m.HTTPSProxy)
-		n += 1 + l + sovGenerated(uint64(l))
-	}
+	l = m.ProxyConfig.Size()
+	n += 1 + l + sovGenerated(uint64(l))
 	return n
 }
 
@@ -2636,6 +2874,16 @@ func (m *ImageChangeTrigger) Size() (n int) {
 	return n
 }
 
+func (m *ImageLabel) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Name)
+	n += 1 + l + sovGenerated(uint64(l))
+	l = len(m.Value)
+	n += 1 + l + sovGenerated(uint64(l))
+	return n
+}
+
 func (m *ImageSource) Size() (n int) {
 	var l int
 	_ = l
@@ -2671,6 +2919,38 @@ func (m *JenkinsPipelineBuildStrategy) Size() (n int) {
 	n += 1 + l + sovGenerated(uint64(l))
 	l = len(m.Jenkinsfile)
 	n += 1 + l + sovGenerated(uint64(l))
+	return n
+}
+
+func (m OptionalNodeSelector) Size() (n int) {
+	var l int
+	_ = l
+	if len(m) > 0 {
+		for k, v := range m {
+			_ = k
+			_ = v
+			mapEntrySize := 1 + len(k) + sovGenerated(uint64(len(k))) + 1 + len(v) + sovGenerated(uint64(len(v)))
+			n += mapEntrySize + 1 + sovGenerated(uint64(mapEntrySize))
+		}
+	}
+	return n
+}
+
+func (m *ProxyConfig) Size() (n int) {
+	var l int
+	_ = l
+	if m.HTTPProxy != nil {
+		l = len(*m.HTTPProxy)
+		n += 1 + l + sovGenerated(uint64(l))
+	}
+	if m.HTTPSProxy != nil {
+		l = len(*m.HTTPSProxy)
+		n += 1 + l + sovGenerated(uint64(l))
+	}
+	if m.NoProxy != nil {
+		l = len(*m.NoProxy)
+		n += 1 + l + sovGenerated(uint64(l))
+	}
 	return n
 }
 
@@ -2771,6 +3051,555 @@ func sovGenerated(x uint64) (n int) {
 }
 func sozGenerated(x uint64) (n int) {
 	return sovGenerated(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (this *BinaryBuildRequestOptions) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BinaryBuildRequestOptions{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`AsFile:` + fmt.Sprintf("%v", this.AsFile) + `,`,
+		`Commit:` + fmt.Sprintf("%v", this.Commit) + `,`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`AuthorName:` + fmt.Sprintf("%v", this.AuthorName) + `,`,
+		`AuthorEmail:` + fmt.Sprintf("%v", this.AuthorEmail) + `,`,
+		`CommitterName:` + fmt.Sprintf("%v", this.CommitterName) + `,`,
+		`CommitterEmail:` + fmt.Sprintf("%v", this.CommitterEmail) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BinaryBuildSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BinaryBuildSource{`,
+		`AsFile:` + fmt.Sprintf("%v", this.AsFile) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Build) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Build{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`Spec:` + strings.Replace(strings.Replace(this.Spec.String(), "BuildSpec", "BuildSpec", 1), `&`, ``, 1) + `,`,
+		`Status:` + strings.Replace(strings.Replace(this.Status.String(), "BuildStatus", "BuildStatus", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildConfig) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildConfig{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`Spec:` + strings.Replace(strings.Replace(this.Spec.String(), "BuildConfigSpec", "BuildConfigSpec", 1), `&`, ``, 1) + `,`,
+		`Status:` + strings.Replace(strings.Replace(this.Status.String(), "BuildConfigStatus", "BuildConfigStatus", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildConfigList) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildConfigList{`,
+		`ListMeta:` + strings.Replace(strings.Replace(this.ListMeta.String(), "ListMeta", "k8s_io_kubernetes_pkg_api_unversioned.ListMeta", 1), `&`, ``, 1) + `,`,
+		`Items:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Items), "BuildConfig", "BuildConfig", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildConfigSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildConfigSpec{`,
+		`Triggers:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Triggers), "BuildTriggerPolicy", "BuildTriggerPolicy", 1), `&`, ``, 1) + `,`,
+		`RunPolicy:` + fmt.Sprintf("%v", this.RunPolicy) + `,`,
+		`CommonSpec:` + strings.Replace(strings.Replace(this.CommonSpec.String(), "CommonSpec", "CommonSpec", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildConfigStatus) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildConfigStatus{`,
+		`LastVersion:` + fmt.Sprintf("%v", this.LastVersion) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildList) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildList{`,
+		`ListMeta:` + strings.Replace(strings.Replace(this.ListMeta.String(), "ListMeta", "k8s_io_kubernetes_pkg_api_unversioned.ListMeta", 1), `&`, ``, 1) + `,`,
+		`Items:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Items), "Build", "Build", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildLog) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildLog{`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildLogOptions) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildLogOptions{`,
+		`Container:` + fmt.Sprintf("%v", this.Container) + `,`,
+		`Follow:` + fmt.Sprintf("%v", this.Follow) + `,`,
+		`Previous:` + fmt.Sprintf("%v", this.Previous) + `,`,
+		`SinceSeconds:` + valueToStringGenerated(this.SinceSeconds) + `,`,
+		`SinceTime:` + strings.Replace(fmt.Sprintf("%v", this.SinceTime), "Time", "k8s_io_kubernetes_pkg_api_unversioned.Time", 1) + `,`,
+		`Timestamps:` + fmt.Sprintf("%v", this.Timestamps) + `,`,
+		`TailLines:` + valueToStringGenerated(this.TailLines) + `,`,
+		`LimitBytes:` + valueToStringGenerated(this.LimitBytes) + `,`,
+		`NoWait:` + fmt.Sprintf("%v", this.NoWait) + `,`,
+		`Version:` + valueToStringGenerated(this.Version) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildOutput) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildOutput{`,
+		`To:` + strings.Replace(fmt.Sprintf("%v", this.To), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`PushSecret:` + strings.Replace(fmt.Sprintf("%v", this.PushSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`ImageLabels:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ImageLabels), "ImageLabel", "ImageLabel", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildPostCommitSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildPostCommitSpec{`,
+		`Command:` + fmt.Sprintf("%v", this.Command) + `,`,
+		`Args:` + fmt.Sprintf("%v", this.Args) + `,`,
+		`Script:` + fmt.Sprintf("%v", this.Script) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildRequest{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`Revision:` + strings.Replace(fmt.Sprintf("%v", this.Revision), "SourceRevision", "SourceRevision", 1) + `,`,
+		`TriggeredByImage:` + strings.Replace(fmt.Sprintf("%v", this.TriggeredByImage), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`From:` + strings.Replace(fmt.Sprintf("%v", this.From), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`Binary:` + strings.Replace(fmt.Sprintf("%v", this.Binary), "BinaryBuildSource", "BinaryBuildSource", 1) + `,`,
+		`LastVersion:` + valueToStringGenerated(this.LastVersion) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`TriggeredBy:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.TriggeredBy), "BuildTriggerCause", "BuildTriggerCause", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildSource{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Binary:` + strings.Replace(fmt.Sprintf("%v", this.Binary), "BinaryBuildSource", "BinaryBuildSource", 1) + `,`,
+		`Dockerfile:` + valueToStringGenerated(this.Dockerfile) + `,`,
+		`Git:` + strings.Replace(fmt.Sprintf("%v", this.Git), "GitBuildSource", "GitBuildSource", 1) + `,`,
+		`Images:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Images), "ImageSource", "ImageSource", 1), `&`, ``, 1) + `,`,
+		`ContextDir:` + fmt.Sprintf("%v", this.ContextDir) + `,`,
+		`SourceSecret:` + strings.Replace(fmt.Sprintf("%v", this.SourceSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`Secrets:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Secrets), "SecretBuildSource", "SecretBuildSource", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildSpec{`,
+		`CommonSpec:` + strings.Replace(strings.Replace(this.CommonSpec.String(), "CommonSpec", "CommonSpec", 1), `&`, ``, 1) + `,`,
+		`TriggeredBy:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.TriggeredBy), "BuildTriggerCause", "BuildTriggerCause", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildStatus) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildStatus{`,
+		`Phase:` + fmt.Sprintf("%v", this.Phase) + `,`,
+		`Cancelled:` + fmt.Sprintf("%v", this.Cancelled) + `,`,
+		`Reason:` + fmt.Sprintf("%v", this.Reason) + `,`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`StartTimestamp:` + strings.Replace(fmt.Sprintf("%v", this.StartTimestamp), "Time", "k8s_io_kubernetes_pkg_api_unversioned.Time", 1) + `,`,
+		`CompletionTimestamp:` + strings.Replace(fmt.Sprintf("%v", this.CompletionTimestamp), "Time", "k8s_io_kubernetes_pkg_api_unversioned.Time", 1) + `,`,
+		`Duration:` + fmt.Sprintf("%v", this.Duration) + `,`,
+		`OutputDockerImageReference:` + fmt.Sprintf("%v", this.OutputDockerImageReference) + `,`,
+		`Config:` + strings.Replace(fmt.Sprintf("%v", this.Config), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`Output:` + strings.Replace(strings.Replace(this.Output.String(), "BuildStatusOutput", "BuildStatusOutput", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildStatusOutput) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildStatusOutput{`,
+		`To:` + strings.Replace(fmt.Sprintf("%v", this.To), "BuildStatusOutputTo", "BuildStatusOutputTo", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildStatusOutputTo) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildStatusOutputTo{`,
+		`ImageDigest:` + fmt.Sprintf("%v", this.ImageDigest) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildStrategy{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`DockerStrategy:` + strings.Replace(fmt.Sprintf("%v", this.DockerStrategy), "DockerBuildStrategy", "DockerBuildStrategy", 1) + `,`,
+		`SourceStrategy:` + strings.Replace(fmt.Sprintf("%v", this.SourceStrategy), "SourceBuildStrategy", "SourceBuildStrategy", 1) + `,`,
+		`CustomStrategy:` + strings.Replace(fmt.Sprintf("%v", this.CustomStrategy), "CustomBuildStrategy", "CustomBuildStrategy", 1) + `,`,
+		`JenkinsPipelineStrategy:` + strings.Replace(fmt.Sprintf("%v", this.JenkinsPipelineStrategy), "JenkinsPipelineBuildStrategy", "JenkinsPipelineBuildStrategy", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildTriggerCause) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildTriggerCause{`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`GenericWebHook:` + strings.Replace(fmt.Sprintf("%v", this.GenericWebHook), "GenericWebHookCause", "GenericWebHookCause", 1) + `,`,
+		`GitHubWebHook:` + strings.Replace(fmt.Sprintf("%v", this.GitHubWebHook), "GitHubWebHookCause", "GitHubWebHookCause", 1) + `,`,
+		`ImageChangeBuild:` + strings.Replace(fmt.Sprintf("%v", this.ImageChangeBuild), "ImageChangeCause", "ImageChangeCause", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BuildTriggerPolicy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BuildTriggerPolicy{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`GitHubWebHook:` + strings.Replace(fmt.Sprintf("%v", this.GitHubWebHook), "WebHookTrigger", "WebHookTrigger", 1) + `,`,
+		`GenericWebHook:` + strings.Replace(fmt.Sprintf("%v", this.GenericWebHook), "WebHookTrigger", "WebHookTrigger", 1) + `,`,
+		`ImageChange:` + strings.Replace(fmt.Sprintf("%v", this.ImageChange), "ImageChangeTrigger", "ImageChangeTrigger", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CommonSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CommonSpec{`,
+		`ServiceAccount:` + fmt.Sprintf("%v", this.ServiceAccount) + `,`,
+		`Source:` + strings.Replace(strings.Replace(this.Source.String(), "BuildSource", "BuildSource", 1), `&`, ``, 1) + `,`,
+		`Revision:` + strings.Replace(fmt.Sprintf("%v", this.Revision), "SourceRevision", "SourceRevision", 1) + `,`,
+		`Strategy:` + strings.Replace(strings.Replace(this.Strategy.String(), "BuildStrategy", "BuildStrategy", 1), `&`, ``, 1) + `,`,
+		`Output:` + strings.Replace(strings.Replace(this.Output.String(), "BuildOutput", "BuildOutput", 1), `&`, ``, 1) + `,`,
+		`Resources:` + strings.Replace(strings.Replace(this.Resources.String(), "ResourceRequirements", "k8s_io_kubernetes_pkg_api_v1.ResourceRequirements", 1), `&`, ``, 1) + `,`,
+		`PostCommit:` + strings.Replace(strings.Replace(this.PostCommit.String(), "BuildPostCommitSpec", "BuildPostCommitSpec", 1), `&`, ``, 1) + `,`,
+		`CompletionDeadlineSeconds:` + valueToStringGenerated(this.CompletionDeadlineSeconds) + `,`,
+		`NodeSelector:` + strings.Replace(fmt.Sprintf("%v", this.NodeSelector), "OptionalNodeSelector", "OptionalNodeSelector", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CustomBuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CustomBuildStrategy{`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`PullSecret:` + strings.Replace(fmt.Sprintf("%v", this.PullSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`ExposeDockerSocket:` + fmt.Sprintf("%v", this.ExposeDockerSocket) + `,`,
+		`ForcePull:` + fmt.Sprintf("%v", this.ForcePull) + `,`,
+		`Secrets:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Secrets), "SecretSpec", "SecretSpec", 1), `&`, ``, 1) + `,`,
+		`BuildAPIVersion:` + fmt.Sprintf("%v", this.BuildAPIVersion) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DockerBuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DockerBuildStrategy{`,
+		`From:` + strings.Replace(fmt.Sprintf("%v", this.From), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`PullSecret:` + strings.Replace(fmt.Sprintf("%v", this.PullSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`NoCache:` + fmt.Sprintf("%v", this.NoCache) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`ForcePull:` + fmt.Sprintf("%v", this.ForcePull) + `,`,
+		`DockerfilePath:` + fmt.Sprintf("%v", this.DockerfilePath) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GenericWebHookCause) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GenericWebHookCause{`,
+		`Revision:` + strings.Replace(fmt.Sprintf("%v", this.Revision), "SourceRevision", "SourceRevision", 1) + `,`,
+		`Secret:` + fmt.Sprintf("%v", this.Secret) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GenericWebHookEvent) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GenericWebHookEvent{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Git:` + strings.Replace(fmt.Sprintf("%v", this.Git), "GitInfo", "GitInfo", 1) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GitBuildSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GitBuildSource{`,
+		`URI:` + fmt.Sprintf("%v", this.URI) + `,`,
+		`Ref:` + fmt.Sprintf("%v", this.Ref) + `,`,
+		`ProxyConfig:` + strings.Replace(strings.Replace(this.ProxyConfig.String(), "ProxyConfig", "ProxyConfig", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GitHubWebHookCause) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GitHubWebHookCause{`,
+		`Revision:` + strings.Replace(fmt.Sprintf("%v", this.Revision), "SourceRevision", "SourceRevision", 1) + `,`,
+		`Secret:` + fmt.Sprintf("%v", this.Secret) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GitInfo) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GitInfo{`,
+		`GitBuildSource:` + strings.Replace(strings.Replace(this.GitBuildSource.String(), "GitBuildSource", "GitBuildSource", 1), `&`, ``, 1) + `,`,
+		`GitSourceRevision:` + strings.Replace(strings.Replace(this.GitSourceRevision.String(), "GitSourceRevision", "GitSourceRevision", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GitSourceRevision) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GitSourceRevision{`,
+		`Commit:` + fmt.Sprintf("%v", this.Commit) + `,`,
+		`Author:` + strings.Replace(strings.Replace(this.Author.String(), "SourceControlUser", "SourceControlUser", 1), `&`, ``, 1) + `,`,
+		`Committer:` + strings.Replace(strings.Replace(this.Committer.String(), "SourceControlUser", "SourceControlUser", 1), `&`, ``, 1) + `,`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageChangeCause) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageChangeCause{`,
+		`ImageID:` + fmt.Sprintf("%v", this.ImageID) + `,`,
+		`FromRef:` + strings.Replace(fmt.Sprintf("%v", this.FromRef), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageChangeTrigger) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageChangeTrigger{`,
+		`LastTriggeredImageID:` + fmt.Sprintf("%v", this.LastTriggeredImageID) + `,`,
+		`From:` + strings.Replace(fmt.Sprintf("%v", this.From), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageLabel) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageLabel{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageSource{`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`Paths:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Paths), "ImageSourcePath", "ImageSourcePath", 1), `&`, ``, 1) + `,`,
+		`PullSecret:` + strings.Replace(fmt.Sprintf("%v", this.PullSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ImageSourcePath) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ImageSourcePath{`,
+		`SourcePath:` + fmt.Sprintf("%v", this.SourcePath) + `,`,
+		`DestinationDir:` + fmt.Sprintf("%v", this.DestinationDir) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *JenkinsPipelineBuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&JenkinsPipelineBuildStrategy{`,
+		`JenkinsfilePath:` + fmt.Sprintf("%v", this.JenkinsfilePath) + `,`,
+		`Jenkinsfile:` + fmt.Sprintf("%v", this.Jenkinsfile) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ProxyConfig) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ProxyConfig{`,
+		`HTTPProxy:` + valueToStringGenerated(this.HTTPProxy) + `,`,
+		`HTTPSProxy:` + valueToStringGenerated(this.HTTPSProxy) + `,`,
+		`NoProxy:` + valueToStringGenerated(this.NoProxy) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SecretBuildSource) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SecretBuildSource{`,
+		`Secret:` + strings.Replace(strings.Replace(this.Secret.String(), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1), `&`, ``, 1) + `,`,
+		`DestinationDir:` + fmt.Sprintf("%v", this.DestinationDir) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SecretSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SecretSpec{`,
+		`SecretSource:` + strings.Replace(strings.Replace(this.SecretSource.String(), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1), `&`, ``, 1) + `,`,
+		`MountPath:` + fmt.Sprintf("%v", this.MountPath) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SourceBuildStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SourceBuildStrategy{`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`PullSecret:` + strings.Replace(fmt.Sprintf("%v", this.PullSecret), "LocalObjectReference", "k8s_io_kubernetes_pkg_api_v1.LocalObjectReference", 1) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`Scripts:` + fmt.Sprintf("%v", this.Scripts) + `,`,
+		`Incremental:` + valueToStringGenerated(this.Incremental) + `,`,
+		`ForcePull:` + fmt.Sprintf("%v", this.ForcePull) + `,`,
+		`RuntimeImage:` + strings.Replace(fmt.Sprintf("%v", this.RuntimeImage), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1) + `,`,
+		`RuntimeArtifacts:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.RuntimeArtifacts), "ImageSourcePath", "ImageSourcePath", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SourceControlUser) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SourceControlUser{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Email:` + fmt.Sprintf("%v", this.Email) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SourceRevision) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SourceRevision{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Git:` + strings.Replace(fmt.Sprintf("%v", this.Git), "GitSourceRevision", "GitSourceRevision", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *WebHookTrigger) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&WebHookTrigger{`,
+		`Secret:` + fmt.Sprintf("%v", this.Secret) + `,`,
+		`AllowEnv:` + fmt.Sprintf("%v", this.AllowEnv) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func valueToStringGenerated(v interface{}) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("*%v", pv)
 }
 func (m *BinaryBuildRequestOptions) Unmarshal(data []byte) error {
 	l := len(data)
@@ -4262,6 +5091,37 @@ func (m *BuildOutput) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ImageLabels", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ImageLabels = append(m.ImageLabels, ImageLabel{})
+			if err := m.ImageLabels[len(m.ImageLabels)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGenerated(data[iNdEx:])
@@ -5407,6 +6267,198 @@ func (m *BuildStatus) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Output", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Output.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *BuildStatusOutput) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: BuildStatusOutput: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: BuildStatusOutput: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field To", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.To == nil {
+				m.To = &BuildStatusOutputTo{}
+			}
+			if err := m.To.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *BuildStatusOutputTo) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: BuildStatusOutputTo: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: BuildStatusOutputTo: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ImageDigest", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ImageDigest = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGenerated(data[iNdEx:])
@@ -6256,6 +7308,39 @@ func (m *CommonSpec) Unmarshal(data []byte) error {
 				}
 			}
 			m.CompletionDeadlineSeconds = &v
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NodeSelector", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.NodeSelector == nil {
+				m.NodeSelector = OptionalNodeSelector{}
+			}
+			if err := m.NodeSelector.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGenerated(data[iNdEx:])
@@ -7081,9 +8166,9 @@ func (m *GitBuildSource) Unmarshal(data []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HTTPProxy", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ProxyConfig", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowGenerated
@@ -7093,51 +8178,21 @@ func (m *GitBuildSource) Unmarshal(data []byte) error {
 				}
 				b := data[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				msglen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return ErrInvalidLengthGenerated
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			s := string(data[iNdEx:postIndex])
-			m.HTTPProxy = &s
-			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HTTPSProxy", wireType)
+			if err := m.ProxyConfig.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
 			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowGenerated
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthGenerated
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			s := string(data[iNdEx:postIndex])
-			m.HTTPSProxy = &s
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -7774,6 +8829,114 @@ func (m *ImageChangeTrigger) Unmarshal(data []byte) error {
 	}
 	return nil
 }
+func (m *ImageLabel) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ImageLabel: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ImageLabel: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Value = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *ImageSource) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
@@ -8112,6 +9275,307 @@ func (m *JenkinsPipelineBuildStrategy) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Jenkinsfile = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *OptionalNodeSelector) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: OptionalNodeSelector: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: OptionalNodeSelector: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Items", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			var keykey uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				keykey |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			var stringLenmapkey uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLenmapkey |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLenmapkey := int(stringLenmapkey)
+			if intStringLenmapkey < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postStringIndexmapkey := iNdEx + intStringLenmapkey
+			if postStringIndexmapkey > l {
+				return io.ErrUnexpectedEOF
+			}
+			mapkey := string(data[iNdEx:postStringIndexmapkey])
+			iNdEx = postStringIndexmapkey
+			var valuekey uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				valuekey |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			var stringLenmapvalue uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLenmapvalue |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLenmapvalue := int(stringLenmapvalue)
+			if intStringLenmapvalue < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postStringIndexmapvalue := iNdEx + intStringLenmapvalue
+			if postStringIndexmapvalue > l {
+				return io.ErrUnexpectedEOF
+			}
+			mapvalue := string(data[iNdEx:postStringIndexmapvalue])
+			iNdEx = postStringIndexmapvalue
+			if *m == nil {
+				*m = make(map[string]string)
+			}
+			(*m)[mapkey] = mapvalue
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ProxyConfig) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ProxyConfig: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ProxyConfig: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HTTPProxy", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(data[iNdEx:postIndex])
+			m.HTTPProxy = &s
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field HTTPSProxy", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(data[iNdEx:postIndex])
+			m.HTTPSProxy = &s
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NoProxy", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			s := string(data[iNdEx:postIndex])
+			m.NoProxy = &s
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -9053,3 +10517,215 @@ var (
 	ErrInvalidLengthGenerated = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowGenerated   = fmt.Errorf("proto: integer overflow")
 )
+
+var fileDescriptorGenerated = []byte{
+	// 3327 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xe4, 0x5b, 0x49, 0x6c, 0x1c, 0xc7,
+	0xd5, 0x56, 0xcf, 0x90, 0x33, 0xc3, 0x37, 0x14, 0x97, 0xa2, 0x6c, 0x8d, 0x68, 0x9b, 0x23, 0xb7,
+	0x17, 0xd8, 0xb0, 0x3c, 0x84, 0x64, 0xcb, 0xbf, 0xbc, 0x9b, 0x33, 0xa4, 0x64, 0xca, 0x94, 0xc4,
+	0xbf, 0x48, 0x6f, 0xfa, 0xf1, 0xff, 0x3f, 0x9a, 0xcd, 0x9a, 0x61, 0x9b, 0x3d, 0xdd, 0xe3, 0xae,
+	0x9a, 0xb1, 0x08, 0xc4, 0x80, 0x91, 0x20, 0x80, 0x73, 0xcb, 0xe2, 0x83, 0x2f, 0x41, 0x62, 0x20,
+	0x0b, 0x82, 0x1c, 0x82, 0x2c, 0x87, 0x00, 0xb9, 0x24, 0x40, 0x0e, 0x3e, 0x05, 0x3e, 0xe6, 0x10,
+	0x0c, 0x22, 0xfa, 0x90, 0x73, 0xae, 0x3a, 0x05, 0xb5, 0x74, 0x77, 0x75, 0xcf, 0x90, 0xd6, 0x34,
+	0x45, 0x23, 0x40, 0x2e, 0x02, 0xe7, 0xbd, 0x57, 0xdf, 0xab, 0x7a, 0xf5, 0xaa, 0xde, 0xd2, 0x25,
+	0x78, 0xa9, 0xe5, 0xb0, 0x9d, 0xee, 0x56, 0xcd, 0xf6, 0xdb, 0x8b, 0x7e, 0x87, 0x78, 0x74, 0xc7,
+	0x69, 0xb2, 0x45, 0x3f, 0x70, 0x5a, 0x8e, 0xb7, 0xd8, 0xd9, 0x6d, 0x2d, 0x6e, 0x75, 0x1d, 0x77,
+	0x7b, 0xd1, 0xea, 0x38, 0x8b, 0xbd, 0xf3, 0x8b, 0x2d, 0xe2, 0x91, 0xc0, 0x62, 0x64, 0xbb, 0xd6,
+	0x09, 0x7c, 0xe6, 0xa3, 0x73, 0xf1, 0xe8, 0x5a, 0x34, 0xba, 0x26, 0x47, 0xd7, 0x3a, 0xbb, 0xad,
+	0x9a, 0x18, 0x5d, 0xb3, 0x3a, 0x4e, 0xad, 0x77, 0x7e, 0xfe, 0x69, 0x4d, 0x57, 0xcb, 0x6f, 0xf9,
+	0x8b, 0x02, 0x64, 0xab, 0xdb, 0x14, 0xbf, 0xc4, 0x0f, 0xf1, 0x97, 0x04, 0x9f, 0xbf, 0xb8, 0x7b,
+	0x89, 0xd6, 0x1c, 0x7f, 0x71, 0xb7, 0xbb, 0x45, 0x02, 0x8f, 0x30, 0x42, 0xc5, 0x84, 0xf8, 0x54,
+	0xba, 0x5e, 0x8f, 0x04, 0xd4, 0xf1, 0x3d, 0xb2, 0x9d, 0x9e, 0xd3, 0xfc, 0xb9, 0x83, 0x87, 0x0d,
+	0xae, 0x60, 0xfe, 0xe9, 0xe1, 0xd2, 0x41, 0xd7, 0x63, 0x4e, 0x9b, 0x0c, 0x88, 0x9f, 0x1f, 0x2e,
+	0xde, 0x65, 0x8e, 0xbb, 0xe8, 0x78, 0x8c, 0xb2, 0x20, 0x3d, 0xc4, 0xfc, 0xfd, 0x18, 0x9c, 0xa9,
+	0x3b, 0x9e, 0x15, 0xec, 0xd5, 0xb9, 0x31, 0x30, 0x79, 0xbf, 0x4b, 0x28, 0xbb, 0xd1, 0x61, 0x8e,
+	0xef, 0x51, 0xf4, 0x0e, 0x94, 0xda, 0x84, 0x59, 0xdb, 0x16, 0xb3, 0x2a, 0xc6, 0x59, 0xe3, 0x89,
+	0xf2, 0x85, 0x27, 0x6a, 0x52, 0x47, 0x2d, 0xd6, 0x21, 0x4c, 0x29, 0x8d, 0x58, 0xbb, 0xb1, 0xf5,
+	0x1e, 0xb1, 0xd9, 0x35, 0xc2, 0xac, 0x3a, 0xfa, 0xbc, 0x5f, 0x3d, 0xb1, 0xdf, 0xaf, 0x42, 0x4c,
+	0xc3, 0x11, 0x1a, 0x7a, 0x1c, 0x0a, 0x16, 0xbd, 0xec, 0xb8, 0xa4, 0x92, 0x3b, 0x6b, 0x3c, 0x31,
+	0x51, 0x9f, 0x52, 0xd2, 0x85, 0x25, 0x41, 0xc5, 0x8a, 0x8b, 0x9e, 0x83, 0xa9, 0x80, 0xf4, 0x1c,
+	0x6e, 0xcd, 0x86, 0xdf, 0x6e, 0x3b, 0xac, 0x92, 0x4f, 0xca, 0x4b, 0x2a, 0x4e, 0x49, 0xa1, 0xe7,
+	0x61, 0x3a, 0xa4, 0x5c, 0x23, 0x94, 0x5a, 0x2d, 0x52, 0x19, 0x13, 0x03, 0xa7, 0xd5, 0xc0, 0xa2,
+	0x22, 0xe3, 0xb4, 0x1c, 0xaa, 0x03, 0x0a, 0x49, 0x4b, 0x5d, 0xb6, 0xe3, 0x07, 0xd7, 0xad, 0x36,
+	0xa9, 0x8c, 0x8b, 0xd1, 0xd1, 0xa2, 0x62, 0x0e, 0x1e, 0x22, 0x8d, 0x56, 0x60, 0x2e, 0x49, 0x5d,
+	0x69, 0x5b, 0x8e, 0x5b, 0x29, 0x08, 0x90, 0x39, 0x05, 0x52, 0xd6, 0x58, 0x78, 0x98, 0x3c, 0x7a,
+	0x03, 0xee, 0x4b, 0xae, 0x8b, 0x11, 0x39, 0x9b, 0xa2, 0x00, 0xba, 0x4f, 0x01, 0x9d, 0x4c, 0x30,
+	0xf1, 0xf0, 0x31, 0xe8, 0x3a, 0xdc, 0x3f, 0xc0, 0x90, 0xd3, 0x2a, 0x09, 0xb4, 0xfb, 0x15, 0xda,
+	0x54, 0x92, 0x8b, 0x0f, 0x18, 0x65, 0xbe, 0x08, 0xb3, 0x9a, 0xe7, 0x6c, 0xf8, 0xdd, 0xc0, 0x26,
+	0xda, 0xbe, 0x1a, 0x87, 0xed, 0xab, 0xf9, 0xa3, 0x1c, 0x8c, 0x8b, 0x71, 0xc7, 0xe8, 0x63, 0xef,
+	0xc2, 0x18, 0xed, 0x10, 0x5b, 0x78, 0x58, 0xf9, 0xc2, 0x7f, 0xd5, 0x46, 0xb9, 0x0e, 0x6a, 0x72,
+	0x51, 0x1d, 0x62, 0xd7, 0x27, 0x95, 0x92, 0x31, 0xfe, 0x0b, 0x0b, 0x48, 0x64, 0x41, 0x81, 0x32,
+	0x8b, 0x75, 0xa9, 0x70, 0xc7, 0xf2, 0x85, 0xe7, 0xb3, 0x80, 0x0b, 0x80, 0xd8, 0x42, 0xf2, 0x37,
+	0x56, 0xc0, 0xe6, 0xaf, 0x73, 0x50, 0x16, 0x72, 0x0d, 0xdf, 0x6b, 0x3a, 0xad, 0x63, 0xb4, 0xd3,
+	0xff, 0x27, 0xec, 0xf4, 0x72, 0x86, 0xa5, 0xc8, 0x29, 0x1e, 0x68, 0xad, 0x56, 0xca, 0x5a, 0xaf,
+	0x66, 0x57, 0x71, 0xb8, 0xcd, 0xbe, 0x30, 0x60, 0x5a, 0x93, 0x5e, 0x73, 0x28, 0x43, 0xff, 0x3b,
+	0x60, 0xb7, 0xc5, 0x43, 0xec, 0xa6, 0xdd, 0xdd, 0x35, 0x3e, 0x5c, 0x98, 0x6f, 0x46, 0xa9, 0x2b,
+	0x85, 0x14, 0xcd, 0x78, 0xff, 0x07, 0xe3, 0x0e, 0x23, 0x6d, 0x5a, 0xc9, 0x9d, 0xcd, 0x67, 0x74,
+	0x04, 0x39, 0xd9, 0xfa, 0x49, 0xa5, 0x65, 0x7c, 0x95, 0xe3, 0x61, 0x09, 0x6b, 0xfe, 0x26, 0x97,
+	0x58, 0x12, 0xb7, 0x2a, 0xf2, 0xa0, 0xc4, 0x02, 0xa7, 0xd5, 0x22, 0x01, 0xad, 0x18, 0x42, 0xed,
+	0x6b, 0x19, 0xd4, 0x6e, 0x4a, 0x88, 0x75, 0xdf, 0x75, 0xec, 0xbd, 0x78, 0x8d, 0x8a, 0x4c, 0x71,
+	0xa4, 0x03, 0x2d, 0xc1, 0x44, 0xd0, 0xf5, 0xa4, 0xa0, 0xba, 0xaf, 0x1f, 0x51, 0xe2, 0x13, 0x38,
+	0x64, 0xdc, 0xe9, 0x57, 0xa7, 0x64, 0x0c, 0x09, 0x29, 0x38, 0x1e, 0x85, 0x5c, 0x00, 0xdb, 0x6f,
+	0xb7, 0x7d, 0x8f, 0x2f, 0x40, 0xb9, 0xc1, 0xa5, 0xd1, 0x26, 0xdd, 0x88, 0xc6, 0xc7, 0xfe, 0x1c,
+	0xd3, 0xb0, 0x86, 0x6f, 0x5e, 0x85, 0xd9, 0x01, 0xa7, 0x41, 0x17, 0xa1, 0xec, 0x5a, 0x94, 0xbd,
+	0x25, 0xf7, 0x57, 0xf8, 0x42, 0x3e, 0xbe, 0x8b, 0xd7, 0x62, 0x16, 0xd6, 0xe5, 0xcc, 0x3f, 0x1b,
+	0x30, 0x21, 0xc0, 0xbe, 0x0e, 0x6f, 0x7a, 0x27, 0xe9, 0x4d, 0xcf, 0x64, 0xd8, 0xd6, 0x03, 0xfc,
+	0x08, 0xa0, 0x24, 0x57, 0xe1, 0xb7, 0xcc, 0x8f, 0xc7, 0x94, 0x4f, 0xad, 0xf9, 0xad, 0x30, 0xd4,
+	0x2f, 0xc2, 0x84, 0xed, 0x7b, 0xcc, 0x72, 0x3c, 0x12, 0xa8, 0xbb, 0x7b, 0x36, 0xdc, 0xe3, 0x46,
+	0xc8, 0xc0, 0xb1, 0x0c, 0xbf, 0xe9, 0x9b, 0xbe, 0xeb, 0xfa, 0x1f, 0x08, 0x8f, 0x28, 0xc5, 0x67,
+	0xf2, 0xb2, 0xa0, 0x62, 0xc5, 0x45, 0xe7, 0xa0, 0xd4, 0xe1, 0x11, 0xc4, 0x57, 0xc7, 0xbf, 0x14,
+	0x1b, 0x60, 0x5d, 0xd1, 0x71, 0x24, 0x81, 0x9e, 0x85, 0x49, 0xea, 0x78, 0x36, 0xd9, 0x20, 0xb6,
+	0xef, 0x6d, 0x53, 0x11, 0xb4, 0xf3, 0xf5, 0x99, 0xfd, 0x7e, 0x75, 0x72, 0x43, 0xa3, 0xe3, 0x84,
+	0x14, 0x7a, 0x07, 0x26, 0xc4, 0xef, 0x4d, 0x47, 0x45, 0xea, 0xf2, 0x85, 0xa7, 0xee, 0x72, 0x5b,
+	0xf8, 0x90, 0xfa, 0x49, 0xbe, 0xca, 0x8d, 0x10, 0x01, 0xc7, 0x60, 0xe8, 0x02, 0x00, 0x4f, 0xb5,
+	0x28, 0xb3, 0xda, 0x1d, 0x2a, 0xe2, 0x77, 0x29, 0xf6, 0xbe, 0xcd, 0x88, 0x83, 0x35, 0x29, 0xf4,
+	0x14, 0x4c, 0x30, 0xcb, 0x71, 0xd7, 0x1c, 0x8f, 0x50, 0x11, 0xa9, 0xf3, 0x52, 0xc1, 0x66, 0x48,
+	0xc4, 0x31, 0x1f, 0xd5, 0x00, 0x5c, 0xa7, 0xed, 0xb0, 0xfa, 0x1e, 0x23, 0x54, 0x44, 0xe2, 0x7c,
+	0x7d, 0x8a, 0x83, 0xaf, 0x45, 0x54, 0xac, 0x49, 0x70, 0xb3, 0x7b, 0xfe, 0x07, 0x96, 0xc3, 0x2a,
+	0x13, 0x49, 0xb3, 0x5f, 0xf7, 0xdf, 0xb6, 0x1c, 0x86, 0x15, 0x17, 0x3d, 0x06, 0x45, 0xb5, 0xc8,
+	0x0a, 0x08, 0xd0, 0x32, 0x4f, 0x7a, 0x42, 0x0f, 0x0f, 0x79, 0xe6, 0x2f, 0xc2, 0x28, 0x73, 0xa3,
+	0xcb, 0x3a, 0x5d, 0x86, 0x56, 0x20, 0xc7, 0x7c, 0xe5, 0xd9, 0x4f, 0xdf, 0x4d, 0x7c, 0xc1, 0xa4,
+	0x49, 0x02, 0xe2, 0xd9, 0xa4, 0x5e, 0xd8, 0xef, 0x57, 0x73, 0x9b, 0x3e, 0xce, 0x31, 0x1f, 0x6d,
+	0x01, 0x74, 0xba, 0x74, 0x67, 0x83, 0xd8, 0x01, 0x61, 0x2a, 0xb0, 0x5c, 0x38, 0x1c, 0x6e, 0xcd,
+	0xb7, 0x2d, 0x37, 0x8d, 0x29, 0x2c, 0xb1, 0x1e, 0x21, 0x61, 0x0d, 0x15, 0xf9, 0x50, 0x76, 0xda,
+	0x56, 0x8b, 0xac, 0x59, 0x5b, 0xc4, 0xe5, 0xbe, 0x95, 0x1f, 0xfd, 0x4e, 0x59, 0x8d, 0x00, 0xe2,
+	0x9b, 0x20, 0xa6, 0x51, 0xac, 0x6b, 0x30, 0xbf, 0x69, 0xc0, 0x9c, 0xb0, 0xd5, 0xba, 0x4f, 0x99,
+	0x4c, 0x86, 0xc4, 0x75, 0xfc, 0x18, 0x14, 0xf9, 0xdd, 0x63, 0x79, 0xdb, 0xe2, 0x36, 0x9e, 0x90,
+	0xa6, 0x6e, 0x48, 0x12, 0x0e, 0x79, 0xe8, 0x41, 0x18, 0xb3, 0x82, 0x96, 0x3c, 0xda, 0x13, 0xf5,
+	0x12, 0x8f, 0x91, 0x4b, 0x41, 0x8b, 0x62, 0x41, 0xe5, 0xfb, 0x4a, 0xed, 0xc0, 0xe9, 0x0c, 0x24,
+	0xb8, 0x1b, 0x82, 0x8a, 0x15, 0xd7, 0xfc, 0x72, 0x1c, 0x26, 0xf5, 0x54, 0xfd, 0x18, 0xf3, 0x82,
+	0x26, 0x94, 0xc2, 0xd4, 0x4f, 0x6d, 0xe1, 0x4b, 0xa3, 0x59, 0x57, 0xe6, 0x84, 0x58, 0x61, 0xd4,
+	0x27, 0xf9, 0x99, 0x0f, 0x7f, 0xe1, 0x08, 0x1b, 0xf9, 0x30, 0xa3, 0x42, 0x0d, 0xd9, 0xae, 0xef,
+	0x09, 0xf3, 0xab, 0x08, 0x31, 0xa2, 0x07, 0x9e, 0xda, 0xef, 0x57, 0x67, 0x36, 0x53, 0x50, 0x78,
+	0x00, 0x1c, 0xbd, 0x01, 0x63, 0xcd, 0xc0, 0x6f, 0x8b, 0xcb, 0x65, 0x64, 0x25, 0x62, 0xe3, 0x2e,
+	0x07, 0x7e, 0x1b, 0x0b, 0x10, 0x64, 0x43, 0x61, 0x4b, 0xa4, 0xc1, 0xea, 0xe2, 0x19, 0x35, 0xb9,
+	0x49, 0xa7, 0xd0, 0x75, 0xe0, 0xbb, 0x2e, 0xc9, 0x58, 0x41, 0xa3, 0xf3, 0xc9, 0xd8, 0x55, 0x10,
+	0x27, 0x7a, 0xfa, 0xb0, 0xb8, 0x85, 0x1a, 0x90, 0x27, 0x5e, 0xaf, 0x52, 0x14, 0xc7, 0xe2, 0xd1,
+	0xc3, 0xd7, 0xb8, 0xe2, 0xf5, 0xde, 0xb2, 0x82, 0x7a, 0x59, 0xb9, 0x43, 0x7e, 0xc5, 0xeb, 0x61,
+	0x3e, 0x1a, 0xf5, 0xa0, 0xac, 0x59, 0xaf, 0x52, 0x12, 0x60, 0xaf, 0x66, 0x4f, 0x36, 0x1a, 0x56,
+	0x97, 0x92, 0xf8, 0xa8, 0x69, 0x7b, 0x85, 0x75, 0x45, 0xe6, 0x0f, 0xc7, 0xd5, 0xb5, 0xa4, 0xca,
+	0x8a, 0x67, 0x60, 0x8c, 0xed, 0x75, 0xc2, 0xa2, 0xa2, 0x1a, 0xe6, 0x98, 0x9b, 0x7b, 0x1d, 0x72,
+	0xa7, 0x5f, 0x9d, 0xd6, 0x44, 0x39, 0x09, 0x0b, 0x61, 0x6d, 0x67, 0x72, 0xc7, 0xb7, 0x33, 0x35,
+	0x80, 0x6d, 0xdf, 0xde, 0x25, 0x41, 0x93, 0x17, 0x3d, 0xea, 0xec, 0xf2, 0x23, 0xb5, 0x1c, 0x51,
+	0xb1, 0x26, 0x81, 0xde, 0x86, 0x7c, 0xcb, 0x61, 0xca, 0xf5, 0x46, 0x3c, 0x4f, 0x57, 0x1c, 0xa6,
+	0x4f, 0xa7, 0xc8, 0xb7, 0xea, 0x8a, 0xc3, 0x30, 0x47, 0xe4, 0x25, 0x89, 0xb8, 0xac, 0x68, 0x65,
+	0x3c, 0x4b, 0x26, 0x2a, 0x4e, 0x86, 0x02, 0x8e, 0xee, 0x1e, 0x41, 0xa4, 0x58, 0x01, 0xf3, 0x60,
+	0xc8, 0xe3, 0x3f, 0xb9, 0xc5, 0x96, 0x9d, 0x40, 0x15, 0xb3, 0x5a, 0x2a, 0x16, 0x72, 0xb0, 0x26,
+	0x85, 0x76, 0x60, 0x92, 0x0a, 0x54, 0x15, 0x0b, 0x8a, 0x99, 0x63, 0x81, 0x4c, 0x02, 0x34, 0x2c,
+	0x9c, 0x40, 0x46, 0xef, 0x41, 0x91, 0x8a, 0xbf, 0x68, 0x36, 0x3f, 0x95, 0x30, 0xba, 0x81, 0xa3,
+	0x5e, 0x81, 0x64, 0x51, 0x1c, 0x2a, 0x30, 0xff, 0x19, 0x26, 0x85, 0x22, 0x00, 0x24, 0x93, 0x5b,
+	0xe3, 0x78, 0x93, 0xdb, 0xf4, 0x99, 0xcc, 0x7d, 0x5d, 0x67, 0xf2, 0x93, 0x42, 0x78, 0x26, 0x65,
+	0x3e, 0x7d, 0x1e, 0xc6, 0x3b, 0x3b, 0x16, 0x0d, 0x0f, 0xe5, 0x03, 0x61, 0xda, 0xb9, 0xce, 0x89,
+	0x77, 0xfa, 0x55, 0x90, 0xb1, 0x92, 0xff, 0xc2, 0x52, 0x52, 0x24, 0x99, 0x96, 0x67, 0x13, 0xd7,
+	0x25, 0xdb, 0x2a, 0x6d, 0x8c, 0x93, 0xcc, 0x90, 0x81, 0x63, 0x19, 0xf4, 0x1c, 0x14, 0x02, 0x62,
+	0x51, 0xdf, 0x53, 0x27, 0x6b, 0x21, 0xf4, 0x4c, 0x2c, 0xa8, 0x77, 0xb8, 0x47, 0xc8, 0x12, 0x50,
+	0xfc, 0xc6, 0x4a, 0x1a, 0x3d, 0x09, 0xc5, 0xf6, 0xe1, 0x6d, 0x9f, 0x90, 0x8f, 0x5a, 0x30, 0x45,
+	0x99, 0x15, 0xb0, 0x28, 0x99, 0xcb, 0x92, 0x40, 0xa2, 0xfd, 0x7e, 0x75, 0x6a, 0x23, 0x01, 0x83,
+	0x53, 0xb0, 0xa8, 0x07, 0x73, 0xb6, 0xdf, 0xee, 0xb8, 0x84, 0x27, 0xdc, 0xb1, 0xb6, 0xc2, 0xe8,
+	0xda, 0x4e, 0xef, 0xf7, 0xab, 0x73, 0x8d, 0x41, 0x2c, 0x3c, 0x4c, 0x01, 0x7a, 0x19, 0x4a, 0xdb,
+	0xdd, 0xc0, 0xe2, 0x44, 0x95, 0x8d, 0x3e, 0x1c, 0x26, 0xe0, 0xcb, 0x8a, 0x7e, 0xa7, 0x5f, 0x3d,
+	0xc9, 0x13, 0xd8, 0x5a, 0x48, 0xc0, 0xd1, 0x10, 0xb4, 0x05, 0xf3, 0xbe, 0xc8, 0x0d, 0xe5, 0x85,
+	0x26, 0x63, 0x6a, 0x78, 0x28, 0x55, 0xeb, 0xc8, 0x54, 0x80, 0xf3, 0x37, 0x0e, 0x94, 0xc4, 0x87,
+	0xa0, 0xa0, 0xff, 0x86, 0x82, 0x2d, 0x4a, 0x35, 0x91, 0xd4, 0x8e, 0x1c, 0x92, 0x41, 0x36, 0x02,
+	0x39, 0x00, 0x56, 0x40, 0xa8, 0x05, 0x05, 0xa9, 0x50, 0xa4, 0xbf, 0xd9, 0x0e, 0x88, 0x74, 0x2d,
+	0xb9, 0xa6, 0xf8, 0x52, 0x94, 0xbf, 0xb1, 0x82, 0x37, 0x3d, 0x55, 0x6b, 0xea, 0xc2, 0xe8, 0x5d,
+	0x2d, 0x8d, 0x5e, 0x3a, 0xa2, 0xe6, 0x4d, 0x5f, 0x4f, 0xad, 0xcd, 0x35, 0x95, 0x84, 0x26, 0x45,
+	0x78, 0x75, 0x2b, 0x6e, 0xe9, 0x65, 0xa7, 0x45, 0x28, 0x53, 0x67, 0x32, 0x99, 0xd3, 0x4a, 0x16,
+	0xd6, 0xe5, 0xcc, 0x7f, 0x8c, 0xc1, 0x49, 0x05, 0x17, 0x58, 0x8c, 0xb4, 0xf6, 0xd0, 0xc5, 0x44,
+	0xa8, 0x7d, 0x38, 0x15, 0x6a, 0x67, 0x13, 0xc2, 0x5a, 0xb0, 0xfd, 0x10, 0xa6, 0x64, 0x94, 0x0b,
+	0x79, 0x2a, 0xe8, 0x8e, 0xb8, 0x7a, 0xe9, 0x1e, 0x09, 0x25, 0xf2, 0x70, 0x2d, 0x27, 0xc0, 0x71,
+	0x4a, 0x19, 0x57, 0xaf, 0x82, 0x41, 0xa8, 0x3e, 0x9f, 0x45, 0xbd, 0xba, 0xf8, 0x07, 0xd5, 0x6f,
+	0x24, 0xc0, 0x71, 0x4a, 0x19, 0x57, 0x6f, 0x77, 0x29, 0xf3, 0xdb, 0x91, 0xfa, 0xb1, 0x2c, 0xea,
+	0x1b, 0x02, 0x63, 0x88, 0xfa, 0x46, 0x02, 0x1c, 0xa7, 0x94, 0xa1, 0xcf, 0x0c, 0x38, 0xfd, 0x1e,
+	0xf1, 0x76, 0x1d, 0x8f, 0xae, 0x3b, 0x1d, 0xe2, 0x3a, 0x5e, 0x6c, 0x07, 0x79, 0x9b, 0x5d, 0x1d,
+	0x6d, 0x22, 0x57, 0x93, 0x60, 0xc9, 0x19, 0x3d, 0xb0, 0xdf, 0xaf, 0x9e, 0xbe, 0x3a, 0x5c, 0x1d,
+	0x3e, 0x68, 0x1e, 0xe6, 0x1f, 0xf2, 0xea, 0xa0, 0xe8, 0x61, 0x47, 0xbf, 0xa8, 0x8d, 0xaf, 0xb8,
+	0xa8, 0x3f, 0x84, 0x29, 0xf1, 0xf5, 0xc2, 0xb1, 0xdf, 0x26, 0x5b, 0xaf, 0xfb, 0xfe, 0x6e, 0x36,
+	0x0f, 0xbb, 0x92, 0xc0, 0x90, 0xc1, 0x4f, 0xd8, 0x38, 0xc9, 0xc0, 0x29, 0x65, 0x68, 0x0f, 0x4e,
+	0x4a, 0x3d, 0xa1, 0x76, 0xe9, 0x60, 0xaf, 0x8d, 0x9c, 0xc2, 0xbd, 0x1e, 0x41, 0x48, 0xe5, 0xb3,
+	0xfb, 0xfd, 0xea, 0xc9, 0x04, 0x1d, 0x27, 0x35, 0xa1, 0x8f, 0x0c, 0x98, 0x11, 0x87, 0xb6, 0xb1,
+	0x63, 0x79, 0x2d, 0xb9, 0x1b, 0xca, 0xc1, 0x5e, 0xc9, 0x90, 0xe5, 0x49, 0x14, 0xa9, 0x5c, 0x94,
+	0x4c, 0xab, 0x29, 0x6c, 0x3c, 0xa0, 0xcd, 0xfc, 0x24, 0x0f, 0x68, 0xb0, 0x6b, 0x88, 0x9e, 0x4d,
+	0x5c, 0x16, 0x67, 0x53, 0x97, 0xc5, 0x8c, 0x3e, 0x42, 0xbb, 0x2b, 0x5a, 0x50, 0x90, 0xb3, 0xce,
+	0x56, 0x56, 0x2a, 0xb3, 0x28, 0xdc, 0x61, 0xf6, 0x53, 0xf0, 0x3c, 0x25, 0x54, 0xbb, 0xa8, 0x76,
+	0xeb, 0x68, 0x9a, 0x86, 0xb9, 0x49, 0xa8, 0x00, 0x51, 0x75, 0x01, 0x4b, 0xab, 0xa9, 0xed, 0x79,
+	0x2d, 0xf3, 0xf6, 0x84, 0x3a, 0xa7, 0xa3, 0xeb, 0x5b, 0xd2, 0xb1, 0xae, 0xc5, 0xfc, 0xb4, 0x08,
+	0x5a, 0x9a, 0x88, 0x5e, 0x81, 0x29, 0x4a, 0x82, 0x9e, 0x63, 0x93, 0x25, 0xdb, 0xf6, 0xbb, 0x5e,
+	0x18, 0x07, 0xa2, 0x4f, 0x3b, 0x1b, 0x09, 0x2e, 0x4e, 0x49, 0x8b, 0xcf, 0x1a, 0xe2, 0x62, 0x53,
+	0x1b, 0x93, 0xe9, 0xb3, 0x46, 0xaa, 0x86, 0x50, 0x4d, 0x00, 0x05, 0x9c, 0x68, 0x2a, 0xe4, 0x8f,
+	0xb1, 0xa9, 0xe0, 0x40, 0x89, 0x26, 0xef, 0xe2, 0x17, 0x33, 0xc5, 0x61, 0x75, 0xe7, 0x45, 0x3d,
+	0xcb, 0xe8, 0xa2, 0x8b, 0xe0, 0xb9, 0xd5, 0x54, 0xaa, 0x31, 0x9e, 0xd9, 0x6a, 0x87, 0x27, 0x19,
+	0xc8, 0x86, 0x89, 0x80, 0x48, 0x0b, 0x52, 0x95, 0x31, 0x7e, 0x45, 0x09, 0x85, 0x95, 0x38, 0x26,
+	0xef, 0x77, 0x9d, 0x80, 0xb4, 0x89, 0xc7, 0x68, 0x9c, 0x6c, 0x87, 0x5c, 0x8a, 0x63, 0x5c, 0xd4,
+	0x05, 0xe8, 0x44, 0x9d, 0x2d, 0x55, 0xa8, 0x65, 0x49, 0x5e, 0x92, 0xed, 0xb1, 0xb8, 0x9e, 0x89,
+	0xe9, 0x58, 0x53, 0x84, 0xfe, 0x07, 0xce, 0xc4, 0x69, 0xeb, 0x32, 0xb1, 0xb6, 0x45, 0xd8, 0x50,
+	0xfd, 0x5f, 0xd9, 0x10, 0x7d, 0x68, 0xbf, 0x5f, 0x3d, 0xd3, 0x38, 0x48, 0x08, 0x1f, 0x3c, 0x1e,
+	0xdd, 0x82, 0x49, 0xcf, 0xdf, 0x26, 0x1b, 0xc4, 0x25, 0x36, 0xf3, 0x03, 0x95, 0x5f, 0xd6, 0x47,
+	0x5b, 0x95, 0xec, 0x91, 0x5b, 0xee, 0x75, 0x0d, 0x49, 0x96, 0xa3, 0x3a, 0x05, 0x27, 0x34, 0x99,
+	0xbf, 0x1b, 0x83, 0xb9, 0x21, 0xf1, 0x1c, 0xdd, 0x50, 0xcd, 0xa7, 0x4c, 0x3d, 0xd6, 0xe8, 0xeb,
+	0x9a, 0xd6, 0x80, 0x12, 0xbd, 0x56, 0xd7, 0xbd, 0x57, 0xbd, 0xd6, 0x10, 0x09, 0x6b, 0xa8, 0x61,
+	0x33, 0x29, 0x7f, 0xa4, 0x66, 0xd2, 0x55, 0x40, 0xe4, 0x56, 0xc7, 0xa7, 0x44, 0xe5, 0x72, 0xfc,
+	0x5f, 0xd9, 0x09, 0x29, 0xd5, 0xe7, 0x95, 0x34, 0x5a, 0x19, 0x90, 0xc0, 0x43, 0x46, 0xf1, 0x4a,
+	0xb2, 0xe9, 0x07, 0x36, 0xe1, 0xf3, 0x15, 0xc7, 0x4e, 0xab, 0x24, 0x2f, 0x87, 0x0c, 0x1c, 0xcb,
+	0x20, 0x3b, 0xee, 0x0e, 0x14, 0xb2, 0x74, 0x8a, 0xa5, 0x21, 0x84, 0x43, 0x1f, 0xd8, 0x16, 0x40,
+	0x4b, 0x30, 0x2d, 0x06, 0x2d, 0xad, 0xaf, 0x86, 0xad, 0x3a, 0xf9, 0xa5, 0xfe, 0xb4, 0x1a, 0x22,
+	0x3b, 0x55, 0x31, 0x1b, 0xa7, 0xe5, 0xcd, 0x9f, 0xe7, 0x61, 0x6e, 0x48, 0x12, 0x1c, 0xf5, 0x2c,
+	0x8d, 0x7b, 0xd1, 0xb3, 0xfc, 0x3a, 0x5c, 0xe6, 0x49, 0x28, 0x7a, 0x7e, 0xc3, 0xb2, 0x77, 0x88,
+	0xfa, 0xec, 0x13, 0x99, 0xed, 0xba, 0x24, 0xe3, 0x90, 0x1f, 0x7a, 0xd7, 0xd8, 0x91, 0xbc, 0x6b,
+	0x64, 0x8f, 0x78, 0x25, 0xac, 0x58, 0x9a, 0x8e, 0x4b, 0xd6, 0x2d, 0xb6, 0xa3, 0x3a, 0x5a, 0x51,
+	0xb0, 0x5c, 0x4e, 0x70, 0x71, 0x4a, 0xda, 0xfc, 0xa9, 0x01, 0x73, 0x43, 0x92, 0xc9, 0x44, 0x84,
+	0x33, 0x8e, 0x31, 0xc2, 0x3d, 0x0e, 0x05, 0x1a, 0x6f, 0xa0, 0xfe, 0xc5, 0x40, 0x6e, 0x86, 0xe2,
+	0x9a, 0xb7, 0x07, 0xe6, 0xb9, 0xd2, 0x23, 0x1e, 0xcb, 0xd6, 0x53, 0x5d, 0x97, 0xed, 0x4b, 0xe9,
+	0x32, 0x17, 0x47, 0xce, 0x7d, 0x57, 0xbd, 0xa6, 0x9f, 0xea, 0x5b, 0xde, 0x8b, 0xab, 0xc5, 0xfc,
+	0xa3, 0x01, 0x53, 0xc9, 0xee, 0x28, 0x7a, 0x08, 0xf2, 0xdd, 0xc0, 0x51, 0xab, 0x8b, 0x46, 0xbc,
+	0x89, 0x57, 0x31, 0xa7, 0x73, 0x76, 0x40, 0x9a, 0xca, 0x74, 0x11, 0x1b, 0x93, 0x26, 0xe6, 0x74,
+	0xd4, 0x81, 0x72, 0x27, 0xf0, 0x6f, 0xed, 0xc9, 0xae, 0x42, 0xb6, 0x57, 0x1e, 0xeb, 0x31, 0x40,
+	0x5c, 0x89, 0x6b, 0x44, 0xac, 0xab, 0x30, 0x7f, 0x62, 0x00, 0x1a, 0xac, 0x0e, 0xfe, 0xed, 0xbc,
+	0xe9, 0xfb, 0x39, 0x28, 0xaa, 0x8d, 0x44, 0xdf, 0x80, 0xa9, 0x56, 0xc2, 0xe8, 0xd9, 0x66, 0x98,
+	0x6a, 0x6b, 0x47, 0xe7, 0x2f, 0x49, 0xc7, 0x29, 0x5d, 0xe8, 0x63, 0x03, 0x66, 0x5b, 0x0e, 0x4b,
+	0xae, 0x2f, 0x5b, 0xab, 0xff, 0x4a, 0x1a, 0xa6, 0x7e, 0x46, 0x4d, 0x62, 0x76, 0x80, 0x85, 0x07,
+	0x95, 0x9a, 0x7f, 0xca, 0xc1, 0xa0, 0x20, 0x37, 0xa9, 0x2d, 0x73, 0x29, 0x63, 0xe8, 0x9b, 0x35,
+	0xc5, 0xe5, 0xe5, 0x90, 0x25, 0x1e, 0x7d, 0x65, 0x9b, 0xbc, 0xd4, 0xda, 0xf0, 0x3d, 0x16, 0xf8,
+	0xee, 0x9b, 0x94, 0x04, 0xda, 0xa3, 0x2b, 0x01, 0x8b, 0x15, 0x3c, 0xea, 0xc0, 0x84, 0x1d, 0xbe,
+	0xe1, 0xca, 0xf6, 0x14, 0x67, 0x50, 0x97, 0xf6, 0x48, 0x40, 0x21, 0xe3, 0x58, 0xc9, 0x08, 0x7d,
+	0x58, 0xf3, 0x07, 0x06, 0xcc, 0xa4, 0xcb, 0x53, 0x3e, 0x5e, 0x94, 0x3b, 0xab, 0xcb, 0xe9, 0xf6,
+	0xc0, 0xaa, 0x24, 0xe3, 0x90, 0x8f, 0x36, 0xa1, 0xc8, 0x63, 0x1b, 0x56, 0x87, 0x7a, 0xe4, 0x18,
+	0x29, 0x3e, 0xda, 0x5e, 0x96, 0x08, 0x38, 0x84, 0x32, 0x7f, 0x6b, 0x00, 0x1a, 0xac, 0xca, 0xd0,
+	0x3a, 0x9c, 0x72, 0x2d, 0xca, 0xa2, 0x5e, 0xf9, 0x6a, 0x62, 0x92, 0x0f, 0xaa, 0x49, 0x9e, 0x5a,
+	0x1b, 0x22, 0x83, 0x87, 0x8e, 0x8c, 0xe2, 0x7b, 0xee, 0x1e, 0xc4, 0x77, 0x73, 0x03, 0x20, 0xfe,
+	0x8a, 0x8d, 0xce, 0xc2, 0x98, 0x67, 0xb5, 0xc3, 0x8b, 0x3e, 0x4a, 0x21, 0xc5, 0x5b, 0x41, 0xc1,
+	0x41, 0x8f, 0xc0, 0x78, 0xcf, 0x72, 0xbb, 0xe1, 0x63, 0xcc, 0xe8, 0x05, 0xc9, 0x5b, 0x9c, 0x88,
+	0x25, 0xcf, 0xfc, 0x59, 0x0e, 0xca, 0xda, 0x57, 0xa2, 0xe3, 0x48, 0x64, 0xc7, 0x3b, 0x16, 0xdb,
+	0x09, 0x1f, 0xbf, 0xbc, 0x9c, 0xf9, 0x03, 0x16, 0x0f, 0xcf, 0xf1, 0x22, 0xf8, 0x2f, 0x8a, 0x25,
+	0x74, 0x2a, 0xf3, 0xc9, 0x1f, 0x47, 0xe6, 0x63, 0x7e, 0xdb, 0x80, 0xe9, 0xd4, 0x6c, 0xd0, 0x05,
+	0x00, 0x1a, 0xfd, 0x52, 0x3b, 0x11, 0x15, 0x46, 0xb1, 0x1c, 0xd6, 0xa4, 0x44, 0x82, 0x42, 0x28,
+	0x73, 0x3c, 0xd1, 0x88, 0x5f, 0x76, 0x02, 0xb5, 0x3d, 0x71, 0x82, 0x92, 0xe0, 0xe2, 0x94, 0xb4,
+	0xf9, 0xa9, 0x01, 0x0f, 0x1e, 0xd6, 0xc8, 0xe3, 0xe9, 0xaa, 0xea, 0xd6, 0x45, 0x29, 0x90, 0x91,
+	0x4c, 0x57, 0xaf, 0x26, 0xd9, 0x38, 0x2d, 0x8f, 0x2e, 0x42, 0x59, 0x23, 0xa9, 0x09, 0x46, 0xc1,
+	0x4e, 0x1b, 0x8e, 0x75, 0x39, 0xf3, 0x2f, 0x06, 0x9c, 0x1a, 0x56, 0x55, 0xa1, 0x20, 0x7c, 0x00,
+	0x25, 0xdf, 0xb5, 0x5d, 0x3b, 0x7a, 0xa1, 0x56, 0x13, 0xcf, 0xa0, 0x56, 0x3c, 0x16, 0xec, 0x0d,
+	0x7f, 0x1a, 0x35, 0x7f, 0x09, 0x20, 0x96, 0x41, 0x33, 0x90, 0xdf, 0x25, 0x7b, 0xd2, 0x10, 0x98,
+	0xff, 0x89, 0x4e, 0x25, 0x4e, 0x87, 0x3a, 0x0e, 0x2f, 0xe4, 0x2e, 0x19, 0x2f, 0x94, 0x3e, 0xfd,
+	0x71, 0xf5, 0xc4, 0x47, 0x7f, 0x3b, 0x7b, 0xc2, 0xfc, 0x9e, 0x01, 0x7a, 0x68, 0x47, 0x4f, 0xc1,
+	0xc4, 0x0e, 0x63, 0x1d, 0x41, 0x52, 0xdf, 0xae, 0xc4, 0x1b, 0xa0, 0xd7, 0x37, 0x37, 0xd7, 0x05,
+	0x11, 0xc7, 0x7c, 0x54, 0x03, 0xe0, 0x3f, 0xa8, 0x94, 0x1e, 0x8b, 0xbf, 0x21, 0x73, 0xe9, 0x0d,
+	0x29, 0xae, 0x49, 0xa0, 0xc7, 0x78, 0x6a, 0x2d, 0x85, 0xe5, 0xb3, 0xe4, 0xb2, 0x4c, 0xab, 0xa5,
+	0x64, 0xc8, 0x33, 0x7f, 0x65, 0xc0, 0xec, 0xc0, 0x47, 0x4d, 0x74, 0x33, 0x0a, 0xf4, 0x46, 0x76,
+	0xef, 0x1f, 0x9e, 0x1c, 0x1c, 0xd9, 0x63, 0x7f, 0x69, 0x00, 0xc4, 0x85, 0x16, 0x72, 0x61, 0x52,
+	0x02, 0x27, 0xb2, 0x8b, 0x2c, 0x13, 0x3e, 0xa5, 0x26, 0x30, 0xb9, 0xa1, 0xe1, 0xe1, 0x04, 0x3a,
+	0x2f, 0x20, 0xda, 0x7e, 0xd7, 0x63, 0xe2, 0x1c, 0xe4, 0x92, 0x2f, 0xe0, 0xae, 0x85, 0x0c, 0x1c,
+	0xcb, 0x98, 0xdf, 0x19, 0x87, 0xb9, 0x21, 0x1f, 0x0c, 0xfe, 0x83, 0x2b, 0xfc, 0x27, 0xa1, 0x28,
+	0x9f, 0x29, 0xd1, 0x74, 0xb8, 0x97, 0xaf, 0x98, 0x78, 0xa9, 0x2c, 0xff, 0x40, 0xe7, 0xa1, 0xec,
+	0x78, 0xb6, 0x6c, 0x4c, 0x59, 0x61, 0xc1, 0x26, 0x9b, 0x9d, 0x31, 0x19, 0xeb, 0x32, 0xc9, 0x0a,
+	0xaf, 0x70, 0x57, 0x35, 0xff, 0xa4, 0xfa, 0xaf, 0x12, 0xf2, 0x51, 0x51, 0x31, 0xcb, 0x86, 0x88,
+	0x3e, 0x0f, 0xd6, 0x60, 0x70, 0x02, 0x14, 0x7d, 0xcb, 0x80, 0x19, 0x45, 0x58, 0x0a, 0x98, 0xd3,
+	0xb4, 0xec, 0xe8, 0x01, 0xc2, 0x11, 0x23, 0x58, 0x45, 0x2d, 0x6e, 0x06, 0xa7, 0xe0, 0xf1, 0x80,
+	0x42, 0xf3, 0x26, 0xcc, 0x0e, 0xe4, 0x66, 0x77, 0x17, 0xf8, 0x89, 0xf8, 0x2f, 0x00, 0xa9, 0xc0,
+	0x2f, 0x5f, 0xfe, 0x4b, 0x9e, 0xf9, 0x99, 0x01, 0x53, 0xa9, 0xd4, 0x36, 0x53, 0xed, 0x78, 0x53,
+	0xaf, 0x1d, 0x8f, 0x9c, 0xa1, 0x27, 0xaa, 0x48, 0xb3, 0x09, 0x53, 0xc9, 0x66, 0xbd, 0x56, 0xd0,
+	0x18, 0x87, 0x15, 0x34, 0xe8, 0x1c, 0x94, 0x2c, 0xd7, 0xf5, 0x3f, 0x58, 0xf1, 0x7a, 0xea, 0x49,
+	0x42, 0xd4, 0xeb, 0x5d, 0x52, 0x74, 0x1c, 0x49, 0xd4, 0x1f, 0xfd, 0xfc, 0xf6, 0xc2, 0x89, 0x2f,
+	0x6e, 0x2f, 0x9c, 0xf8, 0xeb, 0xed, 0x85, 0x13, 0x1f, 0xed, 0x2f, 0x18, 0x9f, 0xef, 0x2f, 0x18,
+	0x5f, 0xec, 0x2f, 0x18, 0x7f, 0xdf, 0x5f, 0x30, 0xbe, 0xfb, 0xe5, 0xc2, 0x89, 0x9b, 0xb9, 0xde,
+	0xf9, 0x7f, 0x05, 0x00, 0x00, 0xff, 0xff, 0x09, 0x07, 0xcc, 0x40, 0xb8, 0x34, 0x00, 0x00,
+}

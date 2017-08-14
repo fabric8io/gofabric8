@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,8 +31,9 @@ import (
 func init() {
 	admission.RegisterPlugin("ResourceQuota",
 		func(client clientset.Interface, config io.Reader) (admission.Interface, error) {
-			registry := install.NewRegistry(client)
-			// TODO: expose a stop channel in admission factory
+			// NOTE: we do not provide informers to the registry because admission level decisions
+			// does not require us to open watches for all items tracked by quota.
+			registry := install.NewRegistry(client, nil)
 			return NewResourceQuota(client, registry, 5, make(chan struct{}))
 		})
 }

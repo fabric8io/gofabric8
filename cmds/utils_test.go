@@ -20,8 +20,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
-	k8client "k8s.io/kubernetes/pkg/client/unversioned"
 )
 
 // NB(chmou): I don't like this either :\
@@ -36,7 +36,7 @@ var CONFIG_MAP_LIST_JSON = `{"kind": "ConfigMapList",
 
 var CONFIG_MAP_PUT_JSON = `{"kind":"ConfigMap","apiVersion":"v1","metadata":{"name":"foo","namespace":"developer","selfLink":"/api/v1/namespaces/test/configmaps/foo","uid":"665aad53-5c16-11e7-b9a0-fa163e96266f","resourceVersion":"175503","creationTimestamp":"2017-06-28T15:28:13Z"}}`
 
-func fakeTestRestResponder(url, jsonresp string) (*httptest.Server, *k8client.Client) {
+func fakeTestRestResponder(url, jsonresp string) (*httptest.Server, *clientset.Clientset) {
 	mux := http.NewServeMux()
 	mux.Handle(url, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -44,8 +44,10 @@ func fakeTestRestResponder(url, jsonresp string) (*httptest.Server, *k8client.Cl
 		io.WriteString(w, jsonresp)
 	}))
 	server := httptest.NewServer(mux)
-	c, _ := k8client.New(&restclient.Config{
+
+	cfg := restclient.Config{
 		Host: server.URL,
-	})
+	}
+	c, _ := clientset.NewForConfig(&cfg)
 	return server, c
 }

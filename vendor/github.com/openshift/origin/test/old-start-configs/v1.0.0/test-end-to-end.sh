@@ -197,14 +197,14 @@ function wait_for_app() {
 
 	echo "[INFO] Waiting for database service to start"
 	wait_for_command "oc get -n $1 services | grep database" $((20*TIME_SEC))
-	DB_IP=$(oc get -n $1 --output-version=v1 --template="{{ .spec.portalIP }}" service database)
+	DB_IP=$(oc get -n $1 --output-version=v1 --template="{{ .spec.clusterIP }}" service database)
 
 	echo "[INFO] Waiting for frontend pod to start"
 	wait_for_command "oc get -n $1 pods | grep frontend | grep -i Running" $((120*TIME_SEC))
 
 	echo "[INFO] Waiting for frontend service to start"
 	wait_for_command "oc get -n $1 services | grep frontend" $((20*TIME_SEC))
-	FRONTEND_IP=$(oc get -n $1 --output-version=v1 --template="{{ .spec.portalIP }}" service frontend)
+	FRONTEND_IP=$(oc get -n $1 --output-version=v1 --template="{{ .spec.clusterIP }}" service frontend)
 
 	echo "[INFO] Waiting for database to start..."
 	wait_for_url_timed "http://${DB_IP}:5434" "[INFO] Database says: " $((3*TIME_MIN))
@@ -296,12 +296,13 @@ echo "Log in as 'e2e-user' to see the 'test' project."
 
 # install the router
 echo "[INFO] Installing the router"
-# COMPATIBILITY add --service-account parameter
-openshift admin router --create --credentials="${MASTER_CONFIG_DIR}/openshift-router.kubeconfig" --images="${USE_IMAGES}" --service-account=router
+# COMPATIBILITY remove --credentials parameter
+openshift admin router --create --images="${USE_IMAGES}"
 
 # install the registry. The --mount-host option is provided to reuse local storage.
 echo "[INFO] Installing the registry"
-openshift admin registry --create --credentials="${MASTER_CONFIG_DIR}/openshift-registry.kubeconfig" --images="${USE_IMAGES}"
+# COMPATIBILITY remove --credentials parameter
+openshift admin registry --create --images="${USE_IMAGES}"
 
 echo "[INFO] Pre-pulling and pushing ruby-22-centos7"
 docker pull centos/ruby-22-centos7:latest
@@ -312,7 +313,7 @@ echo "[INFO] Waiting for Docker registry pod to start"
 wait_for_command '[[ "$(oc get endpoints docker-registry --output-version=v1 --template="{{ if .subsets }}{{ len .subsets }}{{ else }}0{{ end }}" || echo "0")" != "0" ]]' $((5*TIME_MIN))
 
 # services can end up on any IP.	Make sure we get the IP we need for the docker registry
-DOCKER_REGISTRY=$(oc get --output-version=v1 --template="{{ .spec.portalIP }}:{{ with index .spec.ports 0 }}{{ .port }}{{ end }}" service docker-registry)
+DOCKER_REGISTRY=$(oc get --output-version=v1 --template="{{ .spec.clusterIP }}:{{ with index .spec.ports 0 }}{{ .port }}{{ end }}" service docker-registry)
 
 registry="$(dig @${API_HOST} "docker-registry.default.svc.cluster.local." +short A | head -n 1)"
 [[ -n "${registry}" && "${registry}:5000" == "${DOCKER_REGISTRY}" ]]
@@ -336,7 +337,7 @@ docker login -u e2e-user -p ${token} -e e2e-user@openshift.com ${DOCKER_REGISTRY
 echo "[INFO] Docker login successful"
 
 echo "[INFO] Tagging and pushing ruby-22-centos7 to ${DOCKER_REGISTRY}/cache/ruby-22-centos7:latest"
-docker tag -f centos/ruby-22-centos7:latest ${DOCKER_REGISTRY}/cache/ruby-22-centos7:latest
+docker tag centos/ruby-22-centos7:latest ${DOCKER_REGISTRY}/cache/ruby-22-centos7:latest
 docker push ${DOCKER_REGISTRY}/cache/ruby-22-centos7:latest
 echo "[INFO] Pushed ruby-22-centos7"
 

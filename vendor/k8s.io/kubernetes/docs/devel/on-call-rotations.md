@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Kubernetes On-Call Rotations
 
 ### Kubernetes "first responder" rotations
@@ -42,13 +37,6 @@ milestones, for instance).
 
 * [Github and Build Cop Rotation](on-call-build-cop.md)
 * [User Support Rotation](on-call-user-support.md)
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/devel/on-call-rotations.md?pixel)]()

@@ -13,6 +13,8 @@ var map_Action = map[string]string{
 	"resourceAPIVersion": "Version is the API version of the resource Serialized as resourceAPIVersion to avoid confusion with TypeMeta.apiVersion and ObjectMeta.resourceVersion when inlined",
 	"resource":           "Resource is one of the existing resource types",
 	"resourceName":       "ResourceName is the name of the resource being requested for a \"get\" or deleted for a \"delete\"",
+	"path":               "Path is the path of a non resource URL",
+	"isNonResourceURL":   "IsNonResourceURL is true if this is a request for a non-resource URL (outside of the resource hieraarchy)",
 	"content":            "Content is the actual content of the request for create and update",
 }
 
@@ -74,12 +76,12 @@ func (ClusterRole) SwaggerDoc() map[string]string {
 }
 
 var map_ClusterRoleBinding = map[string]string{
-	"":           "ClusterRoleBinding references a ClusterRole, but not contain it.  It can reference any ClusterRole in the same namespace or in the global namespace. It adds who information via Users and Groups and namespace information by which namespace it exists in.  ClusterRoleBindings in a given namespace only have effect in that namespace (excepting the master namespace which has power in all namespaces).",
+	"":           "ClusterRoleBinding references a ClusterRole, but not contain it.  It can reference any ClusterRole in the same namespace or in the global namespace. It adds who information via (Users and Groups) OR Subjects and namespace information by which namespace it exists in. ClusterRoleBindings in a given namespace only have effect in that namespace (excepting the master namespace which has power in all namespaces).",
 	"metadata":   "Standard object's metadata.",
-	"userNames":  "UserNames holds all the usernames directly bound to the role",
-	"groupNames": "GroupNames holds all the groups directly bound to the role",
-	"subjects":   "Subjects hold object references to authorize with this rule",
-	"roleRef":    "RoleRef can only reference the current namespace and the global namespace If the ClusterRoleRef cannot be resolved, the Authorizer must return an error. Since Policy is a singleton, this is sufficient knowledge to locate a role",
+	"userNames":  "UserNames holds all the usernames directly bound to the role. This field should only be specified when supporting legacy clients and servers. See Subjects for further details.",
+	"groupNames": "GroupNames holds all the groups directly bound to the role. This field should only be specified when supporting legacy clients and servers. See Subjects for further details.",
+	"subjects":   "Subjects hold object references to authorize with this rule. This field is ignored if UserNames or GroupNames are specified to support legacy clients and servers. Thus newer clients that do not need to support backwards compatibility should send only fully qualified Subjects and should omit the UserNames and GroupNames fields. Clients that need to support backwards compatibility can use this field to build the UserNames and GroupNames.",
+	"roleRef":    "RoleRef can only reference the current namespace and the global namespace. If the ClusterRoleRef cannot be resolved, the Authorizer must return an error. Since Policy is a singleton, this is sufficient knowledge to locate a role.",
 }
 
 func (ClusterRoleBinding) SwaggerDoc() map[string]string {
@@ -104,6 +106,16 @@ var map_ClusterRoleList = map[string]string{
 
 func (ClusterRoleList) SwaggerDoc() map[string]string {
 	return map_ClusterRoleList
+}
+
+var map_GroupRestriction = map[string]string{
+	"":       "GroupRestriction matches a group either by a string match on the group name or a label selector applied to group labels.",
+	"groups": "Groups is a list of groups used to match against an individual user's groups. If the user is a member of one of the whitelisted groups, the user is allowed to be bound to a role.",
+	"labels": "Selectors specifies a list of label selectors over group labels.",
+}
+
+func (GroupRestriction) SwaggerDoc() map[string]string {
+	return map_GroupRestriction
 }
 
 var map_IsPersonalSubjectAccessReview = map[string]string{
@@ -261,12 +273,12 @@ func (Role) SwaggerDoc() map[string]string {
 }
 
 var map_RoleBinding = map[string]string{
-	"":           "RoleBinding references a Role, but not contain it.  It can reference any Role in the same namespace or in the global namespace. It adds who information via Users and Groups and namespace information by which namespace it exists in.  RoleBindings in a given namespace only have effect in that namespace (excepting the master namespace which has power in all namespaces).",
+	"":           "RoleBinding references a Role, but not contain it.  It can reference any Role in the same namespace or in the global namespace. It adds who information via (Users and Groups) OR Subjects and namespace information by which namespace it exists in. RoleBindings in a given namespace only have effect in that namespace (excepting the master namespace which has power in all namespaces).",
 	"metadata":   "Standard object's metadata.",
-	"userNames":  "UserNames holds all the usernames directly bound to the role",
-	"groupNames": "GroupNames holds all the groups directly bound to the role",
-	"subjects":   "Subjects hold object references to authorize with this rule",
-	"roleRef":    "RoleRef can only reference the current namespace and the global namespace If the RoleRef cannot be resolved, the Authorizer must return an error. Since Policy is a singleton, this is sufficient knowledge to locate a role",
+	"userNames":  "UserNames holds all the usernames directly bound to the role. This field should only be specified when supporting legacy clients and servers. See Subjects for further details.",
+	"groupNames": "GroupNames holds all the groups directly bound to the role. This field should only be specified when supporting legacy clients and servers. See Subjects for further details.",
+	"subjects":   "Subjects hold object references to authorize with this rule. This field is ignored if UserNames or GroupNames are specified to support legacy clients and servers. Thus newer clients that do not need to support backwards compatibility should send only fully qualified Subjects and should omit the UserNames and GroupNames fields. Clients that need to support backwards compatibility can use this field to build the UserNames and GroupNames.",
+	"roleRef":    "RoleRef can only reference the current namespace and the global namespace. If the RoleRef cannot be resolved, the Authorizer must return an error. Since Policy is a singleton, this is sufficient knowledge to locate a role.",
 }
 
 func (RoleBinding) SwaggerDoc() map[string]string {
@@ -281,6 +293,37 @@ var map_RoleBindingList = map[string]string{
 
 func (RoleBindingList) SwaggerDoc() map[string]string {
 	return map_RoleBindingList
+}
+
+var map_RoleBindingRestriction = map[string]string{
+	"":         "RoleBindingRestriction is an object that can be matched against a subject (user, group, or service account) to determine whether rolebindings on that subject are allowed in the namespace to which the RoleBindingRestriction belongs.  If any one of those RoleBindingRestriction objects matches a subject, rolebindings on that subject in the namespace are allowed.",
+	"metadata": "Standard object's metadata.",
+	"spec":     "Spec defines the matcher.",
+}
+
+func (RoleBindingRestriction) SwaggerDoc() map[string]string {
+	return map_RoleBindingRestriction
+}
+
+var map_RoleBindingRestrictionList = map[string]string{
+	"":         "RoleBindingRestrictionList is a collection of RoleBindingRestriction objects.",
+	"metadata": "Standard object's metadata.",
+	"items":    "Items is a list of RoleBindingRestriction objects.",
+}
+
+func (RoleBindingRestrictionList) SwaggerDoc() map[string]string {
+	return map_RoleBindingRestrictionList
+}
+
+var map_RoleBindingRestrictionSpec = map[string]string{
+	"":                          "RoleBindingRestrictionSpec defines a rolebinding restriction.  Exactly one field must be non-nil.",
+	"userrestriction":           "UserRestriction matches against user subjects.",
+	"grouprestriction":          "GroupRestriction matches against group subjects.",
+	"serviceaccountrestriction": "ServiceAccountRestriction matches against service-account subjects.",
+}
+
+func (RoleBindingRestrictionSpec) SwaggerDoc() map[string]string {
+	return map_RoleBindingRestrictionSpec
 }
 
 var map_RoleList = map[string]string{
@@ -312,6 +355,26 @@ func (SelfSubjectRulesReviewSpec) SwaggerDoc() map[string]string {
 	return map_SelfSubjectRulesReviewSpec
 }
 
+var map_ServiceAccountReference = map[string]string{
+	"":          "ServiceAccountReference specifies a service account and namespace by their names.",
+	"name":      "Name is the name of the service account.",
+	"namespace": "Namespace is the namespace of the service account.  Service accounts from inside the whitelisted namespaces are allowed to be bound to roles.  If Namespace is empty, then the namespace of the RoleBindingRestriction in which the ServiceAccountReference is embedded is used.",
+}
+
+func (ServiceAccountReference) SwaggerDoc() map[string]string {
+	return map_ServiceAccountReference
+}
+
+var map_ServiceAccountRestriction = map[string]string{
+	"":                "ServiceAccountRestriction matches a service account by a string match on either the service-account name or the name of the service account's namespace.",
+	"serviceaccounts": "ServiceAccounts specifies a list of literal service-account names.",
+	"namespaces":      "Namespaces specifies a list of literal namespace names.",
+}
+
+func (ServiceAccountRestriction) SwaggerDoc() map[string]string {
+	return map_ServiceAccountRestriction
+}
+
 var map_SubjectAccessReview = map[string]string{
 	"":       "SubjectAccessReview is an object for requesting information about whether a user or group can perform an action",
 	"user":   "User is optional. If both User and Groups are empty, the current authenticated user is used.",
@@ -335,6 +398,27 @@ func (SubjectAccessReviewResponse) SwaggerDoc() map[string]string {
 	return map_SubjectAccessReviewResponse
 }
 
+var map_SubjectRulesReview = map[string]string{
+	"":       "SubjectRulesReview is a resource you can create to determine which actions another user can perform in a namespace",
+	"spec":   "Spec adds information about how to conduct the check",
+	"status": "Status is completed by the server to tell which permissions you have",
+}
+
+func (SubjectRulesReview) SwaggerDoc() map[string]string {
+	return map_SubjectRulesReview
+}
+
+var map_SubjectRulesReviewSpec = map[string]string{
+	"":       "SubjectRulesReviewSpec adds information about how to conduct the check",
+	"user":   "User is optional.  At least one of User and Groups must be specified.",
+	"groups": "Groups is optional.  Groups is the list of groups to which the User belongs.  At least one of User and Groups must be specified.",
+	"scopes": "Scopes to use for the evaluation.  Empty means \"use the unscoped (full) permissions of the user/groups\".",
+}
+
+func (SubjectRulesReviewSpec) SwaggerDoc() map[string]string {
+	return map_SubjectRulesReviewSpec
+}
+
 var map_SubjectRulesReviewStatus = map[string]string{
 	"":                "SubjectRulesReviewStatus is contains the result of a rules check",
 	"rules":           "Rules is the list of rules (no particular sort) that are allowed for the subject",
@@ -343,4 +427,15 @@ var map_SubjectRulesReviewStatus = map[string]string{
 
 func (SubjectRulesReviewStatus) SwaggerDoc() map[string]string {
 	return map_SubjectRulesReviewStatus
+}
+
+var map_UserRestriction = map[string]string{
+	"":       "UserRestriction matches a user either by a string match on the user name, a string match on the name of a group to which the user belongs, or a label selector applied to the user labels.",
+	"users":  "Users specifies a list of literal user names.",
+	"groups": "Groups specifies a list of literal group names.",
+	"labels": "Selectors specifies a list of label selectors over user labels.",
+}
+
+func (UserRestriction) SwaggerDoc() map[string]string {
+	return map_UserRestriction
 }

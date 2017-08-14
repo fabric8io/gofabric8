@@ -32,7 +32,7 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 )
 
-func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
+func NewCmdPull(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pull [templateNames]",
 		Short: "Pulls the docker images for the given templates",
@@ -67,7 +67,7 @@ func NewCmdPull(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func downloadTemplateDockerImages(ns string, c *oclient.Client, fac *cmdutil.Factory, name string) (Result, error) {
+func downloadTemplateDockerImages(ns string, c *oclient.Client, fac cmdutil.Factory, name string) (Result, error) {
 	template, err := c.Templates(ns).Get(name)
 	if err != nil {
 		util.Fatalf("No Template %s found in namespace %s\n", name, ns)

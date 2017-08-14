@@ -1,14 +1,9 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Proposal: Self-hosted kubelet
 
 ## Abstract
 
-In a self-hosted Kubernetes deployment (see (this
-comment)[https://github.com/kubernetes/kubernetes/issues/246#issuecomment-64533959]
+In a self-hosted Kubernetes deployment (see [this
+comment](https://github.com/kubernetes/kubernetes/issues/246#issuecomment-64533959)
 for background on self hosted kubernetes), we have the initial bootstrap problem.
 When running self-hosted components, there needs to be a mechanism for pivoting
 from the initial bootstrap state to the kubernetes-managed (self-hosted) state.
@@ -133,13 +128,6 @@ register itself with a given taint when it first contacts the API server. Given
 that, a kubelet could register itself with a given taint such as
 “component=kubelet”, and a kubelet pod could exist that has a toleration to that
 taint, ensuring it is the only pod the “bootstrap” kubelet runs.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

@@ -11,10 +11,13 @@ import (
 )
 
 type fakeRouterPlugin struct {
-	lastSyncProcessed bool
+	commitRequested bool
 }
 
 func (p *fakeRouterPlugin) HandleRoute(t watch.EventType, route *routeapi.Route) error {
+	return nil
+}
+func (p *fakeRouterPlugin) HandleNode(t watch.EventType, node *kapi.Node) error {
 	return nil
 }
 func (p *fakeRouterPlugin) HandleEndpoints(watch.EventType, *kapi.Endpoints) error {
@@ -23,8 +26,9 @@ func (p *fakeRouterPlugin) HandleEndpoints(watch.EventType, *kapi.Endpoints) err
 func (p *fakeRouterPlugin) HandleNamespaces(namespaces sets.String) error {
 	return nil
 }
-func (p *fakeRouterPlugin) SetLastSyncProcessed(processed bool) error {
-	p.lastSyncProcessed = processed
+
+func (p *fakeRouterPlugin) Commit() error {
+	p.commitRequested = true
 	return nil
 }
 
@@ -35,7 +39,7 @@ func (n fakeNamespaceLister) NamespaceNames() (sets.String, error) {
 	return sets.NewString("foo"), nil
 }
 
-func TestRouterController_updateLastSyncProcessed(t *testing.T) {
+func TestRouterController_commit(t *testing.T) {
 	p := fakeRouterPlugin{}
 	routesListConsumed := true
 	c := RouterController{
@@ -45,6 +49,9 @@ func TestRouterController_updateLastSyncProcessed(t *testing.T) {
 		},
 		NextRoute: func() (watch.EventType, *routeapi.Route, error) {
 			return watch.Modified, &routeapi.Route{}, nil
+		},
+		NextNode: func() (watch.EventType, *kapi.Node, error) {
+			return watch.Modified, &kapi.Node{}, nil
 		},
 		EndpointsListConsumed: func() bool {
 			return true
@@ -56,30 +63,34 @@ func TestRouterController_updateLastSyncProcessed(t *testing.T) {
 		NamespaceRetries: 1,
 	}
 
+	expectedMsg := "commit not expected to have been requested"
+	notExpectedMsg := "commit expected to have been requested"
+
 	// Simulate the initial sync
 	c.HandleNamespaces()
-	if p.lastSyncProcessed {
-		t.Fatalf("last sync not expected to have been processed")
+	if p.commitRequested {
+		t.Fatalf(notExpectedMsg)
 	}
 	c.HandleEndpoints()
-	if p.lastSyncProcessed {
-		t.Fatalf("last sync not expected to have been processed")
+	if p.commitRequested {
+		t.Fatalf(notExpectedMsg)
 	}
 	c.HandleRoute()
-	if !p.lastSyncProcessed {
-		t.Fatalf("last sync expected to have been processed")
+	if !p.commitRequested {
+		t.Fatalf(expectedMsg)
 	}
 
 	// Simulate a relist
+	p.commitRequested = false
 	routesListConsumed = false
 	c.HandleRoute()
-	if p.lastSyncProcessed {
-		t.Fatalf("last sync not expected to have been processed")
+	if p.commitRequested {
+		t.Fatalf(notExpectedMsg)
 	}
 	routesListConsumed = true
 	c.HandleRoute()
-	if !p.lastSyncProcessed {
-		t.Fatalf("last sync expected to have been processed")
+	if !p.commitRequested {
+		t.Fatalf(expectedMsg)
 	}
 
 }

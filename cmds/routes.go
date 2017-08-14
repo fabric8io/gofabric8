@@ -23,11 +23,11 @@ import (
 	rapiv1 "github.com/openshift/origin/pkg/route/api/v1"
 	"github.com/spf13/cobra"
 	kapi "k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
+func NewCmdRoutes(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "routes",
 		Short: "Creates any missing Routes for services",
@@ -64,7 +64,7 @@ func NewCmdRoutes(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func createRoutesForDomain(ns string, domain string, c *k8sclient.Client, oc *oclient.Client, fac *cmdutil.Factory) error {
+func createRoutesForDomain(ns string, domain string, c *clientset.Clientset, oc *oclient.Client, fac cmdutil.Factory) error {
 	rapi.AddToScheme(kapi.Scheme)
 	rapiv1.AddToScheme(kapi.Scheme)
 

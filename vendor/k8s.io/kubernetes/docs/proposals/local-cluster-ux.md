@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubernetes Local Cluster Experience
 
 This proposal attempts to improve the existing local cluster experience for kubernetes.
@@ -159,13 +154,6 @@ minikube -> docker -> localkube
 - The latest version of Minikube is guaranteed to support the latest release of Kubernetes, including documentation.
 - The Google Cloud SDK will package minikube and provide utilities for configuring kubectl to use it, but will not in any other way wrap minikube.
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

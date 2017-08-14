@@ -6,8 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/fields"
 	kctl "k8s.io/kubernetes/pkg/kubectl"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -15,24 +18,24 @@ import (
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/cli/describe"
-	imageapi "github.com/openshift/origin/pkg/image/api"
-	"github.com/spf13/cobra"
-
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	imageapi "github.com/openshift/origin/pkg/image/api"
+	imageapiv1 "github.com/openshift/origin/pkg/image/api/v1"
 )
 
-const (
-	importImageLong = `
-Import tag and image information from an external Docker image repository
+var (
+	importImageLong = templates.LongDesc(`
+		Import tag and image information from an external Docker image repository
 
-Only image streams that have a value set for spec.dockerImageRepository and/or
-spec.Tags may have tag and image information imported.`
+		Only image streams that have a value set for spec.dockerImageRepository and/or
+		spec.Tags may have tag and image information imported.`)
 
-	importImageExample = `  %[1]s import-image mystream`
+	importImageExample = templates.Examples(`  %[1]s import-image mystream`)
 )
 
 // NewCmdImportImage implements the OpenShift cli import-image command.
-func NewCmdImportImage(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.Command {
+func NewCmdImportImage(fullName string, f *clientcmd.Factory, out, errout io.Writer) *cobra.Command {
 	opts := &ImportImageOptions{}
 	cmd := &cobra.Command{
 		Use:        "import-image IMAGESTREAM[:TAG]",
@@ -41,7 +44,7 @@ func NewCmdImportImage(fullName string, f *clientcmd.Factory, out io.Writer) *co
 		Example:    fmt.Sprintf(importImageExample, fullName),
 		SuggestFor: []string{"image"},
 		Run: func(cmd *cobra.Command, args []string) {
-			kcmdutil.CheckErr(opts.Complete(f, cmd, args, fullName, out))
+			kcmdutil.CheckErr(opts.Complete(f, cmd, args, fullName, out, errout))
 			kcmdutil.CheckErr(opts.Validate(cmd))
 			kcmdutil.CheckErr(opts.Run())
 		},
@@ -72,13 +75,14 @@ type ImportImageOptions struct {
 
 	// helpers
 	out      io.Writer
+	errout   io.Writer
 	osClient client.Interface
 	isClient client.ImageStreamInterface
 }
 
 // Complete turns a partially defined ImportImageOptions into a solvent structure
 // which can be validated and used for aa import.
-func (o *ImportImageOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, args []string, commandName string, out io.Writer) error {
+func (o *ImportImageOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, args []string, commandName string, out, errout io.Writer) error {
 	o.CommandName = commandName
 
 	if len(args) > 0 {
@@ -102,6 +106,7 @@ func (o *ImportImageOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, 
 	o.osClient = osClient
 	o.isClient = osClient.ImageStreams(namespace)
 	o.out = out
+	o.errout = errout
 
 	return nil
 }
@@ -147,7 +152,11 @@ func (o *ImportImageOptions) Run() error {
 	case err != nil:
 		return err
 	default:
-		fmt.Fprint(o.out, "The import completed successfully.\n\n")
+		if wasError(result) {
+			fmt.Fprintf(o.errout, "The import completed with errors.\n\n")
+		} else {
+			fmt.Fprint(o.out, "The import completed successfully.\n\n")
+		}
 
 		// optimization, use the image stream returned by the call
 		d := describe.ImageStreamDescriber{Interface: o.osClient}
@@ -203,6 +212,18 @@ func (o *ImportImageOptions) Run() error {
 
 	fmt.Fprintln(o.out, info)
 	return nil
+}
+
+func wasError(isi *imageapi.ImageStreamImport) bool {
+	for _, image := range isi.Status.Images {
+		if image.Status.Status == unversioned.StatusFailure {
+			return true
+		}
+	}
+	if isi.Status.Repository != nil && isi.Status.Repository.Status.Status == unversioned.StatusFailure {
+		return true
+	}
+	return false
 }
 
 // TODO: move to image/api as a helper
@@ -265,6 +286,18 @@ func (o *ImportImageOptions) createImageImport() (*imageapi.ImageStream, *imagea
 			return nil, nil, fmt.Errorf("no image stream named %q exists, pass --confirm to create and import", o.Name)
 		}
 		stream, isi = o.newImageStream()
+		// ensure defaulting is applied by round trip converting
+		// TODO: convert to using versioned types.
+		external, err := kapi.Scheme.ConvertToVersion(stream, imageapiv1.SchemeGroupVersion)
+		if err != nil {
+			return nil, nil, err
+		}
+		kapi.Scheme.Default(external)
+		internal, err := kapi.Scheme.ConvertToVersion(external, imageapi.SchemeGroupVersion)
+		if err != nil {
+			return nil, nil, err
+		}
+		stream = internal.(*imageapi.ImageStream)
 		return stream, isi, nil
 	}
 
@@ -363,7 +396,7 @@ func (o *ImportImageOptions) importTag(stream *imageapi.ImageStream) (*imageapi.
 
 	} else {
 		// create a new tag
-		if len(from) == 0 {
+		if len(from) == 0 && tag == imageapi.DefaultImageTag {
 			from = stream.Spec.DockerImageRepository
 		}
 		// if the from is still empty this means there's no such tag defined

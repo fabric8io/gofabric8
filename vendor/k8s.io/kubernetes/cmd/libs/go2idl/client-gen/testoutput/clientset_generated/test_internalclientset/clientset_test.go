@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ func ClientSetRateLimiterTest(t *testing.T) {
 	if err != nil {
 		t.Errorf("creating clientset for config %v failed: %v", config, err)
 	}
-	testGroupThrottler := clientSet.Testgroup().GetRESTClient().GetRateLimiter()
+	testGroupThrottler := clientSet.Testgroup().RESTClient().GetRateLimiter()
 
 	if rateLimiter != testGroupThrottler {
 		t.Errorf("Clients in client set should use rateLimiter passed in config:\noriginal: %v\ntestGroup: %v", rateLimiter, testGroupThrottler)

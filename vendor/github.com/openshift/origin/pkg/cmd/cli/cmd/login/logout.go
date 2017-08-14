@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 
 	"k8s.io/kubernetes/pkg/client/restclient"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/cli/config"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	osclientcmd "github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
@@ -25,23 +27,23 @@ type LogoutOptions struct {
 	PathOptions *kclientcmd.PathOptions
 }
 
-const (
-	logoutLong = `
-Log out of the active session out by clearing saved tokens
+var (
+	logoutLong = templates.LongDesc(`
+		Log out of the active session out by clearing saved tokens
 
-An authentication token is stored in the config file after login - this command will delete
-that token on the server, and then remove the token from the configuration file.
+		An authentication token is stored in the config file after login - this command will delete
+		that token on the server, and then remove the token from the configuration file.
 
-If you are using an alternative authentication method like Kerberos or client certificates,
-your ticket or client certificate will not be removed from the current system since these
-are typically managed by other programs. Instead, you can delete your config file to remove
-the local copy of that certificate or the record of your server login.
+		If you are using an alternative authentication method like Kerberos or client certificates,
+		your ticket or client certificate will not be removed from the current system since these
+		are typically managed by other programs. Instead, you can delete your config file to remove
+		the local copy of that certificate or the record of your server login.
 
-After logging out, if you want to log back into the server use '%[1]s'.`
+		After logging out, if you want to log back into the server use '%[1]s'.`)
 
-	logoutExample = `
-  # Logout
-  %[1]s`
+	logoutExample = templates.Examples(`
+	  # Logout
+	  %[1]s`)
 )
 
 // NewCmdLogout implements the OpenShift cli logout command
@@ -77,13 +79,13 @@ func NewCmdLogout(name, fullName, ocLoginFullCommand string, f *osclientcmd.Fact
 }
 
 func (o *LogoutOptions) Complete(f *osclientcmd.Factory, cmd *cobra.Command, args []string) error {
-	kubeconfig, err := f.OpenShiftClientConfig.RawConfig()
+	kubeconfig, err := f.OpenShiftClientConfig().RawConfig()
 	o.StartingKubeConfig = &kubeconfig
 	if err != nil {
 		return err
 	}
 
-	o.Config, err = f.OpenShiftClientConfig.ClientConfig()
+	o.Config, err = f.OpenShiftClientConfig().ClientConfig()
 	if err != nil {
 		return err
 	}
@@ -117,30 +119,35 @@ func (o LogoutOptions) RunLogout() error {
 		return err
 	}
 
-	userInfo, err := whoAmI(client)
+	userInfo, err := whoAmI(o.Config)
 	if err != nil {
 		return err
 	}
 
 	if err := client.OAuthAccessTokens().Delete(token); err != nil {
-		return err
+		glog.V(1).Infof("%v", err)
 	}
 
-	newConfig := *o.StartingKubeConfig
+	configErr := deleteTokenFromConfig(*o.StartingKubeConfig, o.PathOptions, token)
+	if configErr == nil {
+		glog.V(1).Infof("Removed token from your local configuration.")
 
-	for key, value := range newConfig.AuthInfos {
-		if value.Token == token {
+		// only return error instead of successful message if removing token from client
+		// config fails. Any error that occurs deleting token using api is logged above.
+		fmt.Fprintf(o.Out, "Logged %q out on %q\n", userInfo.Name, o.Config.Host)
+	}
+
+	return configErr
+}
+
+func deleteTokenFromConfig(config kclientcmdapi.Config, pathOptions *kclientcmd.PathOptions, bearerToken string) error {
+	for key, value := range config.AuthInfos {
+		if value.Token == bearerToken {
 			value.Token = ""
-			newConfig.AuthInfos[key] = value
+			config.AuthInfos[key] = value
 			// don't break, its possible that more than one user stanza has the same token.
 		}
 	}
 
-	if err := kclientcmd.ModifyConfig(o.PathOptions, newConfig, true); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(o.Out, "Logged %q out on %q\n", userInfo.Name, o.Config.Host)
-
-	return nil
+	return kclientcmd.ModifyConfig(pathOptions, config, true)
 }

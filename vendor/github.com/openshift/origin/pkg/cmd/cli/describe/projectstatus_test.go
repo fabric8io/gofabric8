@@ -7,9 +7,10 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
-	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
 	"k8s.io/kubernetes/pkg/runtime"
+	utilerrors "k8s.io/kubernetes/pkg/util/errors"
 
+	oapi "github.com/openshift/origin/pkg/api"
 	"github.com/openshift/origin/pkg/client/testclient"
 	projectapi "github.com/openshift/origin/pkg/project/api"
 )
@@ -31,7 +32,7 @@ func TestProjectStatus(t *testing.T) {
 		Time     time.Time
 	}{
 		"missing project": {
-			ErrFn: func(err error) bool { return errors.IsNotFound(err) },
+			ErrFn: func(err error) bool { return err == nil },
 		},
 		"empty project with display name": {
 			Extra: []runtime.Object{
@@ -40,7 +41,7 @@ func TestProjectStatus(t *testing.T) {
 						Name:      "example",
 						Namespace: "",
 						Annotations: map[string]string{
-							projectapi.ProjectDisplayName: "Test",
+							oapi.OpenShiftDisplayName: "Test",
 						},
 					},
 				},
@@ -205,8 +206,8 @@ func TestProjectStatus(t *testing.T) {
 			Contains: []string{
 				// this makes sure that status knows this can push.  If it fails, there's a "(can't push image)" next to like #8
 				" hours\n  build #7",
-				"on fedora:23",
-				"-> repo-base:latest",
+				"on istag/fedora:23",
+				"-> istag/repo-base:latest",
 			},
 			Time: mustParseTime("2015-12-17T20:36:15Z"),
 		},
@@ -294,8 +295,8 @@ func TestProjectStatus(t *testing.T) {
 			},
 			Time: mustParseTime("2015-04-07T04:12:25Z"),
 		},
-		"with pet sets": {
-			File: "petset.yaml",
+		"with stateful sets": {
+			File: "statefulset.yaml",
 			Extra: []runtime.Object{
 				&projectapi.Project{
 					ObjectMeta: kapi.ObjectMeta{Name: "example", Namespace: ""},
@@ -304,9 +305,9 @@ func TestProjectStatus(t *testing.T) {
 			ErrFn: func(err error) bool { return err == nil },
 			Contains: []string{
 				"In project example on server https://example.com:8443\n",
-				"svc/galera[default] (headless):3306",
-				"petset/mysql manages erkules/galera:basic, created less than a second ago - 3 pods",
-				"* pod/mysql-1[default] has restarted 7 times",
+				"svc/galera (headless):3306",
+				"statefulset/mysql manages erkules/galera:basic, created less than a second ago - 3 pods",
+				"* pod/mysql-1 has restarted 7 times",
 			},
 			Time: mustParseTime("2015-04-07T04:12:25Z"),
 		},
@@ -367,6 +368,20 @@ func TestProjectStatus(t *testing.T) {
 				`View details with 'oc describe <resource>/<name>' or list everything with 'oc get all'.`,
 			},
 		},
+		"deployment with unavailable pods": {
+			File: "available-deployment.yaml",
+			Extra: []runtime.Object{
+				&projectapi.Project{
+					ObjectMeta: kapi.ObjectMeta{Name: "example", Namespace: ""},
+				},
+			},
+			ErrFn: func(err error) bool { return err == nil },
+			Contains: []string{
+				"deployment #2 running for 30 seconds - 0/1 pods\n",
+				"deployment #1 deployed about a minute ago - 1/2 pods",
+			},
+			Time: mustParseTime("2016-04-07T04:12:25Z"),
+		},
 	}
 	oldTimeFn := timeNowFn
 	defer func() { timeNowFn = oldTimeFn }()
@@ -377,18 +392,20 @@ func TestProjectStatus(t *testing.T) {
 			}
 			return time.Now()
 		}
-		o := ktestclient.NewObjects(kapi.Scheme, kapi.Codecs.UniversalDecoder())
+		objs := []runtime.Object{}
 		if len(test.File) > 0 {
 			// Load data from a folder dedicated to mock data, which is never loaded into the API during tests
-			if err := ktestclient.AddObjectsFromPath("../../../../pkg/api/graph/test/"+test.File, o, kapi.Codecs.UniversalDecoder()); err != nil {
+			var err error
+			objs, err = testclient.ReadObjectsFromPath("../../../../pkg/api/graph/test/"+test.File, "example", kapi.Codecs.UniversalDecoder(), kapi.Scheme)
+			if err != nil {
 				t.Errorf("%s: unexpected error: %v", k, err)
 			}
 		}
-		for _, obj := range test.Extra {
-			o.Add(obj)
+		for _, o := range test.Extra {
+			objs = append(objs, o)
 		}
-		oc, kc := testclient.NewFixtureClients(o)
-		d := ProjectStatusDescriber{C: oc, K: kc, Server: "https://example.com:8443", Suggest: true, CommandBaseName: "oc", LogsCommandName: "oc logs -p", SecurityPolicyCommandFormat: "policycommand %s %s"}
+		oc, kc := testclient.NewFixtureClients(objs...)
+		d := ProjectStatusDescriber{K: kc, C: oc, Server: "https://example.com:8443", Suggest: true, CommandBaseName: "oc", LogsCommandName: "oc logs -p", SecurityPolicyCommandFormat: "policycommand %s %s"}
 		out, err := d.Describe("example", "")
 		if !test.ErrFn(err) {
 			t.Errorf("%s: unexpected error: %v", k, err)
@@ -400,6 +417,36 @@ func TestProjectStatus(t *testing.T) {
 			if !strings.Contains(out, s) {
 				t.Errorf("%s: did not have %q:\n%s\n---", k, s, out)
 			}
+		}
+	}
+}
+
+func TestProjectStatusErrors(t *testing.T) {
+	testCases := map[string]struct {
+		Err   error
+		ErrFn func(error) bool
+	}{
+		"project error is returned": {
+			Err: errors.NewBadRequest("unavailable"),
+			ErrFn: func(err error) bool {
+				if aggr, ok := err.(utilerrors.Aggregate); ok {
+					for _, e := range aggr.Errors() {
+						if !errors.IsBadRequest(e) {
+							return false
+						}
+					}
+					return true
+				}
+				return false
+			},
+		},
+	}
+	for k, test := range testCases {
+		oc, kc := testclient.NewErrorClients(test.Err)
+		d := ProjectStatusDescriber{K: kc, C: oc, Server: "https://example.com:8443", Suggest: true, CommandBaseName: "oc", LogsCommandName: "oc logs -p", SecurityPolicyCommandFormat: "policycommand %s %s"}
+		_, err := d.Describe("example", "")
+		if !test.ErrFn(err) {
+			t.Errorf("%s: unexpected error: %v", k, err)
 		}
 	}
 }

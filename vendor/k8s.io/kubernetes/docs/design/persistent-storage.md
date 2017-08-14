@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Persistent Storage
 
 This document proposes a model for managing persistent, cluster-scoped storage
@@ -245,13 +240,6 @@ reference from the PV and change the PVs status to 'Released'.
 
 Admins can script the recycling of released volumes. Future dynamic provisioners
 will understand how a volume should be recycled.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

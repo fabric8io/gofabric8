@@ -37,7 +37,8 @@ import (
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -48,7 +49,7 @@ type Keypair struct {
 	priv []byte
 }
 
-func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
+func NewCmdSecrets(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secrets",
 		Short: "Set up Secrets on your Kubernetes or OpenShift environment",
@@ -126,7 +127,7 @@ func NewCmdSecrets(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func processSecretsForTemplate(c *k8sclient.Client, i tapi.Template, f *cmdutil.Factory, cmd *cobra.Command) int {
+func processSecretsForTemplate(c *clientset.Clientset, i tapi.Template, f cmdutil.Factory, cmd *cobra.Command) int {
 	count := 0
 	// convert TemplateList.Objects to Kubernetes resources
 	errs := runtime.DecodeList(i.Objects, api.Codecs.UniversalDecoder())
@@ -153,7 +154,7 @@ func getTemplates(c *oclient.Client, ns string) *tapi.TemplateList {
 	return templates
 }
 
-func createSecret(c *k8sclient.Client, f *cmdutil.Factory, flags *flag.FlagSet, secretDataIdentifiers string, secretType string, keysNames []string) (Result, error) {
+func createSecret(c *clientset.Clientset, f cmdutil.Factory, flags *flag.FlagSet, secretDataIdentifiers string, secretType string, keysNames []string) (Result, error) {
 	var secret = secret(secretDataIdentifiers, secretType, keysNames, flags)
 	ns, _, err := f.DefaultNamespace()
 	if err != nil {
@@ -166,7 +167,7 @@ func createSecret(c *k8sclient.Client, f *cmdutil.Factory, flags *flag.FlagSet, 
 	return Failure, err
 }
 
-func createAndPrintSecrets(secretDataIdentifiers string, secretType string, c *k8sclient.Client, fa *cmdutil.Factory, flags *flag.FlagSet) int {
+func createAndPrintSecrets(secretDataIdentifiers string, secretType string, c *clientset.Clientset, fa cmdutil.Factory, flags *flag.FlagSet) int {
 	count := 0
 	// check to see if multiple public and private keys are needed
 	var dataType = strings.Split(secretType, "/")

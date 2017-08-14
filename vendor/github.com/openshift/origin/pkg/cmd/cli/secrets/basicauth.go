@@ -9,34 +9,36 @@ import (
 	"github.com/spf13/cobra"
 
 	"k8s.io/kubernetes/pkg/api"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/util/term"
+	kterm "k8s.io/kubernetes/pkg/util/term"
 
-	cmdutil "github.com/openshift/origin/pkg/cmd/util"
+	"github.com/openshift/origin/pkg/cmd/templates"
+	"github.com/openshift/origin/pkg/cmd/util/term"
 )
 
-const (
-	// CreateBasicAuthSecretRecommendedCommandName represents name of subcommand for `oc secrets` command
-	CreateBasicAuthSecretRecommendedCommandName = "new-basicauth"
+// CreateBasicAuthSecretRecommendedCommandName represents name of subcommand for `oc secrets` command
+const CreateBasicAuthSecretRecommendedCommandName = "new-basicauth"
 
-	createBasicAuthSecretLong = `
-Create a new basic authentication secret
+var (
+	createBasicAuthSecretLong = templates.LongDesc(`
+    Create a new basic authentication secret
 
-Basic authentication secrets are used to authenticate against SCM servers.
+    Basic authentication secrets are used to authenticate against SCM servers.
 
-When creating applications, you may have a SCM server that requires basic authentication - username, password.
-In order for the nodes to clone source code on your behalf, they have to have the credentials. You can provide
-this information by creating a 'basicauth' secret and attaching it to your service account.`
+    When creating applications, you may have a SCM server that requires basic authentication - username, password.
+    In order for the nodes to clone source code on your behalf, they have to have the credentials. You can provide
+    this information by creating a 'basicauth' secret and attaching it to your service account.`)
 
-	createBasicAuthSecretExample = `  // If your basic authentication method requires only username and password or token, add it by using:
-  %[1]s SECRET --username=USERNAME --password=PASSWORD
+	createBasicAuthSecretExample = templates.Examples(`
+    # If your basic authentication method requires only username and password or token, add it by using:
+    %[1]s SECRET --username=USERNAME --password=PASSWORD
 
-  // If your basic authentication method requires also CA certificate, add it by using:
-  %[1]s SECRET --username=USERNAME --password=PASSWORD --ca-cert=FILENAME
+    # If your basic authentication method requires also CA certificate, add it by using:
+    %[1]s SECRET --username=USERNAME --password=PASSWORD --ca-cert=FILENAME
 
-  // If you do already have a .gitconfig file needed for authentication, you can create a gitconfig secret by using:
-  %[2]s SECRET path/to/.gitconfig`
+    # If you do already have a .gitconfig file needed for authentication, you can create a gitconfig secret by using:
+    %[2]s SECRET path/to/.gitconfig`)
 )
 
 // CreateBasicAuthSecretOptions holds the credential needed to authenticate against SCM servers.
@@ -52,11 +54,11 @@ type CreateBasicAuthSecretOptions struct {
 	Reader io.Reader
 	Out    io.Writer
 
-	SecretsInterface client.SecretsInterface
+	SecretsInterface kcoreclient.SecretInterface
 }
 
 // NewCmdCreateBasicAuthSecret implements the OpenShift cli secrets new-basicauth subcommand
-func NewCmdCreateBasicAuthSecret(name, fullName string, f *kcmdutil.Factory, reader io.Reader, out io.Writer, newSecretFullName, ocEditFullName string) *cobra.Command {
+func NewCmdCreateBasicAuthSecret(name, fullName string, f kcmdutil.Factory, reader io.Reader, out io.Writer, newSecretFullName, ocEditFullName string) *cobra.Command {
 	o := &CreateBasicAuthSecretOptions{
 		Out:    out,
 		Reader: reader,
@@ -80,7 +82,7 @@ func NewCmdCreateBasicAuthSecret(name, fullName string, f *kcmdutil.Factory, rea
 				secret, err := o.NewBasicAuthSecret()
 				kcmdutil.CheckErr(err)
 
-				mapper, _ := f.Object(false)
+				mapper, _ := f.Object()
 				kcmdutil.CheckErr(f.PrintObject(c, mapper, secret, out))
 				return
 			}
@@ -97,7 +99,7 @@ func NewCmdCreateBasicAuthSecret(name, fullName string, f *kcmdutil.Factory, rea
 	cmd.MarkFlagFilename("ca-cert")
 	cmd.Flags().StringVar(&o.GitConfigPath, "gitconfig", "", "Path to a .gitconfig file")
 	cmd.MarkFlagFilename("gitconfig")
-	cmd.Flags().BoolVarP(&o.PromptForPassword, "prompt", "", false, "Prompt for password or token")
+	cmd.Flags().BoolVarP(&o.PromptForPassword, "prompt", "", false, "If true, prompt for password or token")
 
 	kcmdutil.AddPrinterFlags(cmd)
 
@@ -124,7 +126,7 @@ func (o *CreateBasicAuthSecretOptions) CreateBasicAuthSecret() error {
 func (o *CreateBasicAuthSecretOptions) NewBasicAuthSecret() (*api.Secret, error) {
 	secret := &api.Secret{}
 	secret.Name = o.SecretName
-	secret.Type = api.SecretTypeOpaque
+	secret.Type = api.SecretTypeBasicAuth
 	secret.Data = map[string][]byte{}
 
 	if len(o.Username) != 0 {
@@ -156,7 +158,7 @@ func (o *CreateBasicAuthSecretOptions) NewBasicAuthSecret() (*api.Secret, error)
 
 // Complete fills CreateBasicAuthSecretOptions fields with data and checks for mutual exclusivity
 // between flags from different option groups.
-func (o *CreateBasicAuthSecretOptions) Complete(f *kcmdutil.Factory, args []string) error {
+func (o *CreateBasicAuthSecretOptions) Complete(f kcmdutil.Factory, args []string) error {
 	if len(args) != 1 {
 		return errors.New("must have exactly one argument: secret name")
 	}
@@ -166,18 +168,18 @@ func (o *CreateBasicAuthSecretOptions) Complete(f *kcmdutil.Factory, args []stri
 		if len(o.Password) != 0 {
 			return errors.New("must provide either --prompt or --password flag")
 		}
-		if !term.IsTerminal(o.Reader) {
+		if !kterm.IsTerminal(o.Reader) {
 			return errors.New("provided reader is not a terminal")
 		}
 
-		o.Password = cmdutil.PromptForPasswordString(o.Reader, o.Out, "Password: ")
+		o.Password = term.PromptForPasswordString(o.Reader, o.Out, "Password: ")
 		if len(o.Password) == 0 {
 			return errors.New("password must be provided")
 		}
 	}
 
 	if f != nil {
-		client, err := f.Client()
+		client, err := f.ClientSet()
 		if err != nil {
 			return err
 		}
@@ -185,7 +187,7 @@ func (o *CreateBasicAuthSecretOptions) Complete(f *kcmdutil.Factory, args []stri
 		if err != nil {
 			return err
 		}
-		o.SecretsInterface = client.Secrets(namespace)
+		o.SecretsInterface = client.Core().Secrets(namespace)
 	}
 
 	return nil

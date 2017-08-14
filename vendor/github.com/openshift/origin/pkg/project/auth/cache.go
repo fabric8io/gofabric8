@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -9,7 +10,7 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/auth/user"
 	"k8s.io/kubernetes/pkg/client/cache"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/types"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
@@ -121,7 +122,7 @@ type AuthorizationCache struct {
 	// TODO remove this in favor of a list/watch mechanism for projects
 	allKnownNamespaces        sets.String
 	namespaceStore            cache.Store
-	namespaceInterface        kclient.NamespaceInterface
+	namespaceInterface        kcoreclient.NamespaceInterface
 	lastSyncResourceVersioner LastSyncResourceVersioner
 
 	clusterPolicyLister             client.SyncedClusterPoliciesListerInterface
@@ -149,7 +150,7 @@ type AuthorizationCache struct {
 }
 
 // NewAuthorizationCache creates a new AuthorizationCache
-func NewAuthorizationCache(reviewer Reviewer, namespaceInterface kclient.NamespaceInterface,
+func NewAuthorizationCache(reviewer Reviewer, namespaceInterface kcoreclient.NamespaceInterface,
 	clusterPolicyLister client.SyncedClusterPoliciesListerInterface, clusterPolicyBindingLister client.SyncedClusterPolicyBindingsListerInterface,
 	policyNamespacer client.SyncedPoliciesListerNamespacer, policyBindingNamespacer client.SyncedPolicyBindingsListerNamespacer,
 ) *AuthorizationCache {
@@ -413,6 +414,10 @@ func (ac *AuthorizationCache) syncRequest(request *reviewRequest, userSubjectRec
 	addSubjectsToNamespace(groupSubjectRecordStore, review.Groups(), namespace)
 	cacheReviewRecord(request, lastKnownValue, review, reviewRecordStore)
 	ac.notifyWatchers(namespace, lastKnownValue, sets.NewString(review.Users()...), sets.NewString(review.Groups()...))
+
+	if errMsg := review.EvaluationError(); len(errMsg) > 0 {
+		return errors.New(errMsg)
+	}
 	return nil
 }
 
@@ -442,7 +447,7 @@ func (ac *AuthorizationCache) List(userInfo user.Info) (*kapi.NamespaceList, err
 	}
 
 	namespaceList := &kapi.NamespaceList{}
-	for key := range keys {
+	for _, key := range keys.List() {
 		namespaceObj, exists, err := ac.namespaceStore.GetByKey(key)
 		if err != nil {
 			return nil, err

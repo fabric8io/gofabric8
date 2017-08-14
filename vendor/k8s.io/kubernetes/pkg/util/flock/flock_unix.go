@@ -1,7 +1,7 @@
 // +build linux darwin freebsd openbsd netbsd dragonfly
 
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ func Acquire(path string) error {
 	if lockfile, err = os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600); err != nil {
 		return err
 	}
-
+	defer lockfile.Close()
 	opts := unix.Flock_t{Type: unix.F_WRLCK}
 	if err := unix.FcntlFlock(lockfile.Fd(), unix.F_SETLKW, &opts); err != nil {
 		return err

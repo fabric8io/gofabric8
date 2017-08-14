@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -154,7 +154,7 @@ func (q *Type) Done(item interface{}) {
 	}
 }
 
-// Shutdown will cause q to ignore all new items added to it. As soon as the
+// ShutDown will cause q to ignore all new items added to it. As soon as the
 // worker goroutines have drained the existing items in the queue, they will be
 // instructed to exit.
 func (q *Type) ShutDown() {

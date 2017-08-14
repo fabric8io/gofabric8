@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Welcome to k8PetStore
 
 This is a follow up to the [Guestbook Example](../guestbook/README.md)'s [Go implementation](../guestbook-go/).
@@ -47,7 +42,7 @@ The web app is written in Go, and borrowed from the original Guestbook example b
 
 K8petstore is built to be expanded, and aims to attract developers interested in building and maintaining a polyglot, non-trivial kubernetes app as a community.
 
-It can be a simple way to get started with kuberentes or golang application development.
+It can be a simple way to get started with kubernetes or golang application development.
 
 Thus we've tried to make it easy to hack on, even without kubernetes.  Just run the containers and glue them together using docker IP addresses !
 
@@ -103,7 +98,7 @@ Now that you are done hacking around on the app, you can run it in Kubernetes.  
 
 Now, how to run the entire application in Kubernetes?
 
-To simplify running this application, we have a single file, k8petstore.sh, which writes out json files on to disk.  This allows us to have dynamic parameters, without needing to worry about managing multiple json files.
+To simplify running this application, we have a single file, [k8petstore.sh](k8petstore.sh), which writes out json files on to disk.  This allows us to have dynamic parameters, e.g. the namespace is configured by `NS` whose default value is `k8petstore`, without needing to worry about managing multiple json files.
 
 You might want to change it to point to your customized Go image, if you chose to modify things, like the number of data generators (more generators will create more load on the redis master).
 
@@ -127,22 +122,15 @@ We are open to other ways of expanding the coverage and realism of the k8petstor
 
 Reach out with ideas, pull requests, and so on!
 
-The end goal is to support polyglot, real world, data-intensive application on kuberenetes which can be used both to learn how to maintain kubernetes applications
+The end goal is to support polyglot, real world, data-intensive application on kubernetes which can be used both to learn how to maintain kubernetes applications
 
 as well as for scale and functionality testing.
 
 ## Questions
 
-For questions on running this app, you can ask on [Slack](../../docs/troubleshooting.md#slack).
+For questions on running this app, you can ask on [Slack](http://slack.kubernetes.io).
 
 For questions about bigpetstore, and how the data is generated, ask on the apache bigtop mailing list.
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/examples/k8petstore/README.md?pixel)]()

@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,43 +26,47 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/kubectl"
+	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-const (
-	default_port  = 8001
-	proxy_example = `# Run a proxy to kubernetes apiserver on port 8011, serving static content from ./local/www/
-kubectl proxy --port=8011 --www=./local/www/
+var (
+	default_port = 8001
+	proxy_long   = templates.LongDesc(`
+		To proxy all of the kubernetes api and nothing else, use:
 
-# Run a proxy to kubernetes apiserver on an arbitrary local port.
-# The chosen port for the server will be output to stdout.
-kubectl proxy --port=0
+		    $ kubectl proxy --api-prefix=/
 
-# Run a proxy to kubernetes apiserver, changing the api prefix to k8s-api
-# This makes e.g. the pods api available at localhost:8011/k8s-api/v1/pods/
-kubectl proxy --api-prefix=/k8s-api`
+		To proxy only part of the kubernetes api and also some static files:
+
+		    $ kubectl proxy --www=/my/files --www-prefix=/static/ --api-prefix=/api/
+
+		The above lets you 'curl localhost:8001/api/v1/pods'.
+
+		To proxy the entire kubernetes api at a different root, use:
+
+		    $ kubectl proxy --api-prefix=/custom/
+
+		The above lets you 'curl localhost:8001/custom/api/v1/pods'`)
+
+	proxy_example = templates.Examples(`
+		# Run a proxy to kubernetes apiserver on port 8011, serving static content from ./local/www/
+		kubectl proxy --port=8011 --www=./local/www/
+
+		# Run a proxy to kubernetes apiserver on an arbitrary local port.
+		# The chosen port for the server will be output to stdout.
+		kubectl proxy --port=0
+
+		# Run a proxy to kubernetes apiserver, changing the api prefix to k8s-api
+		# This makes e.g. the pods api available at localhost:8011/k8s-api/v1/pods/
+		kubectl proxy --api-prefix=/k8s-api`)
 )
 
-func NewCmdProxy(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdProxy(f cmdutil.Factory, out io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "proxy [--port=PORT] [--www=static-dir] [--www-prefix=prefix] [--api-prefix=prefix]",
-		Short: "Run a proxy to the Kubernetes API server",
-		Long: `To proxy all of the kubernetes api and nothing else, use:
-
-kubectl proxy --api-prefix=/
-
-To proxy only part of the kubernetes api and also some static files:
-
-kubectl proxy --www=/my/files --www-prefix=/static/ --api-prefix=/api/
-
-The above lets you 'curl localhost:8001/api/v1/pods'.
-
-To proxy the entire kubernetes api at a different root, use:
-
-kubectl proxy --api-prefix=/custom/
-
-The above lets you 'curl localhost:8001/custom/api/v1/pods'
-`,
+		Use:     "proxy [--port=PORT] [--www=static-dir] [--www-prefix=prefix] [--api-prefix=prefix]",
+		Short:   "Run a proxy to the Kubernetes API server",
+		Long:    proxy_long,
 		Example: proxy_example,
 		Run: func(cmd *cobra.Command, args []string) {
 			err := RunProxy(f, out, cmd)
@@ -83,7 +87,7 @@ The above lets you 'curl localhost:8001/custom/api/v1/pods'
 	return cmd
 }
 
-func RunProxy(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command) error {
+func RunProxy(f cmdutil.Factory, out io.Writer, cmd *cobra.Command) error {
 	path := cmdutil.GetFlagString(cmd, "unix-socket")
 	port := cmdutil.GetFlagInt(cmd, "port")
 	address := cmdutil.GetFlagString(cmd, "address")

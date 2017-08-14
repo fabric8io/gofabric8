@@ -1,6 +1,7 @@
 package networking
 
 import (
+	"fmt"
 	"net"
 	"reflect"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kapiunversioned "k8s.io/kubernetes/pkg/api/unversioned"
+	utilwait "k8s.io/kubernetes/pkg/util/wait"
 	e2e "k8s.io/kubernetes/test/e2e/framework"
 
 	. "github.com/onsi/ginkgo"
@@ -28,7 +30,7 @@ var _ = Describe("[networking] OVS", func() {
 		oc := testexutil.NewCLI("get-flows", testexutil.KubeConfigPath())
 
 		It("should add and remove flows when pods are added and removed", func() {
-			nodes := e2e.GetReadySchedulableNodesOrDie(f1.Client)
+			nodes := e2e.GetReadySchedulableNodesOrDie(f1.ClientSet)
 			origFlows := getFlowsForAllNodes(oc, nodes.Items)
 			Expect(len(origFlows)).To(Equal(len(nodes.Items)))
 			for _, flows := range origFlows {
@@ -40,58 +42,25 @@ var _ = Describe("[networking] OVS", func() {
 			ipPort := e2e.LaunchWebserverPod(f1, podName, deployNodeName)
 			ip := strings.Split(ipPort, ":")[0]
 
-			newFlows := getFlowsForAllNodes(oc, nodes.Items)
-			for _, node := range nodes.Items {
-				if node.Name != deployNodeName {
-					Expect(reflect.DeepEqual(origFlows[node.Name], newFlows[node.Name])).To(BeTrue(), "Flows on non-deployed-to nodes should be unchanged")
-				}
-			}
-
-			var otherFlows []string
-			var arpOut, ipOut, arpIn, ipInGeneric, ipInGlobal, ipInIsolated bool
-			for _, flow := range newFlows[deployNodeName] {
-				if strings.Contains(flow, ip) {
-					if strings.Contains(flow, "arp_spa="+ip) {
-						arpOut = true
-					} else if strings.Contains(flow, "arp_tpa="+ip) {
-						arpIn = true
-					} else if strings.Contains(flow, "nw_src="+ip) {
-						ipOut = true
-					} else if strings.Contains(flow, "nw_dst="+ip) {
-						if strings.Contains(flow, "reg0=0x") {
-							ipInIsolated = true
-						} else if strings.Contains(flow, "reg0=0") {
-							ipInGlobal = true
-						} else {
-							ipInGeneric = true
-						}
-					} else {
-						Fail("found unexpected OVS flow: " + flow)
-					}
+			checkFlowsForAllNodes(oc, nodes.Items, func(nodeName string, newFlows []string) error {
+				if nodeName == deployNodeName {
+					return findFlowOrError("Should have flows referring to pod IP address", newFlows, ip)
 				} else {
-					otherFlows = append(otherFlows, flow)
+					return matchFlowsOrError("Flows on non-deployed-to nodes should be unchanged", newFlows, origFlows[nodeName])
 				}
-			}
-			Expect(arpOut).To(BeTrue(), "Should have an outgoing ARP rule")
-			Expect(arpIn).To(BeTrue(), "Should have an incoming ARP rule")
-			Expect(ipOut).To(BeTrue(), "Should have an outgoing IP rule")
-			if pluginIsolatesNamespaces() {
-				Expect(ipInGlobal && ipInIsolated).To(BeTrue(), "Should have global and isolated incoming IP rules")
-			} else {
-				Expect(ipInGeneric).To(BeTrue(), "Should have a generic incoming IP rule")
-			}
-			Expect(reflect.DeepEqual(origFlows[deployNodeName], otherFlows)).To(BeTrue(), "Flows on deployed-to node should be unchanged except for the new pod")
+			})
 
-			err := f1.Client.Pods(f1.Namespace.Name).Delete(podName, nil)
+			err := f1.ClientSet.Core().Pods(f1.Namespace.Name).Delete(podName, &kapi.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
-			postDeleteFlows := getFlowsForNode(oc, deployNodeName)
-			Expect(reflect.DeepEqual(origFlows[deployNodeName], postDeleteFlows)).To(BeTrue(), "Flows after deleting pod should be same as before creating it")
+			checkFlowsForNode(oc, deployNodeName, func(nodeName string, flows []string) error {
+				return matchFlowsOrError("Flows after deleting pod should be same as before creating it", flows, origFlows[nodeName])
+			})
 		})
 
 		It("should add and remove flows when nodes are added and removed", func() {
 			var err error
-			nodes := e2e.GetReadySchedulableNodesOrDie(f1.Client)
+			nodes := e2e.GetReadySchedulableNodesOrDie(f1.ClientSet)
 			origFlows := getFlowsForAllNodes(oc, nodes.Items)
 
 			// The SDN/OVS code doesn't care that the node doesn't actually exist,
@@ -132,8 +101,9 @@ var _ = Describe("[networking] OVS", func() {
 					},
 				},
 			}
-			node, err = f1.Client.Nodes().Create(node)
+			node, err = f1.ClientSet.Core().Nodes().Create(node)
 			Expect(err).NotTo(HaveOccurred())
+			defer f1.ClientSet.Core().Nodes().Delete(node.Name, &kapi.DeleteOptions{})
 
 			osClient, err := testutil.GetClusterAdminClient(testexutil.KubeConfigPath())
 			Expect(err).NotTo(HaveOccurred())
@@ -147,34 +117,11 @@ var _ = Describe("[networking] OVS", func() {
 			}
 			Expect(err).NotTo(HaveOccurred())
 
-			newFlows := getFlowsForAllNodes(oc, nodes.Items)
-			for nodeName := range newFlows {
-				var otherFlows []string
-				var tunIn, arpTunOut, ipTunOut bool
+			checkFlowsForAllNodes(oc, nodes.Items, func(nodeName string, newFlows []string) error {
+				return findFlowOrError("Should have flows referring to node IP address", newFlows, newNodeIP)
+			})
 
-				for _, flow := range newFlows[nodeName] {
-					if strings.Contains(flow, newNodeIP) {
-						if strings.Contains(flow, "tun_src="+newNodeIP) {
-							tunIn = true
-						} else if strings.Contains(flow, "arp,") && strings.Contains(flow, newNodeIP+"->tun_dst") {
-							arpTunOut = true
-						} else if strings.Contains(flow, "ip,") && strings.Contains(flow, newNodeIP+"->tun_dst") {
-							ipTunOut = true
-						} else {
-							Fail("found unexpected OVS flow: " + flow)
-						}
-					} else {
-						otherFlows = append(otherFlows, flow)
-					}
-				}
-
-				Expect(tunIn).To(BeTrue(), "Should have an incoming VXLAN tunnel rule")
-				Expect(arpTunOut).To(BeTrue(), "Should have an outgoing ARP VXLAN tunnel rule")
-				Expect(ipTunOut).To(BeTrue(), "Should have an outgoing IP VXLAN tunnel rule")
-				Expect(reflect.DeepEqual(origFlows[nodeName], otherFlows)).To(BeTrue(), "Flows should be unchanged except for the new node")
-			}
-
-			err = f1.Client.Nodes().Delete(nodeName)
+			err = f1.ClientSet.Core().Nodes().Delete(node.Name, &kapi.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			e2e.Logf("Waiting up to %v for HostSubnet to be deleted", hostSubnetTimeout)
 			for start := time.Now(); time.Since(start) < hostSubnetTimeout; time.Sleep(time.Second) {
@@ -185,8 +132,9 @@ var _ = Describe("[networking] OVS", func() {
 			}
 			Expect(err).NotTo(BeNil())
 
-			postDeleteFlows := getFlowsForAllNodes(oc, nodes.Items)
-			Expect(reflect.DeepEqual(origFlows, postDeleteFlows)).To(BeTrue(), "Flows after deleting node should be same as before creating it")
+			checkFlowsForAllNodes(oc, nodes.Items, func(nodeName string, flows []string) error {
+				return matchFlowsOrError("Flows after deleting node should be same as before creating it", flows, origFlows[nodeName])
+			})
 		})
 	})
 
@@ -195,7 +143,7 @@ var _ = Describe("[networking] OVS", func() {
 		oc := testexutil.NewCLI("get-flows", testexutil.KubeConfigPath())
 
 		It("should add and remove flows when services are added and removed", func() {
-			nodes := e2e.GetReadySchedulableNodesOrDie(f1.Client)
+			nodes := e2e.GetReadySchedulableNodesOrDie(f1.ClientSet)
 			origFlows := getFlowsForAllNodes(oc, nodes.Items)
 
 			serviceName := "ovs-test-service"
@@ -203,28 +151,48 @@ var _ = Describe("[networking] OVS", func() {
 			ipPort := launchWebserverService(f1, serviceName, deployNodeName)
 			ip := strings.Split(ipPort, ":")[0]
 
-			newFlows := getFlowsForAllNodes(oc, nodes.Items)
-			for _, node := range nodes.Items {
-				foundServiceFlow := false
-				for _, flow := range newFlows[node.Name] {
-					if strings.Contains(flow, "nw_dst="+ip) {
-						foundServiceFlow = true
-						break
-					}
-				}
-				Expect(foundServiceFlow).To(BeTrue(), "Each node contains a rule for the service")
-			}
+			checkFlowsForAllNodes(oc, nodes.Items, func(nodeName string, newFlows []string) error {
+				return findFlowOrError("Should have flows referring to service IP address", newFlows, ip)
+			})
 
-			err := f1.Client.Pods(f1.Namespace.Name).Delete(serviceName, nil)
+			err := f1.ClientSet.Core().Pods(f1.Namespace.Name).Delete(serviceName, &kapi.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			err = f1.Client.Services(f1.Namespace.Name).Delete(serviceName)
+			err = f1.ClientSet.Core().Services(f1.Namespace.Name).Delete(serviceName, &kapi.DeleteOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
-			postDeleteFlows := getFlowsForAllNodes(oc, nodes.Items)
-			Expect(reflect.DeepEqual(origFlows, postDeleteFlows)).To(BeTrue(), "Flows after deleting service should be same as before creating it")
+			checkFlowsForAllNodes(oc, nodes.Items, func(nodeName string, flows []string) error {
+				return matchFlowsOrError("Flows after deleting service should be same as before creating it", flows, origFlows[nodeName])
+			})
 		})
 	})
 })
+
+type FlowError struct {
+	msg      string
+	flows    []string
+	expected []string
+}
+
+func (err FlowError) Error() string {
+	return err.msg
+}
+
+func matchFlowsOrError(msg string, flows, expected []string) error {
+	if reflect.DeepEqual(flows, expected) {
+		return nil
+	} else {
+		return FlowError{msg, flows, expected}
+	}
+}
+
+func findFlowOrError(msg string, flows []string, ip string) error {
+	for _, flow := range flows {
+		if strings.Contains(flow, "="+ip+",") || strings.Contains(flow, "="+ip+" ") {
+			return nil
+		}
+	}
+	return FlowError{fmt.Sprintf("%s (%s)", msg, ip), flows, nil}
+}
 
 func doGetFlowsForNode(oc *testexutil.CLI, nodeName string) ([]string, error) {
 	pod := &kapi.Pod{
@@ -268,13 +236,13 @@ func doGetFlowsForNode(oc *testexutil.CLI, nodeName string) ([]string, error) {
 		},
 	}
 	f := oc.KubeFramework()
-	podClient := f.Client.Pods(f.Namespace.Name)
+	podClient := f.ClientSet.Core().Pods(f.Namespace.Name)
 	pod, err := podClient.Create(pod)
 	if err != nil {
 		return nil, err
 	}
-	defer podClient.Delete(pod.Name, nil)
-	err = waitForPodSuccessInNamespace(f.Client, pod.Name, "flow-check", f.Namespace.Name)
+	defer podClient.Delete(pod.Name, &kapi.DeleteOptions{})
+	err = waitForPodSuccessInNamespace(f.ClientSet, pod.Name, "flow-check", f.Namespace.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -292,12 +260,6 @@ func doGetFlowsForNode(oc *testexutil.CLI, nodeName string) ([]string, error) {
 	return flows, nil
 }
 
-func getFlowsForNode(oc *testexutil.CLI, nodeName string) []string {
-	flows, err := doGetFlowsForNode(oc, nodeName)
-	expectNoError(err)
-	return flows
-}
-
 func getFlowsForAllNodes(oc *testexutil.CLI, nodes []kapi.Node) map[string][]string {
 	var err error
 	flows := make(map[string][]string, len(nodes))
@@ -306,4 +268,55 @@ func getFlowsForAllNodes(oc *testexutil.CLI, nodes []kapi.Node) map[string][]str
 		expectNoError(err)
 	}
 	return flows
+}
+
+type CheckFlowFunc func(nodeName string, flows []string) error
+
+var checkFlowBackoff = utilwait.Backoff{
+	Duration: time.Second,
+	Factor:   2,
+	Steps:    5,
+}
+
+func checkFlowsForNode(oc *testexutil.CLI, nodeName string, checkFlow CheckFlowFunc) {
+	var lastCheckErr error
+	e2e.Logf("Checking OVS flows for node %q up to %d times", nodeName, checkFlowBackoff.Steps)
+	err := utilwait.ExponentialBackoff(checkFlowBackoff, func() (bool, error) {
+		flows, err := doGetFlowsForNode(oc, nodeName)
+		if err != nil {
+			return false, err
+		}
+		if lastCheckErr = checkFlow(nodeName, flows); lastCheckErr != nil {
+			e2e.Logf("Check failed (%v)", lastCheckErr)
+			return false, nil
+		}
+		return true, nil
+	})
+	if err != nil && lastCheckErr != nil {
+		err = lastCheckErr
+	}
+	expectNoError(err)
+}
+
+func checkFlowsForAllNodes(oc *testexutil.CLI, nodes []kapi.Node, checkFlow CheckFlowFunc) {
+	var lastCheckErr error
+	e2e.Logf("Checking OVS flows for all nodes up to %d times", checkFlowBackoff.Steps)
+	err := utilwait.ExponentialBackoff(checkFlowBackoff, func() (bool, error) {
+		lastCheckErr = nil
+		for _, node := range nodes {
+			flows, err := doGetFlowsForNode(oc, node.Name)
+			if err != nil {
+				return false, err
+			}
+			if lastCheckErr = checkFlow(node.Name, flows); lastCheckErr != nil {
+				e2e.Logf("Check failed for node %q (%v)", node.Name, lastCheckErr)
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil && lastCheckErr != nil {
+		err = lastCheckErr
+	}
+	expectNoError(err)
 }

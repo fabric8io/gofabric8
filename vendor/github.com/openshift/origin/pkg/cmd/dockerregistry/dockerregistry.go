@@ -32,11 +32,15 @@ import (
 	_ "github.com/docker/distribution/registry/storage/driver/gcs"
 	_ "github.com/docker/distribution/registry/storage/driver/inmemory"
 	_ "github.com/docker/distribution/registry/storage/driver/middleware/cloudfront"
+	_ "github.com/docker/distribution/registry/storage/driver/oss"
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	_ "github.com/docker/distribution/registry/storage/driver/swift"
 
+	"strings"
+
 	"github.com/openshift/origin/pkg/cmd/server/crypto"
 	"github.com/openshift/origin/pkg/dockerregistry/server"
+	"github.com/openshift/origin/pkg/dockerregistry/server/audit"
 )
 
 // Execute runs the Docker registry.
@@ -46,6 +50,7 @@ func Execute(configFile io.Reader) {
 		log.Fatalf("error parsing configuration file: %s", err)
 	}
 	setDefaultMiddleware(config)
+	setDefaultLogParameters(config)
 
 	ctx := context.Background()
 	ctx, err = configureLogging(ctx, config)
@@ -74,7 +79,6 @@ func Execute(configFile io.Reader) {
 
 	// TODO add https scheme
 	adminRouter := app.NewRoute().PathPrefix("/admin/").Subrouter()
-
 	pruneAccessRecords := func(*http.Request) []auth.Access {
 		return []auth.Access{
 			{
@@ -97,6 +101,16 @@ func Execute(configFile io.Reader) {
 		pruneAccessRecords,
 	)
 
+	// Registry extensions endpoint provides extra functionality to handle the image
+	// signatures.
+	server.RegisterSignatureHandler(app)
+
+	// Advertise features supported by OpenShift
+	if app.Config.HTTP.Headers == nil {
+		app.Config.HTTP.Headers = http.Header{}
+	}
+	app.Config.HTTP.Headers.Set("X-Registry-Supports-Signatures", "1")
+
 	app.RegisterHealthChecks()
 	handler := alive("/", app)
 	// TODO: temporarily keep for backwards compatibility; remove in the future
@@ -111,7 +125,31 @@ func Execute(configFile io.Reader) {
 			context.GetLogger(app).Fatalln(err)
 		}
 	} else {
-		tlsConf := crypto.SecureTLSConfig(&tls.Config{ClientAuth: tls.NoClientCert})
+		var (
+			minVersion   uint16
+			cipherSuites []uint16
+		)
+		if s := os.Getenv("REGISTRY_HTTP_TLS_MINVERSION"); len(s) > 0 {
+			minVersion, err = crypto.TLSVersion(s)
+			if err != nil {
+				context.GetLogger(app).Fatalln(fmt.Errorf("invalid TLS version %q specified in REGISTRY_HTTP_TLS_MINVERSION: %v (valid values are %q)", s, err, crypto.ValidTLSVersions()))
+			}
+		}
+		if s := os.Getenv("REGISTRY_HTTP_TLS_CIPHERSUITES"); len(s) > 0 {
+			for _, cipher := range strings.Split(s, ",") {
+				cipherSuite, err := crypto.CipherSuite(cipher)
+				if err != nil {
+					context.GetLogger(app).Fatalln(fmt.Errorf("invalid cipher suite %q specified in REGISTRY_HTTP_TLS_CIPHERSUITES: %v (valid suites are %q)", s, err, crypto.ValidCipherSuites()))
+				}
+				cipherSuites = append(cipherSuites, cipherSuite)
+			}
+		}
+
+		tlsConf := crypto.SecureTLSConfig(&tls.Config{
+			ClientAuth:   tls.NoClientCert,
+			MinVersion:   minVersion,
+			CipherSuites: cipherSuites,
+		})
 
 		if len(config.HTTP.TLS.ClientCAs) != 0 {
 			pool := x509.NewCertPool()
@@ -267,4 +305,11 @@ func setDefaultMiddleware(config *configuration.Configuration) {
 		log.Errorf("obsolete configuration detected, please add openshift %s middleware into registry config file", middlewareType)
 	}
 	return
+}
+
+func setDefaultLogParameters(config *configuration.Configuration) {
+	if len(config.Log.Fields) == 0 {
+		config.Log.Fields = make(map[string]interface{})
+	}
+	config.Log.Fields[audit.LogEntryType] = audit.DefaultLoggerType
 }

@@ -24,7 +24,7 @@ import (
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-func NewCmdRun(f *cmdutil.Factory) *cobra.Command {
+func NewCmdRun(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Runs a fabric8 microservice from one of the installed templates",

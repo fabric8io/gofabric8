@@ -11,8 +11,8 @@ import (
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
 )
 
-func addDefaultingFuncs(scheme *runtime.Scheme) {
-	err := scheme.AddDefaultingFuncs(
+func addDefaultingFuncs(scheme *runtime.Scheme) error {
+	return scheme.AddDefaultingFuncs(
 		func(obj *MasterConfig) {
 			if len(obj.APILevels) == 0 {
 				obj.APILevels = internal.DefaultOpenShiftAPILevels
@@ -42,23 +42,31 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 				obj.JenkinsPipelineConfig.ServiceName = "jenkins"
 			}
 			if obj.JenkinsPipelineConfig.AutoProvisionEnabled == nil {
-				v := false
+				v := true
 				obj.JenkinsPipelineConfig.AutoProvisionEnabled = &v
 			}
+
 			if obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides == nil {
-				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides = &ClientConnectionOverrides{
-					// historical values
-					QPS:   150.0,
-					Burst: 300,
-				}
+				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides = &ClientConnectionOverrides{}
+			}
+			// historical values
+			if obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.QPS <= 0 {
+				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.QPS = 150.0
+			}
+			if obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.Burst <= 0 {
+				obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides.Burst = 300
 			}
 			setDefault_ClientConnectionOverrides(obj.MasterClients.OpenShiftLoopbackClientConnectionOverrides)
+
 			if obj.MasterClients.ExternalKubernetesClientConnectionOverrides == nil {
-				obj.MasterClients.ExternalKubernetesClientConnectionOverrides = &ClientConnectionOverrides{
-					// historical values
-					QPS:   100.0,
-					Burst: 200,
-				}
+				obj.MasterClients.ExternalKubernetesClientConnectionOverrides = &ClientConnectionOverrides{}
+			}
+			// historical values
+			if obj.MasterClients.ExternalKubernetesClientConnectionOverrides.QPS <= 0 {
+				obj.MasterClients.ExternalKubernetesClientConnectionOverrides.QPS = 100.0
+			}
+			if obj.MasterClients.ExternalKubernetesClientConnectionOverrides.Burst <= 0 {
+				obj.MasterClients.ExternalKubernetesClientConnectionOverrides.Burst = 200
 			}
 			setDefault_ClientConnectionOverrides(obj.MasterClients.ExternalKubernetesClientConnectionOverrides)
 
@@ -78,7 +86,7 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 			noCloudProvider := kubeConfig != nil && (len(kubeConfig.ControllerArguments["cloud-provider"]) == 0 || kubeConfig.ControllerArguments["cloud-provider"][0] == "")
 
 			if noCloudProvider && len(obj.NetworkConfig.IngressIPNetworkCIDR) == 0 {
-				cidr := "172.46.0.0/16"
+				cidr := internal.DefaultIngressIPNetworkCIDR
 				if !(internal.CIDRsOverlap(cidr, obj.NetworkConfig.ClusterNetworkCIDR) || internal.CIDRsOverlap(cidr, obj.NetworkConfig.ServiceNetworkCIDR)) {
 					obj.NetworkConfig.IngressIPNetworkCIDR = cidr
 				}
@@ -212,14 +220,10 @@ func addDefaultingFuncs(scheme *runtime.Scheme) {
 			}
 		},
 	)
-	if err != nil {
-		// If one of the conversion functions is malformed, detect it immediately.
-		panic(err)
-	}
 }
 
-func addConversionFuncs(scheme *runtime.Scheme) {
-	err := scheme.AddConversionFuncs(
+func addConversionFuncs(scheme *runtime.Scheme) error {
+	return scheme.AddConversionFuncs(
 		convert_runtime_Object_To_runtime_RawExtension,
 		convert_runtime_RawExtension_To_runtime_Object,
 
@@ -336,10 +340,6 @@ func addConversionFuncs(scheme *runtime.Scheme) {
 		api.Convert_bool_To_Pointer_bool,
 		api.Convert_Pointer_bool_To_bool,
 	)
-	if err != nil {
-		// If one of the conversion functions is malformed, detect it immediately.
-		panic(err)
-	}
 }
 
 // convert_runtime_Object_To_runtime_RawExtension attempts to convert runtime.Objects to the appropriate target.

@@ -5,15 +5,19 @@ import (
 	"io"
 	"sort"
 
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	clientcmdapi "k8s.io/kubernetes/pkg/client/unversioned/clientcmd/api"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
+	oapi "github.com/openshift/origin/pkg/api"
 	"github.com/openshift/origin/pkg/client"
 	cliconfig "github.com/openshift/origin/pkg/cmd/cli/config"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	"github.com/openshift/origin/pkg/project/api"
+	projectapihelpers "github.com/openshift/origin/pkg/project/api/helpers"
 
 	"github.com/spf13/cobra"
 )
@@ -22,6 +26,7 @@ type ProjectsOptions struct {
 	Config       clientcmdapi.Config
 	ClientConfig *restclient.Config
 	Client       *client.Client
+	KubeClient   kclientset.Interface
 	Out          io.Writer
 	PathOptions  *kclientcmd.PathOptions
 
@@ -44,12 +49,12 @@ func (p SortByProjectName) Less(i, j int) bool {
 	return p[i].Name < p[j].Name
 }
 
-const (
-	projectsLong = `
-Display information about the current active project and existing projects on the server.
+var (
+	projectsLong = templates.LongDesc(`
+		Display information about the current active project and existing projects on the server.
 
-For advanced configuration, or to manage the contents of your config file, use the 'config'
-command.`
+		For advanced configuration, or to manage the contents of your config file, use the 'config'
+		command.`)
 )
 
 // NewCmdProjects implements the OpenShift cli rollback command
@@ -85,17 +90,17 @@ func (o *ProjectsOptions) Complete(f *clientcmd.Factory, args []string, commandN
 	o.CommandName = commandName
 
 	var err error
-	o.Config, err = f.OpenShiftClientConfig.RawConfig()
+	o.Config, err = f.OpenShiftClientConfig().RawConfig()
 	if err != nil {
 		return err
 	}
 
-	o.ClientConfig, err = f.OpenShiftClientConfig.ClientConfig()
+	o.ClientConfig, err = f.OpenShiftClientConfig().ClientConfig()
 	if err != nil {
 		return err
 	}
 
-	o.Client, _, err = f.Clients()
+	o.Client, o.KubeClient, err = f.Clients()
 	if err != nil {
 		return err
 	}
@@ -123,7 +128,7 @@ func (o ProjectsOptions) RunProjects() error {
 	client := o.Client
 
 	if len(currentProject) > 0 {
-		if _, currentProjectErr := client.Projects().Get(currentProject); currentProjectErr == nil {
+		if currentProjectErr := confirmProjectAccess(currentProject, o.Client, o.KubeClient); currentProjectErr == nil {
 			currentProjectExists = true
 		}
 	}
@@ -134,16 +139,18 @@ func (o ProjectsOptions) RunProjects() error {
 	}
 
 	var msg string
-	projects, err := getProjects(client)
+	projects, err := getProjects(client, o.KubeClient)
 	if err == nil {
 		switch len(projects) {
 		case 0:
-			msg += "You are not a member of any projects. You can request a project to be created with the 'new-project' command."
+			if !o.DisplayShort {
+				msg += "You are not a member of any projects. You can request a project to be created with the 'new-project' command."
+			}
 		case 1:
 			if o.DisplayShort {
-				msg += fmt.Sprintf("%s", api.DisplayNameAndNameForProject(&projects[0]))
+				msg += fmt.Sprintf("%s", projects[0].Name)
 			} else {
-				msg += fmt.Sprintf("You have one project on this server: %q.", api.DisplayNameAndNameForProject(&projects[0]))
+				msg += fmt.Sprintf("You have one project on this server: %q.", projectapihelpers.DisplayNameAndNameForProject(&projects[0]))
 			}
 		default:
 			asterisk := ""
@@ -155,7 +162,7 @@ func (o ProjectsOptions) RunProjects() error {
 			sort.Sort(SortByProjectName(projects))
 			for _, project := range projects {
 				count = count + 1
-				displayName := project.Annotations["openshift.io/display-name"]
+				displayName := project.Annotations[oapi.OpenShiftDisplayName]
 				linebreak := "\n"
 				if len(displayName) == 0 {
 					displayName = project.Annotations["displayName"]

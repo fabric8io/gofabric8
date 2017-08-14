@@ -31,7 +31,7 @@ type tenantDeleteFlags struct {
 	tenant  string
 }
 
-func NewCmdTenantDelete(f *cmdutil.Factory) *cobra.Command {
+func NewCmdTenantDelete(f cmdutil.Factory) *cobra.Command {
 	p := &tenantDeleteFlags{}
 	cmd := &cobra.Command{
 		Use:   "delete",
@@ -50,7 +50,7 @@ func NewCmdTenantDelete(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *tenantDeleteFlags) tenantDelete(f *cmdutil.Factory) error {
+func (p *tenantDeleteFlags) tenantDelete(f cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)

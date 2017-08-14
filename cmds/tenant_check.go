@@ -31,7 +31,7 @@ type tenantCheckFlags struct {
 	tenant string
 }
 
-func NewCmdTenantCheck(f *cmdutil.Factory) *cobra.Command {
+func NewCmdTenantCheck(f cmdutil.Factory) *cobra.Command {
 	p := &tenantCheckFlags{}
 	cmd := &cobra.Command{
 		Use:   "check",
@@ -47,7 +47,7 @@ func NewCmdTenantCheck(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *tenantCheckFlags) tenantCheck(f *cmdutil.Factory) error {
+func (p *tenantCheckFlags) tenantCheck(f cmdutil.Factory) error {
 	c, cfg := client.NewClient(f)
 	ns, _, _ := f.DefaultNamespace()
 	oc, _ := client.NewOpenShiftClient(cfg)

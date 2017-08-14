@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubernetes architecture
 
 A running Kubernetes cluster contains node agents (`kubelet`) and master
@@ -83,13 +78,6 @@ The [`replicationcontroller`](../user-guide/replication-controller.md) is a
 mechanism that is layered on top of the simple [`pod`](../user-guide/pods.md)
 API. We eventually plan to port it to a generic plug-in mechanism, once one is
 implemented.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

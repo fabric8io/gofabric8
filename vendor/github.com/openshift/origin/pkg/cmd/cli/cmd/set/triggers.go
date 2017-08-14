@@ -20,6 +20,7 @@ import (
 
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	buildutil "github.com/openshift/origin/pkg/build/util"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
@@ -28,42 +29,43 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 )
 
-const (
-	triggersLong = `
-Set or remove triggers for build configs and deployment configs
+var (
+	triggersLong = templates.LongDesc(`
+		Set or remove triggers for build configs and deployment configs
 
-All build configs and deployment configs may have a set of triggers that result in a new deployment
-or build being created. This command enables you to alter those triggers - making them automatic or
-manual, adding new entries, or changing existing entries.
+		All build configs and deployment configs may have a set of triggers that result in a new deployment
+		or build being created. This command enables you to alter those triggers - making them automatic or
+		manual, adding new entries, or changing existing entries.
 
-Deployments support triggering off of image changes and on config changes. Config changes are any
-alterations to the pod template, while image changes will result in the container image value being
-updated whenever an image stream tag is updated.
+		Deployments support triggering off of image changes and on config changes. Config changes are any
+		alterations to the pod template, while image changes will result in the container image value being
+		updated whenever an image stream tag is updated.
 
-Build configs support triggering off of image changes, config changes, and webhooks (both GitHub-specific
-and generic). The config change trigger for a build config will only trigger the first build.`
+		Build configs support triggering off of image changes, config changes, and webhooks (both GitHub-specific
+		and generic). The config change trigger for a build config will only trigger the first build.`)
 
-	triggersExample = `  # Print the triggers on the registry
-  %[1]s triggers dc/registry
+	triggersExample = templates.Examples(`
+		# Print the triggers on the registry
+	  %[1]s triggers dc/registry
 
-  # Set all triggers to manual
-  %[1]s triggers dc/registry --manual
+	  # Set all triggers to manual
+	  %[1]s triggers dc/registry --manual
 
-  # Enable all automatic triggers
-  %[1]s triggers dc/registry --auto
+	  # Enable all automatic triggers
+	  %[1]s triggers dc/registry --auto
 
-  # Reset the GitHub webhook on a build to a new, generated secret
-  %[1]s triggers bc/webapp --from-github
-  %[1]s triggers bc/webapp --from-webhook
+	  # Reset the GitHub webhook on a build to a new, generated secret
+	  %[1]s triggers bc/webapp --from-github
+	  %[1]s triggers bc/webapp --from-webhook
 
-  # Remove all triggers
-  %[1]s triggers bc/webapp --remove-all
+	  # Remove all triggers
+	  %[1]s triggers bc/webapp --remove-all
 
-  # Stop triggering on config change
-  %[1]s triggers dc/registry --from-config --remove
+	  # Stop triggering on config change
+	  %[1]s triggers dc/registry --from-config --remove
 
-  # Add an image trigger to a build config
-  %[1]s triggers bc/webapp --from-image=namespace1/image:latest`
+	  # Add an image trigger to a build config
+	  %[1]s triggers bc/webapp --from-image=namespace1/image:latest`)
 )
 
 type TriggersOptions struct {
@@ -84,7 +86,7 @@ type TriggersOptions struct {
 	OutputVersion unversioned.GroupVersion
 
 	PrintTable  bool
-	PrintObject func(runtime.Object) error
+	PrintObject func([]*resource.Info) error
 
 	Remove    bool
 	RemoveAll bool
@@ -117,7 +119,7 @@ func NewCmdTriggers(fullName string, f *clientcmd.Factory, out, errOut io.Writer
 			kcmdutil.CheckErr(options.Complete(f, cmd, args))
 			kcmdutil.CheckErr(options.Validate())
 			if err := options.Run(); err != nil {
-				// TODO: move met to kcmdutil
+				// TODO: move me to kcmdutil
 				if err == cmdutil.ErrExit {
 					os.Exit(1)
 				}
@@ -128,20 +130,20 @@ func NewCmdTriggers(fullName string, f *clientcmd.Factory, out, errOut io.Writer
 
 	kcmdutil.AddPrinterFlags(cmd)
 	cmd.Flags().StringVarP(&options.Selector, "selector", "l", options.Selector, "Selector (label query) to filter on")
-	cmd.Flags().BoolVar(&options.All, "all", options.All, "Select all resources in the namespace of the specified resource types")
+	cmd.Flags().BoolVar(&options.All, "all", options.All, "If true, select all resources in the namespace of the specified resource types")
 	cmd.Flags().StringSliceVarP(&options.Filenames, "filename", "f", options.Filenames, "Filename, directory, or URL to file to use to edit the resource.")
 
 	cmd.Flags().BoolVar(&options.Remove, "remove", options.Remove, "If true, remove the specified trigger(s).")
 	cmd.Flags().BoolVar(&options.RemoveAll, "remove-all", options.RemoveAll, "If true, remove all triggers.")
-	cmd.Flags().BoolVar(&options.Auto, "auto", options.Auto, "Enable all triggers, or just the specified trigger")
-	cmd.Flags().BoolVar(&options.Manual, "manual", options.Manual, "Set all triggers to manual, or just the specified trigger")
+	cmd.Flags().BoolVar(&options.Auto, "auto", options.Auto, "If true, enable all triggers, or just the specified trigger")
+	cmd.Flags().BoolVar(&options.Manual, "manual", options.Manual, "If true, set all triggers to manual, or just the specified trigger")
 
 	cmd.Flags().BoolVar(&options.FromConfig, "from-config", options.FromConfig, "If set, configuration changes will result in a change")
 	cmd.Flags().StringVarP(&options.ContainerNames, "containers", "c", options.ContainerNames, "Comma delimited list of container names this trigger applies to on deployments; defaults to the name of the only container")
 	cmd.Flags().StringVar(&options.FromImage, "from-image", options.FromImage, "An image stream tag to trigger off of")
-	options.FromGitHub = cmd.Flags().Bool("from-github", false, "A GitHub webhook - a secret value will be generated automatically")
-	options.FromWebHook = cmd.Flags().Bool("from-webhook", false, "A generic webhook - a secret value will be generated automatically")
-	options.FromWebHookAllowEnv = cmd.Flags().Bool("from-webhook-allow-env", false, "A generic webhook which can provide environment variables - a secret value will be generated automatically")
+	options.FromGitHub = cmd.Flags().Bool("from-github", false, "If true, a GitHub webhook - a secret value will be generated automatically")
+	options.FromWebHook = cmd.Flags().Bool("from-webhook", false, "If true, a generic webhook - a secret value will be generated automatically")
+	options.FromWebHookAllowEnv = cmd.Flags().Bool("from-webhook-allow-env", false, "If true, a generic webhook which can provide environment variables - a secret value will be generated automatically")
 
 	cmd.MarkFlagFilename("filename", "yaml", "yml", "json")
 
@@ -198,18 +200,20 @@ func (o *TriggersOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, arg
 		o.Auto = true
 	}
 
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 	o.Builder = resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder()).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(explicit, false, o.Filenames...).
+		FilenameParam(explicit, &resource.FilenameOptions{Recursive: false, Filenames: o.Filenames}).
 		SelectorParam(o.Selector).
 		ResourceTypeOrNameArgs(o.All, args...).
 		Flatten()
 
 	output := kcmdutil.GetFlagString(cmd, "output")
-	if len(output) != 0 {
-		o.PrintObject = func(obj runtime.Object) error { return f.PrintObject(cmd, mapper, obj, o.Out) }
+	if len(output) > 0 {
+		o.PrintObject = func(infos []*resource.Info) error {
+			return f.PrintResourceInfos(cmd, infos, o.Out)
+		}
 	}
 
 	o.Encoder = f.JSONEncoder()
@@ -260,9 +264,9 @@ func (o *TriggersOptions) Validate() error {
 
 func (o *TriggersOptions) Run() error {
 	infos := o.Infos
-	singular := len(o.Infos) <= 1
+	singleItemImplied := len(o.Infos) <= 1
 	if o.Builder != nil {
-		loaded, err := o.Builder.Do().IntoSingular(&singular).Infos()
+		loaded, err := o.Builder.Do().IntoSingleItemImplied(&singleItemImplied).Infos()
 		if err != nil {
 			return err
 		}
@@ -280,15 +284,11 @@ func (o *TriggersOptions) Run() error {
 	patches := CalculatePatches(infos, o.Encoder, func(info *resource.Info) (bool, error) {
 		return UpdateTriggersForObject(info.Object, updateTriggerFn)
 	})
-	if singular && len(patches) == 0 {
+	if singleItemImplied && len(patches) == 0 {
 		return fmt.Errorf("%s/%s is not a deployment config or build config", infos[0].Mapping.Resource, infos[0].Name)
 	}
 	if o.PrintObject != nil {
-		object, err := resource.AsVersionedObject(infos, !singular, o.OutputVersion, kapi.Codecs.LegacyCodec(o.OutputVersion))
-		if err != nil {
-			return err
-		}
-		return o.PrintObject(object)
+		return o.PrintObject(infos)
 	}
 
 	failed := false
@@ -315,7 +315,7 @@ func (o *TriggersOptions) Run() error {
 		}
 
 		info.Refresh(obj, true)
-		kcmdutil.PrintSuccess(o.Mapper, o.ShortOutput, o.Out, info.Mapping.Resource, info.Name, "updated")
+		kcmdutil.PrintSuccess(o.Mapper, o.ShortOutput, o.Out, info.Mapping.Resource, info.Name, false, "updated")
 	}
 	if failed {
 		return cmdutil.ErrExit

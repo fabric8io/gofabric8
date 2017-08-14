@@ -2,21 +2,17 @@ package github
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"mime"
 	"net/http"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/errors"
 
 	"github.com/golang/glog"
 	"github.com/openshift/origin/pkg/build/api"
 	"github.com/openshift/origin/pkg/build/webhook"
-)
-
-var (
-	ErrNoGitHubEvent = errors.New("missing X-GitHub-Event or X-Gogs-Event")
 )
 
 // WebHook used for processing github webhook requests.
@@ -57,19 +53,19 @@ func (p *WebHook) Extract(buildCfg *api.BuildConfig, secret, path string, req *h
 		return revision, envvars, proceed, err
 	}
 	method := getEvent(req.Header)
-	if method != "ping" && method != "push" {
-		return revision, envvars, proceed, fmt.Errorf("Unknown X-GitHub-Event or X-Gogs-Event %s", method)
+	if method != "ping" && method != "push" && method != "Push Hook" {
+		return revision, envvars, proceed, errors.NewBadRequest(fmt.Sprintf("Unknown X-GitHub-Event, X-Gogs-Event or X-Gitlab-Event %s", method))
 	}
 	if method == "ping" {
 		return revision, envvars, proceed, err
 	}
 	body, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		return revision, envvars, proceed, err
+		return revision, envvars, proceed, errors.NewBadRequest(err.Error())
 	}
 	var event pushEvent
 	if err = json.Unmarshal(body, &event); err != nil {
-		return revision, envvars, proceed, err
+		return revision, envvars, proceed, errors.NewBadRequest(err.Error())
 	}
 	if !webhook.GitRefMatches(event.Ref, webhook.DefaultConfigRef, &buildCfg.Spec.Source) {
 		glog.V(2).Infof("Skipping build for BuildConfig %s/%s.  Branch reference from '%s' does not match configuration", buildCfg.Namespace, buildCfg, event)
@@ -89,18 +85,18 @@ func (p *WebHook) Extract(buildCfg *api.BuildConfig, secret, path string, req *h
 
 func verifyRequest(req *http.Request) error {
 	if method := req.Method; method != "POST" {
-		return fmt.Errorf("unsupported HTTP method %s", method)
+		return webhook.MethodNotSupported
 	}
 	contentType := req.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return fmt.Errorf("non-parseable Content-Type %s (%s)", contentType, err)
+		return errors.NewBadRequest(fmt.Sprintf("non-parseable Content-Type %s (%s)", contentType, err))
 	}
 	if mediaType != "application/json" {
-		return fmt.Errorf("unsupported Content-Type %s", contentType)
+		return errors.NewBadRequest(fmt.Sprintf("unsupported Content-Type %s", contentType))
 	}
 	if len(getEvent(req.Header)) == 0 {
-		return ErrNoGitHubEvent
+		return errors.NewBadRequest("missing X-GitHub-Event, X-Gogs-Event or X-Gitlab-Event")
 	}
 	return nil
 }
@@ -109,6 +105,9 @@ func getEvent(header http.Header) string {
 	event := header.Get("X-GitHub-Event")
 	if len(event) == 0 {
 		event = header.Get("X-Gogs-Event")
+	}
+	if len(event) == 0 {
+		event = header.Get("X-Gitlab-Event")
 	}
 	return event
 }

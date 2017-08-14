@@ -12,14 +12,13 @@ import (
 
 	"github.com/RangelReale/osin"
 	"github.com/RangelReale/osincli"
-	restful "github.com/emicklei/go-restful"
 	"github.com/golang/glog"
 	"github.com/pborman/uuid"
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrs "k8s.io/kubernetes/pkg/api/errors"
 	kuser "k8s.io/kubernetes/pkg/auth/user"
-	"k8s.io/kubernetes/pkg/client/unversioned"
+	"k8s.io/kubernetes/pkg/client/retry"
 	knet "k8s.io/kubernetes/pkg/util/net"
 	"k8s.io/kubernetes/pkg/util/sets"
 
@@ -71,25 +70,28 @@ import (
 const (
 	OpenShiftOAuthAPIPrefix      = "/oauth"
 	openShiftLoginPrefix         = "/login"
-	OpenShiftApprovePrefix       = "/oauth/approve"
+	openShiftApproveSubpath      = "approve"
 	OpenShiftOAuthCallbackPrefix = "/oauth2callback"
 	OpenShiftWebConsoleClientID  = "openshift-web-console"
 	OpenShiftBrowserClientID     = "openshift-browser-client"
 	OpenShiftCLIClientID         = "openshift-challenging-client"
 )
 
-// InstallAPI registers endpoints for an OAuth2 server into the provided mux,
-// then returns an array of strings indicating what endpoints were started
-// (these are format strings that will expect to be sent a single string value).
-func (c *AuthConfig) InstallAPI(container *restful.Container) ([]string, error) {
-	mux := c.getMux(container)
+// WithOAuth decorates the given handler by serving the OAuth2 endpoints while
+// passing through all other requests to the given handler.
+func (c *AuthConfig) WithOAuth(handler http.Handler) (http.Handler, error) {
+	baseMux := http.NewServeMux()
+	mux := c.possiblyWrapMux(baseMux)
+
+	// pass through all other requests
+	mux.Handle("/", handler)
 
 	clientStorage, err := clientetcd.NewREST(c.RESTOptionsGetter)
 	if err != nil {
 		return nil, err
 	}
 	clientRegistry := clientregistry.NewRegistry(clientStorage)
-	combinedOAuthClientGetter := saoauth.NewServiceAccountOAuthClientGetter(c.KubeClient, c.KubeClient, clientRegistry, oauthapi.GrantHandlerType(c.Options.GrantConfig.ServiceAccountMethod))
+	combinedOAuthClientGetter := saoauth.NewServiceAccountOAuthClientGetter(c.KubeClient.Core(), c.KubeClient.Core(), c.OpenShiftClient, clientRegistry, oauthapi.GrantHandlerType(c.Options.GrantConfig.ServiceAccountMethod))
 
 	accessTokenStorage, err := accesstokenetcd.NewREST(c.RESTOptionsGetter, combinedOAuthClientGetter, c.EtcdBackends...)
 	if err != nil {
@@ -97,7 +99,7 @@ func (c *AuthConfig) InstallAPI(container *restful.Container) ([]string, error) 
 	}
 	accessTokenRegistry := accesstokenregistry.NewRegistry(accessTokenStorage)
 
-	authorizeTokenStorage, err := authorizetokenetcd.NewREST(c.RESTOptionsGetter, combinedOAuthClientGetter, c.EtcdBackends...)
+	authorizeTokenStorage, err := authorizetokenetcd.NewREST(c.RESTOptionsGetter, combinedOAuthClientGetter)
 	if err != nil {
 		return nil, err
 	}
@@ -185,21 +187,19 @@ func (c *AuthConfig) InstallAPI(container *restful.Container) ([]string, error) 
 	// glog.Infof("grant checker: %#v", grantChecker)
 	// glog.Infof("grant handler: %#v", grantHandler)
 
-	return []string{
-		fmt.Sprintf("Started OAuth2 API at %%s%s", OpenShiftOAuthAPIPrefix),
-	}, nil
+	return baseMux, nil
 }
 
-func (c *AuthConfig) getMux(container *restful.Container) cmdutil.Mux {
-	// Register directly into the container's mux
+func (c *AuthConfig) possiblyWrapMux(mux cmdutil.Mux) cmdutil.Mux {
+	// Register directly into the given mux
 	if c.HandlerWrapper == nil {
-		return container.ServeMux
+		return mux
 	}
 
 	// Wrap all handlers before registering into the container's mux
 	// This lets us do things like defer session clearing to the end of a request
 	return &handlerWrapperMux{
-		mux:     container.ServeMux,
+		mux:     mux,
 		wrapper: c.HandlerWrapper,
 	}
 }
@@ -240,14 +240,14 @@ func OpenShiftOAuthTokenRequestURL(masterAddr string) string {
 	return masterAddr + path.Join(OpenShiftOAuthAPIPrefix, tokenrequest.RequestTokenEndpoint)
 }
 
-func ensureOAuthClient(client oauthapi.OAuthClient, clientRegistry clientregistry.Registry, preserveExistingRedirects bool) error {
+func ensureOAuthClient(client oauthapi.OAuthClient, clientRegistry clientregistry.Registry, preserveExistingRedirects, preserveExistingSecret bool) error {
 	ctx := kapi.NewContext()
 	_, err := clientRegistry.CreateClient(ctx, &client)
 	if err == nil || !kerrs.IsAlreadyExists(err) {
 		return err
 	}
 
-	return unversioned.RetryOnConflict(unversioned.DefaultRetry, func() error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		existing, err := clientRegistry.GetClient(ctx, client.Name)
 		if err != nil {
 			return err
@@ -256,7 +256,7 @@ func ensureOAuthClient(client oauthapi.OAuthClient, clientRegistry clientregistr
 		// Ensure the correct challenge setting
 		existing.RespondWithChallenges = client.RespondWithChallenges
 		// Preserve an existing client secret
-		if len(existing.Secret) == 0 {
+		if !preserveExistingSecret || len(existing.Secret) == 0 {
 			existing.Secret = client.Secret
 		}
 
@@ -290,12 +290,12 @@ func CreateOrUpdateDefaultOAuthClients(masterPublicAddr string, assetPublicAddre
 	{
 		webConsoleClient := oauthapi.OAuthClient{
 			ObjectMeta:            kapi.ObjectMeta{Name: OpenShiftWebConsoleClientID},
-			Secret:                uuid.New(),
+			Secret:                "",
 			RespondWithChallenges: false,
 			RedirectURIs:          assetPublicAddresses,
 			GrantMethod:           oauthapi.GrantHandlerAuto,
 		}
-		if err := ensureOAuthClient(webConsoleClient, clientRegistry, true); err != nil {
+		if err := ensureOAuthClient(webConsoleClient, clientRegistry, true, false); err != nil {
 			return err
 		}
 	}
@@ -308,7 +308,7 @@ func CreateOrUpdateDefaultOAuthClients(masterPublicAddr string, assetPublicAddre
 			RedirectURIs:          []string{masterPublicAddr + path.Join(OpenShiftOAuthAPIPrefix, tokenrequest.DisplayTokenEndpoint)},
 			GrantMethod:           oauthapi.GrantHandlerAuto,
 		}
-		if err := ensureOAuthClient(browserClient, clientRegistry, true); err != nil {
+		if err := ensureOAuthClient(browserClient, clientRegistry, true, true); err != nil {
 			return err
 		}
 	}
@@ -316,12 +316,12 @@ func CreateOrUpdateDefaultOAuthClients(masterPublicAddr string, assetPublicAddre
 	{
 		cliClient := oauthapi.OAuthClient{
 			ObjectMeta:            kapi.ObjectMeta{Name: OpenShiftCLIClientID},
-			Secret:                uuid.New(),
+			Secret:                "",
 			RespondWithChallenges: true,
 			RedirectURIs:          []string{masterPublicAddr + path.Join(OpenShiftOAuthAPIPrefix, tokenrequest.ImplicitTokenEndpoint)},
 			GrantMethod:           oauthapi.GrantHandlerAuto,
 		}
-		if err := ensureOAuthClient(cliClient, clientRegistry, false); err != nil {
+		if err := ensureOAuthClient(cliClient, clientRegistry, false, false); err != nil {
 			return err
 		}
 	}
@@ -359,11 +359,13 @@ func (c *AuthConfig) getGrantHandler(mux cmdutil.Mux, auth authenticator.Request
 	// Since any OAuth client could require prompting, we will unconditionally
 	// start the GrantServer here.
 	grantServer := grant.NewGrant(c.getCSRF(), auth, grant.DefaultFormRenderer, clientregistry, authregistry)
-	grantServer.Install(mux, OpenShiftApprovePrefix)
+	grantServer.Install(mux, path.Join(OpenShiftOAuthAPIPrefix, osinserver.AuthorizePath, openShiftApproveSubpath))
 
 	// Set defaults for standard clients. These can be overridden.
-	return handlers.NewPerClientGrant(handlers.NewRedirectGrant(OpenShiftApprovePrefix),
-		oauthapi.GrantHandlerType(c.Options.GrantConfig.Method))
+	return handlers.NewPerClientGrant(
+		handlers.NewRedirectGrant(openShiftApproveSubpath),
+		oauthapi.GrantHandlerType(c.Options.GrantConfig.Method),
+	)
 }
 
 // getAuthenticationFinalizer returns an authentication finalizer which is called just prior to writing a response to an authorization request
@@ -534,7 +536,7 @@ func (c *AuthConfig) getOAuthProvider(identityProvider configapi.IdentityProvide
 		if err != nil {
 			return nil, err
 		}
-		return github.NewProvider(identityProvider.Name, provider.ClientID, clientSecret, provider.Organizations), nil
+		return github.NewProvider(identityProvider.Name, provider.ClientID, clientSecret, provider.Organizations, provider.Teams), nil
 
 	case (*configapi.GitLabIdentityProvider):
 		transport, err := cmdutil.TransportFor(provider.CA, "", "")
@@ -761,28 +763,4 @@ func (redirectSuccessHandler) AuthenticationSucceeded(user kuser.Info, then stri
 
 	http.Redirect(w, req, then, http.StatusFound)
 	return true, nil
-}
-
-// authenticationHandlerFilter creates a filter object that will enforce authentication directly
-func authenticationHandlerFilter(handler http.Handler, authenticator authenticator.Request, contextMapper kapi.RequestContextMapper) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		user, ok, err := authenticator.AuthenticateRequest(req)
-		if err != nil || !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		ctx, ok := contextMapper.Get(req)
-		if !ok {
-			http.Error(w, "Unable to find request context", http.StatusInternalServerError)
-			return
-		}
-		if err := contextMapper.Update(req, kapi.WithUser(ctx, user)); err != nil {
-			glog.V(4).Infof("Error setting authenticated context: %v", err)
-			http.Error(w, "Unable to set authenticated request context", http.StatusInternalServerError)
-			return
-		}
-
-		handler.ServeHTTP(w, req)
-	})
 }

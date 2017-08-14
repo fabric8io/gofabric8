@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import (
 	"k8s.io/kubernetes/pkg/client/cache"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/controller"
-	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/quota"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/metrics"
@@ -60,7 +59,7 @@ type ResourceQuotaController struct {
 	// An index of resource quota objects by namespace
 	rqIndexer cache.Indexer
 	// Watches changes to all resource quota
-	rqController *framework.Controller
+	rqController *cache.Controller
 	// ResourceQuota objects that need to be synchronized
 	queue workqueue.RateLimitingInterface
 	// missingUsageQueue holds objects that are missing the initial usage informatino
@@ -72,27 +71,27 @@ type ResourceQuotaController struct {
 	// knows how to calculate usage
 	registry quota.Registry
 	// controllers monitoring to notify for replenishment
-	replenishmentControllers []framework.ControllerInterface
+	replenishmentControllers []cache.ControllerInterface
 }
 
 func NewResourceQuotaController(options *ResourceQuotaControllerOptions) *ResourceQuotaController {
 	// build the resource quota controller
 	rq := &ResourceQuotaController{
 		kubeClient:               options.KubeClient,
-		queue:                    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "controller_resourcequota_primary"),
-		missingUsageQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "controller_resourcequota_priority"),
+		queue:                    workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resourcequota_primary"),
+		missingUsageQueue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "resourcequota_priority"),
 		resyncPeriod:             options.ResyncPeriod,
 		registry:                 options.Registry,
-		replenishmentControllers: []framework.ControllerInterface{},
+		replenishmentControllers: []cache.ControllerInterface{},
 	}
-	if options.KubeClient != nil && options.KubeClient.Core().GetRESTClient().GetRateLimiter() != nil {
-		metrics.RegisterMetricAndTrackRateLimiterUsage("resource_quota_controller", options.KubeClient.Core().GetRESTClient().GetRateLimiter())
+	if options.KubeClient != nil && options.KubeClient.Core().RESTClient().GetRateLimiter() != nil {
+		metrics.RegisterMetricAndTrackRateLimiterUsage("resource_quota_controller", options.KubeClient.Core().RESTClient().GetRateLimiter())
 	}
 	// set the synchronization handler
 	rq.syncHandler = rq.syncResourceQuotaFromKey
 
 	// build the controller that observes quota
-	rq.rqIndexer, rq.rqController = framework.NewIndexerInformer(
+	rq.rqIndexer, rq.rqController = cache.NewIndexerInformer(
 		&cache.ListWatch{
 			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
 				return rq.kubeClient.Core().ResourceQuotas(api.NamespaceAll).List(options)
@@ -103,7 +102,7 @@ func NewResourceQuotaController(options *ResourceQuotaControllerOptions) *Resour
 		},
 		&api.ResourceQuota{},
 		rq.resyncPeriod(),
-		framework.ResourceEventHandlerFuncs{
+		cache.ResourceEventHandlerFuncs{
 			AddFunc: rq.addQuota,
 			UpdateFunc: func(old, cur interface{}) {
 				// We are only interested in observing updates to quota.spec to drive updates to quota.status.
@@ -288,6 +287,10 @@ func (rq *ResourceQuotaController) syncResourceQuota(resourceQuota api.ResourceQ
 	for key, value := range newUsage {
 		used[key] = value
 	}
+
+	// ensure set of used values match those that have hard constraints
+	hardResources := quota.ResourceNames(hardLimits)
+	used = quota.Mask(used, hardResources)
 
 	// Create a usage object that is based on the quota resource version that will handle updates
 	// by default, we preserve the past usage observation, and set hard to the current spec

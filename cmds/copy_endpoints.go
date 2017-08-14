@@ -20,7 +20,8 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
-	k8sclient "k8s.io/kubernetes/pkg/client/unversioned"
+
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -29,7 +30,7 @@ const (
 	toNamespaceFlag   = "to-namespace"
 )
 
-func NewCmdCopyEndpoints(f *cmdutil.Factory) *cobra.Command {
+func NewCmdCopyEndpoints(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "copy-endpoints",
 		Short: "Copies endpoints from the current namespace to a target namespace",
@@ -79,7 +80,7 @@ func NewCmdCopyEndpoints(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func copyEndpoints(c *k8sclient.Client, fromNs string, toNs string, names []string) error {
+func copyEndpoints(c *clientset.Clientset, fromNs string, toNs string, names []string) error {
 	var answer error
 	for _, name := range names {
 		item, err := c.Endpoints(fromNs).Get(name)

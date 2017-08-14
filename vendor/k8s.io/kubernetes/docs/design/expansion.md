@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Variable expansion in pod command, args, and env
 
 ## Abstract
@@ -415,13 +410,6 @@ spec:
           value: "http://gitserver.$(POD_NAMESPACE):$(SERVICE_PORT)"
   restartPolicy: Never
 ```
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

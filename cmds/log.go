@@ -30,7 +30,7 @@ type logFlags struct {
 }
 
 // NewCmdLog tails the log of the newest pod for a Deployment or DeploymentConfig
-func NewCmdLog(f *cmdutil.Factory) *cobra.Command {
+func NewCmdLog(f cmdutil.Factory) *cobra.Command {
 	p := &logFlags{}
 	cmd := &cobra.Command{
 		Use:     "log",
@@ -51,7 +51,7 @@ func NewCmdLog(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func (p *logFlags) tailLog(f *cmdutil.Factory, args []string) error {
+func (p *logFlags) tailLog(f cmdutil.Factory, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("Must specify a Deployment/DeploymentConfig name argument!")
 	}

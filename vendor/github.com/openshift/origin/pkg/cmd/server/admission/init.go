@@ -6,12 +6,14 @@ import (
 	"k8s.io/kubernetes/pkg/quota"
 
 	"github.com/openshift/origin/pkg/authorization/authorizer"
+	"github.com/openshift/origin/pkg/authorization/authorizer/adapter"
 	"github.com/openshift/origin/pkg/client"
 	configapi "github.com/openshift/origin/pkg/cmd/server/api"
 	"github.com/openshift/origin/pkg/controller/shared"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/project/cache"
 	"github.com/openshift/origin/pkg/quota/controller/clusterquotamapping"
+	usercache "github.com/openshift/origin/pkg/user/cache"
 )
 
 type PluginInitializer struct {
@@ -24,6 +26,7 @@ type PluginInitializer struct {
 	Informers             shared.InformerFactory
 	ClusterQuotaMapper    clusterquotamapping.ClusterQuotaMapper
 	DefaultRegistryFn     imageapi.DefaultRegistryFunc
+	GroupCache            *usercache.GroupCache
 }
 
 // Initialize will check the initialization interfaces implemented by each plugin
@@ -42,6 +45,14 @@ func (i *PluginInitializer) Initialize(plugins []admission.Interface) {
 		if wantsAuthorizer, ok := plugin.(WantsAuthorizer); ok {
 			wantsAuthorizer.SetAuthorizer(i.Authorizer)
 		}
+		if kubeWantsAuthorizer, ok := plugin.(admission.WantsAuthorizer); ok {
+			kubeAuthorizer, err := adapter.NewAuthorizer(i.Authorizer)
+			// this shouldn't happen
+			if err != nil {
+				panic(err)
+			}
+			kubeWantsAuthorizer.SetAuthorizer(kubeAuthorizer)
+		}
 		if wantsJenkinsPipelineConfig, ok := plugin.(WantsJenkinsPipelineConfig); ok {
 			wantsJenkinsPipelineConfig.SetJenkinsPipelineConfig(i.JenkinsPipelineConfig)
 		}
@@ -51,11 +62,17 @@ func (i *PluginInitializer) Initialize(plugins []admission.Interface) {
 		if wantsInformers, ok := plugin.(WantsInformers); ok {
 			wantsInformers.SetInformers(i.Informers)
 		}
+		if wantsInformerFactory, ok := plugin.(admission.WantsInformerFactory); ok {
+			wantsInformerFactory.SetInformerFactory(i.Informers.KubernetesInformers())
+		}
 		if wantsClusterQuotaMapper, ok := plugin.(WantsClusterQuotaMapper); ok {
 			wantsClusterQuotaMapper.SetClusterQuotaMapper(i.ClusterQuotaMapper)
 		}
 		if wantsDefaultRegistryFunc, ok := plugin.(WantsDefaultRegistryFunc); ok {
 			wantsDefaultRegistryFunc.SetDefaultRegistryFunc(i.DefaultRegistryFn)
+		}
+		if wantsGroupCache, ok := plugin.(WantsGroupCache); ok {
+			wantsGroupCache.SetGroupCache(i.GroupCache)
 		}
 	}
 }
@@ -64,7 +81,7 @@ func (i *PluginInitializer) Initialize(plugins []admission.Interface) {
 // the Validator interface.
 func Validate(plugins []admission.Interface) error {
 	for _, plugin := range plugins {
-		if validater, ok := plugin.(Validator); ok {
+		if validater, ok := plugin.(admission.Validator); ok {
 			err := validater.Validate()
 			if err != nil {
 				return err

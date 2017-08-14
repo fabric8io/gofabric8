@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -129,10 +129,18 @@ func (dswp *desiredStateOfWorldPopulator) populatorLoopFunc() func() {
 	}
 }
 
+func isPodTerminated(pod *api.Pod) bool {
+	return pod.Status.Phase == api.PodFailed || pod.Status.Phase == api.PodSucceeded
+}
+
 // Iterate through all pods and add to desired state of world if they don't
 // exist but should
 func (dswp *desiredStateOfWorldPopulator) findAndAddNewPods() {
 	for _, pod := range dswp.podManager.GetPods() {
+		if isPodTerminated(pod) {
+			// Do not (re)add volumes for terminated pods
+			continue
+		}
 		dswp.processPodVolumes(pod)
 	}
 }
@@ -144,9 +152,21 @@ func (dswp *desiredStateOfWorldPopulator) findAndRemoveDeletedPods() {
 
 	runningPodsFetched := false
 	for _, volumeToMount := range dswp.desiredStateOfWorld.GetVolumesToMount() {
-		if _, podExists :=
-			dswp.podManager.GetPodByUID(volumeToMount.Pod.UID); podExists {
-			continue
+		pod, podExists := dswp.podManager.GetPodByUID(volumeToMount.Pod.UID)
+		if podExists {
+			// Skip running pods
+			if !isPodTerminated(pod) {
+				continue
+			}
+			// Skip non-memory backed volumes belonging to terminated pods
+			volume := volumeToMount.VolumeSpec.Volume
+			if volume == nil {
+				continue
+			}
+			if (volume.EmptyDir == nil || volume.EmptyDir.Medium != api.StorageMediumMemory) &&
+				volume.ConfigMap == nil && volume.Secret == nil {
+				continue
+			}
 		}
 
 		// Once a pod has been deleted from kubelet pod manager, do not delete
@@ -180,7 +200,7 @@ func (dswp *desiredStateOfWorldPopulator) findAndRemoveDeletedPods() {
 
 		if runningContainers {
 			glog.V(5).Infof(
-				"Pod %q has been removed from pod manager. However, it still has one or more containers in the non-exited state. Therefore it will not be removed from volume manager.",
+				"Pod %q has been removed from pod manager. However, it still has one or more containers in the non-exited state. Therefore, it will not be removed from volume manager.",
 				format.Pod(volumeToMount.Pod))
 			continue
 		}
@@ -369,7 +389,7 @@ func (dswp *desiredStateOfWorldPopulator) getPVCExtractPV(
 	return pvc.Spec.VolumeName, pvc.UID, nil
 }
 
-// getPVSpec fetches the PV object with the given name from the the API server
+// getPVSpec fetches the PV object with the given name from the API server
 // and returns a volume.Spec representing it.
 // An error is returned if the call to fetch the PV object fails.
 func (dswp *desiredStateOfWorldPopulator) getPVSpec(

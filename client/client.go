@@ -18,19 +18,20 @@ package client
 import (
 	"github.com/fabric8io/gofabric8/util"
 	oclient "github.com/openshift/origin/pkg/client"
-	"k8s.io/kubernetes/pkg/client/restclient"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-func NewClient(f *cmdutil.Factory) (*client.Client, *restclient.Config) {
+func NewClient(f cmdutil.Factory) (*clientset.Clientset, *restclient.Config) {
 	var err error
 	cfg, err := f.ClientConfig()
 	if err != nil {
 		util.Error("Could not initialise a client - is your server setting correct?\n\n")
 		util.Fatalf("%v", err)
 	}
-	c, err := client.New(cfg)
+
+	c, err := clientset.NewForConfig(cfg)
 	if err != nil {
 		util.Fatalf("Could not initialise a client: %v", err)
 	}

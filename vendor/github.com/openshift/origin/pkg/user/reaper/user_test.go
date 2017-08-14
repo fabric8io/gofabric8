@@ -5,14 +5,23 @@ import (
 	"testing"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
+	"k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/runtime"
 
 	"github.com/davecgh/go-spew/spew"
 
 	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	"github.com/openshift/origin/pkg/client/testclient"
+	oauthapi "github.com/openshift/origin/pkg/oauth/api"
 	authenticationapi "github.com/openshift/origin/pkg/user/api"
+)
+
+var (
+	usersResource                     = unversioned.GroupVersionResource{Group: "", Version: "", Resource: "users"}
+	securityContextContraintsResource = unversioned.GroupVersionResource{Group: "", Version: "", Resource: "securitycontextconstraints"}
+	oAuthClientAuthorizationsResource = unversioned.GroupVersionResource{Group: "", Version: "", Resource: "oauthclientauthorizations"}
 )
 
 func TestUserReaper(t *testing.T) {
@@ -27,7 +36,7 @@ func TestUserReaper(t *testing.T) {
 			user:    "bob",
 			objects: []runtime.Object{},
 			expected: []interface{}{
-				ktestclient.DeleteActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "delete", Resource: "users"}, Name: "bob"},
+				core.DeleteActionImpl{ActionImpl: core.ActionImpl{Verb: "delete", Resource: usersResource}, Name: "bob"},
 			},
 		},
 		{
@@ -51,12 +60,12 @@ func TestUserReaper(t *testing.T) {
 				},
 			},
 			expected: []interface{}{
-				ktestclient.UpdateActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "update", Resource: "clusterrolebindings"}, Object: &authorizationapi.ClusterRoleBinding{
+				core.UpdateActionImpl{ActionImpl: core.ActionImpl{Verb: "update", Resource: clusterRoleBindingsResource}, Object: &authorizationapi.ClusterRoleBinding{
 					ObjectMeta: kapi.ObjectMeta{Name: "binding-one-subject"},
 					RoleRef:    kapi.ObjectReference{Name: "role"},
 					Subjects:   []kapi.ObjectReference{},
 				}},
-				ktestclient.DeleteActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "delete", Resource: "users"}, Name: "bob"},
+				core.DeleteActionImpl{ActionImpl: core.ActionImpl{Verb: "delete", Resource: usersResource}, Name: "bob"},
 			},
 		},
 		{
@@ -80,12 +89,12 @@ func TestUserReaper(t *testing.T) {
 				},
 			},
 			expected: []interface{}{
-				ktestclient.UpdateActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "update", Resource: "rolebindings", Namespace: "ns2"}, Object: &authorizationapi.RoleBinding{
+				core.UpdateActionImpl{ActionImpl: core.ActionImpl{Verb: "update", Resource: roleBindingsResource, Namespace: "ns2"}, Object: &authorizationapi.RoleBinding{
 					ObjectMeta: kapi.ObjectMeta{Name: "binding-one-subject", Namespace: "ns2"},
 					RoleRef:    kapi.ObjectReference{Name: "role"},
 					Subjects:   []kapi.ObjectReference{},
 				}},
-				ktestclient.DeleteActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "delete", Resource: "users"}, Name: "bob"},
+				core.DeleteActionImpl{ActionImpl: core.ActionImpl{Verb: "delete", Resource: usersResource}, Name: "bob"},
 			},
 		},
 		{
@@ -107,11 +116,11 @@ func TestUserReaper(t *testing.T) {
 				},
 			},
 			expected: []interface{}{
-				ktestclient.UpdateActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "update", Resource: "securitycontextconstraints"}, Object: &kapi.SecurityContextConstraints{
+				core.UpdateActionImpl{ActionImpl: core.ActionImpl{Verb: "update", Resource: securityContextContraintsResource}, Object: &kapi.SecurityContextConstraints{
 					ObjectMeta: kapi.ObjectMeta{Name: "scc-one-subject"},
 					Users:      []string{},
 				}},
-				ktestclient.DeleteActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "delete", Resource: "users"}, Name: "bob"},
+				core.DeleteActionImpl{ActionImpl: core.ActionImpl{Verb: "delete", Resource: usersResource}, Name: "bob"},
 			},
 		},
 		{
@@ -137,7 +146,7 @@ func TestUserReaper(t *testing.T) {
 			},
 			expected: []interface{}{
 				// Make sure identities are not messed with, only the user is removed
-				ktestclient.DeleteActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "delete", Resource: "users"}, Name: "bob"},
+				core.DeleteActionImpl{ActionImpl: core.ActionImpl{Verb: "delete", Resource: usersResource}, Name: "bob"},
 			},
 		},
 		{
@@ -162,35 +171,65 @@ func TestUserReaper(t *testing.T) {
 				},
 			},
 			expected: []interface{}{
-				ktestclient.UpdateActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "update", Resource: "groups"}, Object: &authenticationapi.Group{
+				core.UpdateActionImpl{ActionImpl: core.ActionImpl{Verb: "update", Resource: groupsResource}, Object: &authenticationapi.Group{
 					ObjectMeta: kapi.ObjectMeta{Name: "group-one-user"},
 					Users:      []string{},
 				}},
-				ktestclient.UpdateActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "update", Resource: "groups"}, Object: &authenticationapi.Group{
+				core.UpdateActionImpl{ActionImpl: core.ActionImpl{Verb: "update", Resource: groupsResource}, Object: &authenticationapi.Group{
 					ObjectMeta: kapi.ObjectMeta{Name: "group-multiple-users"},
 					Users:      []string{"bob2", "steve"},
 				}},
-				ktestclient.DeleteActionImpl{ActionImpl: ktestclient.ActionImpl{Verb: "delete", Resource: "users"}, Name: "bob"},
+				core.DeleteActionImpl{ActionImpl: core.ActionImpl{Verb: "delete", Resource: usersResource}, Name: "bob"},
+			},
+		},
+		{
+			name: "oauth client authorizations",
+			user: "bob",
+			objects: []runtime.Object{
+				&oauthapi.OAuthClientAuthorization{
+					ObjectMeta: kapi.ObjectMeta{Name: "other-user"},
+					UserName:   "alice",
+					UserUID:    "123",
+				},
+				&oauthapi.OAuthClientAuthorization{
+					ObjectMeta: kapi.ObjectMeta{Name: "bob-authorization-1"},
+					UserName:   "bob",
+					UserUID:    "234",
+				},
+				&oauthapi.OAuthClientAuthorization{
+					ObjectMeta: kapi.ObjectMeta{Name: "bob-authorization-2"},
+					UserName:   "bob",
+					UserUID:    "345",
+				},
+			},
+			expected: []interface{}{
+				core.DeleteActionImpl{ActionImpl: core.ActionImpl{Verb: "delete", Resource: oAuthClientAuthorizationsResource}, Name: "bob-authorization-1"},
+				core.DeleteActionImpl{ActionImpl: core.ActionImpl{Verb: "delete", Resource: oAuthClientAuthorizationsResource}, Name: "bob-authorization-2"},
+				core.DeleteActionImpl{ActionImpl: core.ActionImpl{Verb: "delete", Resource: usersResource}, Name: "bob"},
 			},
 		},
 	}
 
 	for _, test := range tests {
 		tc := testclient.NewSimpleFake(test.objects...)
-		ktc := ktestclient.NewSimpleFake(test.objects...)
+		ktc := fake.NewSimpleClientset(test.objects...)
 
 		actual := []interface{}{}
-		reactor := func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+		oreactor := func(action core.Action) (handled bool, ret runtime.Object, err error) {
+			actual = append(actual, action)
+			return false, nil, nil
+		}
+		kreactor := func(action core.Action) (handled bool, ret runtime.Object, err error) {
 			actual = append(actual, action)
 			return false, nil, nil
 		}
 
-		tc.PrependReactor("update", "*", reactor)
-		tc.PrependReactor("delete", "*", reactor)
-		ktc.PrependReactor("update", "*", reactor)
-		ktc.PrependReactor("delete", "*", reactor)
+		tc.PrependReactor("update", "*", oreactor)
+		tc.PrependReactor("delete", "*", oreactor)
+		ktc.PrependReactor("update", "*", kreactor)
+		ktc.PrependReactor("delete", "*", kreactor)
 
-		reaper := NewUserReaper(tc, tc, tc, tc, ktc)
+		reaper := NewUserReaper(tc, tc, tc, tc, tc, ktc.Core())
 		err := reaper.Stop("", test.user, 0, nil)
 		if err != nil {
 			t.Errorf("%s: unexpected error: %v", test.name, err)

@@ -1,5 +1,5 @@
 /*
-Copyright 2015 The Kubernetes Authors All rights reserved.
+Copyright 2015 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,10 +17,13 @@ limitations under the License.
 package core
 
 import (
+	"fmt"
+	"path"
 	"strings"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/fields"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -45,36 +48,22 @@ func NewGetAction(resource unversioned.GroupVersionResource, namespace, name str
 	return action
 }
 
-func NewRootListAction(resource unversioned.GroupVersionResource, opts api.ListOptions) ListActionImpl {
+func NewRootListAction(resource unversioned.GroupVersionResource, opts interface{}) ListActionImpl {
 	action := ListActionImpl{}
 	action.Verb = "list"
 	action.Resource = resource
-	labelSelector := opts.LabelSelector
-	if labelSelector == nil {
-		labelSelector = labels.Everything()
-	}
-	fieldSelector := opts.FieldSelector
-	if fieldSelector == nil {
-		fieldSelector = fields.Everything()
-	}
+	labelSelector, fieldSelector, _ := ExtractFromListOptions(opts)
 	action.ListRestrictions = ListRestrictions{labelSelector, fieldSelector}
 
 	return action
 }
 
-func NewListAction(resource unversioned.GroupVersionResource, namespace string, opts api.ListOptions) ListActionImpl {
+func NewListAction(resource unversioned.GroupVersionResource, namespace string, opts interface{}) ListActionImpl {
 	action := ListActionImpl{}
 	action.Verb = "list"
 	action.Resource = resource
 	action.Namespace = namespace
-	labelSelector := opts.LabelSelector
-	if labelSelector == nil {
-		labelSelector = labels.Everything()
-	}
-	fieldSelector := opts.FieldSelector
-	if fieldSelector == nil {
-		fieldSelector = fields.Everything()
-	}
+	labelSelector, fieldSelector, _ := ExtractFromListOptions(opts)
 	action.ListRestrictions = ListRestrictions{labelSelector, fieldSelector}
 
 	return action
@@ -118,30 +107,46 @@ func NewUpdateAction(resource unversioned.GroupVersionResource, namespace string
 	return action
 }
 
-func NewRootPatchAction(resource unversioned.GroupVersionResource, object runtime.Object) PatchActionImpl {
+func NewRootPatchAction(resource unversioned.GroupVersionResource, name string, patch []byte) PatchActionImpl {
 	action := PatchActionImpl{}
 	action.Verb = "patch"
 	action.Resource = resource
-	action.Object = object
+	action.Name = name
+	action.Patch = patch
 
 	return action
 }
 
-func NewPatchAction(resource unversioned.GroupVersionResource, namespace string, object runtime.Object) PatchActionImpl {
+func NewPatchAction(resource unversioned.GroupVersionResource, namespace string, name string, patch []byte) PatchActionImpl {
 	action := PatchActionImpl{}
 	action.Verb = "patch"
 	action.Resource = resource
 	action.Namespace = namespace
-	action.Object = object
+	action.Name = name
+	action.Patch = patch
 
 	return action
 }
 
-func NewPatchSubresourceAction(resource unversioned.GroupVersionResource, subresource string) PatchActionImpl {
+func NewRootPatchSubresourceAction(resource unversioned.GroupVersionResource, name string, patch []byte, subresources ...string) PatchActionImpl {
 	action := PatchActionImpl{}
 	action.Verb = "patch"
 	action.Resource = resource
-	action.Subresource = subresource
+	action.Subresource = path.Join(subresources...)
+	action.Name = name
+	action.Patch = patch
+
+	return action
+}
+
+func NewPatchSubresourceAction(resource unversioned.GroupVersionResource, namespace, name string, patch []byte, subresources ...string) PatchActionImpl {
+	action := PatchActionImpl{}
+	action.Verb = "patch"
+	action.Resource = resource
+	action.Subresource = path.Join(subresources...)
+	action.Namespace = namespace
+	action.Name = name
+	action.Patch = patch
 
 	return action
 }
@@ -185,72 +190,73 @@ func NewDeleteAction(resource unversioned.GroupVersionResource, namespace, name 
 	return action
 }
 
-func NewRootDeleteCollectionAction(resource unversioned.GroupVersionResource, opts api.ListOptions) DeleteCollectionActionImpl {
+func NewRootDeleteCollectionAction(resource unversioned.GroupVersionResource, opts interface{}) DeleteCollectionActionImpl {
 	action := DeleteCollectionActionImpl{}
 	action.Verb = "delete-collection"
 	action.Resource = resource
-	labelSelector := opts.LabelSelector
-	if labelSelector == nil {
-		labelSelector = labels.Everything()
-	}
-	fieldSelector := opts.FieldSelector
-	if fieldSelector == nil {
-		fieldSelector = fields.Everything()
-	}
+	labelSelector, fieldSelector, _ := ExtractFromListOptions(opts)
 	action.ListRestrictions = ListRestrictions{labelSelector, fieldSelector}
 
 	return action
 }
 
-func NewDeleteCollectionAction(resource unversioned.GroupVersionResource, namespace string, opts api.ListOptions) DeleteCollectionActionImpl {
+func NewDeleteCollectionAction(resource unversioned.GroupVersionResource, namespace string, opts interface{}) DeleteCollectionActionImpl {
 	action := DeleteCollectionActionImpl{}
 	action.Verb = "delete-collection"
 	action.Resource = resource
 	action.Namespace = namespace
-	labelSelector := opts.LabelSelector
-	if labelSelector == nil {
-		labelSelector = labels.Everything()
-	}
-	fieldSelector := opts.FieldSelector
-	if fieldSelector == nil {
-		fieldSelector = fields.Everything()
-	}
+	labelSelector, fieldSelector, _ := ExtractFromListOptions(opts)
 	action.ListRestrictions = ListRestrictions{labelSelector, fieldSelector}
 
 	return action
 }
 
-func NewRootWatchAction(resource unversioned.GroupVersionResource, opts api.ListOptions) WatchActionImpl {
+func NewRootWatchAction(resource unversioned.GroupVersionResource, opts interface{}) WatchActionImpl {
 	action := WatchActionImpl{}
 	action.Verb = "watch"
 	action.Resource = resource
-	labelSelector := opts.LabelSelector
-	if labelSelector == nil {
-		labelSelector = labels.Everything()
-	}
-	fieldSelector := opts.FieldSelector
-	if fieldSelector == nil {
-		fieldSelector = fields.Everything()
-	}
-	action.WatchRestrictions = WatchRestrictions{labelSelector, fieldSelector, opts.ResourceVersion}
+	labelSelector, fieldSelector, resourceVersion := ExtractFromListOptions(opts)
+	action.WatchRestrictions = WatchRestrictions{labelSelector, fieldSelector, resourceVersion}
 
 	return action
 }
 
-func NewWatchAction(resource unversioned.GroupVersionResource, namespace string, opts api.ListOptions) WatchActionImpl {
+func ExtractFromListOptions(opts interface{}) (labelSelector labels.Selector, fieldSelector fields.Selector, resourceVersion string) {
+	var err error
+	switch t := opts.(type) {
+	case api.ListOptions:
+		labelSelector = t.LabelSelector
+		fieldSelector = t.FieldSelector
+		resourceVersion = t.ResourceVersion
+	case v1.ListOptions:
+		labelSelector, err = labels.Parse(t.LabelSelector)
+		if err != nil {
+			panic(err)
+		}
+		fieldSelector, err = fields.ParseSelector(t.FieldSelector)
+		if err != nil {
+			panic(err)
+		}
+		resourceVersion = t.ResourceVersion
+	default:
+		panic(fmt.Errorf("expect a ListOptions"))
+	}
+	if labelSelector == nil {
+		labelSelector = labels.Everything()
+	}
+	if fieldSelector == nil {
+		fieldSelector = fields.Everything()
+	}
+	return labelSelector, fieldSelector, resourceVersion
+}
+
+func NewWatchAction(resource unversioned.GroupVersionResource, namespace string, opts interface{}) WatchActionImpl {
 	action := WatchActionImpl{}
 	action.Verb = "watch"
 	action.Resource = resource
 	action.Namespace = namespace
-	labelSelector := opts.LabelSelector
-	if labelSelector == nil {
-		labelSelector = labels.Everything()
-	}
-	fieldSelector := opts.FieldSelector
-	if fieldSelector == nil {
-		fieldSelector = fields.Everything()
-	}
-	action.WatchRestrictions = WatchRestrictions{labelSelector, fieldSelector, opts.ResourceVersion}
+	labelSelector, fieldSelector, resourceVersion := ExtractFromListOptions(opts)
+	action.WatchRestrictions = WatchRestrictions{labelSelector, fieldSelector, resourceVersion}
 
 	return action
 }
@@ -401,11 +407,16 @@ func (a UpdateActionImpl) GetObject() runtime.Object {
 
 type PatchActionImpl struct {
 	ActionImpl
-	Object runtime.Object
+	Name  string
+	Patch []byte
 }
 
-func (a PatchActionImpl) GetObject() runtime.Object {
-	return a.Object
+func (a PatchActionImpl) GetName() string {
+	return a.Name
+}
+
+func (a PatchActionImpl) GetPatch() []byte {
+	return a.Patch
 }
 
 type DeleteActionImpl struct {

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## GitHub Issues for the Kubernetes Project
 
 A quick overview of how we will review and prioritize incoming issues at
@@ -58,13 +53,6 @@ get done before release.  P2 and P3 issues are work we would merge into the
 release if it gets done, but we wouldn't block the release on it. A few days
 before release, we will probably move all P2 and P3 bugs out of that milestone
 in bulk.
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
-
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->
 [![Analytics](https://kubernetes-site.appspot.com/UA-36037335-10/GitHub/docs/devel/issues.md?pixel)]()

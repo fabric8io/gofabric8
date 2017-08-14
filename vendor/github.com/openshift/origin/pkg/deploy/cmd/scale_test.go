@@ -6,7 +6,8 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
-	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
+	"k8s.io/kubernetes/pkg/client/testing/core"
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/runtime"
 
@@ -41,7 +42,7 @@ func TestScale(t *testing.T) {
 	for _, test := range tests {
 		t.Logf("evaluating test %q", test.name)
 		oc := &testclient.Fake{}
-		kc := &ktestclient.Fake{}
+		kc := &fake.Clientset{}
 		scaler := NewDeploymentConfigScaler(oc, kc)
 
 		config := deploytest.OkDeploymentConfig(1)
@@ -53,20 +54,20 @@ func TestScale(t *testing.T) {
 			wait = &kubectl.RetryParams{Interval: time.Millisecond, Timeout: time.Second}
 		}
 
-		oc.AddReactor("get", "deploymentconfigs", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+		oc.AddReactor("get", "deploymentconfigs", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 			return true, config, nil
 		})
-		oc.AddReactor("update", "deploymentconfigs/scale", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+		oc.AddReactor("update", "deploymentconfigs/scale", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 			// Simulate the asynchronous update of the RC replicas based on the
 			// scale replica count.
-			scale := action.(ktestclient.UpdateAction).GetObject().(*extensions.Scale)
+			scale := action.(core.UpdateAction).GetObject().(*extensions.Scale)
 			scale.Status.Replicas = scale.Spec.Replicas
 			config.Spec.Replicas = scale.Spec.Replicas
 			deployment.Spec.Replicas = scale.Spec.Replicas
 			deployment.Status.Replicas = deployment.Spec.Replicas
 			return true, scale, nil
 		})
-		kc.AddReactor("get", "replicationcontrollers", func(action ktestclient.Action) (handled bool, ret runtime.Object, err error) {
+		kc.AddReactor("get", "replicationcontrollers", func(action core.Action) (handled bool, ret runtime.Object, err error) {
 			return true, deployment, nil
 		})
 

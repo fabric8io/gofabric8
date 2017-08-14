@@ -20,14 +20,12 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
-	"k8s.io/kubernetes/pkg/client/restclient"
-	k8client "k8s.io/kubernetes/pkg/client/unversioned"
-
 	"github.com/spf13/cobra"
-
-	"strings"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
 )
 
 func TestGetEnviron(t *testing.T) {
@@ -67,7 +65,7 @@ func TestCreateEnviron(t *testing.T) {
 
 	defer server.Close()
 
-	c, _ := k8client.New(&restclient.Config{
+	c, _ := clientset.NewForConfig(&restclient.Config{
 		Host: server.URL,
 	})
 

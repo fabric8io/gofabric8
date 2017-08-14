@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -138,6 +138,27 @@ func TestAuthenticateRequestAdditiveErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "second") {
 		t.Errorf("Expected error containing %v, got %v", "second", err)
+	}
+	if isAuthenticated {
+		t.Errorf("Unexpectedly authenticated: %v", isAuthenticated)
+	}
+}
+
+func TestAuthenticateRequestFailEarly(t *testing.T) {
+	handler1 := &mockAuthRequestHandler{err: errors.New("first")}
+	handler2 := &mockAuthRequestHandler{err: errors.New("second")}
+	authRequestHandler := NewFailOnError(handler1, handler2)
+	req, _ := http.NewRequest("GET", "http://example.org", nil)
+
+	_, isAuthenticated, err := authRequestHandler.AuthenticateRequest(req)
+	if err == nil {
+		t.Errorf("Expected an error")
+	}
+	if !strings.Contains(err.Error(), "first") {
+		t.Errorf("Expected error containing %v, got %v", "first", err)
+	}
+	if strings.Contains(err.Error(), "second") {
+		t.Errorf("Did not expect second error, got %v", err)
 	}
 	if isAuthenticated {
 		t.Errorf("Unexpectedly authenticated: %v", isAuthenticated)

@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Taints, Tolerations, and Dedicated Nodes
 
 ## Introduction
@@ -16,7 +11,8 @@ nodes with a particular piece of hardware could be reserved for pods that
 require that hardware, or a node could be marked as unschedulable when it is
 being drained before shutdown, or a node could trigger evictions when it
 experiences hardware or software problems or abnormal node configurations; see
-issues #17190 and #3885 for more discussion.
+issues [#17190](https://github.com/kubernetes/kubernetes/issues/17190) and
+[#3885](https://github.com/kubernetes/kubernetes/issues/3885) for more discussion.
 
 ## Taints, tolerations, and dedicated nodes
 
@@ -171,7 +167,7 @@ to both `NodeSpec` and `NodeStatus`. The value in `NodeStatus` is the union
 of the taints specified by various sources. For now, the only source is
 the `NodeSpec` itself, but in the future one could imagine a node inheriting
 taints from pods (if we were to allow taints to be attached to pods), from
-the node's startup coniguration, etc. The scheduler should look at the `Taints`
+the node's startup configuration, etc. The scheduler should look at the `Taints`
 in `NodeStatus`, not in `NodeSpec`.
 
 Taints and tolerations are not scoped to namespace.
@@ -245,7 +241,8 @@ taints and tolerations. Obviously this makes it impossible to securely enforce
 rules like dedicated nodes. We need some mechanism that prevents regular users
 from mutating the `Taints` field of `NodeSpec` (probably we want to prevent them
 from mutating any fields of `NodeSpec`) and from mutating the `Tolerations`
-field of their pods. #17549 is relevant.
+field of their pods. [#17549](https://github.com/kubernetes/kubernetes/issues/17549)
+is relevant.
 
 Another security vulnerability arises if nodes are added to the cluster before
 receiving their taint. Thus we need to ensure that a new node does not become
@@ -274,25 +271,19 @@ Users should not start using taints and tolerations until the full
 implementation has been in Kubelet and the master for enough binary versions
 that we feel comfortable that we will not need to roll back either Kubelet or
 master to a version that does not support them. Longer-term we will use a
-progamatic approach to enforcing this (#4855).
+programatic approach to enforcing this ([#4855](https://github.com/kubernetes/kubernetes/issues/4855)).
 
 ## Related issues
 
-This proposal is based on the discussion in #17190. There are a number of other
-related issues, all of which are linked to from #17190.
+This proposal is based on the discussion in [#17190](https://github.com/kubernetes/kubernetes/issues/17190).
+There are a number of other related issues, all of which are linked to from
+[#17190](https://github.com/kubernetes/kubernetes/issues/17190).
 
-The relationship between taints and node drains is discussed in #1574.
+The relationship between taints and node drains is discussed in [#1574](https://github.com/kubernetes/kubernetes/issues/1574).
 
 The concepts of taints and tolerations were originally developed as part of the
 Omega project at Google.
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

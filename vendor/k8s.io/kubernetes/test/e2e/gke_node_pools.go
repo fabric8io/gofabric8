@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,7 +98,7 @@ func testCreateDeleteNodePool(f *framework.Framework, poolName string) {
 // label with the given node pool name.
 func nodesWithPoolLabel(f *framework.Framework, poolName string) int {
 	nodeCount := 0
-	nodeList := framework.GetReadySchedulableNodesOrDie(f.Client)
+	nodeList := framework.GetReadySchedulableNodesOrDie(f.ClientSet)
 	for _, node := range nodeList.Items {
 		if poolLabel := node.Labels["cloud.google.com/gke-nodepool"]; poolLabel == poolName {
 			nodeCount++

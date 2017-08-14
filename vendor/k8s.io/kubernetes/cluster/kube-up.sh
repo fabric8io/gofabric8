@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2014 The Kubernetes Authors All rights reserved.
+# Copyright 2014 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,6 +41,8 @@ fi
 
 echo "... calling verify-prereqs" >&2
 verify-prereqs
+echo "... calling verify-kube-binaries" >&2
+verify-kube-binaries
 
 if [[ "${KUBE_STAGE_IMAGES:-}" == "true" ]]; then
   echo "... staging images" >&2

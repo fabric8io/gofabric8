@@ -15,44 +15,52 @@ import (
 
 	"github.com/spf13/cobra"
 	kapi "k8s.io/kubernetes/pkg/api"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	knet "k8s.io/kubernetes/pkg/util/net"
 
 	"github.com/openshift/origin/pkg/client"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	imageapi "github.com/openshift/origin/pkg/image/api"
 	"github.com/openshift/origin/pkg/image/prune"
 	oserrors "github.com/openshift/origin/pkg/util/errors"
 )
 
-const (
-	// PruneImagesRecommendedName is the recommended command name
-	PruneImagesRecommendedName = "images"
+// PruneImagesRecommendedName is the recommended command name
+const PruneImagesRecommendedName = "images"
 
-	imagesLongDesc = `Prune images no longer needed due to age and/or status
+var (
+	imagesLongDesc = templates.LongDesc(`
+		Remove image stream tags, images, and image layers by age or usage
 
-By default, the prune operation performs a dry run making no changes to internal registry. A
---confirm flag is needed for changes to be effective.
+		This command removes historical image stream tags, unused images, and unreferenced image
+		layers from the integrated registry. It prefers images that have been directly pushed to
+		the registry, but you may specify --all to include images that were imported (if registry
+		mirroring is enabled).
 
-Only a user with a cluster role %s or higher who is logged-in will be able to actually delete the
-images.`
+		By default, the prune operation performs a dry run making no changes to internal registry. A
+		--confirm flag is needed for changes to be effective.
 
-	imagesExample = `  # See, what the prune command would delete if only images more than an hour old and obsoleted
-  # by 3 newer revisions under the same tag were considered.
-  %[1]s %[2]s --keep-tag-revisions=3 --keep-younger-than=60m
+		Only a user with a cluster role %s or higher who is logged-in will be able to actually delete the
+		images.`)
 
-  # To actually perform the prune operation, the confirm flag must be appended
-  %[1]s %[2]s --keep-tag-revisions=3 --keep-younger-than=60m --confirm
+	imagesExample = templates.Examples(`
+		# See, what the prune command would delete if only images more than an hour old and obsoleted
+	  # by 3 newer revisions under the same tag were considered.
+	  %[1]s %[2]s --keep-tag-revisions=3 --keep-younger-than=60m
 
-  # See, what the prune command would delete if we're interested in removing images
-  # exceeding currently set LimitRanges ('openshift.io/Image')
-  %[1]s %[2]s --prune-over-size-limit
+	  # To actually perform the prune operation, the confirm flag must be appended
+	  %[1]s %[2]s --keep-tag-revisions=3 --keep-younger-than=60m --confirm
 
-  # To actually perform the prune operation, the confirm flag must be appended
-  %[1]s %[2]s --prune-over-size-limit --confirm`
+	  # See, what the prune command would delete if we're interested in removing images
+	  # exceeding currently set limit ranges ('openshift.io/Image')
+	  %[1]s %[2]s --prune-over-size-limit
+
+	  # To actually perform the prune operation, the confirm flag must be appended
+	  %[1]s %[2]s --prune-over-size-limit --confirm`)
 )
 
 var (
@@ -67,21 +75,26 @@ type PruneImagesOptions struct {
 	KeepYoungerThan     *time.Duration
 	KeepTagRevisions    *int
 	PruneOverSizeLimit  *bool
+	AllImages           *bool
 	CABundle            string
 	RegistryUrlOverride string
+	Namespace           string
 
-	Pruner prune.Pruner
-	Client client.Interface
-	Out    io.Writer
+	OSClient       client.Interface
+	KClient        kclientset.Interface
+	RegistryClient *http.Client
+	Out            io.Writer
 }
 
 // NewCmdPruneImages implements the OpenShift cli prune images command.
 func NewCmdPruneImages(f *clientcmd.Factory, parentName, name string, out io.Writer) *cobra.Command {
+	allImages := false
 	opts := &PruneImagesOptions{
 		Confirm:            false,
 		KeepYoungerThan:    &defaultKeepYoungerThan,
 		KeepTagRevisions:   &defaultKeepTagRevisions,
 		PruneOverSizeLimit: &defaultPruneImageOverSizeLimit,
+		AllImages:          &allImages,
 	}
 
 	cmd := &cobra.Command{
@@ -98,7 +111,8 @@ func NewCmdPruneImages(f *clientcmd.Factory, parentName, name string, out io.Wri
 		},
 	}
 
-	cmd.Flags().BoolVar(&opts.Confirm, "confirm", opts.Confirm, "Specify that image pruning should proceed. Defaults to false, displaying what would be deleted but not actually deleting anything.")
+	cmd.Flags().BoolVar(&opts.Confirm, "confirm", opts.Confirm, "If true, specify that image pruning should proceed. Defaults to false, displaying what would be deleted but not actually deleting anything.")
+	cmd.Flags().BoolVar(opts.AllImages, "all", *opts.AllImages, "Include images that were not pushed to the registry but have been mirrored by pullthrough. Requires --registry-url")
 	cmd.Flags().DurationVar(opts.KeepYoungerThan, "keep-younger-than", *opts.KeepYoungerThan, "Specify the minimum age of an image for it to be considered a candidate for pruning.")
 	cmd.Flags().IntVar(opts.KeepTagRevisions, "keep-tag-revisions", *opts.KeepTagRevisions, "Specify the number of image revisions for a tag in an image stream that will be preserved.")
 	cmd.Flags().BoolVar(opts.PruneOverSizeLimit, "prune-over-size-limit", *opts.PruneOverSizeLimit, "Specify if images which are exceeding LimitRanges (see 'openshift.io/Image'), specified in the same namespace, should be considered for pruning. This flag cannot be combined with --keep-younger-than nor --keep-tag-revisions.")
@@ -115,96 +129,38 @@ func (o *PruneImagesOptions) Complete(f *clientcmd.Factory, cmd *cobra.Command, 
 		return kcmdutil.UsageError(cmd, "no arguments are allowed to this command")
 	}
 
-	if !cmd.Flags().Lookup("keep-younger-than").Changed {
-		o.KeepYoungerThan = nil
-	}
-	if !cmd.Flags().Lookup("keep-tag-revisions").Changed {
-		o.KeepTagRevisions = nil
-	}
 	if !cmd.Flags().Lookup("prune-over-size-limit").Changed {
 		o.PruneOverSizeLimit = nil
+	} else {
+		if !cmd.Flags().Lookup("keep-younger-than").Changed {
+			o.KeepYoungerThan = nil
+		}
+		if !cmd.Flags().Lookup("keep-tag-revisions").Changed {
+			o.KeepTagRevisions = nil
+		}
 	}
-
+	if *o.AllImages {
+		if len(o.RegistryUrlOverride) == 0 {
+			return kcmdutil.UsageError(cmd, "--registry-url must be specified when --all is true")
+		}
+	}
+	o.Namespace = kapi.NamespaceAll
+	if cmd.Flags().Lookup("namespace").Changed {
+		var err error
+		o.Namespace, _, err = f.DefaultNamespace()
+		if err != nil {
+			return err
+		}
+	}
 	o.Out = out
 
 	osClient, kClient, registryClient, err := getClients(f, o.CABundle)
 	if err != nil {
 		return err
 	}
-	o.Client = osClient
-
-	allImages, err := osClient.Images().List(kapi.ListOptions{})
-	if err != nil {
-		return err
-	}
-
-	allStreams, err := osClient.ImageStreams(kapi.NamespaceAll).List(kapi.ListOptions{})
-	if err != nil {
-		return err
-	}
-
-	allPods, err := kClient.Pods(kapi.NamespaceAll).List(kapi.ListOptions{})
-	if err != nil {
-		return err
-	}
-
-	allRCs, err := kClient.ReplicationControllers(kapi.NamespaceAll).List(kapi.ListOptions{})
-	if err != nil {
-		return err
-	}
-
-	allBCs, err := osClient.BuildConfigs(kapi.NamespaceAll).List(kapi.ListOptions{})
-	// We need to tolerate 'not found' errors for buildConfigs since they may be disabled in Atomic
-	err = oserrors.TolerateNotFoundError(err)
-	if err != nil {
-		return err
-	}
-
-	allBuilds, err := osClient.Builds(kapi.NamespaceAll).List(kapi.ListOptions{})
-	// We need to tolerate 'not found' errors for builds since they may be disabled in Atomic
-	err = oserrors.TolerateNotFoundError(err)
-	if err != nil {
-		return err
-	}
-
-	allDCs, err := osClient.DeploymentConfigs(kapi.NamespaceAll).List(kapi.ListOptions{})
-	if err != nil {
-		return err
-	}
-
-	limitRangesList, err := kClient.LimitRanges(kapi.NamespaceAll).List(kapi.ListOptions{})
-	if err != nil {
-		return err
-	}
-	limitRangesMap := make(map[string][]*kapi.LimitRange)
-	for i := range limitRangesList.Items {
-		limit := limitRangesList.Items[i]
-		limits, ok := limitRangesMap[limit.Namespace]
-		if !ok {
-			limits = []*kapi.LimitRange{}
-		}
-		limits = append(limits, &limit)
-		limitRangesMap[limit.Namespace] = limits
-	}
-
-	options := prune.PrunerOptions{
-		KeepYoungerThan:    o.KeepYoungerThan,
-		KeepTagRevisions:   o.KeepTagRevisions,
-		PruneOverSizeLimit: o.PruneOverSizeLimit,
-		Images:             allImages,
-		Streams:            allStreams,
-		Pods:               allPods,
-		RCs:                allRCs,
-		BCs:                allBCs,
-		Builds:             allBuilds,
-		DCs:                allDCs,
-		LimitRanges:        limitRangesMap,
-		DryRun:             o.Confirm == false,
-		RegistryClient:     registryClient,
-		RegistryURL:        o.RegistryUrlOverride,
-	}
-
-	o.Pruner = prune.NewPruner(options)
+	o.OSClient = osClient
+	o.KClient = kClient
+	o.RegistryClient = registryClient
 
 	return nil
 }
@@ -228,26 +184,102 @@ func (o PruneImagesOptions) Validate() error {
 
 // Run contains all the necessary functionality for the OpenShift cli prune images command.
 func (o PruneImagesOptions) Run() error {
+	allImages, err := o.OSClient.Images().List(kapi.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	allStreams, err := o.OSClient.ImageStreams(o.Namespace).List(kapi.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	allPods, err := o.KClient.Core().Pods(o.Namespace).List(kapi.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	allRCs, err := o.KClient.Core().ReplicationControllers(o.Namespace).List(kapi.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	allBCs, err := o.OSClient.BuildConfigs(o.Namespace).List(kapi.ListOptions{})
+	// We need to tolerate 'not found' errors for buildConfigs since they may be disabled in Atomic
+	err = oserrors.TolerateNotFoundError(err)
+	if err != nil {
+		return err
+	}
+
+	allBuilds, err := o.OSClient.Builds(o.Namespace).List(kapi.ListOptions{})
+	// We need to tolerate 'not found' errors for builds since they may be disabled in Atomic
+	err = oserrors.TolerateNotFoundError(err)
+	if err != nil {
+		return err
+	}
+
+	allDCs, err := o.OSClient.DeploymentConfigs(o.Namespace).List(kapi.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	limitRangesList, err := o.KClient.Core().LimitRanges(o.Namespace).List(kapi.ListOptions{})
+	if err != nil {
+		return err
+	}
+	limitRangesMap := make(map[string][]*kapi.LimitRange)
+	for i := range limitRangesList.Items {
+		limit := limitRangesList.Items[i]
+		limits, ok := limitRangesMap[limit.Namespace]
+		if !ok {
+			limits = []*kapi.LimitRange{}
+		}
+		limits = append(limits, &limit)
+		limitRangesMap[limit.Namespace] = limits
+	}
+
+	options := prune.PrunerOptions{
+		KeepYoungerThan:    o.KeepYoungerThan,
+		KeepTagRevisions:   o.KeepTagRevisions,
+		PruneOverSizeLimit: o.PruneOverSizeLimit,
+		AllImages:          o.AllImages,
+		Images:             allImages,
+		Streams:            allStreams,
+		Pods:               allPods,
+		RCs:                allRCs,
+		BCs:                allBCs,
+		Builds:             allBuilds,
+		DCs:                allDCs,
+		LimitRanges:        limitRangesMap,
+		DryRun:             o.Confirm == false,
+		RegistryClient:     o.RegistryClient,
+		RegistryURL:        o.RegistryUrlOverride,
+	}
+	if o.Namespace != kapi.NamespaceAll {
+		options.Namespace = o.Namespace
+	}
+	pruner := prune.NewPruner(options)
+
 	w := tabwriter.NewWriter(o.Out, 10, 4, 3, ' ', 0)
 	defer w.Flush()
 
 	imageDeleter := &describingImageDeleter{w: w}
 	imageStreamDeleter := &describingImageStreamDeleter{w: w}
-	layerDeleter := &describingLayerDeleter{w: w}
+	layerLinkDeleter := &describingLayerLinkDeleter{w: w}
 	blobDeleter := &describingBlobDeleter{w: w}
 	manifestDeleter := &describingManifestDeleter{w: w}
 
 	if o.Confirm {
-		imageDeleter.delegate = prune.NewImageDeleter(o.Client.Images())
-		imageStreamDeleter.delegate = prune.NewImageStreamDeleter(o.Client)
-		layerDeleter.delegate = prune.NewLayerDeleter()
+		imageDeleter.delegate = prune.NewImageDeleter(o.OSClient.Images())
+		imageStreamDeleter.delegate = prune.NewImageStreamDeleter(o.OSClient)
+		layerLinkDeleter.delegate = prune.NewLayerLinkDeleter()
 		blobDeleter.delegate = prune.NewBlobDeleter()
 		manifestDeleter.delegate = prune.NewManifestDeleter()
 	} else {
 		fmt.Fprintln(os.Stderr, "Dry run enabled - no modifications will be made. Add --confirm to remove images")
 	}
 
-	return o.Pruner.Prune(imageDeleter, imageStreamDeleter, layerDeleter, blobDeleter, manifestDeleter)
+	return pruner.Prune(imageDeleter, imageStreamDeleter, layerLinkDeleter, blobDeleter, manifestDeleter)
 }
 
 // describingImageStreamDeleter prints information about each image stream update.
@@ -312,33 +344,32 @@ func (p *describingImageDeleter) DeleteImage(image *imageapi.Image) error {
 	return err
 }
 
-// describingLayerDeleter prints information about each repo layer link being
-// deleted. If a delegate exists, its DeleteLayer function is invoked prior to
-// returning.
-type describingLayerDeleter struct {
+// describingLayerLinkDeleter prints information about each repo layer link being deleted. If a delegate
+// exists, its DeleteLayerLink function is invoked prior to returning.
+type describingLayerLinkDeleter struct {
 	w             io.Writer
-	delegate      prune.LayerDeleter
+	delegate      prune.LayerLinkDeleter
 	headerPrinted bool
 }
 
-var _ prune.LayerDeleter = &describingLayerDeleter{}
+var _ prune.LayerLinkDeleter = &describingLayerLinkDeleter{}
 
-func (p *describingLayerDeleter) DeleteLayer(registryClient *http.Client, registryURL, repo, layer string) error {
+func (p *describingLayerLinkDeleter) DeleteLayerLink(registryClient *http.Client, registryURL, repo, name string) error {
 	if !p.headerPrinted {
 		p.headerPrinted = true
 		fmt.Fprintln(p.w, "\nDeleting registry repository layer links ...")
-		fmt.Fprintln(p.w, "REPO\tLAYER")
+		fmt.Fprintln(p.w, "REPO\tLAYER LINK")
 	}
 
-	fmt.Fprintf(p.w, "%s\t%s\n", repo, layer)
+	fmt.Fprintf(p.w, "%s\t%s\n", repo, name)
 
 	if p.delegate == nil {
 		return nil
 	}
 
-	err := p.delegate.DeleteLayer(registryClient, registryURL, repo, layer)
+	err := p.delegate.DeleteLayerLink(registryClient, registryURL, repo, name)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error deleting repository %s layer link %s from the registry: %v\n", repo, layer, err)
+		fmt.Fprintf(os.Stderr, "error deleting repository %s layer link %s from the registry: %v\n", repo, name, err)
 	}
 
 	return err
@@ -408,8 +439,8 @@ func (p *describingManifestDeleter) DeleteManifest(registryClient *http.Client, 
 }
 
 // getClients returns a Kube client, OpenShift client, and registry client.
-func getClients(f *clientcmd.Factory, caBundle string) (*client.Client, *kclient.Client, *http.Client, error) {
-	clientConfig, err := f.OpenShiftClientConfig.ClientConfig()
+func getClients(f *clientcmd.Factory, caBundle string) (*client.Client, kclientset.Interface, *http.Client, error) {
+	clientConfig, err := f.ClientConfig()
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -417,7 +448,7 @@ func getClients(f *clientcmd.Factory, caBundle string) (*client.Client, *kclient
 	var (
 		token          string
 		osClient       *client.Client
-		kClient        *kclient.Client
+		kClient        kclientset.Interface
 		registryClient *http.Client
 	)
 
@@ -457,7 +488,7 @@ func getClients(f *clientcmd.Factory, caBundle string) (*client.Client, *kclient
 
 	// if the user specified a CA on the command line, add it to the
 	// client config's CA roots
-	if len(caBundle) > 0 {
+	if tlsConfig != nil && len(caBundle) > 0 {
 		data, err := ioutil.ReadFile(caBundle)
 		if err != nil {
 			return nil, nil, nil, err

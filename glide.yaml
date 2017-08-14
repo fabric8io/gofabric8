@@ -1,93 +1,39 @@
 package: github.com/fabric8io/gofabric8
 import:
-- package: github.com/daviddengcn/go-colortext
 - package: github.com/openshift/origin
-  version: v1.3.0
-  subpackages:
-  - pkg/client
-  - pkg/cmd/admin/policy
-  - pkg/cmd/server/bootstrappolicy
-  - pkg/route/api
-  - pkg/template
-  - pkg/template/api
-  - pkg/template/api/v1
-  - pkg/template/generator
-- package: github.com/spf13/cobra
-  version: 9c28e4bbd74e5c3ed7aacbc552b2cab7cfdfe744
-- package: github.com/spf13/pflag
-  version: c7e63cf4530bcd3ba943729cee0efeff2ebea63f
-- package: github.com/golang/glog
-  repo: git://github.com/openshift/glog
-  vcs: git
-  version: 335da9dda11408a34b64344f82e9c03779b71673
-- package: golang.org/x/crypto
-  version: c84e1f8e3a7e322d497cd16c0e8a13c7e127baf3
-  repo: https://github.com/golang/crypto.git
-  vcs: git
+  version: v1.5.1
 - package: k8s.io/kubernetes
-  version: 52492b4bff99ef3b8ca617d385a3ff0612f9402d
   repo: git://github.com/openshift/kubernetes.git
   vcs: git
-  subpackages:
-  - pkg/api
-  - pkg/api/resource
-  - pkg/api/unversioned
-  - pkg/client/unversioned
-  - pkg/fields
-  - pkg/kubectl/cmd
-  - pkg/kubectl/cmd/util
-  - pkg/labels
-  - pkg/runtime
-  - pkg/util
-- package: github.com/Sirupsen/logrus
-  version: ^0.10.0
-- package: github.com/coreos/pkg
-  subpackages:
-  - capnslog
-- package: github.com/coreos/go-systemd
-  subpackages:
-  - journal
-- package: speter.net/go/exp/math/dec/inf
-  repo: git@github.com:go-inf/inf.git
-  vcs: git
-- package: github.com/stretchr/testify
-  subpackages:
-  - assert
-- package: github.com/pmezard/go-difflib
-  subpackages:
-  - difflib
-- package: github.com/pkg/browser
-- package: github.com/minishift/minishift
-  version: 7474f536c8eae3ea229d892e5147ba141ff529af
-  subpackages:
-  - pkg/minikube/update
-  - pkg/minikube/config
-- package: github.com/gonum/graph/concrete
-  version: bde6d0fbd9dec5a997e906611fe0364001364c41
+  version: 43a9be421799afb8a9c02d3541212a6e623c9053
 - package: github.com/docker/docker
-  version: 0f5c9d301b9b1cca66b3ea0f9dec3b5317d3686d
-- package: github.com/imdario/mergo
-  version: 6633656539c1639d9d78127b7d47c622b5d7b6dc
-- package: github.com/fabric8io/fabric8-init-tenant
+  version: b9f10c951893f9a00865890a5232e85d770c1087
+- package: github.com/emicklei/go-restful
+  version: v1.2
   subpackages:
-  - openshift
-  - template
-- package: github.com/gogo/protobuf
-  version: c0656edd0d9eab7c66d1eb0c568f9039345796f7
-  subpackages:
-  - gogoproto
-  - proto
-  - protoc-gen-gogo/descriptor
-  - sortkeys
-- package: github.com/dgrijalva/jwt-go
-  version: 5ca80149b9d3f8b863af0e2bb6742e608603bd99
+  - swagger
+- package: k8s.io/client-go
+  version: 45673e060eb921b510677b1123737ad1158e49fa
+- package: github.com/prometheus/client_golang/prometheus
+  version: e51041b3fa41cece0dca035740ba6411905be473
 - package: github.com/jteeuwen/go-bindata
   version: ^3.0.7
   subpackages:
   - '...'
-- package: github.com/elazarl/go-bindata-assetfs
+- package: github.com/Sirupsen/logrus
+  version: c078b1e43f58d563c74cebe63c85789e76ddb627
+- package: github.com/golang/glog
+  repo: git://github.com/openshift/glog
+  version: 335da9dda11408a34b64344f82e9c03779b71673
+- package: github.com/dgrijalva/jwt-go
+- package: github.com/jimmidyson/go-download
+- package: github.com/spf13/cobra
+  version: 9c28e4bbd74e5c3ed7aacbc552b2cab7cfdfe744
+- package: github.com/davecgh/go-spew
+  version: 346938d642f2ec3594ed81d874461961cd0faa76
+-ignore:
+  - github.com/goadesign/goa
+testImport:
+- package: github.com/stretchr/testify
   subpackages:
-ignore:
-- github.com/goadesign/goa  
-- github.com/fabric8io/almighty-core    
-
+  - assert

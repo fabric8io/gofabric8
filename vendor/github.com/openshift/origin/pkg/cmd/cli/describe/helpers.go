@@ -8,12 +8,13 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/docker/docker/pkg/units"
+	units "github.com/docker/go-units"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	authorizationapi "github.com/openshift/origin/pkg/authorization/api"
 	buildapi "github.com/openshift/origin/pkg/build/api"
 	"github.com/openshift/origin/pkg/client"
 	imageapi "github.com/openshift/origin/pkg/image/api"
@@ -64,7 +65,12 @@ func formatEnv(env api.EnvVar) string {
 }
 
 func formatString(out *tabwriter.Writer, label string, v interface{}) {
-	fmt.Fprintf(out, fmt.Sprintf("%s:\t%s\n", label, toString(v)))
+	labelVals := strings.Split(toString(v), "\n")
+
+	fmt.Fprintf(out, fmt.Sprintf("%s:", label))
+	for _, lval := range labelVals {
+		fmt.Fprintf(out, fmt.Sprintf("\t%s\n", lval))
+	}
 }
 
 func formatTime(out *tabwriter.Writer, label string, t time.Time) {
@@ -363,6 +369,10 @@ func formatImageStreamTags(out *tabwriter.Writer, stream *imageapi.ImageStream) 
 		if insecure {
 			fmt.Fprintf(out, "    will use insecure HTTPS or HTTP connections\n")
 		}
+		switch tagRef.ReferencePolicy.Type {
+		case imageapi.LocalTagReferencePolicy:
+			fmt.Fprintf(out, "    prefer registry pullthrough when referencing this tag\n")
+		}
 
 		fmt.Fprintln(out)
 
@@ -424,4 +434,18 @@ func formatImageStreamTags(out *tabwriter.Writer, stream *imageapi.ImageStream) 
 			}
 		}
 	}
+}
+
+// roleBindingRestrictionType returns a string that indicates the type of the
+// given RoleBindingRestriction.
+func roleBindingRestrictionType(rbr *authorizationapi.RoleBindingRestriction) string {
+	switch {
+	case rbr.Spec.UserRestriction != nil:
+		return "User"
+	case rbr.Spec.GroupRestriction != nil:
+		return "Group"
+	case rbr.Spec.ServiceAccountRestriction != nil:
+		return "ServiceAccount"
+	}
+	return ""
 }

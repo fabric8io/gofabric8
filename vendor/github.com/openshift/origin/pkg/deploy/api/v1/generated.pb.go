@@ -12,6 +12,7 @@
 		CustomDeploymentStrategyParams
 		DeploymentCause
 		DeploymentCauseImageTrigger
+		DeploymentCondition
 		DeploymentConfig
 		DeploymentConfigList
 		DeploymentConfigRollback
@@ -21,6 +22,7 @@
 		DeploymentDetails
 		DeploymentLog
 		DeploymentLogOptions
+		DeploymentRequest
 		DeploymentStrategy
 		DeploymentTriggerImageChangeParams
 		DeploymentTriggerPolicies
@@ -42,6 +44,10 @@ import k8s_io_kubernetes_pkg_api_v1 "k8s.io/kubernetes/pkg/api/v1"
 
 import k8s_io_kubernetes_pkg_util_intstr "k8s.io/kubernetes/pkg/util/intstr"
 
+import strings "strings"
+import reflect "reflect"
+import github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
+
 import io "io"
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -49,94 +55,125 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-func (m *CustomDeploymentStrategyParams) Reset()         { *m = CustomDeploymentStrategyParams{} }
-func (m *CustomDeploymentStrategyParams) String() string { return proto.CompactTextString(m) }
-func (*CustomDeploymentStrategyParams) ProtoMessage()    {}
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the proto package it is being compiled against.
+const _ = proto.GoGoProtoPackageIsVersion1
 
-func (m *DeploymentCause) Reset()         { *m = DeploymentCause{} }
-func (m *DeploymentCause) String() string { return proto.CompactTextString(m) }
-func (*DeploymentCause) ProtoMessage()    {}
+func (m *CustomDeploymentStrategyParams) Reset()      { *m = CustomDeploymentStrategyParams{} }
+func (*CustomDeploymentStrategyParams) ProtoMessage() {}
+func (*CustomDeploymentStrategyParams) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{0}
+}
 
-func (m *DeploymentCauseImageTrigger) Reset()         { *m = DeploymentCauseImageTrigger{} }
-func (m *DeploymentCauseImageTrigger) String() string { return proto.CompactTextString(m) }
-func (*DeploymentCauseImageTrigger) ProtoMessage()    {}
+func (m *DeploymentCause) Reset()                    { *m = DeploymentCause{} }
+func (*DeploymentCause) ProtoMessage()               {}
+func (*DeploymentCause) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{1} }
 
-func (m *DeploymentConfig) Reset()         { *m = DeploymentConfig{} }
-func (m *DeploymentConfig) String() string { return proto.CompactTextString(m) }
-func (*DeploymentConfig) ProtoMessage()    {}
+func (m *DeploymentCauseImageTrigger) Reset()      { *m = DeploymentCauseImageTrigger{} }
+func (*DeploymentCauseImageTrigger) ProtoMessage() {}
+func (*DeploymentCauseImageTrigger) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{2}
+}
 
-func (m *DeploymentConfigList) Reset()         { *m = DeploymentConfigList{} }
-func (m *DeploymentConfigList) String() string { return proto.CompactTextString(m) }
-func (*DeploymentConfigList) ProtoMessage()    {}
+func (m *DeploymentCondition) Reset()                    { *m = DeploymentCondition{} }
+func (*DeploymentCondition) ProtoMessage()               {}
+func (*DeploymentCondition) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{3} }
 
-func (m *DeploymentConfigRollback) Reset()         { *m = DeploymentConfigRollback{} }
-func (m *DeploymentConfigRollback) String() string { return proto.CompactTextString(m) }
-func (*DeploymentConfigRollback) ProtoMessage()    {}
+func (m *DeploymentConfig) Reset()                    { *m = DeploymentConfig{} }
+func (*DeploymentConfig) ProtoMessage()               {}
+func (*DeploymentConfig) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{4} }
 
-func (m *DeploymentConfigRollbackSpec) Reset()         { *m = DeploymentConfigRollbackSpec{} }
-func (m *DeploymentConfigRollbackSpec) String() string { return proto.CompactTextString(m) }
-func (*DeploymentConfigRollbackSpec) ProtoMessage()    {}
+func (m *DeploymentConfigList) Reset()                    { *m = DeploymentConfigList{} }
+func (*DeploymentConfigList) ProtoMessage()               {}
+func (*DeploymentConfigList) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{5} }
 
-func (m *DeploymentConfigSpec) Reset()         { *m = DeploymentConfigSpec{} }
-func (m *DeploymentConfigSpec) String() string { return proto.CompactTextString(m) }
-func (*DeploymentConfigSpec) ProtoMessage()    {}
+func (m *DeploymentConfigRollback) Reset()      { *m = DeploymentConfigRollback{} }
+func (*DeploymentConfigRollback) ProtoMessage() {}
+func (*DeploymentConfigRollback) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{6}
+}
 
-func (m *DeploymentConfigStatus) Reset()         { *m = DeploymentConfigStatus{} }
-func (m *DeploymentConfigStatus) String() string { return proto.CompactTextString(m) }
-func (*DeploymentConfigStatus) ProtoMessage()    {}
+func (m *DeploymentConfigRollbackSpec) Reset()      { *m = DeploymentConfigRollbackSpec{} }
+func (*DeploymentConfigRollbackSpec) ProtoMessage() {}
+func (*DeploymentConfigRollbackSpec) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{7}
+}
 
-func (m *DeploymentDetails) Reset()         { *m = DeploymentDetails{} }
-func (m *DeploymentDetails) String() string { return proto.CompactTextString(m) }
-func (*DeploymentDetails) ProtoMessage()    {}
+func (m *DeploymentConfigSpec) Reset()                    { *m = DeploymentConfigSpec{} }
+func (*DeploymentConfigSpec) ProtoMessage()               {}
+func (*DeploymentConfigSpec) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{8} }
 
-func (m *DeploymentLog) Reset()         { *m = DeploymentLog{} }
-func (m *DeploymentLog) String() string { return proto.CompactTextString(m) }
-func (*DeploymentLog) ProtoMessage()    {}
+func (m *DeploymentConfigStatus) Reset()                    { *m = DeploymentConfigStatus{} }
+func (*DeploymentConfigStatus) ProtoMessage()               {}
+func (*DeploymentConfigStatus) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{9} }
 
-func (m *DeploymentLogOptions) Reset()         { *m = DeploymentLogOptions{} }
-func (m *DeploymentLogOptions) String() string { return proto.CompactTextString(m) }
-func (*DeploymentLogOptions) ProtoMessage()    {}
+func (m *DeploymentDetails) Reset()                    { *m = DeploymentDetails{} }
+func (*DeploymentDetails) ProtoMessage()               {}
+func (*DeploymentDetails) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{10} }
 
-func (m *DeploymentStrategy) Reset()         { *m = DeploymentStrategy{} }
-func (m *DeploymentStrategy) String() string { return proto.CompactTextString(m) }
-func (*DeploymentStrategy) ProtoMessage()    {}
+func (m *DeploymentLog) Reset()                    { *m = DeploymentLog{} }
+func (*DeploymentLog) ProtoMessage()               {}
+func (*DeploymentLog) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{11} }
 
-func (m *DeploymentTriggerImageChangeParams) Reset()         { *m = DeploymentTriggerImageChangeParams{} }
-func (m *DeploymentTriggerImageChangeParams) String() string { return proto.CompactTextString(m) }
-func (*DeploymentTriggerImageChangeParams) ProtoMessage()    {}
+func (m *DeploymentLogOptions) Reset()                    { *m = DeploymentLogOptions{} }
+func (*DeploymentLogOptions) ProtoMessage()               {}
+func (*DeploymentLogOptions) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{12} }
 
-func (m *DeploymentTriggerPolicies) Reset()         { *m = DeploymentTriggerPolicies{} }
-func (m *DeploymentTriggerPolicies) String() string { return proto.CompactTextString(m) }
-func (*DeploymentTriggerPolicies) ProtoMessage()    {}
+func (m *DeploymentRequest) Reset()                    { *m = DeploymentRequest{} }
+func (*DeploymentRequest) ProtoMessage()               {}
+func (*DeploymentRequest) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{13} }
 
-func (m *DeploymentTriggerPolicy) Reset()         { *m = DeploymentTriggerPolicy{} }
-func (m *DeploymentTriggerPolicy) String() string { return proto.CompactTextString(m) }
-func (*DeploymentTriggerPolicy) ProtoMessage()    {}
+func (m *DeploymentStrategy) Reset()                    { *m = DeploymentStrategy{} }
+func (*DeploymentStrategy) ProtoMessage()               {}
+func (*DeploymentStrategy) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{14} }
 
-func (m *ExecNewPodHook) Reset()         { *m = ExecNewPodHook{} }
-func (m *ExecNewPodHook) String() string { return proto.CompactTextString(m) }
-func (*ExecNewPodHook) ProtoMessage()    {}
+func (m *DeploymentTriggerImageChangeParams) Reset()      { *m = DeploymentTriggerImageChangeParams{} }
+func (*DeploymentTriggerImageChangeParams) ProtoMessage() {}
+func (*DeploymentTriggerImageChangeParams) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{15}
+}
 
-func (m *LifecycleHook) Reset()         { *m = LifecycleHook{} }
-func (m *LifecycleHook) String() string { return proto.CompactTextString(m) }
-func (*LifecycleHook) ProtoMessage()    {}
+func (m *DeploymentTriggerPolicies) Reset()      { *m = DeploymentTriggerPolicies{} }
+func (*DeploymentTriggerPolicies) ProtoMessage() {}
+func (*DeploymentTriggerPolicies) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{16}
+}
 
-func (m *RecreateDeploymentStrategyParams) Reset()         { *m = RecreateDeploymentStrategyParams{} }
-func (m *RecreateDeploymentStrategyParams) String() string { return proto.CompactTextString(m) }
-func (*RecreateDeploymentStrategyParams) ProtoMessage()    {}
+func (m *DeploymentTriggerPolicy) Reset()      { *m = DeploymentTriggerPolicy{} }
+func (*DeploymentTriggerPolicy) ProtoMessage() {}
+func (*DeploymentTriggerPolicy) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{17}
+}
 
-func (m *RollingDeploymentStrategyParams) Reset()         { *m = RollingDeploymentStrategyParams{} }
-func (m *RollingDeploymentStrategyParams) String() string { return proto.CompactTextString(m) }
-func (*RollingDeploymentStrategyParams) ProtoMessage()    {}
+func (m *ExecNewPodHook) Reset()                    { *m = ExecNewPodHook{} }
+func (*ExecNewPodHook) ProtoMessage()               {}
+func (*ExecNewPodHook) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{18} }
 
-func (m *TagImageHook) Reset()         { *m = TagImageHook{} }
-func (m *TagImageHook) String() string { return proto.CompactTextString(m) }
-func (*TagImageHook) ProtoMessage()    {}
+func (m *LifecycleHook) Reset()                    { *m = LifecycleHook{} }
+func (*LifecycleHook) ProtoMessage()               {}
+func (*LifecycleHook) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{19} }
+
+func (m *RecreateDeploymentStrategyParams) Reset()      { *m = RecreateDeploymentStrategyParams{} }
+func (*RecreateDeploymentStrategyParams) ProtoMessage() {}
+func (*RecreateDeploymentStrategyParams) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{20}
+}
+
+func (m *RollingDeploymentStrategyParams) Reset()      { *m = RollingDeploymentStrategyParams{} }
+func (*RollingDeploymentStrategyParams) ProtoMessage() {}
+func (*RollingDeploymentStrategyParams) Descriptor() ([]byte, []int) {
+	return fileDescriptorGenerated, []int{21}
+}
+
+func (m *TagImageHook) Reset()                    { *m = TagImageHook{} }
+func (*TagImageHook) ProtoMessage()               {}
+func (*TagImageHook) Descriptor() ([]byte, []int) { return fileDescriptorGenerated, []int{22} }
 
 func init() {
 	proto.RegisterType((*CustomDeploymentStrategyParams)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.CustomDeploymentStrategyParams")
 	proto.RegisterType((*DeploymentCause)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentCause")
 	proto.RegisterType((*DeploymentCauseImageTrigger)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentCauseImageTrigger")
+	proto.RegisterType((*DeploymentCondition)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentCondition")
 	proto.RegisterType((*DeploymentConfig)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentConfig")
 	proto.RegisterType((*DeploymentConfigList)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentConfigList")
 	proto.RegisterType((*DeploymentConfigRollback)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentConfigRollback")
@@ -146,6 +183,7 @@ func init() {
 	proto.RegisterType((*DeploymentDetails)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentDetails")
 	proto.RegisterType((*DeploymentLog)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentLog")
 	proto.RegisterType((*DeploymentLogOptions)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentLogOptions")
+	proto.RegisterType((*DeploymentRequest)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentRequest")
 	proto.RegisterType((*DeploymentStrategy)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentStrategy")
 	proto.RegisterType((*DeploymentTriggerImageChangeParams)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentTriggerImageChangeParams")
 	proto.RegisterType((*DeploymentTriggerPolicies)(nil), "github.com.openshift.origin.pkg.deploy.api.v1.DeploymentTriggerPolicies")
@@ -263,6 +301,56 @@ func (m *DeploymentCauseImageTrigger) MarshalTo(data []byte) (int, error) {
 	return i, nil
 }
 
+func (m *DeploymentCondition) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *DeploymentCondition) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	data[i] = 0xa
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Type)))
+	i += copy(data[i:], m.Type)
+	data[i] = 0x12
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Status)))
+	i += copy(data[i:], m.Status)
+	data[i] = 0x1a
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.LastTransitionTime.Size()))
+	n3, err := m.LastTransitionTime.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n3
+	data[i] = 0x22
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Reason)))
+	i += copy(data[i:], m.Reason)
+	data[i] = 0x2a
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Message)))
+	i += copy(data[i:], m.Message)
+	data[i] = 0x32
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.LastUpdateTime.Size()))
+	n4, err := m.LastUpdateTime.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n4
+	return i, nil
+}
+
 func (m *DeploymentConfig) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
@@ -281,27 +369,27 @@ func (m *DeploymentConfig) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.ObjectMeta.Size()))
-	n3, err := m.ObjectMeta.MarshalTo(data[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n3
-	data[i] = 0x12
-	i++
-	i = encodeVarintGenerated(data, i, uint64(m.Spec.Size()))
-	n4, err := m.Spec.MarshalTo(data[i:])
-	if err != nil {
-		return 0, err
-	}
-	i += n4
-	data[i] = 0x1a
-	i++
-	i = encodeVarintGenerated(data, i, uint64(m.Status.Size()))
-	n5, err := m.Status.MarshalTo(data[i:])
+	n5, err := m.ObjectMeta.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
 	i += n5
+	data[i] = 0x12
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.Spec.Size()))
+	n6, err := m.Spec.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n6
+	data[i] = 0x1a
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.Status.Size()))
+	n7, err := m.Status.MarshalTo(data[i:])
+	if err != nil {
+		return 0, err
+	}
+	i += n7
 	return i, nil
 }
 
@@ -323,11 +411,11 @@ func (m *DeploymentConfigList) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.ListMeta.Size()))
-	n6, err := m.ListMeta.MarshalTo(data[i:])
+	n8, err := m.ListMeta.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n6
+	i += n8
 	if len(m.Items) > 0 {
 		for _, msg := range m.Items {
 			data[i] = 0x12
@@ -382,11 +470,11 @@ func (m *DeploymentConfigRollback) MarshalTo(data []byte) (int, error) {
 	data[i] = 0x1a
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Spec.Size()))
-	n7, err := m.Spec.MarshalTo(data[i:])
+	n9, err := m.Spec.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n7
+	i += n9
 	return i, nil
 }
 
@@ -408,11 +496,11 @@ func (m *DeploymentConfigRollbackSpec) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-	n8, err := m.From.MarshalTo(data[i:])
+	n10, err := m.From.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n8
+	i += n10
 	data[i] = 0x10
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Revision))
@@ -469,20 +557,20 @@ func (m *DeploymentConfigSpec) MarshalTo(data []byte) (int, error) {
 	data[i] = 0xa
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Strategy.Size()))
-	n9, err := m.Strategy.MarshalTo(data[i:])
+	n11, err := m.Strategy.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n9
+	i += n11
 	if m.Triggers != nil {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Triggers.Size()))
-		n10, err := m.Triggers.MarshalTo(data[i:])
+		n12, err := m.Triggers.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n10
+		i += n12
 	}
 	data[i] = 0x18
 	i++
@@ -529,11 +617,11 @@ func (m *DeploymentConfigSpec) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x42
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Template.Size()))
-		n11, err := m.Template.MarshalTo(data[i:])
+		n13, err := m.Template.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n11
+		i += n13
 	}
 	data[i] = 0x48
 	i++
@@ -578,12 +666,27 @@ func (m *DeploymentConfigStatus) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x3a
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Details.Size()))
-		n12, err := m.Details.MarshalTo(data[i:])
+		n14, err := m.Details.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n12
+		i += n14
 	}
+	if len(m.Conditions) > 0 {
+		for _, msg := range m.Conditions {
+			data[i] = 0x42
+			i++
+			i = encodeVarintGenerated(data, i, uint64(msg.Size()))
+			n, err := msg.MarshalTo(data[i:])
+			if err != nil {
+				return 0, err
+			}
+			i += n
+		}
+	}
+	data[i] = 0x48
+	i++
+	i = encodeVarintGenerated(data, i, uint64(m.ReadyReplicas))
 	return i, nil
 }
 
@@ -683,11 +786,11 @@ func (m *DeploymentLogOptions) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x2a
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.SinceTime.Size()))
-		n13, err := m.SinceTime.MarshalTo(data[i:])
+		n15, err := m.SinceTime.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n13
+		i += n15
 	}
 	data[i] = 0x30
 	i++
@@ -723,6 +826,44 @@ func (m *DeploymentLogOptions) MarshalTo(data []byte) (int, error) {
 	return i, nil
 }
 
+func (m *DeploymentRequest) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *DeploymentRequest) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	data[i] = 0xa
+	i++
+	i = encodeVarintGenerated(data, i, uint64(len(m.Name)))
+	i += copy(data[i:], m.Name)
+	data[i] = 0x10
+	i++
+	if m.Latest {
+		data[i] = 1
+	} else {
+		data[i] = 0
+	}
+	i++
+	data[i] = 0x18
+	i++
+	if m.Force {
+		data[i] = 1
+	} else {
+		data[i] = 0
+	}
+	i++
+	return i, nil
+}
+
 func (m *DeploymentStrategy) Marshal() (data []byte, err error) {
 	size := m.Size()
 	data = make([]byte, size)
@@ -746,40 +887,40 @@ func (m *DeploymentStrategy) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.CustomParams.Size()))
-		n14, err := m.CustomParams.MarshalTo(data[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n14
-	}
-	if m.RecreateParams != nil {
-		data[i] = 0x1a
-		i++
-		i = encodeVarintGenerated(data, i, uint64(m.RecreateParams.Size()))
-		n15, err := m.RecreateParams.MarshalTo(data[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n15
-	}
-	if m.RollingParams != nil {
-		data[i] = 0x22
-		i++
-		i = encodeVarintGenerated(data, i, uint64(m.RollingParams.Size()))
-		n16, err := m.RollingParams.MarshalTo(data[i:])
+		n16, err := m.CustomParams.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n16
 	}
+	if m.RecreateParams != nil {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.RecreateParams.Size()))
+		n17, err := m.RecreateParams.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n17
+	}
+	if m.RollingParams != nil {
+		data[i] = 0x22
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.RollingParams.Size()))
+		n18, err := m.RollingParams.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n18
+	}
 	data[i] = 0x2a
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.Resources.Size()))
-	n17, err := m.Resources.MarshalTo(data[i:])
+	n19, err := m.Resources.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n17
+	i += n19
 	if len(m.Labels) > 0 {
 		for k := range m.Labels {
 			data[i] = 0x32
@@ -813,6 +954,11 @@ func (m *DeploymentStrategy) MarshalTo(data []byte) (int, error) {
 			i = encodeVarintGenerated(data, i, uint64(len(v)))
 			i += copy(data[i:], v)
 		}
+	}
+	if m.ActiveDeadlineSeconds != nil {
+		data[i] = 0x40
+		i++
+		i = encodeVarintGenerated(data, i, uint64(*m.ActiveDeadlineSeconds))
 	}
 	return i, nil
 }
@@ -858,11 +1004,11 @@ func (m *DeploymentTriggerImageChangeParams) MarshalTo(data []byte) (int, error)
 	data[i] = 0x1a
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.From.Size()))
-	n18, err := m.From.MarshalTo(data[i:])
+	n20, err := m.From.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n18
+	i += n20
 	data[i] = 0x22
 	i++
 	i = encodeVarintGenerated(data, i, uint64(len(m.LastTriggeredImage)))
@@ -923,11 +1069,11 @@ func (m *DeploymentTriggerPolicy) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.ImageChangeParams.Size()))
-		n19, err := m.ImageChangeParams.MarshalTo(data[i:])
+		n21, err := m.ImageChangeParams.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n19
+		i += n21
 	}
 	return i, nil
 }
@@ -1019,11 +1165,11 @@ func (m *LifecycleHook) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.ExecNewPod.Size()))
-		n20, err := m.ExecNewPod.MarshalTo(data[i:])
+		n22, err := m.ExecNewPod.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n20
+		i += n22
 	}
 	if len(m.TagImages) > 0 {
 		for _, msg := range m.TagImages {
@@ -1064,31 +1210,31 @@ func (m *RecreateDeploymentStrategyParams) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x12
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Pre.Size()))
-		n21, err := m.Pre.MarshalTo(data[i:])
+		n23, err := m.Pre.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n21
+		i += n23
 	}
 	if m.Mid != nil {
 		data[i] = 0x1a
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Mid.Size()))
-		n22, err := m.Mid.MarshalTo(data[i:])
+		n24, err := m.Mid.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n22
+		i += n24
 	}
 	if m.Post != nil {
 		data[i] = 0x22
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.Post.Size()))
-		n23, err := m.Post.MarshalTo(data[i:])
+		n25, err := m.Post.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
-		i += n23
+		i += n25
 	}
 	return i, nil
 }
@@ -1127,46 +1273,41 @@ func (m *RollingDeploymentStrategyParams) MarshalTo(data []byte) (int, error) {
 		data[i] = 0x22
 		i++
 		i = encodeVarintGenerated(data, i, uint64(m.MaxUnavailable.Size()))
-		n24, err := m.MaxUnavailable.MarshalTo(data[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n24
-	}
-	if m.MaxSurge != nil {
-		data[i] = 0x2a
-		i++
-		i = encodeVarintGenerated(data, i, uint64(m.MaxSurge.Size()))
-		n25, err := m.MaxSurge.MarshalTo(data[i:])
-		if err != nil {
-			return 0, err
-		}
-		i += n25
-	}
-	if m.UpdatePercent != nil {
-		data[i] = 0x30
-		i++
-		i = encodeVarintGenerated(data, i, uint64(*m.UpdatePercent))
-	}
-	if m.Pre != nil {
-		data[i] = 0x3a
-		i++
-		i = encodeVarintGenerated(data, i, uint64(m.Pre.Size()))
-		n26, err := m.Pre.MarshalTo(data[i:])
+		n26, err := m.MaxUnavailable.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n26
 	}
-	if m.Post != nil {
-		data[i] = 0x42
+	if m.MaxSurge != nil {
+		data[i] = 0x2a
 		i++
-		i = encodeVarintGenerated(data, i, uint64(m.Post.Size()))
-		n27, err := m.Post.MarshalTo(data[i:])
+		i = encodeVarintGenerated(data, i, uint64(m.MaxSurge.Size()))
+		n27, err := m.MaxSurge.MarshalTo(data[i:])
 		if err != nil {
 			return 0, err
 		}
 		i += n27
+	}
+	if m.Pre != nil {
+		data[i] = 0x3a
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.Pre.Size()))
+		n28, err := m.Pre.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n28
+	}
+	if m.Post != nil {
+		data[i] = 0x42
+		i++
+		i = encodeVarintGenerated(data, i, uint64(m.Post.Size()))
+		n29, err := m.Post.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n29
 	}
 	return i, nil
 }
@@ -1193,11 +1334,11 @@ func (m *TagImageHook) MarshalTo(data []byte) (int, error) {
 	data[i] = 0x12
 	i++
 	i = encodeVarintGenerated(data, i, uint64(m.To.Size()))
-	n28, err := m.To.MarshalTo(data[i:])
+	n30, err := m.To.MarshalTo(data[i:])
 	if err != nil {
 		return 0, err
 	}
-	i += n28
+	i += n30
 	return i, nil
 }
 
@@ -1264,6 +1405,24 @@ func (m *DeploymentCauseImageTrigger) Size() (n int) {
 	var l int
 	_ = l
 	l = m.From.Size()
+	n += 1 + l + sovGenerated(uint64(l))
+	return n
+}
+
+func (m *DeploymentCondition) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Type)
+	n += 1 + l + sovGenerated(uint64(l))
+	l = len(m.Status)
+	n += 1 + l + sovGenerated(uint64(l))
+	l = m.LastTransitionTime.Size()
+	n += 1 + l + sovGenerated(uint64(l))
+	l = len(m.Reason)
+	n += 1 + l + sovGenerated(uint64(l))
+	l = len(m.Message)
+	n += 1 + l + sovGenerated(uint64(l))
+	l = m.LastUpdateTime.Size()
 	n += 1 + l + sovGenerated(uint64(l))
 	return n
 }
@@ -1369,6 +1528,13 @@ func (m *DeploymentConfigStatus) Size() (n int) {
 		l = m.Details.Size()
 		n += 1 + l + sovGenerated(uint64(l))
 	}
+	if len(m.Conditions) > 0 {
+		for _, e := range m.Conditions {
+			l = e.Size()
+			n += 1 + l + sovGenerated(uint64(l))
+		}
+	}
+	n += 1 + sovGenerated(uint64(m.ReadyReplicas))
 	return n
 }
 
@@ -1420,6 +1586,16 @@ func (m *DeploymentLogOptions) Size() (n int) {
 	return n
 }
 
+func (m *DeploymentRequest) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Name)
+	n += 1 + l + sovGenerated(uint64(l))
+	n += 2
+	n += 2
+	return n
+}
+
 func (m *DeploymentStrategy) Size() (n int) {
 	var l int
 	_ = l
@@ -1454,6 +1630,9 @@ func (m *DeploymentStrategy) Size() (n int) {
 			mapEntrySize := 1 + len(k) + sovGenerated(uint64(len(k))) + 1 + len(v) + sovGenerated(uint64(len(v)))
 			n += mapEntrySize + 1 + sovGenerated(uint64(mapEntrySize))
 		}
+	}
+	if m.ActiveDeadlineSeconds != nil {
+		n += 1 + sovGenerated(uint64(*m.ActiveDeadlineSeconds))
 	}
 	return n
 }
@@ -1584,9 +1763,6 @@ func (m *RollingDeploymentStrategyParams) Size() (n int) {
 		l = m.MaxSurge.Size()
 		n += 1 + l + sovGenerated(uint64(l))
 	}
-	if m.UpdatePercent != nil {
-		n += 1 + sovGenerated(uint64(*m.UpdatePercent))
-	}
 	if m.Pre != nil {
 		l = m.Pre.Size()
 		n += 1 + l + sovGenerated(uint64(l))
@@ -1620,6 +1796,345 @@ func sovGenerated(x uint64) (n int) {
 }
 func sozGenerated(x uint64) (n int) {
 	return sovGenerated(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (this *CustomDeploymentStrategyParams) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CustomDeploymentStrategyParams{`,
+		`Image:` + fmt.Sprintf("%v", this.Image) + `,`,
+		`Environment:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Environment), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`Command:` + fmt.Sprintf("%v", this.Command) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentCause) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentCause{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`ImageTrigger:` + strings.Replace(fmt.Sprintf("%v", this.ImageTrigger), "DeploymentCauseImageTrigger", "DeploymentCauseImageTrigger", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentCauseImageTrigger) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentCauseImageTrigger{`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentCondition) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentCondition{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Status:` + fmt.Sprintf("%v", this.Status) + `,`,
+		`LastTransitionTime:` + strings.Replace(strings.Replace(this.LastTransitionTime.String(), "Time", "k8s_io_kubernetes_pkg_api_unversioned.Time", 1), `&`, ``, 1) + `,`,
+		`Reason:` + fmt.Sprintf("%v", this.Reason) + `,`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`LastUpdateTime:` + strings.Replace(strings.Replace(this.LastUpdateTime.String(), "Time", "k8s_io_kubernetes_pkg_api_unversioned.Time", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentConfig) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentConfig{`,
+		`ObjectMeta:` + strings.Replace(strings.Replace(this.ObjectMeta.String(), "ObjectMeta", "k8s_io_kubernetes_pkg_api_v1.ObjectMeta", 1), `&`, ``, 1) + `,`,
+		`Spec:` + strings.Replace(strings.Replace(this.Spec.String(), "DeploymentConfigSpec", "DeploymentConfigSpec", 1), `&`, ``, 1) + `,`,
+		`Status:` + strings.Replace(strings.Replace(this.Status.String(), "DeploymentConfigStatus", "DeploymentConfigStatus", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentConfigList) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentConfigList{`,
+		`ListMeta:` + strings.Replace(strings.Replace(this.ListMeta.String(), "ListMeta", "k8s_io_kubernetes_pkg_api_unversioned.ListMeta", 1), `&`, ``, 1) + `,`,
+		`Items:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Items), "DeploymentConfig", "DeploymentConfig", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentConfigRollback) String() string {
+	if this == nil {
+		return "nil"
+	}
+	keysForUpdatedAnnotations := make([]string, 0, len(this.UpdatedAnnotations))
+	for k := range this.UpdatedAnnotations {
+		keysForUpdatedAnnotations = append(keysForUpdatedAnnotations, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForUpdatedAnnotations)
+	mapStringForUpdatedAnnotations := "map[string]string{"
+	for _, k := range keysForUpdatedAnnotations {
+		mapStringForUpdatedAnnotations += fmt.Sprintf("%v: %v,", k, this.UpdatedAnnotations[k])
+	}
+	mapStringForUpdatedAnnotations += "}"
+	s := strings.Join([]string{`&DeploymentConfigRollback{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`UpdatedAnnotations:` + mapStringForUpdatedAnnotations + `,`,
+		`Spec:` + strings.Replace(strings.Replace(this.Spec.String(), "DeploymentConfigRollbackSpec", "DeploymentConfigRollbackSpec", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentConfigRollbackSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentConfigRollbackSpec{`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`Revision:` + fmt.Sprintf("%v", this.Revision) + `,`,
+		`IncludeTriggers:` + fmt.Sprintf("%v", this.IncludeTriggers) + `,`,
+		`IncludeTemplate:` + fmt.Sprintf("%v", this.IncludeTemplate) + `,`,
+		`IncludeReplicationMeta:` + fmt.Sprintf("%v", this.IncludeReplicationMeta) + `,`,
+		`IncludeStrategy:` + fmt.Sprintf("%v", this.IncludeStrategy) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentConfigSpec) String() string {
+	if this == nil {
+		return "nil"
+	}
+	keysForSelector := make([]string, 0, len(this.Selector))
+	for k := range this.Selector {
+		keysForSelector = append(keysForSelector, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForSelector)
+	mapStringForSelector := "map[string]string{"
+	for _, k := range keysForSelector {
+		mapStringForSelector += fmt.Sprintf("%v: %v,", k, this.Selector[k])
+	}
+	mapStringForSelector += "}"
+	s := strings.Join([]string{`&DeploymentConfigSpec{`,
+		`Strategy:` + strings.Replace(strings.Replace(this.Strategy.String(), "DeploymentStrategy", "DeploymentStrategy", 1), `&`, ``, 1) + `,`,
+		`Triggers:` + strings.Replace(fmt.Sprintf("%v", this.Triggers), "DeploymentTriggerPolicies", "DeploymentTriggerPolicies", 1) + `,`,
+		`Replicas:` + fmt.Sprintf("%v", this.Replicas) + `,`,
+		`RevisionHistoryLimit:` + valueToStringGenerated(this.RevisionHistoryLimit) + `,`,
+		`Test:` + fmt.Sprintf("%v", this.Test) + `,`,
+		`Paused:` + fmt.Sprintf("%v", this.Paused) + `,`,
+		`Selector:` + mapStringForSelector + `,`,
+		`Template:` + strings.Replace(fmt.Sprintf("%v", this.Template), "PodTemplateSpec", "k8s_io_kubernetes_pkg_api_v1.PodTemplateSpec", 1) + `,`,
+		`MinReadySeconds:` + fmt.Sprintf("%v", this.MinReadySeconds) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentConfigStatus) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentConfigStatus{`,
+		`LatestVersion:` + fmt.Sprintf("%v", this.LatestVersion) + `,`,
+		`ObservedGeneration:` + fmt.Sprintf("%v", this.ObservedGeneration) + `,`,
+		`Replicas:` + fmt.Sprintf("%v", this.Replicas) + `,`,
+		`UpdatedReplicas:` + fmt.Sprintf("%v", this.UpdatedReplicas) + `,`,
+		`AvailableReplicas:` + fmt.Sprintf("%v", this.AvailableReplicas) + `,`,
+		`UnavailableReplicas:` + fmt.Sprintf("%v", this.UnavailableReplicas) + `,`,
+		`Details:` + strings.Replace(fmt.Sprintf("%v", this.Details), "DeploymentDetails", "DeploymentDetails", 1) + `,`,
+		`Conditions:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Conditions), "DeploymentCondition", "DeploymentCondition", 1), `&`, ``, 1) + `,`,
+		`ReadyReplicas:` + fmt.Sprintf("%v", this.ReadyReplicas) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentDetails) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentDetails{`,
+		`Message:` + fmt.Sprintf("%v", this.Message) + `,`,
+		`Causes:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Causes), "DeploymentCause", "DeploymentCause", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentLog) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentLog{`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentLogOptions) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentLogOptions{`,
+		`Container:` + fmt.Sprintf("%v", this.Container) + `,`,
+		`Follow:` + fmt.Sprintf("%v", this.Follow) + `,`,
+		`Previous:` + fmt.Sprintf("%v", this.Previous) + `,`,
+		`SinceSeconds:` + valueToStringGenerated(this.SinceSeconds) + `,`,
+		`SinceTime:` + strings.Replace(fmt.Sprintf("%v", this.SinceTime), "Time", "k8s_io_kubernetes_pkg_api_unversioned.Time", 1) + `,`,
+		`Timestamps:` + fmt.Sprintf("%v", this.Timestamps) + `,`,
+		`TailLines:` + valueToStringGenerated(this.TailLines) + `,`,
+		`LimitBytes:` + valueToStringGenerated(this.LimitBytes) + `,`,
+		`NoWait:` + fmt.Sprintf("%v", this.NoWait) + `,`,
+		`Version:` + valueToStringGenerated(this.Version) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentRequest{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Latest:` + fmt.Sprintf("%v", this.Latest) + `,`,
+		`Force:` + fmt.Sprintf("%v", this.Force) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentStrategy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	keysForLabels := make([]string, 0, len(this.Labels))
+	for k := range this.Labels {
+		keysForLabels = append(keysForLabels, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)
+	mapStringForLabels := "map[string]string{"
+	for _, k := range keysForLabels {
+		mapStringForLabels += fmt.Sprintf("%v: %v,", k, this.Labels[k])
+	}
+	mapStringForLabels += "}"
+	keysForAnnotations := make([]string, 0, len(this.Annotations))
+	for k := range this.Annotations {
+		keysForAnnotations = append(keysForAnnotations, k)
+	}
+	github_com_gogo_protobuf_sortkeys.Strings(keysForAnnotations)
+	mapStringForAnnotations := "map[string]string{"
+	for _, k := range keysForAnnotations {
+		mapStringForAnnotations += fmt.Sprintf("%v: %v,", k, this.Annotations[k])
+	}
+	mapStringForAnnotations += "}"
+	s := strings.Join([]string{`&DeploymentStrategy{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`CustomParams:` + strings.Replace(fmt.Sprintf("%v", this.CustomParams), "CustomDeploymentStrategyParams", "CustomDeploymentStrategyParams", 1) + `,`,
+		`RecreateParams:` + strings.Replace(fmt.Sprintf("%v", this.RecreateParams), "RecreateDeploymentStrategyParams", "RecreateDeploymentStrategyParams", 1) + `,`,
+		`RollingParams:` + strings.Replace(fmt.Sprintf("%v", this.RollingParams), "RollingDeploymentStrategyParams", "RollingDeploymentStrategyParams", 1) + `,`,
+		`Resources:` + strings.Replace(strings.Replace(this.Resources.String(), "ResourceRequirements", "k8s_io_kubernetes_pkg_api_v1.ResourceRequirements", 1), `&`, ``, 1) + `,`,
+		`Labels:` + mapStringForLabels + `,`,
+		`Annotations:` + mapStringForAnnotations + `,`,
+		`ActiveDeadlineSeconds:` + valueToStringGenerated(this.ActiveDeadlineSeconds) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentTriggerImageChangeParams) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentTriggerImageChangeParams{`,
+		`Automatic:` + fmt.Sprintf("%v", this.Automatic) + `,`,
+		`ContainerNames:` + fmt.Sprintf("%v", this.ContainerNames) + `,`,
+		`From:` + strings.Replace(strings.Replace(this.From.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`LastTriggeredImage:` + fmt.Sprintf("%v", this.LastTriggeredImage) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DeploymentTriggerPolicy) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DeploymentTriggerPolicy{`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`ImageChangeParams:` + strings.Replace(fmt.Sprintf("%v", this.ImageChangeParams), "DeploymentTriggerImageChangeParams", "DeploymentTriggerImageChangeParams", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ExecNewPodHook) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ExecNewPodHook{`,
+		`Command:` + fmt.Sprintf("%v", this.Command) + `,`,
+		`Env:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Env), "EnvVar", "k8s_io_kubernetes_pkg_api_v1.EnvVar", 1), `&`, ``, 1) + `,`,
+		`ContainerName:` + fmt.Sprintf("%v", this.ContainerName) + `,`,
+		`Volumes:` + fmt.Sprintf("%v", this.Volumes) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *LifecycleHook) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&LifecycleHook{`,
+		`FailurePolicy:` + fmt.Sprintf("%v", this.FailurePolicy) + `,`,
+		`ExecNewPod:` + strings.Replace(fmt.Sprintf("%v", this.ExecNewPod), "ExecNewPodHook", "ExecNewPodHook", 1) + `,`,
+		`TagImages:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.TagImages), "TagImageHook", "TagImageHook", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *RecreateDeploymentStrategyParams) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&RecreateDeploymentStrategyParams{`,
+		`TimeoutSeconds:` + valueToStringGenerated(this.TimeoutSeconds) + `,`,
+		`Pre:` + strings.Replace(fmt.Sprintf("%v", this.Pre), "LifecycleHook", "LifecycleHook", 1) + `,`,
+		`Mid:` + strings.Replace(fmt.Sprintf("%v", this.Mid), "LifecycleHook", "LifecycleHook", 1) + `,`,
+		`Post:` + strings.Replace(fmt.Sprintf("%v", this.Post), "LifecycleHook", "LifecycleHook", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *RollingDeploymentStrategyParams) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&RollingDeploymentStrategyParams{`,
+		`UpdatePeriodSeconds:` + valueToStringGenerated(this.UpdatePeriodSeconds) + `,`,
+		`IntervalSeconds:` + valueToStringGenerated(this.IntervalSeconds) + `,`,
+		`TimeoutSeconds:` + valueToStringGenerated(this.TimeoutSeconds) + `,`,
+		`MaxUnavailable:` + strings.Replace(fmt.Sprintf("%v", this.MaxUnavailable), "IntOrString", "k8s_io_kubernetes_pkg_util_intstr.IntOrString", 1) + `,`,
+		`MaxSurge:` + strings.Replace(fmt.Sprintf("%v", this.MaxSurge), "IntOrString", "k8s_io_kubernetes_pkg_util_intstr.IntOrString", 1) + `,`,
+		`Pre:` + strings.Replace(fmt.Sprintf("%v", this.Pre), "LifecycleHook", "LifecycleHook", 1) + `,`,
+		`Post:` + strings.Replace(fmt.Sprintf("%v", this.Post), "LifecycleHook", "LifecycleHook", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *TagImageHook) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&TagImageHook{`,
+		`ContainerName:` + fmt.Sprintf("%v", this.ContainerName) + `,`,
+		`To:` + strings.Replace(strings.Replace(this.To.String(), "ObjectReference", "k8s_io_kubernetes_pkg_api_v1.ObjectReference", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func valueToStringGenerated(v interface{}) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("*%v", pv)
 }
 func (m *CustomDeploymentStrategyParams) Unmarshal(data []byte) error {
 	l := len(data)
@@ -1928,6 +2443,232 @@ func (m *DeploymentCauseImageTrigger) Unmarshal(data []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if err := m.From.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DeploymentCondition) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DeploymentCondition: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DeploymentCondition: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Type", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Type = DeploymentConditionType(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Status = k8s_io_kubernetes_pkg_api_v1.ConditionStatus(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastTransitionTime", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.LastTransitionTime.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reason", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Reason = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Message", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Message = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LastUpdateTime", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.LastUpdateTime.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -3133,6 +3874,56 @@ func (m *DeploymentConfigStatus) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Conditions", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Conditions = append(m.Conditions, DeploymentCondition{})
+			if err := m.Conditions[len(m.Conditions)-1].Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ReadyReplicas", wireType)
+			}
+			m.ReadyReplicas = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.ReadyReplicas |= (int32(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGenerated(data[iNdEx:])
@@ -3586,6 +4377,125 @@ func (m *DeploymentLogOptions) Unmarshal(data []byte) error {
 	}
 	return nil
 }
+func (m *DeploymentRequest) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenerated
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DeploymentRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DeploymentRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Latest", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Latest = bool(v != 0)
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Force", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Force = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenerated(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGenerated
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *DeploymentStrategy) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
@@ -3995,6 +4905,26 @@ func (m *DeploymentStrategy) Unmarshal(data []byte) error {
 			}
 			m.Annotations[mapkey] = mapvalue
 			iNdEx = postIndex
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ActiveDeadlineSeconds", wireType)
+			}
+			var v int64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenerated
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.ActiveDeadlineSeconds = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGenerated(data[iNdEx:])
@@ -5002,26 +5932,6 @@ func (m *RollingDeploymentStrategyParams) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field UpdatePercent", wireType)
-			}
-			var v int32
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowGenerated
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				v |= (int32(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.UpdatePercent = &v
 		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Pre", wireType)
@@ -5322,3 +6232,165 @@ var (
 	ErrInvalidLengthGenerated = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowGenerated   = fmt.Errorf("proto: integer overflow")
 )
+
+var fileDescriptorGenerated = []byte{
+	// 2514 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0xb4, 0x59, 0xcd, 0x6f, 0x1c, 0x49,
+	0x15, 0x77, 0x7b, 0xc6, 0xf6, 0xcc, 0xf3, 0x57, 0x5c, 0xce, 0xc7, 0xc4, 0x8b, 0x3c, 0xd6, 0xec,
+	0x26, 0x04, 0xed, 0xa6, 0x47, 0x31, 0x20, 0xed, 0x26, 0x24, 0xe0, 0x71, 0x9c, 0x8d, 0xc3, 0x38,
+	0xf6, 0x96, 0x9d, 0x64, 0x59, 0x84, 0x50, 0xbb, 0xa7, 0x3c, 0xa9, 0x75, 0x77, 0xd7, 0xd0, 0x5d,
+	0x3d, 0x89, 0x4f, 0x44, 0x70, 0x40, 0x08, 0x21, 0x21, 0x0e, 0x2b, 0x24, 0x2e, 0x2b, 0x0e, 0x5c,
+	0x90, 0xf8, 0x13, 0x38, 0x70, 0x21, 0x9c, 0xd8, 0x23, 0x12, 0xc8, 0xda, 0x78, 0xaf, 0xf0, 0x0f,
+	0xe4, 0x84, 0xea, 0xa3, 0xbf, 0xa6, 0x67, 0x9c, 0x4c, 0x6c, 0x6e, 0xd3, 0xf5, 0xde, 0xfb, 0xbd,
+	0x57, 0xef, 0xab, 0xea, 0xd5, 0xc0, 0xcd, 0x36, 0xe5, 0x8f, 0xc3, 0x5d, 0xd3, 0x66, 0x6e, 0x9d,
+	0x75, 0x88, 0x17, 0x3c, 0xa6, 0x7b, 0xbc, 0xce, 0x7c, 0xda, 0xa6, 0x5e, 0xbd, 0xb3, 0xdf, 0xae,
+	0xb7, 0x48, 0xc7, 0x61, 0x07, 0x75, 0xab, 0x43, 0xeb, 0xdd, 0x6b, 0xf5, 0x36, 0xf1, 0x88, 0x6f,
+	0x71, 0xd2, 0x32, 0x3b, 0x3e, 0xe3, 0x0c, 0x5d, 0x4d, 0xc4, 0xcd, 0x58, 0xdc, 0x54, 0xe2, 0x66,
+	0x67, 0xbf, 0x6d, 0x2a, 0x71, 0xd3, 0xea, 0x50, 0xb3, 0x7b, 0x6d, 0x21, 0xc5, 0x5e, 0x6f, 0xb3,
+	0x36, 0xab, 0x4b, 0x94, 0xdd, 0x70, 0x4f, 0x7e, 0xc9, 0x0f, 0xf9, 0x4b, 0xa1, 0x2f, 0x7c, 0x7b,
+	0xff, 0xfd, 0xc0, 0xa4, 0xac, 0xbe, 0x1f, 0xee, 0x12, 0xdf, 0x23, 0x9c, 0x04, 0xd2, 0x24, 0x61,
+	0x4b, 0xe8, 0x75, 0x89, 0x1f, 0x50, 0xe6, 0x91, 0x56, 0xaf, 0x51, 0x0b, 0xef, 0x0d, 0x16, 0xcb,
+	0x6f, 0x61, 0xe1, 0xe6, 0x40, 0xee, 0xa0, 0x4e, 0x9e, 0x72, 0xe2, 0x09, 0x2d, 0x41, 0xbd, 0x7b,
+	0x6d, 0x97, 0x70, 0x2b, 0x2f, 0x7e, 0xb5, 0xbf, 0xb8, 0x1f, 0x7a, 0x9c, 0xba, 0x24, 0xc7, 0x7e,
+	0xad, 0x3f, 0x7b, 0xc8, 0xa9, 0x53, 0xa7, 0x1e, 0x0f, 0xb8, 0xdf, 0x2b, 0x52, 0xfb, 0xbb, 0x01,
+	0x8b, 0xab, 0x61, 0xc0, 0x99, 0x7b, 0x5b, 0x3a, 0xd3, 0x25, 0x1e, 0xdf, 0xe6, 0x82, 0xa3, 0x7d,
+	0xb0, 0x65, 0xf9, 0x96, 0x1b, 0xa0, 0xb7, 0x61, 0x8c, 0xba, 0x56, 0x9b, 0x54, 0x8c, 0x25, 0xe3,
+	0x4a, 0xb9, 0x31, 0xfd, 0xfc, 0xb0, 0x3a, 0x72, 0x74, 0x58, 0x1d, 0x5b, 0x17, 0x8b, 0x58, 0xd1,
+	0xd0, 0x0f, 0x61, 0x92, 0x78, 0x5d, 0xea, 0x33, 0x4f, 0x20, 0x54, 0x46, 0x97, 0x0a, 0x57, 0x26,
+	0x97, 0xdf, 0x31, 0x95, 0x41, 0x66, 0x62, 0x90, 0x8c, 0x9b, 0x0a, 0x98, 0xb9, 0xe6, 0x75, 0x1f,
+	0x5a, 0x7e, 0x63, 0x5e, 0x03, 0x4e, 0xae, 0x25, 0x00, 0x38, 0x8d, 0x86, 0x2e, 0xc1, 0x84, 0xcd,
+	0x5c, 0xd7, 0xf2, 0x5a, 0x95, 0xc2, 0x52, 0xe1, 0x4a, 0xb9, 0x31, 0x79, 0x74, 0x58, 0x9d, 0x58,
+	0x55, 0x4b, 0x38, 0xa2, 0xd5, 0xfe, 0x61, 0xc0, 0x6c, 0xb2, 0x8b, 0x55, 0x2b, 0x0c, 0x08, 0xfa,
+	0x00, 0x8a, 0xfc, 0xa0, 0x13, 0xd9, 0x7e, 0x49, 0xab, 0x2a, 0xee, 0x1c, 0x74, 0xc8, 0xcb, 0xc3,
+	0xea, 0xb9, 0x84, 0x7d, 0xc7, 0xa7, 0xed, 0x36, 0xf1, 0x05, 0x01, 0x4b, 0x11, 0xf4, 0xcc, 0x80,
+	0x29, 0xb9, 0x39, 0x4d, 0xaa, 0x8c, 0x2e, 0x19, 0x57, 0x26, 0x97, 0xef, 0x99, 0x43, 0xa5, 0xa5,
+	0xd9, 0x63, 0xd1, 0x7a, 0x0a, 0xb1, 0x71, 0xe6, 0xe8, 0xb0, 0x3a, 0x95, 0x5e, 0xc1, 0x19, 0x8d,
+	0x35, 0x0f, 0xde, 0x3a, 0x46, 0x1c, 0x6d, 0x42, 0x71, 0xcf, 0x67, 0xae, 0xdc, 0xdc, 0xe4, 0xf2,
+	0xd5, 0xe3, 0xbd, 0xbd, 0xb9, 0xfb, 0x29, 0xb1, 0x39, 0x26, 0x7b, 0xc4, 0x27, 0x9e, 0x4d, 0x1a,
+	0x53, 0x91, 0x2f, 0xee, 0xf8, 0xcc, 0xc5, 0x12, 0xa8, 0xf6, 0x55, 0x01, 0xe6, 0x53, 0x0a, 0x99,
+	0xd7, 0xa2, 0x9c, 0x32, 0x0f, 0xdd, 0xc8, 0x78, 0xf1, 0xeb, 0x3d, 0x5e, 0xbc, 0xd0, 0x47, 0x24,
+	0xe5, 0xc7, 0x87, 0x30, 0x1e, 0x70, 0x8b, 0x87, 0x81, 0x74, 0x60, 0xb9, 0x71, 0x4b, 0x8b, 0x8f,
+	0x6f, 0xcb, 0xd5, 0x97, 0x87, 0xd5, 0x63, 0x6b, 0xca, 0x8c, 0x31, 0x15, 0x3f, 0xd6, 0x68, 0xe8,
+	0x09, 0x20, 0xc7, 0x0a, 0xf8, 0x8e, 0x6f, 0x79, 0x81, 0xd2, 0x49, 0x5d, 0x52, 0x29, 0x48, 0x5f,
+	0xbc, 0x7b, 0x8c, 0x2f, 0x52, 0xd5, 0x6d, 0x0a, 0x91, 0xc6, 0x82, 0x36, 0x08, 0x35, 0x73, 0x70,
+	0xb8, 0x8f, 0x0a, 0x74, 0x19, 0xc6, 0x7d, 0x62, 0x05, 0xcc, 0xab, 0x14, 0xe5, 0x86, 0x66, 0xa2,
+	0x0d, 0x61, 0xb9, 0x8a, 0x35, 0x15, 0x7d, 0x03, 0x26, 0x5c, 0x12, 0x04, 0xa2, 0x74, 0xc6, 0x24,
+	0xe3, 0xac, 0x66, 0x9c, 0xd8, 0x50, 0xcb, 0x38, 0xa2, 0xa3, 0x7d, 0x98, 0x11, 0x8a, 0x1e, 0x74,
+	0x5a, 0x16, 0x27, 0x72, 0x1f, 0xe3, 0xc3, 0xef, 0xe3, 0xbc, 0x86, 0x9f, 0x69, 0x66, 0xa0, 0x70,
+	0x0f, 0x74, 0xed, 0xaf, 0xa3, 0x70, 0x26, 0x13, 0xb2, 0x3d, 0xda, 0x46, 0x1f, 0x43, 0xc9, 0x25,
+	0xdc, 0x6a, 0x59, 0xdc, 0xd2, 0xf9, 0x74, 0xe5, 0x75, 0xf2, 0x69, 0x83, 0x70, 0xab, 0x81, 0xb4,
+	0x62, 0x48, 0xd6, 0x70, 0x8c, 0x86, 0x08, 0x14, 0x83, 0x0e, 0xb1, 0x75, 0xf9, 0xac, 0xbe, 0x79,
+	0xf9, 0x48, 0x43, 0xb7, 0x3b, 0xc4, 0x4e, 0x72, 0x57, 0x7c, 0x61, 0x09, 0x8f, 0xdc, 0x38, 0xcd,
+	0x54, 0x0a, 0xac, 0x9d, 0x54, 0x91, 0x04, 0x4b, 0x82, 0x9b, 0xcd, 0xbe, 0xda, 0xbf, 0x0c, 0x38,
+	0xdb, 0x2b, 0xd2, 0xa4, 0x01, 0x47, 0x3f, 0xca, 0x39, 0xb2, 0xfe, 0x9a, 0x41, 0x14, 0xe2, 0xd2,
+	0x9f, 0x67, 0xb4, 0xce, 0x52, 0xb4, 0x92, 0xf2, 0x66, 0x0b, 0xc6, 0x28, 0x27, 0x6e, 0xa0, 0x5b,
+	0xec, 0x77, 0x4f, 0xb8, 0xcb, 0x54, 0x3b, 0x17, 0xa8, 0x58, 0x81, 0xd7, 0x3e, 0x2f, 0x40, 0xa5,
+	0x97, 0x15, 0x33, 0xc7, 0xd9, 0xb5, 0xec, 0x7d, 0xb4, 0x04, 0x45, 0xcf, 0x72, 0xa3, 0x6e, 0x10,
+	0xc7, 0xe2, 0xbe, 0xe5, 0x12, 0x2c, 0x29, 0xe8, 0x4f, 0x06, 0xa0, 0x50, 0x26, 0x5c, 0x6b, 0xc5,
+	0xf3, 0x18, 0xb7, 0x44, 0xed, 0x44, 0x26, 0xff, 0xf8, 0x84, 0x26, 0x47, 0x76, 0x98, 0x0f, 0x72,
+	0x1a, 0xd6, 0x3c, 0xee, 0x1f, 0x24, 0xf5, 0x9c, 0x67, 0xc0, 0x7d, 0xcc, 0x42, 0xae, 0x4e, 0x50,
+	0x95, 0x37, 0xdf, 0x3f, 0x25, 0xf3, 0x06, 0x25, 0xea, 0xc2, 0x1a, 0x5c, 0x18, 0x60, 0x39, 0x3a,
+	0x03, 0x85, 0x7d, 0x72, 0xa0, 0x1c, 0x8b, 0xc5, 0x4f, 0x74, 0x16, 0xc6, 0xba, 0x96, 0x13, 0x12,
+	0xd5, 0x3b, 0xb1, 0xfa, 0xb8, 0x3e, 0xfa, 0xbe, 0x51, 0xfb, 0x4b, 0x01, 0xbe, 0x76, 0x9c, 0xee,
+	0x53, 0x3f, 0x1d, 0xd0, 0x7b, 0x50, 0xf2, 0x49, 0x97, 0x8a, 0x6c, 0x95, 0xe6, 0x14, 0x92, 0x44,
+	0xc5, 0x7a, 0x1d, 0xc7, 0x1c, 0x68, 0x05, 0x66, 0xa9, 0x67, 0x3b, 0x61, 0x2b, 0x3a, 0xae, 0x54,
+	0x61, 0x96, 0x1a, 0x17, 0xb4, 0xd0, 0xec, 0x7a, 0x96, 0x8c, 0x7b, 0xf9, 0xd3, 0x10, 0xc4, 0xed,
+	0x38, 0x16, 0x27, 0xb2, 0xe3, 0xf6, 0x81, 0xd0, 0x64, 0xdc, 0xcb, 0x8f, 0x1e, 0xc2, 0x79, 0xbd,
+	0x84, 0x49, 0xc7, 0xa1, 0xb6, 0xf4, 0xb6, 0x28, 0x29, 0xd9, 0x92, 0x4b, 0x8d, 0x45, 0x8d, 0x74,
+	0x7e, 0xbd, 0x2f, 0x17, 0x1e, 0x20, 0x9d, 0x32, 0x2d, 0xba, 0x2d, 0xc9, 0x8e, 0x9d, 0x37, 0x2d,
+	0x22, 0xe3, 0x5e, 0xfe, 0xda, 0xef, 0xc7, 0xf3, 0x1d, 0x44, 0x06, 0x8e, 0x41, 0x29, 0x88, 0x40,
+	0x55, 0xf0, 0x56, 0xde, 0x38, 0x27, 0x23, 0x6d, 0x49, 0xa8, 0x62, 0x83, 0x62, 0x25, 0xc8, 0x87,
+	0x12, 0x8f, 0x62, 0xa4, 0xba, 0xf4, 0xdd, 0x37, 0x56, 0xa8, 0x83, 0xb7, 0xc5, 0x1c, 0x6a, 0x53,
+	0x12, 0x34, 0xa6, 0x84, 0xce, 0x38, 0xc4, 0xb1, 0x1e, 0x95, 0x4c, 0xd2, 0xa7, 0x2a, 0x2f, 0xc6,
+	0xd2, 0xc9, 0xa4, 0xd6, 0x71, 0xcc, 0x81, 0x9a, 0x70, 0x36, 0x4a, 0xac, 0xbb, 0x34, 0xe0, 0xcc,
+	0x3f, 0x68, 0x52, 0x97, 0x72, 0x99, 0x0e, 0x63, 0x8d, 0xca, 0xd1, 0x61, 0xf5, 0x2c, 0xee, 0x43,
+	0xc7, 0x7d, 0xa5, 0x44, 0x03, 0xe3, 0x24, 0xe0, 0x3a, 0x05, 0xe2, 0x54, 0xdf, 0x21, 0x01, 0xc7,
+	0x92, 0x22, 0x8e, 0xf8, 0x8e, 0xb8, 0x6e, 0xb5, 0x74, 0x54, 0xe3, 0x53, 0x60, 0x4b, 0xae, 0x62,
+	0x4d, 0x45, 0x3f, 0x85, 0x52, 0x40, 0x1c, 0x62, 0x73, 0xe6, 0x57, 0x26, 0x64, 0x77, 0xfb, 0xe8,
+	0x14, 0xce, 0x37, 0x73, 0x5b, 0x63, 0xaa, 0x7e, 0x96, 0x84, 0x4e, 0x2f, 0xe3, 0x58, 0x29, 0x7a,
+	0x04, 0x25, 0x1e, 0xd5, 0x46, 0xe9, 0x75, 0x0a, 0x7d, 0x8b, 0xb5, 0xa2, 0xe2, 0x50, 0x1d, 0x4a,
+	0xc6, 0x27, 0xaa, 0x9f, 0x18, 0x4c, 0x24, 0xb8, 0x4b, 0x3d, 0x4c, 0xac, 0xd6, 0xc1, 0x36, 0xb1,
+	0x99, 0xd7, 0x0a, 0x2a, 0x65, 0xe9, 0xec, 0x38, 0xc1, 0x37, 0xb2, 0x64, 0xdc, 0xcb, 0xbf, 0x70,
+	0x03, 0xa6, 0x33, 0x1b, 0x19, 0xaa, 0xbd, 0x3d, 0x1f, 0x83, 0xf3, 0xfd, 0x8f, 0x64, 0x74, 0x03,
+	0xa6, 0x85, 0x89, 0x01, 0x7f, 0xa8, 0x8e, 0x4e, 0x09, 0x58, 0x68, 0x9c, 0xd3, 0x86, 0x4d, 0x37,
+	0xd3, 0x44, 0x9c, 0xe5, 0x45, 0xf7, 0x00, 0xb1, 0xdd, 0x80, 0xf8, 0x5d, 0xd2, 0xfa, 0x50, 0xcd,
+	0x42, 0x49, 0x3b, 0x8b, 0x0f, 0x8e, 0xcd, 0x1c, 0x07, 0xee, 0x23, 0x35, 0x64, 0x0e, 0xaf, 0xc0,
+	0xac, 0x3e, 0x7c, 0x22, 0xa2, 0x4e, 0xdf, 0xd8, 0xa3, 0x0f, 0xb2, 0x64, 0xdc, 0xcb, 0x8f, 0x3e,
+	0x84, 0x39, 0xab, 0x6b, 0x51, 0xc7, 0xda, 0x75, 0x48, 0x0c, 0x32, 0x26, 0x41, 0x2e, 0x6a, 0x90,
+	0xb9, 0x95, 0x5e, 0x06, 0x9c, 0x97, 0x41, 0x1b, 0x30, 0x1f, 0x7a, 0x79, 0xa8, 0x71, 0x09, 0xf5,
+	0x96, 0x86, 0x9a, 0x7f, 0x90, 0x67, 0xc1, 0xfd, 0xe4, 0x50, 0x1b, 0x26, 0x5a, 0x84, 0x5b, 0xd4,
+	0x09, 0x2a, 0x13, 0x32, 0x09, 0xbf, 0xf7, 0xc6, 0x55, 0x70, 0x5b, 0xe1, 0xa8, 0x11, 0x4f, 0x7f,
+	0xe0, 0x08, 0x1d, 0x75, 0x01, 0xec, 0x68, 0x1c, 0x08, 0x2a, 0x25, 0x59, 0x71, 0x8d, 0x93, 0x54,
+	0x9c, 0x82, 0x4a, 0x6e, 0xb0, 0xf1, 0x52, 0x80, 0x53, 0x9a, 0x44, 0xca, 0xf9, 0x22, 0xb5, 0x63,
+	0x4f, 0xa9, 0x5a, 0x88, 0x53, 0x0e, 0xa7, 0x89, 0x38, 0xcb, 0x5b, 0xfb, 0xa3, 0x01, 0x73, 0xb9,
+	0x0d, 0xa6, 0xa7, 0x03, 0xe3, 0x15, 0xd3, 0xc1, 0x1e, 0x8c, 0xdb, 0xa2, 0xdf, 0x44, 0x37, 0xa8,
+	0x5b, 0x27, 0x1b, 0x41, 0x93, 0x6e, 0x26, 0x3f, 0x03, 0xac, 0xd1, 0x6b, 0xb3, 0x30, 0x9d, 0xb0,
+	0x36, 0x59, 0xbb, 0xf6, 0xeb, 0x62, 0xfa, 0x88, 0x6a, 0xb2, 0xf6, 0x66, 0x47, 0xf9, 0xa3, 0x0e,
+	0x65, 0x9b, 0x79, 0xdc, 0xa2, 0x1e, 0xf1, 0xb5, 0xf9, 0x73, 0x1a, 0xb4, 0xbc, 0x1a, 0x11, 0x70,
+	0xc2, 0x23, 0x1a, 0xea, 0x1e, 0x73, 0x1c, 0xf6, 0x44, 0x96, 0x5a, 0xaa, 0xa1, 0xde, 0x91, 0xab,
+	0x58, 0x53, 0x45, 0x49, 0x75, 0x44, 0xcf, 0x66, 0x61, 0x74, 0x5d, 0x88, 0x4b, 0x6a, 0x4b, 0xaf,
+	0xe3, 0x98, 0x03, 0x7d, 0x0b, 0xa6, 0x02, 0xea, 0xd9, 0x24, 0xea, 0x50, 0x45, 0x75, 0x2b, 0x11,
+	0x53, 0xf5, 0x76, 0x6a, 0x1d, 0x67, 0xb8, 0xd0, 0xc7, 0x50, 0x96, 0xdf, 0x72, 0xce, 0x1a, 0x1b,
+	0x7e, 0xce, 0x9a, 0x16, 0xbb, 0xdc, 0x8e, 0x10, 0x70, 0x02, 0x86, 0x96, 0x01, 0x38, 0x75, 0x49,
+	0xc0, 0x2d, 0xb7, 0x13, 0xe8, 0xa3, 0x23, 0x4e, 0xad, 0x9d, 0x98, 0x82, 0x53, 0x5c, 0xe8, 0x5d,
+	0x28, 0x8b, 0x84, 0x68, 0x52, 0x8f, 0xa8, 0xea, 0x29, 0x28, 0x05, 0x3b, 0xd1, 0x22, 0x4e, 0xe8,
+	0xc8, 0x04, 0x70, 0xc4, 0x11, 0xd6, 0x38, 0xe0, 0x24, 0x90, 0x0d, 0xbf, 0xd0, 0x98, 0x11, 0xe0,
+	0xcd, 0x78, 0x15, 0xa7, 0x38, 0x84, 0xdb, 0x3d, 0xf6, 0xc4, 0xa2, 0x5c, 0x26, 0x6c, 0xca, 0xed,
+	0xf7, 0xd9, 0x23, 0x8b, 0x72, 0xac, 0xa9, 0xe8, 0x12, 0x4c, 0xe8, 0x4d, 0x56, 0x40, 0x82, 0xca,
+	0xf2, 0x8b, 0x5a, 0x68, 0x44, 0xab, 0xfd, 0x2c, 0x93, 0xc9, 0x98, 0xfc, 0x24, 0x14, 0x87, 0xe5,
+	0xab, 0xe7, 0x81, 0xcb, 0x30, 0xae, 0xba, 0x70, 0x6f, 0xf4, 0x55, 0xab, 0xc6, 0x9a, 0x8a, 0xde,
+	0x86, 0xb1, 0x3d, 0xe6, 0xdb, 0x44, 0x87, 0x3e, 0x9e, 0x4d, 0xee, 0x88, 0x45, 0xac, 0x68, 0xb5,
+	0x3f, 0x94, 0x00, 0xe5, 0x2f, 0x38, 0xe8, 0x7a, 0xe6, 0x8d, 0xe2, 0x72, 0xcf, 0x1b, 0xc5, 0xf9,
+	0xbc, 0x44, 0xea, 0x89, 0xe2, 0xe7, 0x06, 0x4c, 0xd9, 0xf2, 0x15, 0x4c, 0xbd, 0x79, 0xe9, 0x5b,
+	0xd0, 0xc6, 0x90, 0x75, 0x76, 0xfc, 0x43, 0x9a, 0xca, 0xcb, 0xd5, 0x94, 0x1a, 0x9c, 0x51, 0x8a,
+	0x7e, 0x65, 0xc0, 0x8c, 0x4f, 0x6c, 0x9f, 0x58, 0x9c, 0x68, 0x3b, 0xd4, 0x48, 0xb2, 0x39, 0xa4,
+	0x1d, 0x58, 0x83, 0x0c, 0xb4, 0x04, 0x1d, 0x1d, 0x56, 0x67, 0x70, 0x46, 0x15, 0xee, 0x51, 0x8d,
+	0x7e, 0x61, 0xc0, 0xb4, 0xcf, 0x1c, 0x87, 0x7a, 0x6d, 0x6d, 0x4c, 0x51, 0x1a, 0x73, 0x7f, 0x58,
+	0x63, 0x14, 0xc6, 0x40, 0x5b, 0xe6, 0x64, 0xff, 0x4c, 0x2b, 0xc2, 0x59, 0xbd, 0xc8, 0x86, 0xb2,
+	0x4f, 0x02, 0x16, 0xfa, 0x36, 0x09, 0x74, 0xbd, 0x2e, 0x1f, 0x7f, 0xc9, 0xc1, 0x9a, 0x5d, 0x64,
+	0x28, 0xf5, 0x89, 0xd0, 0x1a, 0x24, 0x0d, 0x2a, 0xa2, 0x06, 0x38, 0xc1, 0x45, 0xa1, 0x48, 0xd1,
+	0x5d, 0xe2, 0x88, 0xb2, 0x2d, 0xbc, 0x41, 0xec, 0xf3, 0xfb, 0x33, 0x9b, 0x12, 0x4f, 0xdd, 0xe1,
+	0x52, 0x19, 0x2f, 0x16, 0xb1, 0x56, 0x86, 0x7e, 0x69, 0xc0, 0xa4, 0x95, 0x1a, 0x91, 0xd5, 0x25,
+	0x12, 0x9f, 0x5c, 0x79, 0x6e, 0x2a, 0x8e, 0x9f, 0x59, 0xd3, 0xe3, 0x70, 0x5a, 0x37, 0xda, 0x84,
+	0x73, 0x96, 0xcd, 0x69, 0x97, 0xdc, 0x26, 0x56, 0xcb, 0xa1, 0x5e, 0xdc, 0x56, 0x55, 0x9f, 0xb9,
+	0x78, 0x74, 0x58, 0x3d, 0xb7, 0xd2, 0x8f, 0x01, 0xf7, 0x97, 0x5b, 0xf8, 0x00, 0x26, 0x53, 0x3e,
+	0x18, 0xe6, 0xfa, 0xb7, 0x70, 0x0b, 0xce, 0x9c, 0x68, 0x3a, 0xfe, 0xf3, 0x28, 0xd4, 0x72, 0x43,
+	0x89, 0x7c, 0x3c, 0x5d, 0x7d, 0x6c, 0x79, 0xed, 0x28, 0xc9, 0xeb, 0x50, 0xb6, 0x42, 0xce, 0x5c,
+	0x8b, 0x53, 0x5b, 0x02, 0x97, 0x92, 0x34, 0x59, 0x89, 0x08, 0x38, 0xe1, 0x41, 0xd7, 0x61, 0x26,
+	0x3e, 0xd4, 0x44, 0x83, 0x53, 0x47, 0x72, 0x59, 0x55, 0xd4, 0x6a, 0x86, 0x82, 0x7b, 0x38, 0xe3,
+	0x81, 0xbc, 0x70, 0x5a, 0x03, 0xf9, 0xbd, 0xe8, 0x05, 0x54, 0xee, 0x8e, 0xb4, 0xe4, 0xfe, 0xf4,
+	0xa3, 0x64, 0xcf, 0xa3, 0x66, 0x9a, 0x03, 0xf7, 0x91, 0xaa, 0xfd, 0xd6, 0x80, 0x8b, 0x03, 0xa7,
+	0x38, 0xb4, 0x1f, 0xbd, 0x3a, 0x19, 0x32, 0x3f, 0xef, 0x9c, 0xca, 0x78, 0x78, 0xd0, 0xff, 0xf1,
+	0xe9, 0x7a, 0xe9, 0x77, 0x9f, 0x57, 0x47, 0x9e, 0xfd, 0x7b, 0x69, 0xa4, 0xf6, 0x5f, 0x03, 0x2e,
+	0x0c, 0x90, 0x3d, 0xc9, 0xcb, 0xfe, 0x67, 0x06, 0xcc, 0xd1, 0xde, 0x5c, 0xd0, 0x3d, 0xff, 0xa3,
+	0x93, 0x6e, 0x2d, 0x97, 0x64, 0x8d, 0x73, 0xe2, 0x5a, 0x9e, 0x5b, 0xc6, 0x79, 0x13, 0x6a, 0x5f,
+	0x1a, 0x30, 0xb3, 0xf6, 0x94, 0xd8, 0xf7, 0xc9, 0x93, 0x2d, 0xd6, 0xba, 0xcb, 0xd8, 0x7e, 0xfa,
+	0xbf, 0x0f, 0x63, 0xf0, 0x7f, 0x1f, 0x68, 0x15, 0x0a, 0xc4, 0xeb, 0x0e, 0xf5, 0xbf, 0xcb, 0xa4,
+	0x76, 0x59, 0x61, 0xcd, 0xeb, 0x62, 0x21, 0x2d, 0x6e, 0xb9, 0x99, 0x94, 0x95, 0x99, 0x5a, 0x4e,
+	0x6e, 0xb9, 0x99, 0xfc, 0xc6, 0x59, 0x5e, 0x79, 0x85, 0x60, 0x4e, 0x28, 0x4a, 0xa2, 0x98, 0x18,
+	0xfa, 0x50, 0x2d, 0xe1, 0x88, 0x56, 0xfb, 0xdb, 0x28, 0x4c, 0x37, 0xe9, 0x1e, 0xb1, 0x0f, 0x6c,
+	0x87, 0xc8, 0x1d, 0xfe, 0x00, 0xa6, 0xf7, 0x2c, 0xea, 0x84, 0x3e, 0x51, 0x91, 0xd5, 0x11, 0xfd,
+	0x66, 0xa4, 0xf5, 0x4e, 0x9a, 0xf8, 0xf2, 0xb0, 0xba, 0x90, 0x11, 0xcf, 0x50, 0x71, 0x16, 0x09,
+	0xb9, 0x00, 0x24, 0x76, 0xa7, 0x0e, 0xf0, 0xcd, 0x21, 0x03, 0x9c, 0x8d, 0x87, 0xba, 0x6d, 0x25,
+	0x6b, 0x38, 0xa5, 0x00, 0x39, 0xe2, 0x2a, 0xd7, 0x96, 0x91, 0x0e, 0xe4, 0x3f, 0x55, 0x93, 0xcb,
+	0x37, 0x86, 0xd4, 0xb6, 0xa3, 0xe5, 0xa5, 0xae, 0xb8, 0x15, 0x45, 0xab, 0xf2, 0x2e, 0xa8, 0x7f,
+	0xd6, 0xfe, 0x33, 0x0a, 0x4b, 0xaf, 0x3a, 0xe9, 0x45, 0xbf, 0x12, 0x77, 0x4d, 0x16, 0xf2, 0xa8,
+	0x99, 0xab, 0x61, 0x59, 0xf6, 0xab, 0x9d, 0x0c, 0x05, 0xf7, 0x70, 0xa2, 0x47, 0x50, 0xe8, 0xf8,
+	0x44, 0xbb, 0xed, 0x3b, 0x43, 0x6e, 0x24, 0x13, 0xa4, 0xc6, 0x84, 0xc8, 0xb3, 0x2d, 0x9f, 0x60,
+	0x81, 0x28, 0x80, 0x5d, 0xda, 0xd2, 0x7d, 0xf0, 0x14, 0x80, 0x37, 0x68, 0x0b, 0x0b, 0x44, 0xf4,
+	0x09, 0x14, 0x3b, 0x2c, 0xe0, 0xfa, 0xa6, 0x72, 0x32, 0xe4, 0x92, 0xe8, 0x26, 0x5b, 0x2c, 0xe0,
+	0x58, 0x62, 0xd6, 0x8e, 0x8a, 0x50, 0x7d, 0xc5, 0x5d, 0x06, 0xad, 0xc3, 0xbc, 0x1a, 0xd9, 0xb7,
+	0x88, 0x4f, 0x59, 0x2b, 0xeb, 0xf2, 0x0b, 0x72, 0xa4, 0xce, 0x93, 0x71, 0x3f, 0x19, 0x74, 0x13,
+	0x66, 0xa9, 0xc7, 0x89, 0xdf, 0xb5, 0x9c, 0x08, 0x46, 0x3d, 0x52, 0xcc, 0xab, 0xc7, 0xc5, 0x0c,
+	0x09, 0xf7, 0xf2, 0xf6, 0x89, 0x7b, 0xe1, 0xb5, 0xe3, 0xfe, 0x29, 0xcc, 0xb8, 0xd6, 0xd3, 0xd4,
+	0xf0, 0xaf, 0xfd, 0x69, 0x0e, 0x68, 0x2b, 0x21, 0xa7, 0x8e, 0xa9, 0xfe, 0x5f, 0x36, 0xd7, 0x3d,
+	0xbe, 0xe9, 0x6f, 0x73, 0x9f, 0x7a, 0x6d, 0xa5, 0x6b, 0x23, 0x83, 0x84, 0x7b, 0x90, 0xe5, 0xdf,
+	0x4e, 0xd6, 0xd3, 0xed, 0xd0, 0x6f, 0x47, 0xa3, 0xd8, 0xb0, 0x5a, 0xe4, 0x03, 0xd6, 0x86, 0xc6,
+	0xc0, 0x31, 0x5a, 0x94, 0xbd, 0x13, 0xa7, 0x9e, 0xbd, 0x51, 0x92, 0x95, 0xfe, 0x0f, 0x49, 0xf6,
+	0x99, 0x01, 0x53, 0xe9, 0x16, 0x90, 0x6f, 0xc9, 0xc6, 0x10, 0x2d, 0x79, 0x1d, 0x46, 0x39, 0xd3,
+	0xf5, 0x3b, 0xe4, 0x75, 0x03, 0xb4, 0x82, 0xd1, 0x1d, 0x86, 0x47, 0x39, 0x6b, 0xbc, 0xf3, 0xfc,
+	0xc5, 0xe2, 0xc8, 0x17, 0x2f, 0x16, 0x47, 0xfe, 0xf9, 0x62, 0x71, 0xe4, 0xd9, 0xd1, 0xa2, 0xf1,
+	0xfc, 0x68, 0xd1, 0xf8, 0xe2, 0x68, 0xd1, 0xf8, 0xf2, 0x68, 0xd1, 0xf8, 0xcd, 0x57, 0x8b, 0x23,
+	0x9f, 0x8c, 0x76, 0xaf, 0xfd, 0x2f, 0x00, 0x00, 0xff, 0xff, 0xe9, 0xf1, 0x37, 0x6c, 0xf1, 0x21,
+	0x00, 0x00,
+}

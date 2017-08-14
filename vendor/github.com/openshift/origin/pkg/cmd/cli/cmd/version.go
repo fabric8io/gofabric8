@@ -10,12 +10,13 @@ import (
 	etcdversion "github.com/coreos/etcd/version"
 
 	kapierrors "k8s.io/kubernetes/pkg/api/errors"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	kclientcmd "k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	kubeversion "k8s.io/kubernetes/pkg/version"
 
 	"github.com/openshift/origin/pkg/client"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	"github.com/openshift/origin/pkg/cmd/util/tokencmd"
 	"github.com/openshift/origin/pkg/version"
@@ -23,9 +24,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	versionLong = `
-Display client and server versions.`
+var (
+	versionLong = templates.LongDesc(`Display client and server versions.`)
 )
 
 type VersionOptions struct {
@@ -33,7 +33,9 @@ type VersionOptions struct {
 	Out      io.Writer
 
 	ClientConfig kclientcmd.ClientConfig
-	Clients      func() (*client.Client, *kclient.Client, error)
+	Clients      func() (*client.Client, kclientset.Interface, error)
+
+	Timeout time.Duration
 
 	IsServer            bool
 	PrintEtcdVersion    bool
@@ -49,7 +51,7 @@ func NewCmdVersion(fullName string, f *clientcmd.Factory, out io.Writer, options
 		Run: func(cmd *cobra.Command, args []string) {
 			options.BaseName = fullName
 
-			if err := options.Complete(f, out); err != nil {
+			if err := options.Complete(cmd, f, out); err != nil {
 				kcmdutil.CheckErr(kcmdutil.UsageError(cmd, err.Error()))
 			}
 
@@ -62,7 +64,7 @@ func NewCmdVersion(fullName string, f *clientcmd.Factory, out io.Writer, options
 	return cmd
 }
 
-func (o *VersionOptions) Complete(f *clientcmd.Factory, out io.Writer) error {
+func (o *VersionOptions) Complete(cmd *cobra.Command, f *clientcmd.Factory, out io.Writer) error {
 	o.Out = out
 
 	if f == nil {
@@ -70,7 +72,22 @@ func (o *VersionOptions) Complete(f *clientcmd.Factory, out io.Writer) error {
 	}
 
 	o.Clients = f.Clients
-	o.ClientConfig = f.OpenShiftClientConfig
+	o.ClientConfig = f.OpenShiftClientConfig()
+
+	if !o.IsServer {
+		// retrieve config timeout and set cmd option
+		// use this instead of getting value from global
+		// flag, as flag value would have to be parsed
+		// from a string potentially not formatted as
+		// a valid time.Duration value
+		config, err := o.ClientConfig.ClientConfig()
+		if err == nil {
+			o.Timeout = config.Timeout
+		}
+	}
+	if o.Timeout == 0 {
+		o.Timeout = time.Duration(10 * time.Second)
+	}
 	return nil
 }
 
@@ -101,9 +118,6 @@ func (o VersionOptions) RunVersion() error {
 		return nil
 	}
 
-	// max amount of time we want to wait for server to respond
-	timeout := 10 * time.Second
-
 	done := make(chan error)
 	oVersion := ""
 	kVersion := ""
@@ -113,7 +127,7 @@ func (o VersionOptions) RunVersion() error {
 	go func() {
 		defer close(done)
 
-		// confirm config exists before makig request to server
+		// confirm config exists before making request to server
 		var err error
 		clientConfig, err := o.ClientConfig.ClientConfig()
 		if err != nil {
@@ -128,7 +142,8 @@ func (o VersionOptions) RunVersion() error {
 			return
 		}
 
-		kubeVersionBody, err := kClient.Get().AbsPath("/version").Do().Raw()
+		kRESTClient := kClient.Core().RESTClient()
+		kubeVersionBody, err := kRESTClient.Get().AbsPath("/version").Do().Raw()
 		switch {
 		case err == nil:
 			var kubeServerInfo kubeversion.Info
@@ -169,7 +184,7 @@ func (o VersionOptions) RunVersion() error {
 		if closed && err != nil {
 			return err
 		}
-	case <-time.After(timeout):
+	case <-time.After(o.Timeout):
 		return fmt.Errorf("%s", "error: server took too long to respond with version information.")
 	}
 

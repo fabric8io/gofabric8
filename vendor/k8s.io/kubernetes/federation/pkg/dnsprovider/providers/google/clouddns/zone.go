@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package clouddns
 import (
 	"k8s.io/kubernetes/federation/pkg/dnsprovider"
 	"k8s.io/kubernetes/federation/pkg/dnsprovider/providers/google/clouddns/internal/interfaces"
+	"strconv"
 )
 
 // Compile time check for interface adeherence
@@ -31,6 +32,10 @@ type Zone struct {
 
 func (zone *Zone) Name() string {
 	return zone.impl.DnsName()
+}
+
+func (zone *Zone) ID() string {
+	return strconv.FormatUint(zone.impl.Id(), 10)
 }
 
 func (zone *Zone) ResourceRecordSets() (dnsprovider.ResourceRecordSets, bool) {

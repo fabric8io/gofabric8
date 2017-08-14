@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,11 @@ import (
 	"k8s.io/kubernetes/pkg/admission"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/api/validation"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/kubelet/qos/util"
+	"k8s.io/kubernetes/pkg/controller/informers"
+	"k8s.io/kubernetes/pkg/kubelet/qos"
 	"k8s.io/kubernetes/pkg/quota"
 	"k8s.io/kubernetes/pkg/quota/generic"
 	"k8s.io/kubernetes/pkg/runtime"
@@ -33,8 +35,27 @@ import (
 	"k8s.io/kubernetes/pkg/util/validation/field"
 )
 
+// listPodsByNamespaceFuncUsingClient returns a pod listing function based on the provided client.
+func listPodsByNamespaceFuncUsingClient(kubeClient clientset.Interface) generic.ListFuncByNamespace {
+	// TODO: ideally, we could pass dynamic client pool down into this code, and have one way of doing this.
+	// unfortunately, dynamic client works with Unstructured objects, and when we calculate Usage, we require
+	// structured objects.
+	return func(namespace string, options api.ListOptions) ([]runtime.Object, error) {
+		itemList, err := kubeClient.Core().Pods(namespace).List(options)
+		if err != nil {
+			return nil, err
+		}
+		results := make([]runtime.Object, 0, len(itemList.Items))
+		for i := range itemList.Items {
+			results = append(results, &itemList.Items[i])
+		}
+		return results, nil
+	}
+}
+
 // NewPodEvaluator returns an evaluator that can evaluate pods
-func NewPodEvaluator(kubeClient clientset.Interface) quota.Evaluator {
+// if the specified shared informer factory is not nil, evaluator may use it to support listing functions.
+func NewPodEvaluator(kubeClient clientset.Interface, f informers.SharedInformerFactory) quota.Evaluator {
 	computeResources := []api.ResourceName{
 		api.ResourceCPU,
 		api.ResourceMemory,
@@ -44,6 +65,10 @@ func NewPodEvaluator(kubeClient clientset.Interface) quota.Evaluator {
 		api.ResourceLimitsMemory,
 	}
 	allResources := append(computeResources, api.ResourcePods)
+	listFuncByNamespace := listPodsByNamespaceFuncUsingClient(kubeClient)
+	if f != nil {
+		listFuncByNamespace = generic.ListResourceUsingInformerFunc(f, unversioned.GroupResource{Resource: "pods"})
+	}
 	return &generic.GenericEvaluator{
 		Name:              "Evaluator.Pod",
 		InternalGroupKind: api.Kind("Pod"),
@@ -59,9 +84,7 @@ func NewPodEvaluator(kubeClient clientset.Interface) quota.Evaluator {
 		MatchedResourceNames: allResources,
 		MatchesScopeFunc:     PodMatchesScopeFunc,
 		UsageFunc:            PodUsageFunc,
-		ListFuncByNamespace: func(namespace string, options api.ListOptions) (runtime.Object, error) {
-			return kubeClient.Core().Pods(namespace).List(options)
-		},
+		ListFuncByNamespace:  listFuncByNamespace,
 	}
 }
 
@@ -192,7 +215,7 @@ func PodMatchesScopeFunc(scope api.ResourceQuotaScope, object runtime.Object) bo
 }
 
 func isBestEffort(pod *api.Pod) bool {
-	return util.GetPodQos(pod) == util.BestEffort
+	return qos.GetPodQOS(pod) == qos.BestEffort
 }
 
 func isTerminating(pod *api.Pod) bool {

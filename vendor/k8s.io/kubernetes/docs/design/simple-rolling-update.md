@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 ## Simple rolling update
 
 This is a lightweight design document for simple
@@ -129,13 +124,6 @@ rollout with the old version
       * Set `desired-replicas` annotation on `foo` to match the annotation on
 `foo-next`
       * Goto Rollout with `foo` and `foo-next` trading places.
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

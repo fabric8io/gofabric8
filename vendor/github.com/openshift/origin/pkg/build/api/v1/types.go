@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"time"
 
 	"k8s.io/kubernetes/pkg/api/unversioned"
@@ -32,6 +33,15 @@ type BuildSpec struct {
 	// triggeredBy describes which triggers started the most recent update to the
 	// build configuration and contains information about those triggers.
 	TriggeredBy []BuildTriggerCause `json:"triggeredBy" protobuf:"bytes,2,rep,name=triggeredBy"`
+}
+
+// OptionalNodeSelector is a map that may also be left nil to distinguish between set and unset.
+// +protobuf.nullable=true
+// +protobuf.options.(gogoproto.goproto_stringer)=false
+type OptionalNodeSelector map[string]string
+
+func (t OptionalNodeSelector) String() string {
+	return fmt.Sprintf("%v", map[string]string(t))
 }
 
 // CommonSpec encapsulates all the inputs necessary to represent a build.
@@ -66,6 +76,12 @@ type CommonSpec struct {
 	// be active on a node before the system actively tries to terminate the
 	// build; value must be positive integer
 	CompletionDeadlineSeconds *int64 `json:"completionDeadlineSeconds,omitempty" protobuf:"varint,8,opt,name=completionDeadlineSeconds"`
+
+	// nodeSelector is a selector which must be true for the build pod to fit on a node
+	// If nil, it can be overridden by default build nodeselector values for the cluster.
+	// If set to an empty map or a map with any values, default build nodeselector values
+	// are ignored.
+	NodeSelector OptionalNodeSelector `json:"nodeSelector" protobuf:"bytes,9,name=nodeSelector"`
 }
 
 // BuildTriggerCause holds information about a triggered build. It is used for
@@ -157,6 +173,9 @@ type BuildStatus struct {
 
 	// config is an ObjectReference to the BuildConfig this Build is based on.
 	Config *kapi.ObjectReference `json:"config,omitempty" protobuf:"bytes,9,opt,name=config"`
+
+	// output describes the Docker image the build has produced.
+	Output BuildStatusOutput `json:"output,omitempty" protobuf:"bytes,10,opt,name=output"`
 }
 
 // BuildPhase represents the status of a build at a point in time.
@@ -192,6 +211,24 @@ const (
 // in the CLI.
 type StatusReason string
 
+// BuildStatusOutput contains the status of the built image.
+type BuildStatusOutput struct {
+	// to describes the status of the built image being pushed to a registry.
+	To *BuildStatusOutputTo `json:"to,omitempty" protobuf:"bytes,1,opt,name=to"`
+}
+
+// BuildStatusOutputTo describes the status of the built image with regards to
+// image registry to which it was supposed to be pushed.
+type BuildStatusOutputTo struct {
+	// imageDigest is the digest of the built Docker image. The digest uniquely
+	// identifies the image in the registry to which it was pushed.
+	//
+	// Please note that this field may not always be set even if the push
+	// completes successfully - e.g. when the registry returns no digest or
+	// returns it in a format that the builder doesn't understand.
+	ImageDigest string `json:"imageDigest,omitempty" protobuf:"bytes,1,opt,name=imageDigest"`
+}
+
 // BuildSourceType is the type of SCM used.
 type BuildSourceType string
 
@@ -212,7 +249,7 @@ const (
 // BuildSource is the SCM used for the build.
 type BuildSource struct {
 	// type of build input to accept
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	Type BuildSourceType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=BuildSourceType"`
 
 	// binary builds accept a binary as their input. The binary is generally assumed to be a tar,
@@ -255,7 +292,11 @@ type BuildSource struct {
 	Secrets []SecretBuildSource `json:"secrets,omitempty" protobuf:"bytes,8,rep,name=secrets"`
 }
 
-// ImageSource describes an image that is used as source for the build
+// ImageSource is used to describe build source that will be extracted from an image. A reference of
+// type ImageStreamTag, ImageStreamImage or DockerImage may be used. A pull secret can be specified
+// to pull the image from an external registry or override the default service account secret if pulling
+// from the internal registry. A list of paths to copy from the image and their respective destination
+// within the build directory must be specified in the paths array.
 type ImageSource struct {
 	// from is a reference to an ImageStreamTag, ImageStreamImage, or DockerImage to
 	// copy source from.
@@ -314,7 +355,7 @@ type BinaryBuildSource struct {
 // SourceRevision is the revision or commit information from the source for the build
 type SourceRevision struct {
 	// type of the build source, may be one of 'Source', 'Dockerfile', 'Binary', or 'Images'
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	Type BuildSourceType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=BuildSourceType"`
 
 	// Git contains information about git-based build source
@@ -336,6 +377,18 @@ type GitSourceRevision struct {
 	Message string `json:"message,omitempty" protobuf:"bytes,4,opt,name=message"`
 }
 
+// ProxyConfig defines what proxies to use for an operation
+type ProxyConfig struct {
+	// httpProxy is a proxy used to reach the git repository over http
+	HTTPProxy *string `json:"httpProxy,omitempty" protobuf:"bytes,3,opt,name=httpProxy"`
+
+	// httpsProxy is a proxy used to reach the git repository over https
+	HTTPSProxy *string `json:"httpsProxy,omitempty" protobuf:"bytes,4,opt,name=httpsProxy"`
+
+	// noProxy is the list of domains for which the proxy should not be used
+	NoProxy *string `json:"noProxy,omitempty" protobuf:"bytes,5,opt,name=noProxy"`
+}
+
 // GitBuildSource defines the parameters of a Git SCM
 type GitBuildSource struct {
 	// uri points to the source that will be built. The structure of the source
@@ -345,11 +398,8 @@ type GitBuildSource struct {
 	// ref is the branch/tag/ref to build.
 	Ref string `json:"ref,omitempty" protobuf:"bytes,2,opt,name=ref"`
 
-	// httpProxy is a proxy used to reach the git repository over http
-	HTTPProxy *string `json:"httpProxy,omitempty" protobuf:"bytes,3,opt,name=httpProxy"`
-
-	// httpsProxy is a proxy used to reach the git repository over https
-	HTTPSProxy *string `json:"httpsProxy,omitempty" protobuf:"bytes,4,opt,name=httpsProxy"`
+	// proxyConfig defines the proxies to use for the git clone operation
+	ProxyConfig `json:",inline" protobuf:"bytes,3,opt,name=proxyConfig"`
 }
 
 // SourceControlUser defines the identity of a user of source control
@@ -364,7 +414,7 @@ type SourceControlUser struct {
 // BuildStrategy contains the details of how to perform a build.
 type BuildStrategy struct {
 	// type is the kind of build strategy.
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	Type BuildStrategyType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=BuildStrategyType"`
 
 	// dockerStrategy holds the parameters to the Docker build strategy.
@@ -609,9 +659,24 @@ type BuildOutput struct {
 	// up the authentication for executing the Docker push to authentication
 	// enabled Docker Registry (or Docker Hub).
 	PushSecret *kapi.LocalObjectReference `json:"pushSecret,omitempty" protobuf:"bytes,2,opt,name=pushSecret"`
+
+	// imageLabels define a list of labels that are applied to the resulting image. If there
+	// are multiple labels with the same name then the last one in the list is used.
+	ImageLabels []ImageLabel `json:"imageLabels,omitempty" protobuf:"bytes,3,rep,name=imageLabels"`
 }
 
-// BuildConfig is a template which can be used to create new builds.
+// ImageLabel represents a label applied to the resulting image.
+type ImageLabel struct {
+	// name defines the name of the label. It must have non-zero length.
+	Name string `json:"name" protobuf:"bytes,1,opt,name=name"`
+
+	// value defines the literal value of the label.
+	Value string `json:"value,omitempty" protobuf:"bytes,2,opt,name=value"`
+}
+
+// Build configurations define a build process for new Docker images. There are three types of builds possible - a Docker build using a Dockerfile, a Source-to-Image build that uses a specially prepared base image that accepts source code that it can make runnable, and a custom build that can run // arbitrary Docker images as a base and accept the build parameters. Builds run on the cluster and on completion are pushed to the Docker registry specified in the "output" section. A build can be triggered via a webhook, when the base image changes, or when a user manually requests a new build be // created.
+//
+// Each build created by a build configuration is numbered and refers back to its parent configuration. Multiple builds can be triggered at once. Builds that do not have "output" set can be used to test code or run a verification build.
 type BuildConfig struct {
 	unversioned.TypeMeta `json:",inline"`
 	// metadata for BuildConfig.
@@ -751,7 +816,7 @@ type BuildConfigList struct {
 // GenericWebHookEvent is the payload expected for a generic webhook post
 type GenericWebHookEvent struct {
 	// type is the type of source repository
-	// +genconversion=false
+	// +k8s:conversion-gen=false
 	Type BuildSourceType `json:"type,omitempty" protobuf:"bytes,1,opt,name=type,casttype=BuildSourceType"`
 
 	// git is the git information if the Type is BuildSourceGit

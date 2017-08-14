@@ -11,12 +11,12 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kerrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/client/cache"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	"k8s.io/kubernetes/pkg/client/record"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/controller"
-	"k8s.io/kubernetes/pkg/controller/framework"
-	"k8s.io/kubernetes/pkg/registry/service/allocator"
-	"k8s.io/kubernetes/pkg/registry/service/ipallocator"
+	"k8s.io/kubernetes/pkg/registry/core/service/allocator"
+	"k8s.io/kubernetes/pkg/registry/core/service/ipallocator"
 	"k8s.io/kubernetes/pkg/runtime"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
@@ -34,14 +34,15 @@ const (
 
 	clientRetryCount    = 5
 	clientRetryInterval = 5 * time.Second
+	clientRetryFactor   = 1.1
 )
 
 // IngressIPController is responsible for allocating ingress ip
 // addresses to Service objects of type LoadBalancer.
 type IngressIPController struct {
-	client kclient.ServicesNamespacer
+	client kcoreclient.ServicesGetter
 
-	controller *framework.Controller
+	controller *cache.Controller
 
 	maxRetries int
 
@@ -65,7 +66,7 @@ type IngressIPController struct {
 	// changeHandler does the work. It can be factored out for unit testing.
 	changeHandler func(change *serviceChange) error
 	// persistenceHandler persists service changes.  It can be factored out for unit testing
-	persistenceHandler func(client kclient.ServicesNamespacer, service *kapi.Service, targetStatus bool) error
+	persistenceHandler func(client kcoreclient.ServicesGetter, service *kapi.Service, targetStatus bool) error
 }
 
 type serviceChange struct {
@@ -76,19 +77,19 @@ type serviceChange struct {
 
 // NewIngressIPController creates a new IngressIPController.
 // TODO this should accept a shared informer
-func NewIngressIPController(kc kclient.Interface, ipNet *net.IPNet, resyncInterval time.Duration) *IngressIPController {
+func NewIngressIPController(kc kclientset.Interface, ipNet *net.IPNet, resyncInterval time.Duration) *IngressIPController {
 	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartRecordingToSink(kc.Events(""))
+	eventBroadcaster.StartRecordingToSink(&kcoreclient.EventSinkImpl{Interface: kc.Core().Events("")})
 	recorder := eventBroadcaster.NewRecorder(kapi.EventSource{Component: "ingressip-controller"})
 
 	ic := &IngressIPController{
-		client:     kc,
+		client:     kc.Core(),
 		queue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		maxRetries: 10,
 		recorder:   recorder,
 	}
 
-	ic.cache, ic.controller = framework.NewInformer(
+	ic.cache, ic.controller = cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(options kapi.ListOptions) (runtime.Object, error) {
 				return ic.client.Services(kapi.NamespaceAll).List(options)
@@ -99,7 +100,7 @@ func NewIngressIPController(kc kclient.Interface, ipNet *net.IPNet, resyncInterv
 		},
 		&kapi.Service{},
 		resyncInterval,
-		framework.ResourceEventHandlerFuncs{
+		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				service := obj.(*kapi.Service)
 				glog.V(5).Infof("Adding service %s/%s", service.Namespace, service.Name)
@@ -659,10 +660,11 @@ func (ic *IngressIPController) persistServiceStatus(service *kapi.Service) error
 	return ic.persistenceHandler(ic.client, service, true)
 }
 
-func persistService(client kclient.ServicesNamespacer, service *kapi.Service, targetStatus bool) error {
+func persistService(client kcoreclient.ServicesGetter, service *kapi.Service, targetStatus bool) error {
 	backoff := wait.Backoff{
 		Steps:    clientRetryCount,
 		Duration: clientRetryInterval,
+		Factor:   clientRetryFactor,
 	}
 	return wait.ExponentialBackoff(backoff, func() (bool, error) {
 		var err error

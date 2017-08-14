@@ -27,7 +27,7 @@ type Image struct {
 	// DockerImageReference is the string that can be used to pull this image.
 	DockerImageReference string `json:"dockerImageReference,omitempty" protobuf:"bytes,2,opt,name=dockerImageReference"`
 	// DockerImageMetadata contains metadata about this image
-	DockerImageMetadata runtime.RawExtension `json:"dockerImageMetadata,omitempty" protobuf:"bytes,3,opt,name=dockerImageMetadata"`
+	DockerImageMetadata runtime.RawExtension `json:"dockerImageMetadata,omitempty" patchStrategy:"replace" protobuf:"bytes,3,opt,name=dockerImageMetadata"`
 	// DockerImageMetadataVersion conveys the version of the object, which if empty defaults to "1.0"
 	DockerImageMetadataVersion string `json:"dockerImageMetadataVersion,omitempty" protobuf:"bytes,4,opt,name=dockerImageMetadataVersion"`
 	// DockerImageManifest is the raw JSON of the manifest
@@ -178,14 +178,45 @@ type TagReference struct {
 	Generation *int64 `json:"generation" protobuf:"varint,5,opt,name=generation"`
 	// Import is information that controls how images may be imported by the server.
 	ImportPolicy TagImportPolicy `json:"importPolicy,omitempty" protobuf:"bytes,6,opt,name=importPolicy"`
+	// ReferencePolicy defines how other components should consume the image
+	ReferencePolicy TagReferencePolicy `json:"referencePolicy,omitempty" protobuf:"bytes,7,opt,name=referencePolicy"`
 }
 
-// TagImportPolicy describes the tag import policy
+// TagImportPolicy controls how images related to this tag will be imported.
 type TagImportPolicy struct {
 	// Insecure is true if the server may bypass certificate verification or connect directly over HTTP during image import.
 	Insecure bool `json:"insecure,omitempty" protobuf:"varint,1,opt,name=insecure"`
 	// Scheduled indicates to the server that this tag should be periodically checked to ensure it is up to date, and imported
 	Scheduled bool `json:"scheduled,omitempty" protobuf:"varint,2,opt,name=scheduled"`
+}
+
+// TagReferencePolicyType describes how pull-specs for images in an image stream tag are generated when
+// image change triggers are fired.
+type TagReferencePolicyType string
+
+const (
+	// SourceTagReferencePolicy indicates the image's original location should be used when the image stream tag
+	// is resolved into other resources (builds and deployment configurations).
+	SourceTagReferencePolicy TagReferencePolicyType = "Source"
+	// LocalTagReferencePolicy indicates the image should prefer to pull via the local integrated registry,
+	// falling back to the remote location if the integrated registry has not been configured. The reference will
+	// use the internal DNS name or registry service IP.
+	LocalTagReferencePolicy TagReferencePolicyType = "Local"
+)
+
+// TagReferencePolicy describes how pull-specs for images in this image stream tag are generated when
+// image change triggers in deployment configs or builds are resolved. This allows the image stream
+// author to control how images are accessed.
+type TagReferencePolicy struct {
+	// Type determines how the image pull spec should be transformed when the image stream tag is used in
+	// deployment config triggers or new builds. The default value is `Source`, indicating the original
+	// location of the image should be used (if imported). The user may also specify `Local`, indicating
+	// that the pull spec should point to the integrated Docker registry and leverage the registry's
+	// ability to proxy the pull to an upstream registry. `Local` allows the credentials used to pull this
+	// image to be managed from the image stream's namespace, so others on the platform can access a remote
+	// image but have no access to the remote secret. It also allows the image layers to be mirrored into
+	// the local registry which the images can still be pulled even if the upstream registry is unavailable.
+	Type TagReferencePolicyType `json:"type" protobuf:"bytes,1,opt,name=type,casttype=TagReferencePolicyType"`
 }
 
 // ImageStreamStatus contains information about the state of this image stream.
@@ -314,7 +345,14 @@ type DockerImageReference struct {
 	ID string `protobuf:"bytes,5,opt,name=iD"`
 }
 
-// ImageStreamImport imports an image from remote repositories into OpenShift.
+// The image stream import resource provides an easy way for a user to find and import Docker images
+// from other Docker registries into the server. Individual images or an entire image repository may
+// be imported, and users may choose to see the results of the import prior to tagging the resulting
+// images into the specified image stream.
+//
+// This API is intended for end-user tools that need to see the metadata of the image prior to import
+// (for instance, to generate an application from it). Clients that know the desired image can continue
+// to create spec.tags directly into their image streams.
 type ImageStreamImport struct {
 	unversioned.TypeMeta `json:",inline"`
 	// Standard object's metadata.

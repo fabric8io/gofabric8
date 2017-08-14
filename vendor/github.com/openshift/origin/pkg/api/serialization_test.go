@@ -212,6 +212,15 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 			j.IssuedBy = nil
 			j.IssuedTo = nil
 		},
+		func(j *image.ImageStream, c fuzz.Continue) {
+			c.FuzzNoCustom(j)
+			for k, v := range j.Spec.Tags {
+				if len(v.ReferencePolicy.Type) == 0 {
+					v.ReferencePolicy.Type = image.SourceTagReferencePolicy
+					j.Spec.Tags[k] = v
+				}
+			}
+		},
 		func(j *image.ImageStreamMapping, c fuzz.Continue) {
 			c.FuzzNoCustom(j)
 			j.DockerImageRepository = ""
@@ -329,10 +338,15 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 			}
 		},
 		func(j *deploy.DeploymentStrategy, c fuzz.Continue) {
+			randInt64 := func() *int64 {
+				p := int64(c.RandUint64())
+				return &p
+			}
 			c.FuzzNoCustom(j)
 			j.RecreateParams, j.RollingParams, j.CustomParams = nil, nil, nil
 			strategyTypes := []deploy.DeploymentStrategyType{deploy.DeploymentStrategyTypeRecreate, deploy.DeploymentStrategyTypeRolling, deploy.DeploymentStrategyTypeCustom}
 			j.Type = strategyTypes[c.Rand.Intn(len(strategyTypes))]
+			j.ActiveDeadlineSeconds = randInt64()
 			switch j.Type {
 			case deploy.DeploymentStrategyTypeRecreate:
 				params := &deploy.RecreateDeploymentStrategyParams{}
@@ -344,10 +358,6 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 				j.RecreateParams = params
 			case deploy.DeploymentStrategyTypeRolling:
 				params := &deploy.RollingDeploymentStrategyParams{}
-				randInt64 := func() *int64 {
-					p := int64(c.RandUint64())
-					return &p
-				}
 				params.TimeoutSeconds = randInt64()
 				params.IntervalSeconds = randInt64()
 				params.UpdatePeriodSeconds = randInt64()
@@ -418,10 +428,28 @@ func fuzzInternalObject(t *testing.T, forVersion unversioned.GroupVersion, item 
 			j.Spec.Template.Spec.InitContainers = nil
 			j.Status.Template.Spec.InitContainers = nil
 		},
+		func(j *oauthapi.OAuthAuthorizeToken, c fuzz.Continue) {
+			c.FuzzNoCustom(j)
+			if len(j.CodeChallenge) > 0 && len(j.CodeChallengeMethod) == 0 {
+				j.CodeChallengeMethod = "plain"
+			}
+		},
 		func(j *oauthapi.OAuthClientAuthorization, c fuzz.Continue) {
 			c.FuzzNoCustom(j)
 			if len(j.Scopes) == 0 {
 				j.Scopes = append(j.Scopes, "user:full")
+			}
+		},
+		func(j *route.RouteSpec, c fuzz.Continue) {
+			c.FuzzNoCustom(j)
+			if len(j.WildcardPolicy) == 0 {
+				j.WildcardPolicy = route.WildcardPolicyNone
+			}
+		},
+		func(j *route.RouteIngress, c fuzz.Continue) {
+			c.FuzzNoCustom(j)
+			if len(j.WildcardPolicy) == 0 {
+				j.WildcardPolicy = route.WildcardPolicyNone
 			}
 		},
 
@@ -576,7 +604,7 @@ func TestSpecificKind(t *testing.T) {
 
 // Keep this in sync with the respective upstream set
 // WatchEvent does not have TypeMeta and cannot be roundtripped.
-var nonInternalRoundTrippableTypes = sets.NewString("List", "ListOptions", "WatchEvent")
+var nonInternalRoundTrippableTypes = sets.NewString("WatchEvent")
 
 // TestTypes will try to roundtrip all OpenShift and Kubernetes stable api types
 func TestTypes(t *testing.T) {

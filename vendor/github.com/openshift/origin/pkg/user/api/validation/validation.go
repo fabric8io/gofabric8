@@ -5,14 +5,14 @@ import (
 	"strings"
 
 	kvalidation "k8s.io/kubernetes/pkg/api/validation"
+	"k8s.io/kubernetes/pkg/api/validation/path"
 	"k8s.io/kubernetes/pkg/util/validation/field"
 
-	oapi "github.com/openshift/origin/pkg/api"
 	"github.com/openshift/origin/pkg/user/api"
 )
 
 func ValidateUserName(name string, _ bool) []string {
-	if reasons := oapi.MinimalNameRequirements(name, false); len(reasons) != 0 {
+	if reasons := path.ValidatePathSegmentName(name, false); len(reasons) != 0 {
 		return reasons
 	}
 
@@ -26,7 +26,7 @@ func ValidateUserName(name string, _ bool) []string {
 }
 
 func ValidateIdentityName(name string, _ bool) []string {
-	if reasons := oapi.MinimalNameRequirements(name, false); len(reasons) != 0 {
+	if reasons := path.ValidatePathSegmentName(name, false); len(reasons) != 0 {
 		return reasons
 	}
 
@@ -44,7 +44,7 @@ func ValidateIdentityName(name string, _ bool) []string {
 }
 
 func ValidateGroupName(name string, _ bool) []string {
-	if reasons := oapi.MinimalNameRequirements(name, false); len(reasons) != 0 {
+	if reasons := path.ValidatePathSegmentName(name, false); len(reasons) != 0 {
 		return reasons
 	}
 
@@ -58,7 +58,7 @@ func ValidateGroupName(name string, _ bool) []string {
 }
 
 func ValidateIdentityProviderName(name string) []string {
-	if reasons := oapi.MinimalNameRequirements(name, false); len(reasons) != 0 {
+	if reasons := path.ValidatePathSegmentName(name, false); len(reasons) != 0 {
 		return reasons
 	}
 
@@ -155,10 +155,10 @@ func ValidateIdentity(identity *api.Identity) field.ErrorList {
 		allErrs = append(allErrs, field.Invalid(userPath.Child("name"), identity.User.Name, strings.Join(reasons, ", ")))
 	}
 	if len(identity.User.Name) == 0 && len(identity.User.UID) != 0 {
-		allErrs = append(allErrs, field.Invalid(userPath.Child("uid"), identity.User.UID, "may not be set if user.name is empty"))
+		allErrs = append(allErrs, field.Required(userPath.Child("username"), "username is required when uid is provided"))
 	}
 	if len(identity.User.Name) != 0 && len(identity.User.UID) == 0 {
-		allErrs = append(allErrs, field.Required(userPath.Child("uid"), ""))
+		allErrs = append(allErrs, field.Required(userPath.Child("uid"), "uid is required when username is provided"))
 	}
 	return allErrs
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors All rights reserved.
+Copyright 2014 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,11 +35,11 @@ import (
 )
 
 // Generate a pod name that is unique among nodes by appending the nodeName.
-func generatePodName(name, nodeName string) string {
+func generatePodName(name string, nodeName types.NodeName) string {
 	return fmt.Sprintf("%s-%s", name, nodeName)
 }
 
-func applyDefaults(pod *api.Pod, source string, isFile bool, nodeName string) error {
+func applyDefaults(pod *api.Pod, source string, isFile bool, nodeName types.NodeName) error {
 	if len(pod.UID) == 0 {
 		hasher := md5.New()
 		if isFile {
@@ -62,7 +62,7 @@ func applyDefaults(pod *api.Pod, source string, isFile bool, nodeName string) er
 	glog.V(5).Infof("Using namespace %q for pod %q from %s", pod.Namespace, pod.Name, source)
 
 	// Set the Host field to indicate this pod is scheduled on the current node.
-	pod.Spec.NodeName = nodeName
+	pod.Spec.NodeName = string(nodeName)
 
 	pod.ObjectMeta.SelfLink = getSelfLink(pod.Name, pod.Namespace)
 
@@ -100,7 +100,7 @@ func tryDecodeSinglePod(data []byte, defaultFn defaultFunc) (parsed bool, pod *a
 	}
 	// Check whether the object could be converted to single pod.
 	if _, ok := obj.(*api.Pod); !ok {
-		err = fmt.Errorf("invalid pod: %+v", obj)
+		err = fmt.Errorf("invalid pod: %#v", obj)
 		return false, pod, err
 	}
 	newPod := obj.(*api.Pod)

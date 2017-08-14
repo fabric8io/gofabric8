@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Measuring Node Performance
 
 This document outlines the issues and pitfalls of measuring Node performance, as
@@ -125,13 +120,6 @@ More details on benchmarking [here](https://golang.org/pkg/testing/).
 - (yujuhong) Measuring memory usage
 - Add section on monitoring kubelet metrics (e.g. with prometheus)
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

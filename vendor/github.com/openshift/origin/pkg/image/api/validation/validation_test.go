@@ -320,7 +320,7 @@ func TestValidateImageStreamMappingNotOK(t *testing.T) {
 				ObjectMeta: kapi.ObjectMeta{
 					Namespace: "default",
 				},
-				DockerImageRepository: "registry/extra/openshift/ruby-19-centos",
+				DockerImageRepository: "registry/extra/openshift//ruby-19-centos",
 				Tag: api.DefaultImageTag,
 				Image: api.Image{
 					ObjectMeta: kapi.ObjectMeta{
@@ -380,14 +380,14 @@ func TestValidateImageStream(t *testing.T) {
 			namespace: "foo",
 			name:      "foo/bar",
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("metadata", "name"), "foo/bar", `name may not contain "/"`),
+				field.Invalid(field.NewPath("metadata", "name"), "foo/bar", `may not contain '/'`),
 			},
 		},
 		"no percent in Name": {
 			namespace: "foo",
 			name:      "foo%%bar",
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("metadata", "name"), "foo%%bar", `name may not contain "%"`),
+				field.Invalid(field.NewPath("metadata", "name"), "foo%%bar", `may not contain '%'`),
 			},
 		},
 		"other invalid name": {
@@ -416,7 +416,7 @@ func TestValidateImageStream(t *testing.T) {
 			name:      "foo",
 			dockerImageRepository: "a-|///bbb",
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("spec", "dockerImageRepository"), "a-|///bbb", "the docker pull spec \"a-|///bbb\" must be two or three segments separated by slashes"),
+				field.Invalid(field.NewPath("spec", "dockerImageRepository"), "a-|///bbb", "invalid reference format"),
 			},
 		},
 		"invalid dockerImageRepository with tag": {
@@ -432,7 +432,7 @@ func TestValidateImageStream(t *testing.T) {
 			name:      "foo",
 			dockerImageRepository: "a/b@sha256:something",
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("spec", "dockerImageRepository"), "a/b@sha256:something", "the repository name may not contain an ID"),
+				field.Invalid(field.NewPath("spec", "dockerImageRepository"), "a/b@sha256:something", "invalid reference format"),
 			},
 		},
 		"status tag missing dockerImageReference": {
@@ -452,6 +452,22 @@ func TestValidateImageStream(t *testing.T) {
 				field.Required(field.NewPath("status", "tags").Key("tag").Child("items").Index(2).Child("dockerImageReference"), ""),
 			},
 		},
+		"referencePolicy.type must be valid": {
+			namespace: "namespace",
+			name:      "foo",
+			specTags: map[string]api.TagReference{
+				"tag": {
+					From: &kapi.ObjectReference{
+						Kind: "DockerImage",
+						Name: "abc",
+					},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.TagReferencePolicyType("Other")},
+				},
+			},
+			expected: field.ErrorList{
+				field.Invalid(field.NewPath("spec", "tags").Key("tag").Child("referencePolicy", "type"), api.TagReferencePolicyType("Other"), "valid values are \"Source\", \"Local\""),
+			},
+		},
 		"ImageStreamTags can't be scheduled": {
 			namespace: "namespace",
 			name:      "foo",
@@ -461,14 +477,16 @@ func TestValidateImageStream(t *testing.T) {
 						Kind: "DockerImage",
 						Name: "abc",
 					},
-					ImportPolicy: api.TagImportPolicy{Scheduled: true},
+					ImportPolicy:    api.TagImportPolicy{Scheduled: true},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.SourceTagReferencePolicy},
 				},
 				"other": {
 					From: &kapi.ObjectReference{
 						Kind: "ImageStreamTag",
 						Name: "other:latest",
 					},
-					ImportPolicy: api.TagImportPolicy{Scheduled: true},
+					ImportPolicy:    api.TagImportPolicy{Scheduled: true},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.SourceTagReferencePolicy},
 				},
 			},
 			expected: field.ErrorList{
@@ -484,11 +502,12 @@ func TestValidateImageStream(t *testing.T) {
 						Kind: "DockerImage",
 						Name: "abc@badid",
 					},
-					ImportPolicy: api.TagImportPolicy{Scheduled: true},
+					ImportPolicy:    api.TagImportPolicy{Scheduled: true},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.SourceTagReferencePolicy},
 				},
 			},
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("spec", "tags").Key("badid").Child("from", "name"), "abc@badid", "only tags can be scheduled for import"),
+				field.Invalid(field.NewPath("spec", "tags").Key("badid").Child("from", "name"), "abc@badid", "invalid reference format"),
 			},
 		},
 		"ImageStreamImages can't be scheduled": {
@@ -500,7 +519,8 @@ func TestValidateImageStream(t *testing.T) {
 						Kind: "ImageStreamImage",
 						Name: "other@latest",
 					},
-					ImportPolicy: api.TagImportPolicy{Scheduled: true},
+					ImportPolicy:    api.TagImportPolicy{Scheduled: true},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.SourceTagReferencePolicy},
 				},
 			},
 			expected: field.ErrorList{
@@ -516,12 +536,14 @@ func TestValidateImageStream(t *testing.T) {
 						Kind: "DockerImage",
 						Name: "abc",
 					},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.SourceTagReferencePolicy},
 				},
 				"other": {
 					From: &kapi.ObjectReference{
 						Kind: "ImageStreamTag",
 						Name: "other:latest",
 					},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.SourceTagReferencePolicy},
 				},
 			},
 			statusTags: map[string]api.TagEventList{
@@ -574,7 +596,7 @@ func TestValidateImageStream(t *testing.T) {
 
 		errs := ValidateImageStream(&stream)
 		if e, a := test.expected, errs; !reflect.DeepEqual(e, a) {
-			t.Errorf("%s: unexpected errors: %s", name, diff.ObjectDiff(e, a))
+			t.Errorf("%s: unexpected errors: %s", name, diff.ObjectReflectDiff(e, a))
 		}
 	}
 }
@@ -613,8 +635,9 @@ func TestValidateISTUpdate(t *testing.T) {
 			A: api.ImageStreamTag{
 				ObjectMeta: kapi.ObjectMeta{Namespace: kapi.NamespaceDefault, Name: "foo:bar", ResourceVersion: "1", Annotations: map[string]string{"one": "two"}},
 				Tag: &api.TagReference{
-					From:        &kapi.ObjectReference{Kind: "DockerImage", Name: "some/other:system"},
-					Annotations: map[string]string{"one": "three"},
+					From:            &kapi.ObjectReference{Kind: "DockerImage", Name: "some/other:system"},
+					Annotations:     map[string]string{"one": "three"},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.SourceTagReferencePolicy},
 				},
 			},
 			T: field.ErrorTypeInvalid,
@@ -624,7 +647,8 @@ func TestValidateISTUpdate(t *testing.T) {
 			A: api.ImageStreamTag{
 				ObjectMeta: kapi.ObjectMeta{Namespace: kapi.NamespaceDefault, Name: "foo:bar", ResourceVersion: "1", Annotations: map[string]string{"one": "two"}},
 				Tag: &api.TagReference{
-					From: &kapi.ObjectReference{Kind: "DockerImage", Name: ""},
+					From:            &kapi.ObjectReference{Kind: "DockerImage", Name: ""},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.SourceTagReferencePolicy},
 				},
 			},
 			T: field.ErrorTypeRequired,
@@ -634,7 +658,8 @@ func TestValidateISTUpdate(t *testing.T) {
 			A: api.ImageStreamTag{
 				ObjectMeta: kapi.ObjectMeta{Namespace: kapi.NamespaceDefault, Name: "foo:bar", ResourceVersion: "1", Annotations: map[string]string{"one": "two"}},
 				Tag: &api.TagReference{
-					From: &kapi.ObjectReference{Kind: "", Name: "foo/bar:biz"},
+					From:            &kapi.ObjectReference{Kind: "", Name: "foo/bar:biz"},
+					ReferencePolicy: api.TagReferencePolicy{Type: api.SourceTagReferencePolicy},
 				},
 			},
 			T: field.ErrorTypeRequired,
@@ -689,13 +714,13 @@ func TestValidateImageStreamImport(t *testing.T) {
 		"no slash in Name": {
 			isi: &api.ImageStreamImport{ObjectMeta: kapi.ObjectMeta{Namespace: "foo", Name: "foo/bar"}, Spec: validSpec},
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("metadata", "name"), "foo/bar", `name may not contain "/"`),
+				field.Invalid(field.NewPath("metadata", "name"), "foo/bar", `may not contain '/'`),
 			},
 		},
 		"no percent in Name": {
 			isi: &api.ImageStreamImport{ObjectMeta: kapi.ObjectMeta{Namespace: "foo", Name: "foo%%bar"}, Spec: validSpec},
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("metadata", "name"), "foo%%bar", `name may not contain "%"`),
+				field.Invalid(field.NewPath("metadata", "name"), "foo%%bar", `may not contain '%'`),
 			},
 		},
 		"other invalid name": {
@@ -719,7 +744,7 @@ func TestValidateImageStreamImport(t *testing.T) {
 		"invalid dockerImageRepository": {
 			isi: &api.ImageStreamImport{ObjectMeta: validMeta, Spec: repoFn("a-|///bbb")},
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("spec", "repository", "from", "name"), "a-|///bbb", "the docker pull spec \"a-|///bbb\" must be two or three segments separated by slashes"),
+				field.Invalid(field.NewPath("spec", "repository", "from", "name"), "a-|///bbb", "invalid reference format"),
 			},
 		},
 		"invalid dockerImageRepository with tag": {
@@ -731,7 +756,7 @@ func TestValidateImageStreamImport(t *testing.T) {
 		"invalid dockerImageRepository with ID": {
 			isi: &api.ImageStreamImport{ObjectMeta: validMeta, Spec: repoFn("a/b@sha256:something")},
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("spec", "repository", "from", "name"), "a/b@sha256:something", "you must specify an image repository, not a tag or ID"),
+				field.Invalid(field.NewPath("spec", "repository", "from", "name"), "a/b@sha256:something", "invalid reference format"),
 			},
 		},
 		"only DockerImage tags can be scheduled": {
@@ -754,6 +779,13 @@ func TestValidateImageStreamImport(t *testing.T) {
 						},
 						{
 							From: kapi.ObjectReference{
+								Kind: "DockerImage",
+								Name: "abc@sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25",
+							},
+							ImportPolicy: api.TagImportPolicy{Scheduled: true},
+						},
+						{
+							From: kapi.ObjectReference{
 								Kind: "ImageStreamTag",
 								Name: "other:latest",
 							},
@@ -770,9 +802,10 @@ func TestValidateImageStreamImport(t *testing.T) {
 				},
 			},
 			expected: field.ErrorList{
-				field.Invalid(field.NewPath("spec", "images").Index(1).Child("from", "name"), "abc@badid", "only tags can be scheduled for import"),
-				field.Invalid(field.NewPath("spec", "images").Index(2).Child("from", "kind"), "ImageStreamTag", "only DockerImage is supported"),
-				field.Invalid(field.NewPath("spec", "images").Index(3).Child("from", "kind"), "ImageStreamImage", "only DockerImage is supported"),
+				field.Invalid(field.NewPath("spec", "images").Index(1).Child("from", "name"), "abc@badid", "invalid reference format"),
+				field.Invalid(field.NewPath("spec", "images").Index(2).Child("from", "name"), "abc@sha256:3c87c572822935df60f0f5d3665bd376841a7fcfeb806b5f212de6a00e9a7b25", "only tags can be scheduled for import"),
+				field.Invalid(field.NewPath("spec", "images").Index(3).Child("from", "kind"), "ImageStreamTag", "only DockerImage is supported"),
+				field.Invalid(field.NewPath("spec", "images").Index(4).Child("from", "kind"), "ImageStreamImage", "only DockerImage is supported"),
 			},
 		},
 		"valid": {

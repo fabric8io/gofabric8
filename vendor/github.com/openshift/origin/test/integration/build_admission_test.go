@@ -11,10 +11,19 @@ import (
 	"github.com/openshift/origin/pkg/client"
 	policy "github.com/openshift/origin/pkg/cmd/admin/policy"
 	"github.com/openshift/origin/pkg/cmd/server/bootstrappolicy"
-	imageapi "github.com/openshift/origin/pkg/image/api"
 	testutil "github.com/openshift/origin/test/util"
 	testserver "github.com/openshift/origin/test/util/server"
 )
+
+// all build strategy types
+func buildStrategyTypes() []string {
+	return []string{"source", "docker", "custom", "jenkinspipeline"}
+}
+
+// build strategy types that are not granted by default to system:authenticated
+func buildStrategyTypesRestricted() []string {
+	return []string{"custom"}
+}
 
 func TestPolicyBasedRestrictionOfBuildCreateAndCloneByStrategy(t *testing.T) {
 	defer testutil.DumpEtcdOnFailure(t)
@@ -22,6 +31,27 @@ func TestPolicyBasedRestrictionOfBuildCreateAndCloneByStrategy(t *testing.T) {
 
 	clients := map[string]*client.Client{"admin": projectAdminClient, "editor": projectEditorClient}
 	builds := map[string]*buildapi.Build{}
+
+	restrictedStrategies := make(map[string]int)
+	for key, val := range buildStrategyTypesRestricted() {
+		restrictedStrategies[val] = key
+	}
+
+	// ensure that restricted strategy types can not be created
+	for _, strategy := range buildStrategyTypes() {
+		for clientType, client := range clients {
+			var err error
+			builds[string(strategy)+clientType], err = createBuild(t, client.Builds(testutil.Namespace()), strategy)
+			_, restricted := restrictedStrategies[strategy]
+			if kapierror.IsForbidden(err) && !restricted {
+				t.Errorf("unexpected error for strategy %s and client %s: %v", strategy, clientType, err)
+			} else if !kapierror.IsForbidden(err) && restricted {
+				t.Errorf("expected forbidden for strategy %s and client %s: Got success instead ", strategy, clientType)
+			}
+		}
+	}
+
+	grantRestrictedBuildStrategyRoleResources(t, clusterAdminClient, projectAdminClient, projectEditorClient)
 
 	// Create builds to setup test
 	for _, strategy := range buildStrategyTypes() {
@@ -33,7 +63,7 @@ func TestPolicyBasedRestrictionOfBuildCreateAndCloneByStrategy(t *testing.T) {
 		}
 	}
 
-	// by default amdins and editors can clone builds
+	// by default admins and editors can clone builds
 	for _, strategy := range buildStrategyTypes() {
 		for clientType, client := range clients {
 			if _, err := cloneBuild(t, client.Builds(testutil.Namespace()), builds[string(strategy)+clientType]); err != nil {
@@ -41,7 +71,6 @@ func TestPolicyBasedRestrictionOfBuildCreateAndCloneByStrategy(t *testing.T) {
 			}
 		}
 	}
-
 	removeBuildStrategyRoleResources(t, clusterAdminClient, projectAdminClient, projectEditorClient)
 
 	// make sure builds are rejected
@@ -78,8 +107,28 @@ func TestPolicyBasedRestrictionOfBuildConfigCreateAndInstantiateByStrategy(t *te
 
 	clients := map[string]*client.Client{"admin": projectAdminClient, "editor": projectEditorClient}
 	buildConfigs := map[string]*buildapi.BuildConfig{}
+	restrictedStrategies := make(map[string]int)
+	for key, val := range buildStrategyTypesRestricted() {
+		restrictedStrategies[val] = key
+	}
 
-	// by default admins and editors can create all type of buildconfigs
+	// ensure that restricted strategy types can not be created
+	for _, strategy := range buildStrategyTypes() {
+		for clientType, client := range clients {
+			var err error
+			buildConfigs[string(strategy)+clientType], err = createBuildConfig(t, client.BuildConfigs(testutil.Namespace()), strategy)
+			_, restricted := restrictedStrategies[strategy]
+			if kapierror.IsForbidden(err) && !restricted {
+				t.Errorf("unexpected error for strategy %s and client %s: %v", strategy, clientType, err)
+			} else if !kapierror.IsForbidden(err) && restricted {
+				t.Errorf("expected forbidden for strategy %s and client %s: Got success instead ", strategy, clientType)
+			}
+		}
+	}
+
+	grantRestrictedBuildStrategyRoleResources(t, clusterAdminClient, projectAdminClient, projectEditorClient)
+
+	// by default admins and editors can create source, docker, and jenkinspipline buildconfigs
 	for _, strategy := range buildStrategyTypes() {
 		for clientType, client := range clients {
 			var err error
@@ -126,10 +175,6 @@ func TestPolicyBasedRestrictionOfBuildConfigCreateAndInstantiateByStrategy(t *te
 			}
 		}
 	}
-}
-
-func buildStrategyTypes() []string {
-	return []string{"source", "docker", "custom", "jenkinspipeline"}
 }
 
 func setupBuildStrategyTest(t *testing.T, includeControllers bool) (clusterAdminClient, projectAdminClient, projectEditorClient *client.Client) {
@@ -179,29 +224,17 @@ func setupBuildStrategyTest(t *testing.T, includeControllers bool) (clusterAdmin
 		t.Fatalf(err.Error())
 	}
 
-	// Create builder image stream and tag
-	imageStream := &imageapi.ImageStream{}
-	imageStream.Name = "builderimage"
-	_, err = clusterAdminClient.ImageStreams(testutil.Namespace()).Create(imageStream)
-	if err != nil {
-		t.Fatalf("Couldn't create ImageStream: %v", err)
-	}
-	// Create image stream mapping
-	imageStreamMapping := &imageapi.ImageStreamMapping{}
-	imageStreamMapping.Name = "builderimage"
-	imageStreamMapping.Tag = "latest"
-	imageStreamMapping.Image.Name = "image-id"
-	imageStreamMapping.Image.DockerImageReference = "test/builderimage:latest"
-	err = clusterAdminClient.ImageStreamMappings(testutil.Namespace()).Create(imageStreamMapping)
-	if err != nil {
-		t.Fatalf("Couldn't create ImageStreamMapping: %v", err)
-	}
-
-	template, err := testutil.GetTemplateFixture("../../examples/jenkins/jenkins-ephemeral-template.json")
+	// we need a template that doesn't create service accounts or rolebindings so editors can create
+	// pipeline buildconfig's successfully, so we're not using the standard jenkins template.
+	// but we do need a template that creates a service named jenkins.
+	template, err := testutil.GetTemplateFixture("../testdata/jenkins-template.json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	template.Name = "jenkins"
+
+	// pipeline defaults expect to find a template named jenkins-ephemeral
+	// in the openshift namespace.
+	template.Name = "jenkins-ephemeral"
 	template.Namespace = "openshift"
 
 	_, err = clusterAdminClient.Templates("openshift").Create(template)
@@ -215,13 +248,13 @@ func setupBuildStrategyTest(t *testing.T, includeControllers bool) (clusterAdmin
 func removeBuildStrategyRoleResources(t *testing.T, clusterAdminClient, projectAdminClient, projectEditorClient *client.Client) {
 	// remove resources from role so that certain build strategies are forbidden
 	for _, role := range []string{bootstrappolicy.BuildStrategyCustomRoleName, bootstrappolicy.BuildStrategyDockerRoleName, bootstrappolicy.BuildStrategySourceRoleName, bootstrappolicy.BuildStrategyJenkinsPipelineRoleName} {
-		remove := &policy.RoleModificationOptions{
+		options := &policy.RoleModificationOptions{
 			RoleNamespace:       "",
 			RoleName:            role,
 			RoleBindingAccessor: policy.NewClusterRoleBindingAccessor(clusterAdminClient),
 			Groups:              []string{"system:authenticated"},
 		}
-		if err := remove.RemoveRole(); err != nil {
+		if err := options.RemoveRole(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	}
@@ -240,6 +273,25 @@ func removeBuildStrategyRoleResources(t *testing.T, clusterAdminClient, projectA
 	}
 }
 
+func grantRestrictedBuildStrategyRoleResources(t *testing.T, clusterAdminClient, projectAdminClient, projectEditorClient *client.Client) {
+	// grant resources to role so that restricted build strategies are available
+	for _, role := range []string{bootstrappolicy.BuildStrategyCustomRoleName} {
+		options := &policy.RoleModificationOptions{
+			RoleNamespace:       "",
+			RoleName:            role,
+			RoleBindingAccessor: policy.NewClusterRoleBindingAccessor(clusterAdminClient),
+			Groups:              []string{"system:authenticated"},
+		}
+		if err := options.AddRole(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	if err := testutil.WaitForPolicyUpdate(projectEditorClient, testutil.Namespace(), "create", buildapi.Resource(authorizationapi.CustomBuildResource), true); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func strategyForType(t *testing.T, strategy string) buildapi.BuildStrategy {
 	buildStrategy := buildapi.BuildStrategy{}
 	switch strategy {
@@ -247,10 +299,12 @@ func strategyForType(t *testing.T, strategy string) buildapi.BuildStrategy {
 		buildStrategy.DockerStrategy = &buildapi.DockerBuildStrategy{}
 	case "custom":
 		buildStrategy.CustomStrategy = &buildapi.CustomBuildStrategy{}
-		buildStrategy.CustomStrategy.From.Name = "builderimage:latest"
+		buildStrategy.CustomStrategy.From.Kind = "DockerImage"
+		buildStrategy.CustomStrategy.From.Name = "test/builderimage:latest"
 	case "source":
 		buildStrategy.SourceStrategy = &buildapi.SourceBuildStrategy{}
-		buildStrategy.SourceStrategy.From.Name = "builderimage:latest"
+		buildStrategy.SourceStrategy.From.Kind = "DockerImage"
+		buildStrategy.SourceStrategy.From.Name = "test/builderimage:latest"
 	case "jenkinspipeline":
 		buildStrategy.JenkinsPipelineStrategy = &buildapi.JenkinsPipelineBuildStrategy{}
 	default:

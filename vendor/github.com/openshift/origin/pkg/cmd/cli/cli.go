@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/pflag"
 
 	kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
+	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
 	"github.com/openshift/origin/pkg/cmd/admin"
 	"github.com/openshift/origin/pkg/cmd/cli/cmd"
@@ -28,48 +29,44 @@ import (
 	"github.com/openshift/origin/pkg/cmd/cli/secrets"
 	"github.com/openshift/origin/pkg/cmd/flagtypes"
 	"github.com/openshift/origin/pkg/cmd/templates"
-	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
+	"github.com/openshift/origin/pkg/cmd/util/term"
 )
 
 const productName = `OpenShift`
 
-const cliLong = productName + ` Client
+var (
+	cliLong = templates.LongDesc(`
+    ` + productName + ` Client
 
-This client helps you develop, build, deploy, and run your applications on any OpenShift or
-Kubernetes compatible platform. It also includes the administrative commands for managing a
-cluster under the 'adm' subcommand.
-`
+    This client helps you develop, build, deploy, and run your applications on any
+    OpenShift or Kubernetes compatible platform. It also includes the administrative
+    commands for managing a cluster under the 'adm' subcommand.`)
 
-const cliExplain = `
-To create a new application, login to your server and then run new-app:
+	cliExplain = templates.LongDesc(`
+    To create a new application, login to your server and then run new-app:
 
-  %[1]s login https://mycluster.mycompany.com
-  %[1]s new-app centos/ruby-22-centos7~https://github.com/openshift/ruby-ex.git
-  %[1]s logs -f bc/ruby-ex
+        %[1]s login https://mycluster.mycompany.com
+        %[1]s new-app centos/ruby-22-centos7~https://github.com/openshift/ruby-ex.git
+        %[1]s logs -f bc/ruby-ex
 
-This will create an application based on the Docker image 'centos/ruby-22-centos7' that builds
-the source code from GitHub. A build will start automatically, push the resulting image to the
-registry, and a deployment will roll that change out in your project.
+    This will create an application based on the Docker image 'centos/ruby-22-centos7' that builds the source code from GitHub. A build will start automatically, push the resulting image to the registry, and a deployment will roll that change out in your project.
 
-Once your application is deployed, use the status, describe, and get commands to see more about
-the created components:
+    Once your application is deployed, use the status, describe, and get commands to see more about the created components:
 
-  %[1]s status
-  %[1]s describe deploymentconfig ruby-ex
-  %[1]s get pods
+        %[1]s status
+        %[1]s describe deploymentconfig ruby-ex
+        %[1]s get pods
 
-To make this application visible outside of the cluster, use the expose command on the service
-we just created to create a 'route' (which will connect your application over the HTTP port
-to a public domain name).
+    To make this application visible outside of the cluster, use the expose command on the service we just created to create a 'route' (which will connect your application over the HTTP port to a public domain name).
 
-  %[1]s expose svc/ruby-ex
-  %[1]s status
+        %[1]s expose svc/ruby-ex
+        %[1]s status
 
-You should now see the URL the application can be reached at.
+    You should now see the URL the application can be reached at.
 
-To see the full list of commands supported, run '%[1]s help'.
-`
+    To see the full list of commands supported, run '%[1]s --help'.`)
+)
 
 func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *cobra.Command {
 	// Main command
@@ -78,10 +75,10 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 		Short: "Command line tools for managing applications",
 		Long:  cliLong,
 		Run: func(c *cobra.Command, args []string) {
-			c.SetOutput(out)
-			cmdutil.RequireNoArguments(c, args)
-			fmt.Fprint(out, cliLong)
-			fmt.Fprintf(out, cliExplain, fullName)
+			explainOut := term.NewResponsiveWriter(out)
+			c.SetOutput(explainOut)
+			kcmdutil.RequireNoArguments(c, args)
+			fmt.Fprintf(explainOut, "%s\n\n%s\n", cliLong, fmt.Sprintf(cliExplain, fullName))
 		},
 		BashCompletionFunction: bashCompletionFunc,
 	}
@@ -89,7 +86,7 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 	f := clientcmd.New(cmds.PersistentFlags())
 
 	loginCmd := login.NewCmdLogin(fullName, f, in, out)
-	secretcmds := secrets.NewCmdSecrets(secrets.SecretsRecommendedName, fullName+" "+secrets.SecretsRecommendedName, f, in, out, fullName+" edit")
+	secretcmds := secrets.NewCmdSecrets(secrets.SecretsRecommendedName, fullName+" "+secrets.SecretsRecommendedName, f, in, out, errout, fullName+" edit")
 
 	groups := templates.CommandGroups{
 		{
@@ -97,50 +94,49 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 			Commands: []*cobra.Command{
 				cmd.NewCmdTypes(fullName, f, out),
 				loginCmd,
-				cmd.NewCmdRequestProject(fullName, "new-project", fullName+" login", fullName+" project", f, out),
-				cmd.NewCmdNewApplication(fullName, f, out),
+				cmd.NewCmdRequestProject(cmd.RequestProjectRecommendedCommandName, fullName, f, out, errout),
+				cmd.NewCmdNewApplication(cmd.NewAppRecommendedCommandName, fullName, f, in, out, errout),
 				cmd.NewCmdStatus(cmd.StatusRecommendedName, fullName, fullName+" "+cmd.StatusRecommendedName, f, out),
 				cmd.NewCmdProject(fullName+" project", f, out),
 				cmd.NewCmdProjects(fullName, f, out),
-				cmd.NewCmdExplain(fullName, f, out),
-				cluster.NewCmdCluster(cluster.ClusterRecommendedName, fullName+" "+cluster.ClusterRecommendedName, f, out),
-				cmd.NewCmdIdle(fullName, f, out, errout),
+				cmd.NewCmdExplain(fullName, f, out, errout),
+				cluster.NewCmdCluster(cluster.ClusterRecommendedName, fullName+" "+cluster.ClusterRecommendedName, f, in, out, errout),
 			},
 		},
 		{
 			Message: "Build and Deploy Commands:",
 			Commands: []*cobra.Command{
-				rollout.NewCmdRollout(fullName, f, out),
+				rollout.NewCmdRollout(fullName, f, out, errout),
 				cmd.NewCmdDeploy(fullName, f, out),
 				cmd.NewCmdRollback(fullName, f, out),
-				cmd.NewCmdNewBuild(fullName, f, in, out),
-				cmd.NewCmdStartBuild(fullName, f, in, out),
-				cmd.NewCmdCancelBuild(fullName, f, in, out),
-				cmd.NewCmdImportImage(fullName, f, out),
+				cmd.NewCmdNewBuild(cmd.NewBuildRecommendedCommandName, fullName, f, in, out, errout),
+				cmd.NewCmdStartBuild(fullName, f, in, out, errout),
+				cmd.NewCmdCancelBuild(cmd.CancelBuildRecommendedCommandName, fullName, f, in, out, errout),
+				cmd.NewCmdImportImage(fullName, f, out, errout),
 				cmd.NewCmdTag(fullName, f, out),
 			},
 		},
 		{
 			Message: "Application Management Commands:",
 			Commands: []*cobra.Command{
-				cmd.NewCmdGet(fullName, f, out),
-				cmd.NewCmdDescribe(fullName, f, out),
+				cmd.NewCmdGet(fullName, f, out, errout),
+				cmd.NewCmdDescribe(fullName, f, out, errout),
 				cmd.NewCmdEdit(fullName, f, out, errout),
 				set.NewCmdSet(fullName, f, in, out, errout),
 				cmd.NewCmdLabel(fullName, f, out),
 				cmd.NewCmdAnnotate(fullName, f, out),
 				cmd.NewCmdExpose(fullName, f, out),
-				cmd.NewCmdDelete(fullName, f, out),
+				cmd.NewCmdDelete(fullName, f, out, errout),
 				cmd.NewCmdScale(fullName, f, out),
 				cmd.NewCmdAutoscale(fullName, f, out),
 				secretcmds,
-				sa.NewCmdServiceAccounts(sa.ServiceAccountsRecommendedName, fullName+" "+sa.ServiceAccountsRecommendedName, f, out),
+				sa.NewCmdServiceAccounts(sa.ServiceAccountsRecommendedName, fullName+" "+sa.ServiceAccountsRecommendedName, f, out, errout),
 			},
 		},
 		{
 			Message: "Troubleshooting and Debugging Commands:",
 			Commands: []*cobra.Command{
-				cmd.NewCmdLogs(cmd.LogsRecommendedName, fullName, f, out),
+				cmd.NewCmdLogs(cmd.LogsRecommendedCommandName, fullName, f, out),
 				cmd.NewCmdRsh(cmd.RshRecommendedName, fullName, f, in, out, errout),
 				rsync.NewCmdRsync(rsync.RsyncRecommendedName, fullName, f, out, errout),
 				cmd.NewCmdPortForward(fullName, f, out, errout),
@@ -149,21 +145,23 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 				cmd.NewCmdProxy(fullName, f, out),
 				cmd.NewCmdAttach(fullName, f, in, out, errout),
 				cmd.NewCmdRun(fullName, f, in, out, errout),
+				cmd.NewCmdCp(fullName, f, in, out, errout),
 			},
 		},
 		{
 			Message: "Advanced Commands:",
 			Commands: []*cobra.Command{
 				admin.NewCommandAdmin("adm", fullName+" "+"adm", in, out, errout),
-				cmd.NewCmdCreate(fullName, f, out),
+				cmd.NewCmdCreate(fullName, f, out, errout),
 				cmd.NewCmdReplace(fullName, f, out),
 				cmd.NewCmdApply(fullName, f, out),
 				cmd.NewCmdPatch(fullName, f, out),
-				cmd.NewCmdProcess(fullName, f, out),
+				cmd.NewCmdProcess(fullName, f, in, out, errout),
 				cmd.NewCmdExport(fullName, f, in, out),
 				cmd.NewCmdExtract(fullName, f, in, out, errout),
+				cmd.NewCmdIdle(fullName, f, out, errout),
 				observe.NewCmdObserve(fullName, f, out, errout),
-				policy.NewCmdPolicy(policy.PolicyRecommendedName, fullName+" "+policy.PolicyRecommendedName, f, out),
+				policy.NewCmdPolicy(policy.PolicyRecommendedName, fullName+" "+policy.PolicyRecommendedName, f, out, errout),
 				cmd.NewCmdConvert(fullName, f, out),
 				importer.NewCmdImport(fullName, f, in, out, errout),
 			},
@@ -172,7 +170,7 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 			Message: "Settings Commands:",
 			Commands: []*cobra.Command{
 				login.NewCmdLogout("logout", fullName+" logout", fullName+" login", f, in, out),
-				cmd.NewCmdConfig(fullName, "config"),
+				cmd.NewCmdConfig(fullName, "config", out, errout),
 				cmd.NewCmdWhoAmI(cmd.WhoAmIRecommendedCommandName, fullName+" "+cmd.WhoAmIRecommendedCommandName, f, out),
 				cmd.NewCmdCompletion(fullName, f, out),
 			},
@@ -183,10 +181,10 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 	filters := []string{
 		"options",
 		// These commands are deprecated and should not appear in help
-		moved(fullName, "set env", cmds, set.NewCmdEnv(fullName, f, in, out)),
+		moved(fullName, "set env", cmds, set.NewCmdEnv(fullName, f, in, out, errout)),
 		moved(fullName, "set volume", cmds, set.NewCmdVolume(fullName, f, out, errout)),
 		moved(fullName, "logs", cmds, cmd.NewCmdBuildLogs(fullName, f, out)),
-		moved(fullName, "secrets link", secretcmds, secrets.NewCmdLinkSecret("add", fullName, f.Factory, out)),
+		moved(fullName, "secrets link", secretcmds, secrets.NewCmdLinkSecret("add", fullName, f, out)),
 	}
 
 	changeSharedFlagDefaults(cmds)
@@ -207,6 +205,16 @@ func NewCommandCLI(name, fullName string, in io.Reader, out, errout io.Writer) *
 		cmds.AddCommand(cmd.NewCmdVersion(fullName, f, out, cmd.VersionOptions{PrintClientFeatures: true}))
 	}
 	cmds.AddCommand(cmd.NewCmdOptions(out))
+
+	if cmds.Flag("namespace") != nil {
+		if cmds.Flag("namespace").Annotations == nil {
+			cmds.Flag("namespace").Annotations = map[string][]string{}
+		}
+		cmds.Flag("namespace").Annotations[cobra.BashCompCustom] = append(
+			cmds.Flag("namespace").Annotations[cobra.BashCompCustom],
+			"__oc_get_namespaces",
+		)
+	}
 
 	return cmds
 }
@@ -250,7 +258,7 @@ func changeSharedFlagDefaults(rootCmd *cobra.Command) {
 func NewCmdKubectl(name string, out io.Writer) *cobra.Command {
 	flags := pflag.NewFlagSet("", pflag.ContinueOnError)
 	f := clientcmd.New(flags)
-	cmds := kubecmd.NewKubectlCommand(f.Factory, os.Stdin, out, os.Stderr)
+	cmds := kubecmd.NewKubectlCommand(f, os.Stdin, out, os.Stderr)
 	cmds.Aliases = []string{"kubectl"}
 	cmds.Use = name
 	cmds.Short = "Kubernetes cluster management via kubectl"

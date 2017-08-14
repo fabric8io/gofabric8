@@ -10,9 +10,11 @@ import (
 	"github.com/spf13/cobra"
 
 	kapi "k8s.io/kubernetes/pkg/api"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
+	"github.com/openshift/origin/pkg/client"
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
 	"github.com/openshift/origin/pkg/deploy/prune"
@@ -20,18 +22,19 @@ import (
 
 const PruneDeploymentsRecommendedName = "deployments"
 
-const (
-	deploymentsLongDesc = `Prune old completed and failed deployments
+var (
+	deploymentsLongDesc = templates.LongDesc(`
+		Prune old completed and failed deployments
 
-By default, the prune operation performs a dry run making no changes to the deployments.
-A --confirm flag is needed for changes to be effective.
-`
+		By default, the prune operation performs a dry run making no changes to the deployments.
+		A --confirm flag is needed for changes to be effective.`)
 
-	deploymentsExample = `  # Dry run deleting all but the last complete deployment for every deployment config
-  %[1]s %[2]s --keep-complete=1
+	deploymentsExample = templates.Examples(`
+		# Dry run deleting all but the last complete deployment for every deployment config
+	  %[1]s %[2]s --keep-complete=1
 
-  # To actually perform the prune operation, the confirm flag must be appended
-  %[1]s %[2]s --keep-complete=1 --confirm`
+	  # To actually perform the prune operation, the confirm flag must be appended
+	  %[1]s %[2]s --keep-complete=1 --confirm`)
 )
 
 // PruneDeploymentsOptions holds all the required options for pruning deployments.
@@ -41,10 +44,11 @@ type PruneDeploymentsOptions struct {
 	KeepYoungerThan time.Duration
 	KeepComplete    int
 	KeepFailed      int
+	Namespace       string
 
-	Pruner prune.Pruner
-	Client kclient.Interface
-	Out    io.Writer
+	OSClient client.Interface
+	KClient  kclientset.Interface
+	Out      io.Writer
 }
 
 // NewCmdPruneDeployments implements the OpenShift cli prune deployments command.
@@ -69,8 +73,8 @@ func NewCmdPruneDeployments(f *clientcmd.Factory, parentName, name string, out i
 		},
 	}
 
-	cmd.Flags().BoolVar(&opts.Confirm, "confirm", opts.Confirm, "Specify that deployment pruning should proceed. Defaults to false, displaying what would be deleted but not actually deleting anything.")
-	cmd.Flags().BoolVar(&opts.Orphans, "orphans", opts.Orphans, "Prune all deployments where the associated DeploymentConfig no longer exists, the status is complete or failed, and the replica size is 0.")
+	cmd.Flags().BoolVar(&opts.Confirm, "confirm", opts.Confirm, "If true, specify that deployment pruning should proceed. Defaults to false, displaying what would be deleted but not actually deleting anything.")
+	cmd.Flags().BoolVar(&opts.Orphans, "orphans", opts.Orphans, "If true, prune all deployments where the associated DeploymentConfig no longer exists, the status is complete or failed, and the replica size is 0.")
 	cmd.Flags().DurationVar(&opts.KeepYoungerThan, "keep-younger-than", opts.KeepYoungerThan, "Specify the minimum age of a deployment for it to be considered a candidate for pruning.")
 	cmd.Flags().IntVar(&opts.KeepComplete, "keep-complete", opts.KeepComplete, "Per DeploymentConfig, specify the number of deployments whose status is complete that will be preserved whose replica size is 0.")
 	cmd.Flags().IntVar(&opts.KeepFailed, "keep-failed", opts.KeepFailed, "Per DeploymentConfig, specify the number of deployments whose status is failed that will be preserved whose replica size is 0.")
@@ -85,42 +89,22 @@ func (o *PruneDeploymentsOptions) Complete(f *clientcmd.Factory, cmd *cobra.Comm
 		return kcmdutil.UsageError(cmd, "no arguments are allowed to this command")
 	}
 
+	o.Namespace = kapi.NamespaceAll
+	if cmd.Flags().Lookup("namespace").Changed {
+		var err error
+		o.Namespace, _, err = f.DefaultNamespace()
+		if err != nil {
+			return err
+		}
+	}
 	o.Out = out
 
 	osClient, kClient, err := f.Clients()
 	if err != nil {
 		return err
 	}
-	o.Client = kClient
-
-	deploymentConfigList, err := osClient.DeploymentConfigs(kapi.NamespaceAll).List(kapi.ListOptions{})
-	if err != nil {
-		return err
-	}
-	deploymentConfigs := []*deployapi.DeploymentConfig{}
-	for i := range deploymentConfigList.Items {
-		deploymentConfigs = append(deploymentConfigs, &deploymentConfigList.Items[i])
-	}
-
-	deploymentList, err := kClient.ReplicationControllers(kapi.NamespaceAll).List(kapi.ListOptions{})
-	if err != nil {
-		return err
-	}
-	deployments := []*kapi.ReplicationController{}
-	for i := range deploymentList.Items {
-		deployments = append(deployments, &deploymentList.Items[i])
-	}
-
-	options := prune.PrunerOptions{
-		KeepYoungerThan:   o.KeepYoungerThan,
-		Orphans:           o.Orphans,
-		KeepComplete:      o.KeepComplete,
-		KeepFailed:        o.KeepFailed,
-		DeploymentConfigs: deploymentConfigs,
-		Deployments:       deployments,
-	}
-
-	o.Pruner = prune.NewPruner(options)
+	o.OSClient = osClient
+	o.KClient = kClient
 
 	return nil
 }
@@ -141,18 +125,46 @@ func (o PruneDeploymentsOptions) Validate() error {
 
 // Run contains all the necessary functionality for the OpenShift cli prune deployments command.
 func (o PruneDeploymentsOptions) Run() error {
+	deploymentConfigList, err := o.OSClient.DeploymentConfigs(o.Namespace).List(kapi.ListOptions{})
+	if err != nil {
+		return err
+	}
+	deploymentConfigs := []*deployapi.DeploymentConfig{}
+	for i := range deploymentConfigList.Items {
+		deploymentConfigs = append(deploymentConfigs, &deploymentConfigList.Items[i])
+	}
+
+	deploymentList, err := o.KClient.Core().ReplicationControllers(o.Namespace).List(kapi.ListOptions{})
+	if err != nil {
+		return err
+	}
+	deployments := []*kapi.ReplicationController{}
+	for i := range deploymentList.Items {
+		deployments = append(deployments, &deploymentList.Items[i])
+	}
+
+	options := prune.PrunerOptions{
+		KeepYoungerThan:   o.KeepYoungerThan,
+		Orphans:           o.Orphans,
+		KeepComplete:      o.KeepComplete,
+		KeepFailed:        o.KeepFailed,
+		DeploymentConfigs: deploymentConfigs,
+		Deployments:       deployments,
+	}
+	pruner := prune.NewPruner(options)
+
 	w := tabwriter.NewWriter(o.Out, 10, 4, 3, ' ', 0)
 	defer w.Flush()
 
 	deploymentDeleter := &describingDeploymentDeleter{w: w}
 
 	if o.Confirm {
-		deploymentDeleter.delegate = prune.NewDeploymentDeleter(o.Client, o.Client)
+		deploymentDeleter.delegate = prune.NewDeploymentDeleter(o.KClient.Core(), o.KClient.Core())
 	} else {
 		fmt.Fprintln(os.Stderr, "Dry run enabled - no modifications will be made. Add --confirm to remove deployments")
 	}
 
-	return o.Pruner.Prune(deploymentDeleter)
+	return pruner.Prune(deploymentDeleter)
 }
 
 // describingDeploymentDeleter prints information about each deployment it removes.

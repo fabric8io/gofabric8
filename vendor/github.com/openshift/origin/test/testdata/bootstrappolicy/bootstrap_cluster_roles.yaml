@@ -3,6 +3,11 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
+      openshift.io/description: A super-user that can perform any action in the cluster.
+        When granted to a user within a project, they have full control over quota
+        and membership and can perform every action on every resource in the project.
     creationTimestamp: null
     name: cluster-admin
   rules:
@@ -23,6 +28,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: sudoer
   rules:
@@ -38,6 +45,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: cluster-reader
   rules:
@@ -48,7 +57,6 @@ items:
     - bindings
     - componentstatuses
     - configmaps
-    - egressnetworkpolicies
     - endpoints
     - events
     - limitranges
@@ -62,6 +70,7 @@ items:
     - persistentvolumes/status
     - pods
     - pods/binding
+    - pods/eviction
     - pods/log
     - pods/status
     - podtemplates
@@ -82,8 +91,8 @@ items:
     - apps
     attributeRestrictions: null
     resources:
-    - petsets
-    - petsets/status
+    - statefulsets
+    - statefulsets/status
     verbs:
     - get
     - list
@@ -102,8 +111,12 @@ items:
     - batch
     attributeRestrictions: null
     resources:
+    - cronjobs
+    - cronjobs/status
     - jobs
     - jobs/status
+    - scheduledjobs
+    - scheduledjobs/status
     verbs:
     - get
     - list
@@ -130,7 +143,38 @@ items:
     - replicasets/status
     - replicationcontrollers
     - replicationcontrollers/scale
+    - storageclasses
     - thirdpartyresources
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - policy
+    attributeRestrictions: null
+    resources:
+    - poddisruptionbudgets
+    - poddisruptionbudgets/status
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - storage.k8s.io
+    attributeRestrictions: null
+    resources:
+    - storageclasses
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - certificates.k8s.io
+    attributeRestrictions: null
+    resources:
+    - certificatesigningrequests
+    - certificatesigningrequests/approval
+    - certificatesigningrequests/status
     verbs:
     - get
     - list
@@ -145,6 +189,7 @@ items:
     - clusterroles
     - policies
     - policybindings
+    - rolebindingrestrictions
     - rolebindings
     - roles
     verbs:
@@ -242,6 +287,7 @@ items:
     attributeRestrictions: null
     resources:
     - clusternetworks
+    - egressnetworkpolicies
     - hostsubnets
     - netnamespaces
     verbs:
@@ -280,6 +326,7 @@ items:
     - resourceaccessreviews
     - selfsubjectrulesreviews
     - subjectaccessreviews
+    - subjectrulesreviews
     verbs:
     - create
   - apiGroups:
@@ -293,7 +340,17 @@ items:
     - ""
     attributeRestrictions: null
     resources:
+    - podsecuritypolicyreviews
+    - podsecuritypolicyselfsubjectreviews
+    - podsecuritypolicysubjectreviews
+    verbs:
+    - create
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
     - nodes/metrics
+    - nodes/spec
     verbs:
     - get
   - apiGroups:
@@ -332,6 +389,25 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
+    creationTimestamp: null
+    name: cluster-debugger
+  rules:
+  - apiGroups: null
+    attributeRestrictions: null
+    nonResourceURLs:
+    - /debug/pprof
+    - /debug/pprof/*
+    - /metrics
+    resources: []
+    verbs:
+    - get
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:build-strategy-docker
   rules:
@@ -345,6 +421,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:build-strategy-custom
   rules:
@@ -358,6 +436,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:build-strategy-source
   rules:
@@ -371,6 +451,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:build-strategy-jenkinspipeline
   rules:
@@ -384,6 +466,53 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    creationTimestamp: null
+    name: storage-admin
+  rules:
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - persistentvolumes
+    verbs:
+    - create
+    - delete
+    - deletecollection
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - storage.k8s.io
+    attributeRestrictions: null
+    resources:
+    - storageclasses
+    verbs:
+    - create
+    - delete
+    - deletecollection
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - events
+    - persistentvolumeclaims
+    verbs:
+    - get
+    - list
+    - watch
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    annotations:
+      openshift.io/description: A user that has edit rights within the project and
+        can change the project's membership.
     creationTimestamp: null
     name: admin
   rules:
@@ -470,7 +599,9 @@ items:
     - batch
     attributeRestrictions: null
     resources:
+    - cronjobs
     - jobs
+    - scheduledjobs
     verbs:
     - create
     - delete
@@ -485,6 +616,7 @@ items:
     attributeRestrictions: null
     resources:
     - deployments
+    - deployments/rollback
     - deployments/scale
     - horizontalpodautoscalers
     - jobs
@@ -513,7 +645,7 @@ items:
     - apps
     attributeRestrictions: null
     resources:
-    - petsets
+    - statefulsets
     verbs:
     - create
     - delete
@@ -544,6 +676,16 @@ items:
     resources:
     - localresourceaccessreviews
     - localsubjectaccessreviews
+    - subjectrulesreviews
+    verbs:
+    - create
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - podsecuritypolicyreviews
+    - podsecuritypolicyselfsubjectreviews
+    - podsecuritypolicysubjectreviews
     verbs:
     - create
   - apiGroups:
@@ -552,6 +694,7 @@ items:
     resources:
     - policies
     - policybindings
+    - rolebindingrestrictions
     verbs:
     - get
     - list
@@ -603,9 +746,7 @@ items:
     - ""
     attributeRestrictions: null
     resources:
-    - deploymentconfigrollbacks
     - deploymentconfigs
-    - deploymentconfigs/rollback
     - deploymentconfigs/scale
     - generatedeploymentconfigs
     verbs:
@@ -617,6 +758,15 @@ items:
     - patch
     - update
     - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - deploymentconfigrollbacks
+    - deploymentconfigs/instantiate
+    - deploymentconfigs/rollback
+    verbs:
+    - create
   - apiGroups:
     - ""
     attributeRestrictions: null
@@ -768,6 +918,9 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      openshift.io/description: A user that can create and edit most objects in a
+        project, but can not update the project's membership.
     creationTimestamp: null
     name: edit
   rules:
@@ -854,7 +1007,9 @@ items:
     - batch
     attributeRestrictions: null
     resources:
+    - cronjobs
     - jobs
+    - scheduledjobs
     verbs:
     - create
     - delete
@@ -869,6 +1024,7 @@ items:
     attributeRestrictions: null
     resources:
     - deployments
+    - deployments/rollback
     - deployments/scale
     - horizontalpodautoscalers
     - jobs
@@ -897,7 +1053,7 @@ items:
     - apps
     attributeRestrictions: null
     resources:
-    - petsets
+    - statefulsets
     verbs:
     - create
     - delete
@@ -953,9 +1109,7 @@ items:
     - ""
     attributeRestrictions: null
     resources:
-    - deploymentconfigrollbacks
     - deploymentconfigs
-    - deploymentconfigs/rollback
     - deploymentconfigs/scale
     - generatedeploymentconfigs
     verbs:
@@ -967,6 +1121,15 @@ items:
     - patch
     - update
     - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - deploymentconfigrollbacks
+    - deploymentconfigs/instantiate
+    - deploymentconfigs/rollback
+    verbs:
+    - create
   - apiGroups:
     - ""
     attributeRestrictions: null
@@ -1100,6 +1263,9 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      openshift.io/description: A user who can view but not edit any resources within
+        the project. They can not view secrets or membership.
     creationTimestamp: null
     name: view
   rules:
@@ -1149,7 +1315,9 @@ items:
     - batch
     attributeRestrictions: null
     resources:
+    - cronjobs
     - jobs
+    - scheduledjobs
     verbs:
     - get
     - list
@@ -1181,7 +1349,7 @@ items:
     - apps
     attributeRestrictions: null
     resources:
-    - petsets
+    - statefulsets
     verbs:
     - get
     - list
@@ -1320,6 +1488,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      openshift.io/description: A user that can get basic information about projects.
     creationTimestamp: null
     name: basic-user
   rules:
@@ -1346,6 +1516,13 @@ items:
     - clusterroles
     verbs:
     - get
+    - list
+  - apiGroups:
+    - storage.k8s.io
+    attributeRestrictions: null
+    resources:
+    - storageclasses
+    verbs:
     - list
   - apiGroups:
     - ""
@@ -1375,6 +1552,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: self-access-reviewer
   rules:
@@ -1398,6 +1577,9 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
+      openshift.io/description: A user that can request projects.
     creationTimestamp: null
     name: self-provisioner
   rules:
@@ -1411,6 +1593,9 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
+      openshift.io/description: A user that can get basic cluster status information.
     creationTimestamp: null
     name: cluster-status
   rules:
@@ -1425,6 +1610,8 @@ items:
   - apiGroups: null
     attributeRestrictions: null
     nonResourceURLs:
+    - /.well-known
+    - /.well-known/*
     - /api
     - /api/*
     - /apis
@@ -1433,6 +1620,8 @@ items:
     - /oapi/*
     - /osapi
     - /osapi/
+    - /swaggerapi
+    - /swaggerapi/*
     - /version
     - /version/*
     resources: []
@@ -1441,6 +1630,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:image-auditor
   rules:
@@ -1458,6 +1649,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      openshift.io/description: Grants the right to pull images from within a project.
     creationTimestamp: null
     name: system:image-puller
   rules:
@@ -1471,6 +1664,9 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      openshift.io/description: Grants the right to push and pull images from within
+        a project.
     creationTimestamp: null
     name: system:image-pusher
   rules:
@@ -1485,6 +1681,9 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      openshift.io/description: Grants the right to build, push and pull images from
+        within a project.  Used primarily with service accounts for builds.
     creationTimestamp: null
     name: system:image-builder
   rules:
@@ -1510,9 +1709,18 @@ items:
     - builds/details
     verbs:
     - update
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - builds
+    verbs:
+    - get
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:image-pruner
   rules:
@@ -1575,6 +1783,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:image-signer
   rules:
@@ -1597,6 +1807,9 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      openshift.io/description: Grants the right to deploy within a project.  Used
+        primarily with service accounts for automated deployments.
     creationTimestamp: null
     name: system:deployer
   rules:
@@ -1609,6 +1822,7 @@ items:
     - get
     - list
     - update
+    - watch
   - apiGroups:
     - ""
     attributeRestrictions: null
@@ -1633,6 +1847,7 @@ items:
     - events
     verbs:
     - create
+    - list
   - apiGroups:
     - ""
     attributeRestrictions: null
@@ -1643,6 +1858,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:master
   rules:
@@ -1653,9 +1870,18 @@ items:
     - '*'
     verbs:
     - '*'
+  - apiGroups: null
+    attributeRestrictions: null
+    nonResourceURLs:
+    - '*'
+    resources: []
+    verbs:
+    - '*'
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:oauth-token-deleter
   rules:
@@ -1670,6 +1896,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:router
   rules:
@@ -1707,6 +1935,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:registry
   rules:
@@ -1739,6 +1969,7 @@ items:
     - ""
     attributeRestrictions: null
     resources:
+    - images
     - imagestreams
     verbs:
     - get
@@ -1753,6 +1984,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:node-proxier
   rules:
@@ -1768,6 +2001,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:node-admin
   rules:
@@ -1794,12 +2029,15 @@ items:
     - nodes/log
     - nodes/metrics
     - nodes/proxy
+    - nodes/spec
     - nodes/stats
     verbs:
     - '*'
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:node-reader
   rules:
@@ -1817,6 +2055,7 @@ items:
     attributeRestrictions: null
     resources:
     - nodes/metrics
+    - nodes/spec
     verbs:
     - get
   - apiGroups:
@@ -1830,6 +2069,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:node
   rules:
@@ -1931,9 +2172,19 @@ items:
     - endpoints
     verbs:
     - get
+  - apiGroups:
+    - certificates.k8s.io
+    attributeRestrictions: null
+    resources:
+    - certificatesigningrequests
+    verbs:
+    - create
+    - get
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:sdn-reader
   rules:
@@ -1941,6 +2192,7 @@ items:
     - ""
     attributeRestrictions: null
     resources:
+    - egressnetworkpolicies
     - hostsubnets
     - netnamespaces
     verbs:
@@ -1958,10 +2210,10 @@ items:
     - list
     - watch
   - apiGroups:
-    - ""
+    - extensions
     attributeRestrictions: null
     resources:
-    - egressnetworkpolicies
+    - networkpolicies
     verbs:
     - get
     - list
@@ -1976,6 +2228,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:sdn-manager
   rules:
@@ -2011,6 +2265,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:webhook
   rules:
@@ -2025,12 +2281,16 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:discovery
   rules:
   - apiGroups: null
     attributeRestrictions: null
     nonResourceURLs:
+    - /.well-known
+    - /.well-known/*
     - /api
     - /api/*
     - /apis
@@ -2039,6 +2299,8 @@ items:
     - /oapi/*
     - /osapi
     - /osapi/
+    - /swaggerapi
+    - /swaggerapi/*
     - /version
     - /version/*
     resources: []
@@ -2047,6 +2309,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: registry-admin
   rules:
@@ -2119,6 +2383,7 @@ items:
     resources:
     - localresourceaccessreviews
     - localsubjectaccessreviews
+    - subjectrulesreviews
     verbs:
     - create
   - apiGroups:
@@ -2157,6 +2422,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: registry-editor
   rules:
@@ -2225,6 +2492,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: registry-viewer
   rules:
@@ -2264,6 +2533,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:build-controller
   rules:
@@ -2322,6 +2593,32 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
+    creationTimestamp: null
+    name: system:certificate-signing-controller
+  rules:
+  - apiGroups:
+    - certificates.k8s.io
+    attributeRestrictions: null
+    resources:
+    - certificatesigningrequests
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - certificates.k8s.io
+    attributeRestrictions: null
+    resources:
+    - certificatesigningrequests/approval
+    - certificatesigningrequests/status
+    verbs:
+    - update
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:daemonset-controller
   rules:
@@ -2331,6 +2628,7 @@ items:
     resources:
     - daemonsets
     verbs:
+    - get
     - list
     - watch
   - apiGroups:
@@ -2383,6 +2681,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:deployment-controller
   rules:
@@ -2423,6 +2723,7 @@ items:
     verbs:
     - get
     - list
+    - update
     - watch
   - apiGroups:
     - ""
@@ -2436,6 +2737,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:deploymentconfig-controller
   rules:
@@ -2479,6 +2782,64 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
+    creationTimestamp: null
+    name: system:disruption-controller
+  rules:
+  - apiGroups:
+    - extensions
+    attributeRestrictions: null
+    resources:
+    - deployments
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - extensions
+    attributeRestrictions: null
+    resources:
+    - replicasets
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - replicationcontrollers
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - apps
+    attributeRestrictions: null
+    resources:
+    - statefulsets
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - policy
+    attributeRestrictions: null
+    resources:
+    - poddisruptionbudgets
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - policy
+    attributeRestrictions: null
+    resources:
+    - poddisruptionbudgets/status
+    verbs:
+    - update
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:endpoint-controller
   rules:
@@ -2513,6 +2874,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:gc-controller
   rules:
@@ -2528,12 +2891,22 @@ items:
     - ""
     attributeRestrictions: null
     resources:
+    - nodes
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
     - pods
     verbs:
     - delete
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:hpa-controller
   rules:
@@ -2600,6 +2973,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:job-controller
   rules:
@@ -2608,8 +2983,11 @@ items:
     - batch
     attributeRestrictions: null
     resources:
+    - cronjobs
     - jobs
+    - scheduledjobs
     verbs:
+    - get
     - list
     - watch
   - apiGroups:
@@ -2617,8 +2995,20 @@ items:
     - batch
     attributeRestrictions: null
     resources:
+    - cronjobs/status
     - jobs/status
+    - scheduledjobs/status
     verbs:
+    - update
+  - apiGroups:
+    - extensions
+    - batch
+    attributeRestrictions: null
+    resources:
+    - jobs
+    verbs:
+    - create
+    - delete
     - update
   - apiGroups:
     - ""
@@ -2648,6 +3038,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:namespace-controller
   rules:
@@ -2682,69 +3074,24 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
-    name: system:pet-set-controller
+    name: system:node-bootstrapper
   rules:
   - apiGroups:
-    - ""
+    - certificates.k8s.io
     attributeRestrictions: null
     resources:
-    - pods
-    verbs:
-    - list
-    - watch
-  - apiGroups:
-    - apps
-    attributeRestrictions: null
-    resources:
-    - petsets
-    verbs:
-    - list
-    - watch
-  - apiGroups:
-    - apps
-    attributeRestrictions: null
-    resources:
-    - petsets
-    verbs:
-    - get
-  - apiGroups:
-    - apps
-    attributeRestrictions: null
-    resources:
-    - petsets/status
-    verbs:
-    - update
-  - apiGroups:
-    - ""
-    attributeRestrictions: null
-    resources:
-    - pods
-    verbs:
-    - create
-    - delete
-    - get
-    - update
-  - apiGroups:
-    - ""
-    attributeRestrictions: null
-    resources:
-    - persistentvolumeclaims
+    - certificatesigningrequests
     verbs:
     - create
     - get
-  - apiGroups:
-    - ""
-    attributeRestrictions: null
-    resources:
-    - events
-    verbs:
-    - create
-    - patch
-    - update
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:pv-attach-detach-controller
   rules:
@@ -2807,6 +3154,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:pv-binder-controller
   rules:
@@ -2881,12 +3230,48 @@ items:
     resources:
     - events
     verbs:
+    - list
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - events
+    verbs:
     - create
     - patch
     - update
+  - apiGroups:
+    - storage.k8s.io
+    attributeRestrictions: null
+    resources:
+    - storageclasses
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - endpoints
+    - services
+    verbs:
+    - create
+    - delete
+    - get
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - secrets
+    verbs:
+    - get
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:pv-provisioner-controller
   rules:
@@ -2941,6 +3326,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:pv-recycler-controller
   rules:
@@ -3021,6 +3408,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:replicaset-controller
   rules:
@@ -3063,6 +3452,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:replication-controller
   rules:
@@ -3117,6 +3508,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:service-ingress-ip-controller
   rules:
@@ -3154,6 +3547,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:service-load-balancer-controller
   rules:
@@ -3199,6 +3594,8 @@ items:
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:service-serving-cert-controller
   rules:
@@ -3219,9 +3616,79 @@ items:
     verbs:
     - create
     - get
+    - list
+    - update
+    - watch
 - apiVersion: v1
   kind: ClusterRole
   metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
+    creationTimestamp: null
+    name: system:statefulset-controller
+  rules:
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - pods
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - apps
+    attributeRestrictions: null
+    resources:
+    - statefulsets
+    verbs:
+    - list
+    - watch
+  - apiGroups:
+    - apps
+    attributeRestrictions: null
+    resources:
+    - statefulsets
+    verbs:
+    - get
+  - apiGroups:
+    - apps
+    attributeRestrictions: null
+    resources:
+    - statefulsets/status
+    verbs:
+    - update
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - pods
+    verbs:
+    - create
+    - delete
+    - get
+    - update
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - persistentvolumeclaims
+    verbs:
+    - create
+    - get
+  - apiGroups:
+    - ""
+    attributeRestrictions: null
+    resources:
+    - events
+    verbs:
+    - create
+    - patch
+    - update
+- apiVersion: v1
+  kind: ClusterRole
+  metadata:
+    annotations:
+      authorization.openshift.io/system-only: "true"
     creationTimestamp: null
     name: system:unidling-controller
   rules:
@@ -3274,6 +3741,7 @@ items:
     - replicationcontrollers
     verbs:
     - get
+    - patch
     - update
   - apiGroups:
     - ""
@@ -3282,6 +3750,7 @@ items:
     - deploymentconfigs
     verbs:
     - get
+    - patch
     - update
 kind: List
 metadata: {}

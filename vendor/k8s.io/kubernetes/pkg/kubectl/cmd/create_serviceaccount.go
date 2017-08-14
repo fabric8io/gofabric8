@@ -1,5 +1,5 @@
 /*
-Copyright 2016 The Kubernetes Authors All rights reserved.
+Copyright 2016 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,23 +23,25 @@ import (
 	"github.com/spf13/cobra"
 
 	"k8s.io/kubernetes/pkg/kubectl"
+	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-const (
-	serviceAccountLong = `
-Create a service account with the specified name.`
+var (
+	serviceAccountLong = templates.LongDesc(`
+		Create a service account with the specified name.`)
 
-	serviceAccountExample = `  # Create a new service account named my-service-account
-  $ kubectl create serviceaccount my-service-account`
+	serviceAccountExample = templates.Examples(`
+	  # Create a new service account named my-service-account
+	  $ kubectl create serviceaccount my-service-account`)
 )
 
 // NewCmdCreateServiceAccount is a macro command to create a new service account
-func NewCmdCreateServiceAccount(f *cmdutil.Factory, cmdOut io.Writer) *cobra.Command {
+func NewCmdCreateServiceAccount(f cmdutil.Factory, cmdOut io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "serviceaccount NAME [--dry-run]",
 		Aliases: []string{"sa"},
-		Short:   "Create a service account with the specified name.",
+		Short:   "Create a service account with the specified name",
 		Long:    serviceAccountLong,
 		Example: serviceAccountExample,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -56,7 +58,7 @@ func NewCmdCreateServiceAccount(f *cmdutil.Factory, cmdOut io.Writer) *cobra.Com
 }
 
 // CreateServiceAccount implements the behavior to run the create service account command
-func CreateServiceAccount(f *cmdutil.Factory, cmdOut io.Writer, cmd *cobra.Command, args []string) error {
+func CreateServiceAccount(f cmdutil.Factory, cmdOut io.Writer, cmd *cobra.Command, args []string) error {
 	name, err := NameFromCommandArgs(cmd, args)
 	if err != nil {
 		return err

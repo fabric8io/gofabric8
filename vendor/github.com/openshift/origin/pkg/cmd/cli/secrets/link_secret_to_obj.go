@@ -9,27 +9,28 @@ import (
 	kapi "k8s.io/kubernetes/pkg/api"
 	kcmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	"github.com/spf13/cobra"
 )
 
-const (
-	// LinkSecretRecommendedName `oc secrets link`
-	LinkSecretRecommendedName = "link"
+// LinkSecretRecommendedName `oc secrets link`
+const LinkSecretRecommendedName = "link"
 
-	// TODO: move to examples
-	linkSecretLong = `
-Link secrets to a service account
+var (
+	linkSecretLong = templates.LongDesc(`
+    Link secrets to a service account
 
-Linking a secret enables a service account to automatically use that secret for some forms of authentication`
+    Linking a secret enables a service account to automatically use that secret for some forms of authentication.`)
 
-	linkSecretExample = `  # Add an image pull secret to a service account to automatically use it for pulling pod images:
-  %[1]s serviceaccount-name pull-secret --for=pull
+	linkSecretExample = templates.Examples(`
+    # Add an image pull secret to a service account to automatically use it for pulling pod images:
+    %[1]s serviceaccount-name pull-secret --for=pull
 
-  # Add an image pull secret to a service account to automatically use it for both pulling and pushing build images:
-  %[1]s builder builder-image-secret --for=pull,mount
+    # Add an image pull secret to a service account to automatically use it for both pulling and pushing build images:
+    %[1]s builder builder-image-secret --for=pull,mount
 
-  # If the cluster's serviceAccountConfig is operating with limitSecretReferences: True, secrets must be added to the pod's service account whitelist in order to be available to the pod:
-  %[1]s pod-sa pod-secret`
+    # If the cluster's serviceAccountConfig is operating with limitSecretReferences: True, secrets must be added to the pod's service account whitelist in order to be available to the pod:
+    %[1]s pod-sa pod-secret`)
 )
 
 type LinkSecretOptions struct {
@@ -42,7 +43,7 @@ type LinkSecretOptions struct {
 }
 
 // NewCmdLinkSecret creates a command object for linking a secret reference to a service account
-func NewCmdLinkSecret(name, fullName string, f *kcmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdLinkSecret(name, fullName string, f kcmdutil.Factory, out io.Writer) *cobra.Command {
 	o := &LinkSecretOptions{SecretOptions{Out: out}, false, false, nil}
 
 	cmd := &cobra.Command{
@@ -71,7 +72,7 @@ func NewCmdLinkSecret(name, fullName string, f *kcmdutil.Factory, out io.Writer)
 	return cmd
 }
 
-func (o *LinkSecretOptions) Complete(f *kcmdutil.Factory, args []string) error {
+func (o *LinkSecretOptions) Complete(f kcmdutil.Factory, args []string) error {
 	if err := o.SecretOptions.Complete(f, args); err != nil {
 		return err
 	}
@@ -126,7 +127,7 @@ func (o LinkSecretOptions) LinkSecrets() error {
 // linkSecretsToServiceAccount links secrets to the service account, either as pull secrets, mount secrets, or both.
 func (o LinkSecretOptions) linkSecretsToServiceAccount(serviceaccount *kapi.ServiceAccount) error {
 	updated := false
-	newSecrets, failLater, err := o.GetSecrets()
+	newSecrets, hasNotFound, err := o.GetSecrets(false)
 	if err != nil {
 		return err
 	}
@@ -149,11 +150,11 @@ func (o LinkSecretOptions) linkSecretsToServiceAccount(serviceaccount *kapi.Serv
 		}
 	}
 	if updated {
-		_, err = o.ClientInterface.ServiceAccounts(o.Namespace).Update(serviceaccount)
+		_, err = o.KubeCoreClient.ServiceAccounts(o.Namespace).Update(serviceaccount)
 		return err
 	}
 
-	if failLater {
+	if hasNotFound {
 		return errors.New("Some secrets could not be linked")
 	}
 

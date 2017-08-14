@@ -7,8 +7,11 @@ import (
 	"time"
 
 	kapi "k8s.io/kubernetes/pkg/api"
+	kapierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/resource"
-	kclient "k8s.io/kubernetes/pkg/client/unversioned"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	kcoreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
+	"k8s.io/kubernetes/pkg/client/retry"
 	"k8s.io/kubernetes/pkg/util/wait"
 
 	"github.com/openshift/origin/pkg/client"
@@ -24,7 +27,7 @@ const limitRangeName = "limits"
 var quotaExceededBackoff wait.Backoff
 
 func init() {
-	quotaExceededBackoff = kclient.DefaultBackoff
+	quotaExceededBackoff = retry.DefaultBackoff
 	quotaExceededBackoff.Duration = time.Millisecond * 250
 	quotaExceededBackoff.Steps = 3
 }
@@ -56,7 +59,7 @@ func TestImageStreamTagsAdmission(t *testing.T) {
 	}
 
 	limit := kapi.ResourceList{imageapi.ResourceImageStreamTags: resource.MustParse("0")}
-	lrClient := kClient.LimitRanges(testutil.Namespace())
+	lrClient := kClient.Core().LimitRanges(testutil.Namespace())
 	createLimitRangeOfType(t, lrClient, limitRangeName, imageapi.LimitTypeImageStream, limit)
 
 	t.Logf("trying to create ImageStreamTag referencing isimage exceeding quota %v", limit)
@@ -261,7 +264,7 @@ func TestImageStreamAdmitSpecUpdate(t *testing.T) {
 		imageapi.ResourceImageStreamTags:   resource.MustParse("0"),
 		imageapi.ResourceImageStreamImages: resource.MustParse("0"),
 	}
-	lrClient := kClient.LimitRanges(testutil.Namespace())
+	lrClient := kClient.Core().LimitRanges(testutil.Namespace())
 	createLimitRangeOfType(t, lrClient, limitRangeName, imageapi.LimitTypeImageStream, limit)
 
 	t.Logf("trying to create a new image stream with a tag exceeding limit %v", limit)
@@ -370,7 +373,7 @@ func TestImageStreamAdmitStatusUpdate(t *testing.T) {
 		imageapi.ResourceImageStreamTags:   resource.MustParse("0"),
 		imageapi.ResourceImageStreamImages: resource.MustParse("0"),
 	}
-	lrClient := kClient.LimitRanges(testutil.Namespace())
+	lrClient := kClient.Core().LimitRanges(testutil.Namespace())
 	createLimitRangeOfType(t, lrClient, limitRangeName, imageapi.LimitTypeImageStream, limit)
 
 	t.Logf("trying to create a new image stream with a tag exceeding limit %v", limit)
@@ -466,7 +469,7 @@ func TestImageStreamAdmitStatusUpdate(t *testing.T) {
 	}
 }
 
-func setupImageStreamAdmissionTest(t *testing.T) (*kclient.Client, *client.Client) {
+func setupImageStreamAdmissionTest(t *testing.T) (*kclientset.Clientset, *client.Client) {
 	testutil.RequireEtcd(t)
 
 	_, clusterAdminKubeConfig, err := testserver.StartTestMasterAPI()
@@ -487,16 +490,36 @@ func setupImageStreamAdmissionTest(t *testing.T) (*kclient.Client, *client.Clien
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	_, err = client.ImageStreams(testutil.Namespace()).Create(newImageStreamWithSpecTags("src", nil))
-	if err != nil {
-		t.Fatal(err)
+	for {
+		_, err = client.ImageStreams(testutil.Namespace()).Create(newImageStreamWithSpecTags("src", nil))
+		t.Logf("initing: %v", err)
+		if err != nil {
+			if errForbiddenWithRetry(err) {
+				t.Logf("waiting for limit ranger to catch up: %v", err)
+				continue
+			}
+			t.Fatalf("err: %#v", err)
+		}
+		break
 	}
 	return kClient, client
 }
 
+// errForbiddenWithRetry returns true if this is a status error and has requested a retry
+func errForbiddenWithRetry(err error) bool {
+	if err == nil || !kapierrors.IsForbidden(err) {
+		return false
+	}
+	status, ok := err.(kapierrors.APIStatus)
+	if !ok {
+		return false
+	}
+	return status.Status().Details != nil && status.Status().Details.RetryAfterSeconds > 0
+}
+
 // createResourceQuota creates a resource quota with given hard limits in a current namespace and waits until
 // a first usage refresh
-func createResourceQuota(t *testing.T, rqClient kclient.ResourceQuotaInterface, quotaName string, hard kapi.ResourceList) *kapi.ResourceQuota {
+func createResourceQuota(t *testing.T, rqClient kcoreclient.ResourceQuotaInterface, quotaName string, hard kapi.ResourceList) *kapi.ResourceQuota {
 	rq := &kapi.ResourceQuota{
 		ObjectMeta: kapi.ObjectMeta{
 			Name: quotaName,
@@ -519,7 +542,7 @@ func createResourceQuota(t *testing.T, rqClient kclient.ResourceQuotaInterface, 
 }
 
 // bumpQuota modifies hard spec of quota object with the given value. It returns modified hard spec.
-func bumpQuota(t *testing.T, rqs kclient.ResourceQuotaInterface, quotaName string, resourceName kapi.ResourceName, value int64) kapi.ResourceList {
+func bumpQuota(t *testing.T, rqs kcoreclient.ResourceQuotaInterface, quotaName string, resourceName kapi.ResourceName, value int64) kapi.ResourceList {
 	t.Logf("bump the quota %s to %s=%d", quotaName, resourceName, value)
 	rq, err := rqs.Get(quotaName)
 	if err != nil {
@@ -543,7 +566,7 @@ func bumpQuota(t *testing.T, rqs kclient.ResourceQuotaInterface, quotaName strin
 
 // createLimitRangeOfType creates a new limit range object with given max limits set for given limit type. The
 // object will be created in current namespace.
-func createLimitRangeOfType(t *testing.T, lrClient kclient.LimitRangeInterface, limitRangeName string, limitType kapi.LimitType, maxLimits kapi.ResourceList) *kapi.LimitRange {
+func createLimitRangeOfType(t *testing.T, lrClient kcoreclient.LimitRangeInterface, limitRangeName string, limitType kapi.LimitType, maxLimits kapi.ResourceList) *kapi.LimitRange {
 	lr := &kapi.LimitRange{
 		ObjectMeta: kapi.ObjectMeta{
 			Name: limitRangeName,
@@ -566,7 +589,7 @@ func createLimitRangeOfType(t *testing.T, lrClient kclient.LimitRangeInterface, 
 	return lr
 }
 
-func bumpLimit(t *testing.T, lrClient kclient.LimitRangeInterface, limitRangeName string, resourceName kapi.ResourceName, limit string) kapi.ResourceList {
+func bumpLimit(t *testing.T, lrClient kcoreclient.LimitRangeInterface, limitRangeName string, resourceName kapi.ResourceName, limit string) kapi.ResourceList {
 	t.Logf("bump a limit on resource %q to %s", resourceName, limit)
 	lr, err := lrClient.Get(limitRangeName)
 	if err != nil {

@@ -16,29 +16,31 @@ import (
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
 
+	"github.com/openshift/origin/pkg/cmd/templates"
 	cmdutil "github.com/openshift/origin/pkg/cmd/util"
 	"github.com/openshift/origin/pkg/cmd/util/clientcmd"
 )
 
-const (
-	extractLong = `
-Extract files out of secrets and config maps
+var (
+	extractLong = templates.LongDesc(`
+		Extract files out of secrets and config maps
 
-The extract command makes it easy to download the contents of a config map or secret into a directory.
-Each key in the config map or secret is created as a separate file with the name of the key, as it
-is when you mount a secret or config map into a container.
+		The extract command makes it easy to download the contents of a config map or secret into a directory.
+		Each key in the config map or secret is created as a separate file with the name of the key, as it
+		is when you mount a secret or config map into a container.
 
-You can limit which keys are extracted with the --keys=NAME flag, or set the directory to extract to
-with --to=DIRECTORY.`
+		You can limit which keys are extracted with the --keys=NAME flag, or set the directory to extract to
+		with --to=DIRECTORY.`)
 
-	extractExample = `  # extract the secret "test" to the current directory
-  %[1]s extract secret/test
+	extractExample = templates.Examples(`
+		# extract the secret "test" to the current directory
+	  %[1]s extract secret/test
 
-  # extract the config map "nginx" to the /tmp directory
-  %[1]s extract configmap/nginx --to=/tmp
+	  # extract the config map "nginx" to the /tmp directory
+	  %[1]s extract configmap/nginx --to=/tmp
 
-  # extract only the key "nginx.conf" from config map "nginx" to the /tmp directory
-  %[1]s extract configmap/nginx --to=/tmp --keys=nginx.conf`
+	  # extract only the key "nginx.conf" from config map "nginx" to the /tmp directory
+	  %[1]s extract configmap/nginx --to=/tmp --keys=nginx.conf`)
 )
 
 type ExtractOptions struct {
@@ -67,6 +69,7 @@ func NewCmdExtract(fullName string, f *clientcmd.Factory, in io.Reader, out, err
 		Run: func(cmd *cobra.Command, args []string) {
 			kcmdutil.CheckErr(options.Complete(f, in, out, cmd, args))
 			kcmdutil.CheckErr(options.Validate())
+			// TODO: move me to kcmdutil
 			err := options.Run()
 			if err == cmdutil.ErrExit {
 				os.Exit(1)
@@ -74,7 +77,7 @@ func NewCmdExtract(fullName string, f *clientcmd.Factory, in io.Reader, out, err
 			kcmdutil.CheckErr(err)
 		},
 	}
-	cmd.Flags().BoolVar(&options.Overwrite, "confirm", options.Overwrite, "Overwrite files that already exist.")
+	cmd.Flags().BoolVar(&options.Overwrite, "confirm", options.Overwrite, "If true, overwrite files that already exist.")
 	cmd.Flags().StringVar(&options.TargetDirectory, "to", options.TargetDirectory, "Directory to extract files to.")
 	cmd.Flags().StringSliceVarP(&options.Filenames, "filename", "f", options.Filenames, "Filename, directory, or URL to file to identify to extract the resource.")
 	cmd.MarkFlagFilename("filename")
@@ -91,10 +94,10 @@ func (o *ExtractOptions) Complete(f *clientcmd.Factory, in io.Reader, out io.Wri
 		return err
 	}
 
-	mapper, typer := f.Object(false)
+	mapper, typer := f.Object()
 	b := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), kapi.Codecs.UniversalDecoder()).
 		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(explicit, false, o.Filenames...).
+		FilenameParam(explicit, &resource.FilenameOptions{Recursive: false, Filenames: o.Filenames}).
 		ResourceNames("", args...).
 		ContinueOnError().
 		Flatten()

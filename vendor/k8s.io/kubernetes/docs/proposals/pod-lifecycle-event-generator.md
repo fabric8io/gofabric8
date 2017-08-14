@@ -1,8 +1,3 @@
-<!-- BEGIN MUNGE: UNVERSIONED_WARNING -->
-
-
-<!-- END MUNGE: UNVERSIONED_WARNING -->
-
 # Kubelet: Pod Lifecycle Event Generator (PLEG)
 
 In Kubernetes, Kubelet is a per-node daemon that manages the pods on the node,
@@ -199,13 +194,6 @@ redundant syncs.
     * Instruct pod workers to set up a wake-up call if syncing failed, so that
       it can retry.
 
-
-
-
-
-<!-- BEGIN MUNGE: IS_VERSIONED -->
-<!-- TAG IS_VERSIONED -->
-<!-- END MUNGE: IS_VERSIONED -->
 
 
 <!-- BEGIN MUNGE: GENERATED_ANALYTICS -->

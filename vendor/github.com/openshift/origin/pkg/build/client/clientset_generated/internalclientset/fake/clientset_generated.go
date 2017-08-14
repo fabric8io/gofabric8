@@ -2,8 +2,8 @@ package fake
 
 import (
 	clientset "github.com/openshift/origin/pkg/build/client/clientset_generated/internalclientset"
-	unversionedcore "github.com/openshift/origin/pkg/build/client/clientset_generated/internalclientset/typed/core/unversioned"
-	fakeunversionedcore "github.com/openshift/origin/pkg/build/client/clientset_generated/internalclientset/typed/core/unversioned/fake"
+	internalversioncore "github.com/openshift/origin/pkg/build/client/clientset_generated/internalclientset/typed/core/internalversion"
+	fakeinternalversioncore "github.com/openshift/origin/pkg/build/client/clientset_generated/internalclientset/typed/core/internalversion/fake"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apimachinery/registered"
 	"k8s.io/kubernetes/pkg/client/testing/core"
@@ -13,9 +13,12 @@ import (
 	"k8s.io/kubernetes/pkg/watch"
 )
 
-// Clientset returns a clientset that will respond with the provided objects
+// NewSimpleClientset returns a clientset that will respond with the provided objects.
+// It's backed by a very simple object tracker that processes creates, updates and deletions as-is,
+// without applying any validations and/or defaults. It shouldn't be considered a replacement
+// for a real clientset and is mostly useful in simple unit tests.
 func NewSimpleClientset(objects ...runtime.Object) *Clientset {
-	o := core.NewObjects(api.Scheme, api.Codecs.UniversalDecoder())
+	o := core.NewObjectTracker(api.Scheme, api.Codecs.UniversalDecoder())
 	for _, obj := range objects {
 		if err := o.Add(obj); err != nil {
 			panic(err)
@@ -44,6 +47,6 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 var _ clientset.Interface = &Clientset{}
 
 // Core retrieves the CoreClient
-func (c *Clientset) Core() unversionedcore.CoreInterface {
-	return &fakeunversionedcore.FakeCore{Fake: &c.Fake}
+func (c *Clientset) Core() internalversioncore.CoreInterface {
+	return &fakeinternalversioncore.FakeCore{Fake: &c.Fake}
 }

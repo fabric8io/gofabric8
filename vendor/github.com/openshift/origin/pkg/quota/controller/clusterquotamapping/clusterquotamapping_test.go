@@ -10,7 +10,9 @@ import (
 
 	kapi "k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
-	ktestclient "k8s.io/kubernetes/pkg/client/unversioned/testclient"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/fake"
+	"k8s.io/kubernetes/pkg/client/testing/core"
+	"k8s.io/kubernetes/pkg/controller/informers"
 	"k8s.io/kubernetes/pkg/runtime"
 	"k8s.io/kubernetes/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/watch"
@@ -50,20 +52,22 @@ func runFuzzer(t *testing.T) {
 	defer close(stopCh)
 
 	startingNamespaces := CreateStartingNamespaces()
-	kubeclient := ktestclient.NewSimpleFake(startingNamespaces...)
+	kubeclient := fake.NewSimpleClientset(startingNamespaces...)
 	nsWatch := watch.NewFake()
-	kubeclient.PrependWatchReactor("namespaces", ktestclient.DefaultWatchReactor(nsWatch, nil))
+	kubeclient.PrependWatchReactor("namespaces", core.DefaultWatchReactor(nsWatch, nil))
 
 	startingQuotas := CreateStartingQuotas()
 	originclient := testclient.NewSimpleFake(startingQuotas...)
 	quotaWatch := watch.NewFake()
-	originclient.AddWatchReactor("clusterresourcequotas", ktestclient.DefaultWatchReactor(quotaWatch, nil))
+	originclient.PrependWatchReactor("clusterresourcequotas", core.DefaultWatchReactor(quotaWatch, nil))
 
-	informerFactory := shared.NewInformerFactory(kubeclient, originclient, shared.DefaultListerWatcherOverrides{}, 10*time.Minute)
-	controller := NewClusterQuotaMappingController(informerFactory.Namespaces(), informerFactory.ClusterResourceQuotas())
+	kubeInformerFactory := informers.NewSharedInformerFactory(kubeclient, 10*time.Minute)
+	informerFactory := shared.NewInformerFactory(kubeInformerFactory, kubeclient, originclient, shared.DefaultListerWatcherOverrides{}, 10*time.Minute)
+	controller := NewClusterQuotaMappingController(kubeInformerFactory.Namespaces(), informerFactory.ClusterResourceQuotas())
 	go controller.Run(5, stopCh)
 	informerFactory.Start(stopCh)
 	informerFactory.StartCore(stopCh)
+	kubeInformerFactory.Start(stopCh)
 
 	finalNamespaces := map[string]*kapi.Namespace{}
 	finalQuotas := map[string]*quotaapi.ClusterResourceQuota{}

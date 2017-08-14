@@ -65,26 +65,10 @@ os::cmd::expect_failure_and_text 'oc new-build ruby-22-centos7~https://github.co
 os::cmd::expect_success 'oc delete all --all'
 
 os::cmd::expect_success "oc new-build -D \$'FROM centos:7' --no-output"
-os::cmd::expect_success_and_text 'oc get bc/centos -o=jsonpath="{.spec.output.to}"' '^<nil>$'
+os::cmd::expect_success_and_not_text 'oc get bc/centos -o=jsonpath="{.spec.output.to}"' '.'
 
 # Ensure output is valid JSON
 os::cmd::expect_success 'oc new-build -D "FROM centos:7" -o json | python -m json.tool'
-
-os::test::junit::declare_suite_start "cmd/builds/postcommithook"
-# Ensure post commit hook is executed
-os::cmd::expect_success 'oc new-build -D "FROM busybox:1"'
-os::cmd::try_until_text 'oc get istag busybox:1' 'busybox@sha256:'
-os::cmd::expect_success 'oc patch bc/busybox -p '\''{"spec":{"postCommit":{"script":"echo hello $1","args":["world"],"command":null}}}'\'
-os::cmd::expect_success_and_text 'oc get bc/busybox -o=jsonpath="{.spec.postCommit['\''script'\'','\''args'\'','\''command'\'']}"' '^echo hello \$1 \[world\] \[\]$'
-# os::cmd::expect_success_and_text 'oc start-build --wait --follow busybox' 'hello world'
-os::cmd::expect_success 'oc patch bc/busybox -p '\''{"spec":{"postCommit":{"command":["sh","-c"],"args":["echo explicit command"],"script":""}}}'\'
-os::cmd::expect_success_and_text 'oc get bc/busybox -o=jsonpath="{.spec.postCommit['\''script'\'','\''args'\'','\''command'\'']}"' ' \[echo explicit command\] \[sh -c\]'
-# os::cmd::expect_success_and_text 'oc start-build --wait --follow busybox' 'explicit command'
-os::cmd::expect_success 'oc patch bc/busybox -p '\''{"spec":{"postCommit":{"args":["echo","default entrypoint"],"command":null,"script":""}}}'\'
-os::cmd::expect_success_and_text 'oc get bc/busybox -o=jsonpath="{.spec.postCommit['\''script'\'','\''args'\'','\''command'\'']}"' ' \[echo default entrypoint\] \[\]'
-# os::cmd::expect_success_and_text 'oc start-build --wait --follow busybox' 'default entrypoint'
-echo "postCommitHook: ok"
-os::test::junit::declare_suite_end
 
 os::cmd::expect_success 'oc delete all --all'
 os::cmd::expect_success 'oc process -f examples/sample-app/application-template-dockerbuild.json -l build=docker | oc create -f -'
@@ -119,34 +103,6 @@ os::cmd::expect_success 'oc delete all -l build=docker'
 echo "buildConfig: ok"
 os::test::junit::declare_suite_end
 
-os::test::junit::declare_suite_start "cmd/builds/setbuildhook"
-# Validate the set build-hook command
-arg="-f test/testdata/test-bc.yaml"
-os::cmd::expect_failure_and_text "oc set build-hook" "error: one or more build configs"
-os::cmd::expect_failure_and_text "oc set build-hook ${arg}" "error: you must specify a type of hook"
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" 'postCommit:'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" 'args:'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" '\- echo'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" '\- hello world'
-os::cmd::expect_success_and_not_text "oc set build-hook ${arg} --post-commit -o yaml -- echo 'hello world'" 'command:'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit --command -o yaml -- echo 'hello world'" 'command:'
-os::cmd::expect_success_and_text "oc set build-hook ${arg} --post-commit -o yaml --script='echo \"hello world\"'" 'script: echo \"hello world\"'
-# Server object tests
-os::cmd::expect_success "oc create -f test/testdata/test-bc.yaml"
-os::cmd::expect_failure_and_text "oc set build-hook bc/test-buildconfig --post-commit" "you must specify either a script or command"
-os::cmd::expect_success_and_text "oc set build-hook test-buildconfig --post-commit -- echo 'hello world'" "updated"
-os::cmd::expect_success_and_text "oc set build-hook bc/test-buildconfig --post-commit -- echo 'hello world'" "was not changed"
-os::cmd::expect_success_and_text "oc get bc/test-buildconfig -o yaml" "args:"
-os::cmd::expect_success_and_text "oc set build-hook bc/test-buildconfig --post-commit --command -- /bin/bash -c \"echo 'test'\"" "updated"
-os::cmd::expect_success_and_text "oc get bc/test-buildconfig -o yaml" "command:"
-os::cmd::expect_success_and_text "oc set build-hook --all --post-commit -- echo 'all bc'" "updated"
-os::cmd::expect_success_and_text "oc get bc -o yaml" "all bc"
-os::cmd::expect_success_and_text "oc set build-hook bc/test-buildconfig --post-commit --remove" "updated"
-os::cmd::expect_success_and_not_text "oc get bc/test-buildconfig -o yaml" "args:"
-os::cmd::expect_success "oc delete bc/test-buildconfig"
-echo "set build-hook: ok"
-os::test::junit::declare_suite_end
-
 os::test::junit::declare_suite_start "cmd/builds/start-build"
 os::cmd::expect_success 'oc create -f test/integration/testdata/test-buildcli.json'
 # a build for which there is not an upstream tag in the corresponding imagerepo, so
@@ -165,6 +121,7 @@ os::test::junit::declare_suite_end
 os::test::junit::declare_suite_start "cmd/builds/cancel-build"
 os::cmd::expect_success_and_text "oc cancel-build ${started} --dump-logs --restart" "restarted build \"${started}\""
 os::cmd::expect_success 'oc delete all --all'
+os::cmd::expect_success 'oc delete secret dbsecret'
 os::cmd::expect_success 'oc process -f examples/sample-app/application-template-dockerbuild.json -l build=docker | oc create -f -'
 os::cmd::try_until_success 'oc get build/ruby-sample-build-1'
 # Uses type/name resource syntax to cancel the build and check for proper message
@@ -184,6 +141,7 @@ done
 # Running this command again when all builds are cancelled should be no-op.
 os::cmd::expect_success 'oc cancel-build bc/ruby-sample-build'
 os::cmd::expect_success 'oc delete all --all'
+os::cmd::expect_success 'oc delete secret dbsecret'
 echo "cancel-build: ok"
 os::test::junit::declare_suite_end
 

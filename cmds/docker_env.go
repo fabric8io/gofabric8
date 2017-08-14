@@ -27,7 +27,7 @@ import (
 const ()
 
 // NewCmdDockerEnv sets the current
-func NewCmdDockerEnv(f *cmdutil.Factory) *cobra.Command {
+func NewCmdDockerEnv(f cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "docker-env",
 		Short: "Sets up docker env variables; Usage 'eval $(gofabric8 docker-env)'",
