@@ -375,11 +375,6 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		legacyPackage := d.legacyFlag || isVersion3Package(packageName)
 
-		_, legacyPackage, err := getTemplateURI(packageName, mavenRepo, legacyPackage, d, typeOfMaster)
-		if err != nil {
-			util.Fatalf("Error getting URI for %s: %v\n\n", packageName, err)
-		}
-
 		if typeOfMaster == util.OpenShift {
 			if legacyPackage {
 				r, err := verifyRestrictedSecurityContextConstraints(c, f)
@@ -430,7 +425,7 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 				CheckService("nginx-ingress", "nginx-ingress", c)
 				if err != nil {
 					ingressParams := make(map[string]string)
-					_, err = deployPackage(ingressPackage, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "nginx-ingress", c, oc, ingressParams)
+					err = deployPackage(ingressPackage, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "nginx-ingress", c, oc, ingressParams)
 					if err != nil {
 						util.Fatalf("unable to deploy %s %v\n", "ingress", err)
 					}
@@ -460,7 +455,7 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 				if err != nil {
 					// deploy kube-lego
 					kubeLegoParams := getTLSAcmeEmail(c, d.tlsAcmeEmail)
-					_, err = deployPackage(kubeLegoApp, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "kube-lego", c, oc, kubeLegoParams)
+					err = deployPackage(kubeLegoApp, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "kube-lego", c, oc, kubeLegoParams)
 					if err != nil {
 						util.Fatalf("unable to deploy %s %v\n", "kube-lego", err)
 					}
@@ -470,7 +465,7 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		// deploy the main package
 		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns, packageName)
-		legacyPackage, err = deployPackage(packageName, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, ns, c, oc, params)
+		err = deployPackage(packageName, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, ns, c, oc, params)
 		if err != nil {
 			util.Fatalf("unable to deploy %s %v\n", packageName, err)
 		}
@@ -548,9 +543,8 @@ oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:in
 	}
 }
 
-func deployPackage(packageName, mavenRepo, domain, apiserver string, legacyPackage bool, d DefaultFabric8Deployment, typeOfMaster util.MasterType, ns string, c *clientset.Clientset, oc *oclient.Client, params map[string]string) (bool, error) {
-
-	uri, legacyPackage, err := getTemplateURI(packageName, mavenRepo, legacyPackage, d, typeOfMaster)
+func deployPackage(packageName, mavenRepo, domain, apiserver string, legacyPackage bool, d DefaultFabric8Deployment, typeOfMaster util.MasterType, ns string, c *clientset.Clientset, oc *oclient.Client, params map[string]string) error {
+	uri, err := getTemplateURI(packageName, mavenRepo, legacyPackage, d, typeOfMaster)
 	if err != nil {
 		util.Fatalf("Error getting URI for %s: %v\n\n", packageName, err)
 	}
@@ -560,16 +554,15 @@ func deployPackage(packageName, mavenRepo, domain, apiserver string, legacyPacka
 	}
 
 	createTemplate(yamlData, format, packageName, ns, domain, apiserver, c, oc, d.pv, true, params)
-	return legacyPackage, nil
+	return nil
 }
 
-func getTemplateURI(packageName, mavenRepo string, legacyPackage bool, d DefaultFabric8Deployment, typeOfMaster util.MasterType) (string, bool, error) {
+func getTemplateURI(packageName, mavenRepo string, legacyPackage bool, d DefaultFabric8Deployment, typeOfMaster util.MasterType) (string, error) {
 	versionPlatform := ""
 	baseUri := ""
 	switch packageName {
 	case "":
 	case systemPackage:
-		legacyPackage = false
 		baseUri = systemPackageUrlPrefix
 		versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, systemMetadataUrl))
 		logPackageVersion(packageName, versionPlatform)
@@ -634,7 +627,7 @@ func getTemplateURI(packageName, mavenRepo string, legacyPackage bool, d Default
 			uri += "openshift.yml"
 		}
 	}
-	return uri, legacyPackage, nil
+	return uri, nil
 }
 
 func getYAMLData(uri string) ([]byte, string, error) {
