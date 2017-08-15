@@ -36,7 +36,6 @@ BUILDFLAGS := -ldflags \
 CGO_ENABLED = 0
 
 VENDOR_DIR=vendor
-TEAM_VERSION=$(shell cat TEAM_VERSION)
 
 all: build test
  
