@@ -102,8 +102,10 @@ func NewCmdUpgrade(f cmdutil.Factory) *cobra.Command {
 				exposer := cmd.Flags().Lookup(exposerFlag).Value.String()
 				githubClientID := cmd.Flags().Lookup(githubClientIDFlag).Value.String()
 				githubClientSecret := cmd.Flags().Lookup(githubClientSecretFlag).Value.String()
+				http := cmd.Flags().Lookup(httpFlag).Value.String() == "true"
+				legacy := cmd.Flags().Lookup(legacyFlag).Value.String() == "true"
 
-				err = upgradePackages(ns, c, ocl, args, all, version, domain, apiserver, pv, exposer, githubClientID, githubClientSecret)
+				err = upgradePackages(ns, c, ocl, args, all, version, domain, apiserver, pv, http, legacy, exposer, githubClientID, githubClientSecret)
 				if err != nil {
 					util.Failuref("%v", err)
 					util.Blank()
@@ -117,15 +119,17 @@ func NewCmdUpgrade(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(exposerFlag, "", "The exposecontroller strategy such as Ingress, Router, NodePort, LoadBalancer")
 	cmd.PersistentFlags().String(githubClientIDFlag, "", "The github OAuth Application Client ID. Defaults to $GITHUB_OAUTH_CLIENT_ID if not specified")
 	cmd.PersistentFlags().String(githubClientSecretFlag, "", "The github OAuth Application Client Secret. Defaults to $GITHUB_OAUTH_CLIENT_SECRET if not specified")
+	cmd.PersistentFlags().Bool(httpFlag, false, "Should we generate HTTP rather than HTTPS routes?  Default `true` on minikube or minishift and `false for all else`")
 	cmd.PersistentFlags().String(versionFlag, "latest", "The version to upgrade to")
 	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")
 	cmd.PersistentFlags().StringP(namespaceCommandFlag, "n", "", "The namespace to use. Can be specified via `export KUBERNETES_NAMESPACE=foo` as well for easier use from jobs and builds")
 	cmd.PersistentFlags().String(namespaceFileFlag, "", "The file used to resolve the current namespace")
+	cmd.PersistentFlags().Bool(legacyFlag, false, "Should we use the legacy installation mode for versions before 4.x of fabric8?")
 	return cmd
 }
 
-func upgradePackages(ns string, c *clientset.Clientset, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv bool, exposer string, githubClientID string, githubClientSecret string) error {
+func upgradePackages(ns string, c *clientset.Clientset, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv, http, legacy bool, exposer string, githubClientID string, githubClientSecret string) error {
 	selector, err := createPackageSelector()
 	if err != nil {
 		return err
@@ -142,7 +146,7 @@ func upgradePackages(ns string, c *clientset.Clientset, ocl *oclient.Client, arg
 	for _, p := range list.Items {
 		name := p.Name
 
-		params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name)
+		params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name, http, legacy)
 
 		include := all
 		if !all {
@@ -190,7 +194,7 @@ func upgradePackages(ns string, c *clientset.Clientset, ocl *oclient.Client, arg
 			util.Infof("No packages found. Have you installed a recent fabric8 package yet?\nYou could try passing `fabric8-console` or `fabric8-platform` as a command line argument instead of the `--all` flag?\n")
 		} else {
 			for _, name := range args {
-				params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name)
+				params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name, http, legacy)
 
 				if name == platformPackage || name == "fabric8-platform" || name == "fabric8-platform-package" {
 					metadataUrl := urlJoin(mavenPrefix, platformMetadataUrl)

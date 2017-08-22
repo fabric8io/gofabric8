@@ -408,7 +408,7 @@ func showBanner() {
 	ct.ResetColor()
 }
 
-func defaultParameters(c *clientset.Clientset, exposer string, githubClientID string, githubClientSecret string, ns string, appName string) map[string]string {
+func defaultParameters(c *clientset.Clientset, exposer string, githubClientID string, githubClientSecret string, ns string, appName string, http, legacyPackage bool) map[string]string {
 	typeOfMaster := util.TypeOfMaster(c)
 	if len(exposer) == 0 {
 		if typeOfMaster == util.Kubernetes {
@@ -417,7 +417,7 @@ func defaultParameters(c *clientset.Clientset, exposer string, githubClientID st
 			exposer = "Route"
 		}
 	}
-	if isVersion3Package(appName) {
+	if legacyPackage {
 		return map[string]string{
 			"NAMESPACE": ns,
 			"EXPOSER":   exposer,
@@ -437,15 +437,11 @@ func defaultParameters(c *clientset.Clientset, exposer string, githubClientID st
 		util.Fatalf("No --%s flag was specified or $GITHUB_OAUTH_CLIENT_SECRET environment variable supplied!\n", githubClientSecretFlag)
 	}
 
-	mini, err := util.IsMini()
-	if err != nil {
-		util.Failuref("error checking if minikube or minishift %v", err)
-	}
-	http := "false"
+	useHTTP := "false"
 	tlsAcme := "false"
-	if mini {
+	if http {
 		// default to generating http routes when running locally
-		http = "true"
+		useHTTP = "true"
 	} else if typeOfMaster == util.Kubernetes {
 		// this tells exposecontroller to annotate each ingress rule so that kube-lego generates signed certs
 		tlsAcme = "true"
@@ -455,7 +451,7 @@ func defaultParameters(c *clientset.Clientset, exposer string, githubClientID st
 		"EXPOSER":                    exposer,
 		"GITHUB_OAUTH_CLIENT_SECRET": githubClientSecret,
 		"GITHUB_OAUTH_CLIENT_ID":     githubClientID,
-		"HTTP":     http,
+		"HTTP":     useHTTP,
 		"TLS_ACME": tlsAcme,
 	}
 }

@@ -93,6 +93,7 @@ const (
 	RestrictedSCC = "restricted"
 
 	runFlag                = "app"
+	httpFlag               = "http"
 	useIngressFlag         = "ingress"
 	useTLSAcmeFlag         = "tls-acme"
 	useLoadbalancerFlag    = "loadbalancer"
@@ -161,6 +162,7 @@ type DefaultFabric8Deployment struct {
 	exposer            string
 	githubClientSecret string
 	githubClientID     string
+	http               bool
 	tlsAcmeEmail       string
 	templates          bool
 	pv                 bool
@@ -211,6 +213,7 @@ func NewCmdDeploy(f cmdutil.Factory) *cobra.Command {
 				deployConsole:    cmd.Flags().Lookup(consoleFlag).Value.String() == "true",
 				dockerRegistry:   cmd.Flags().Lookup(dockerRegistryFlag).Value.String(),
 				useIngress:       cmd.Flags().Lookup(useIngressFlag).Value.String() == "true",
+				http:             cmd.Flags().Lookup(httpFlag).Value.String() == "true",
 				useTLSAcme:       cmd.Flags().Lookup(useTLSAcmeFlag).Value.String() == "true",
 				templates:        cmd.Flags().Lookup(templatesFlag).Value.String() == "true",
 				versionPlatform:  cmd.Flags().Lookup(versionPlatformFlag).Value.String(),
@@ -245,6 +248,7 @@ func NewCmdDeploy(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
+	cmd.PersistentFlags().Bool(httpFlag, false, "Should we generate HTTP rather than HTTPS routes?  Default `true` on minikube or minishift and `false for all else`")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
 	cmd.PersistentFlags().Bool(useTLSAcmeFlag, true, "Deploy TLS Acme impl kube-lego to auto generate signed certs for public ingress rules.  Requires tls-acme-email flag also. ")
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
@@ -373,7 +377,18 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		ensureNamespaceExists(c, oc, ns)
 
-		legacyPackage := d.legacyFlag || isVersion3Package(packageName)
+		// lets only check if the flag was changed from the default of true on the CLI
+		legacyPackage := d.legacyFlag
+		if d.legacyFlag {
+			legacyPackage = isVersion3Package(packageName)
+		}
+
+		// lets only check if the flag was changed from the default of true on the CLI
+		// and default to http on minikube + minishift
+		http := d.http
+		if !d.http && mini {
+			http = true
+		}
 
 		if typeOfMaster == util.OpenShift {
 			if legacyPackage {
@@ -450,7 +465,7 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 				}
 			}
 
-			if d.useTLSAcme {
+			if d.useTLSAcme && !http {
 				_, err := c.Deployments("kube-lego").Get("kube-lego")
 				if err != nil {
 					// deploy kube-lego
@@ -464,7 +479,7 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 		}
 
 		// deploy the main package
-		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns, packageName)
+		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns, packageName, http, legacyPackage)
 		err = deployPackage(packageName, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, ns, c, oc, params)
 		if err != nil {
 			util.Fatalf("unable to deploy %s %v\n", packageName, err)
