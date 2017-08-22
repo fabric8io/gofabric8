@@ -268,6 +268,7 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 	d.versionPlatform = latest
 	d.mavenRepo = mavenRepoDefault
 	d.pv = false
+	d.useTLSAcme = false
 	d.templates = true
 	d.deployConsole = true
 	d.useLoadbalancer = false
@@ -479,7 +480,7 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 		}
 
 		// deploy the main package
-		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns, packageName, http, legacyPackage)
+		params := defaultParameters(c, d.exposer, d.githubClientID, d.githubClientSecret, ns, packageName, http, legacyPackage, d.useTLSAcme)
 		err = deployPackage(packageName, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, ns, c, oc, params)
 		if err != nil {
 			util.Fatalf("unable to deploy %s %v\n", packageName, err)

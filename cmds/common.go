@@ -408,7 +408,7 @@ func showBanner() {
 	ct.ResetColor()
 }
 
-func defaultParameters(c *clientset.Clientset, exposer string, githubClientID string, githubClientSecret string, ns string, appName string, http, legacyPackage bool) map[string]string {
+func defaultParameters(c *clientset.Clientset, exposer string, githubClientID string, githubClientSecret string, ns string, appName string, http, legacyPackage, useTLSAcme bool) map[string]string {
 	typeOfMaster := util.TypeOfMaster(c)
 	if len(exposer) == 0 {
 		if typeOfMaster == util.Kubernetes {
@@ -442,7 +442,7 @@ func defaultParameters(c *clientset.Clientset, exposer string, githubClientID st
 	if http {
 		// default to generating http routes when running locally
 		useHTTP = "true"
-	} else if typeOfMaster == util.Kubernetes {
+	} else if typeOfMaster == util.Kubernetes && useTLSAcme {
 		// this tells exposecontroller to annotate each ingress rule so that kube-lego generates signed certs
 		tlsAcme = "true"
 	}

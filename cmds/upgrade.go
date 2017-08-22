@@ -104,8 +104,9 @@ func NewCmdUpgrade(f cmdutil.Factory) *cobra.Command {
 				githubClientSecret := cmd.Flags().Lookup(githubClientSecretFlag).Value.String()
 				http := cmd.Flags().Lookup(httpFlag).Value.String() == "true"
 				legacy := cmd.Flags().Lookup(legacyFlag).Value.String() == "true"
+				useTLSAcme := cmd.Flags().Lookup(useTLSAcmeFlag).Value.String() == "true"
 
-				err = upgradePackages(ns, c, ocl, args, all, version, domain, apiserver, pv, http, legacy, exposer, githubClientID, githubClientSecret)
+				err = upgradePackages(ns, c, ocl, args, all, version, domain, apiserver, pv, http, legacy, useTLSAcme, exposer, githubClientID, githubClientSecret)
 				if err != nil {
 					util.Failuref("%v", err)
 					util.Blank()
@@ -126,10 +127,11 @@ func NewCmdUpgrade(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().StringP(namespaceCommandFlag, "n", "", "The namespace to use. Can be specified via `export KUBERNETES_NAMESPACE=foo` as well for easier use from jobs and builds")
 	cmd.PersistentFlags().String(namespaceFileFlag, "", "The file used to resolve the current namespace")
 	cmd.PersistentFlags().Bool(legacyFlag, false, "Should we use the legacy installation mode for versions before 4.x of fabric8?")
+	cmd.PersistentFlags().Bool(useTLSAcmeFlag, true, "Deploy TLS Acme impl kube-lego to auto generate signed certs for public ingress rules.  Requires tls-acme-email flag also. ")
 	return cmd
 }
 
-func upgradePackages(ns string, c *clientset.Clientset, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv, http, legacy bool, exposer string, githubClientID string, githubClientSecret string) error {
+func upgradePackages(ns string, c *clientset.Clientset, ocl *oclient.Client, args []string, all bool, version string, domain string, apiserver string, pv, http, legacy, useTLSAcme bool, exposer string, githubClientID string, githubClientSecret string) error {
 	selector, err := createPackageSelector()
 	if err != nil {
 		return err
@@ -146,7 +148,7 @@ func upgradePackages(ns string, c *clientset.Clientset, ocl *oclient.Client, arg
 	for _, p := range list.Items {
 		name := p.Name
 
-		params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name, http, legacy)
+		params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name, http, legacy, useTLSAcme)
 
 		include := all
 		if !all {
@@ -194,7 +196,7 @@ func upgradePackages(ns string, c *clientset.Clientset, ocl *oclient.Client, arg
 			util.Infof("No packages found. Have you installed a recent fabric8 package yet?\nYou could try passing `fabric8-console` or `fabric8-platform` as a command line argument instead of the `--all` flag?\n")
 		} else {
 			for _, name := range args {
-				params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name, http, legacy)
+				params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, name, http, legacy, useTLSAcme)
 
 				if name == platformPackage || name == "fabric8-platform" || name == "fabric8-platform-package" {
 					metadataUrl := urlJoin(mavenPrefix, platformMetadataUrl)

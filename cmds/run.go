@@ -65,6 +65,7 @@ func NewCmdRun(f cmdutil.Factory) *cobra.Command {
 			http := cmd.Flags().Lookup(httpFlag).Value.String() == "true"
 			yes := cmd.Flags().Lookup(yesFlag).Value.String() == "false"
 			legacy := cmd.Flags().Lookup(legacyFlag).Value.String() == "true"
+			useTLSAcme := cmd.Flags().Lookup(useTLSAcmeFlag).Value.String() == "true"
 
 			if strings.Contains(domain, "=") {
 				util.Warnf("\nInvalid domain: %s\n\n", domain)
@@ -74,7 +75,7 @@ func NewCmdRun(f cmdutil.Factory) *cobra.Command {
 				initSchema()
 
 				for _, app := range args {
-					params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, app, http, legacy)
+					params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, app, http, legacy, useTLSAcme)
 
 					runTemplate(c, oc, app, ns, domain, apiserver, pv, create, params)
 				}
@@ -90,5 +91,6 @@ func NewCmdRun(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(pvFlag, true, "Enable the use of persistence (enabling the PersistentVolumeClaims)?")
 	cmd.PersistentFlags().Bool(updateFlag, false, "Enable update mode which updates any existing resources?")
 	cmd.PersistentFlags().Bool(legacyFlag, false, "Should we use the legacy installation mode for versions before 4.x of fabric8?")
+	cmd.PersistentFlags().Bool(useTLSAcmeFlag, true, "Deploy TLS Acme impl kube-lego to auto generate signed certs for public ingress rules.  Requires tls-acme-email flag also. ")
 	return cmd
 }
