@@ -62,8 +62,11 @@ func NewCmdRun(f cmdutil.Factory) *cobra.Command {
 			exposer := cmd.Flags().Lookup(exposerFlag).Value.String()
 			githubClientID := cmd.Flags().Lookup(githubClientIDFlag).Value.String()
 			githubClientSecret := cmd.Flags().Lookup(githubClientSecretFlag).Value.String()
-
+			http := cmd.Flags().Lookup(httpFlag).Value.String() == "true"
 			yes := cmd.Flags().Lookup(yesFlag).Value.String() == "false"
+			legacy := cmd.Flags().Lookup(legacyFlag).Value.String() == "true"
+			useTLSAcme := cmd.Flags().Lookup(useTLSAcmeFlag).Value.String() == "true"
+
 			if strings.Contains(domain, "=") {
 				util.Warnf("\nInvalid domain: %s\n\n", domain)
 
@@ -72,7 +75,7 @@ func NewCmdRun(f cmdutil.Factory) *cobra.Command {
 				initSchema()
 
 				for _, app := range args {
-					params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, app)
+					params := defaultParameters(c, exposer, githubClientID, githubClientSecret, ns, app, http, legacy, useTLSAcme)
 
 					runTemplate(c, oc, app, ns, domain, apiserver, pv, create, params)
 				}
@@ -84,7 +87,10 @@ func NewCmdRun(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(exposerFlag, "", "The exposecontroller strategy such as Ingress, Router, NodePort, LoadBalancer")
 	cmd.PersistentFlags().String(githubClientIDFlag, "", "The github OAuth Application Client ID. Defaults to $GITHUB_OAUTH_CLIENT_ID if not specified")
 	cmd.PersistentFlags().String(githubClientSecretFlag, "", "The github OAuth Application Client Secret. Defaults to $GITHUB_OAUTH_CLIENT_SECRET if not specified")
+	cmd.PersistentFlags().Bool(httpFlag, false, "Should we generate HTTP rather than HTTPS routes?  Default `true` on minikube or minishift and `false for all else`")
 	cmd.PersistentFlags().Bool(pvFlag, true, "Enable the use of persistence (enabling the PersistentVolumeClaims)?")
 	cmd.PersistentFlags().Bool(updateFlag, false, "Enable update mode which updates any existing resources?")
+	cmd.PersistentFlags().Bool(legacyFlag, false, "Should we use the legacy installation mode for versions before 4.x of fabric8?")
+	cmd.PersistentFlags().Bool(useTLSAcmeFlag, true, "Deploy TLS Acme impl kube-lego to auto generate signed certs for public ingress rules.  Requires tls-acme-email flag also. ")
 	return cmd
 }
