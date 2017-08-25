@@ -447,6 +447,8 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 					}
 				}
 				// wait for an external LoadBalancer IP to give exposecontroller
+				util.Info("Waiting for External LoadBalancer IP Address for service nginx-ingress in namespace nginx-ingress.  This may take a few minutes.")
+				util.Info("If you are running your own ingress controller please run deploy again passing the --ingress=false flag.")
 				externalIP, err := WaitForExternalIPAddress("nginx-ingress", "nginx-ingress", c)
 				if err != nil {
 					util.Failuref("error getting external ip address for ingress service %v", err)
