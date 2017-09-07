@@ -49,10 +49,10 @@ const (
 	funktion                 = "funktion"
 	funktionOperator         = "funktion-operator"
 	minishiftFlag            = "minishift"
-	minishiftOwner           = "jimmidyson"
+	minishiftOwner           = "minishift"
 	minishift                = "minishift"
 	minikube                 = "minikube"
-	minishiftDownloadURL     = "https://github.com/jimmidyson/"
+	minishiftDownloadURL     = "https://github.com/minishift/"
 	kubectl                  = "kubectl"
 	kubernetes               = "kubernetes"
 	oc                       = "oc"
@@ -106,26 +106,27 @@ func install(isMinishift bool) {
 	}
 
 	d := getDownloadProperties(isMinishift)
-	err = downloadKubernetes(d)
-	if err != nil {
-		util.Warnf("Unable to download kubernetes distro %v\n", err)
-	}
-
-	err = downloadKubectlClient()
-	if err != nil {
-		util.Warnf("Unable to download client %v\n", err)
-	}
 
 	if d.isMiniShift {
+		err = downloadMinishift(d)
+		if err != nil {
+			util.Warnf("Unable to download minishift %v\n", err)
+		}
+
 		err = downloadOpenShiftClient()
 		if err != nil {
 			util.Warnf("Unable to download client %v\n", err)
 		}
-	}
+	} else {
+		err = downloadMiniKube(d)
+		if err != nil {
+			util.Warnf("Unable to download minikube %v\n", err)
+		}
 
-	err = downloadFunktion()
-	if err != nil {
-		util.Warnf("Unable to download funktion operator %v\n", err)
+		err = downloadKubectlClient()
+		if err != nil {
+			util.Warnf("Unable to download client %v\n", err)
+		}
 	}
 }
 
@@ -184,7 +185,7 @@ func downloadDriver() (err error) {
 	return nil
 }
 
-func downloadKubernetes(d downloadProperties) error {
+func downloadMiniKube(d downloadProperties) error {
 	os := runtime.GOOS
 	arch := runtime.GOARCH
 
@@ -198,15 +199,11 @@ func downloadKubernetes(d downloadProperties) error {
 		return nil
 	}
 
-	// fix minishift version to 0.9.0 until we can address issues running on 1.x
-	latestVersion := "0.9.0"
-	if !d.isMiniShift {
-		semverVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
-		latestVersion = semverVersion.String()
-		if err != nil {
-			util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
-			return err
-		}
+	semverVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
+	latestVersion := semverVersion.String()
+	if err != nil {
+		util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
+		return err
 	}
 
 	kubeURL := fmt.Sprintf(d.downloadURL+d.kubeDistroRepo+"/releases/"+d.extraPath+"v%s/%s-%s-%s", latestVersion, d.kubeDistroRepo, os, arch)
@@ -220,6 +217,62 @@ func downloadKubernetes(d downloadProperties) error {
 	if err != nil {
 		util.Errorf("Unable to download file %s/%s %v", fullPath, kubeURL, err)
 		return err
+	}
+	util.Successf("Downloaded %s\n", fullPath)
+
+	return nil
+}
+
+func downloadMinishift(d downloadProperties) error {
+	os := runtime.GOOS
+	arch := runtime.GOARCH
+
+	ext := ".tgz"
+	if runtime.GOOS == "windows" {
+		ext = ".zip"
+	}
+
+	pgmPath, err := exec.LookPath(d.kubeBinary)
+	if err == nil {
+		util.Successf("%s is already available on your PATH at %s\n", d.kubeBinary, pgmPath)
+		return nil
+	}
+
+	semverVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
+	latestVersion := semverVersion.String()
+	if err != nil {
+		util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
+		return err
+	}
+
+	kubeURL := fmt.Sprintf(d.downloadURL+d.kubeDistroRepo+"/releases/"+d.extraPath+"v%s/%s-%s-%s-%s%s", latestVersion, d.kubeDistroRepo, latestVersion, os, arch, ext)
+	if runtime.GOOS == "windows" {
+		kubeURL += ".exe"
+	}
+	util.Infof("Downloading %s...\n", kubeURL)
+
+	fullPath := filepath.Join(getFabric8BinLocation(), d.kubeBinary+ext)
+	err = downloadFile(fullPath, kubeURL)
+	if err != nil {
+		util.Errorf("Unable to download file %s/%s %v", fullPath, kubeURL, err)
+		return err
+	}
+
+	dotPath := filepath.Join(getFabric8BinLocation(), ".")
+
+	switch ext {
+	case ".zip":
+		err = unzip(fullPath, dotPath)
+		if err != nil {
+			util.Errorf("Unable to unzip %s %v", fullPath, err)
+			return err
+		}
+	case ".tgz":
+		err = untargz(fullPath, dotPath, []string{"minishift"})
+		if err != nil {
+			util.Errorf("Unable to untar %s %v", fullPath, err)
+			return err
+		}
 	}
 	util.Successf("Downloaded %s\n", fullPath)
 
@@ -277,8 +330,8 @@ func downloadOpenShiftClient() error {
 	}
 
 	// need to fix the version we download as not able to work out the oc sha in the URL yet
-	sha := "dad658de7465ba8a234a4fb40b5b446a45a4cee1"
-	latestVersion := "1.3.1"
+	sha := "c4dd4cf"
+	latestVersion := "3.6.0"
 
 	clientURL := fmt.Sprintf("https://github.com/openshift/origin/releases/download/v%s/openshift-origin-client-tools-v%s-%s", latestVersion, latestVersion, sha)
 
