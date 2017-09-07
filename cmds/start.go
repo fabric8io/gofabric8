@@ -222,6 +222,7 @@ func NewCmdStart(f cmdutil.Factory) *cobra.Command {
 				d.useIngress = cmd.Flags().Lookup(useIngressFlag).Value.String() == "true"
 				d.useLoadbalancer = cmd.Flags().Lookup(useLoadbalancerFlag).Value.String() == "true"
 				d.openConsole = cmd.Flags().Lookup(openConsoleFlag).Value.String() == "true"
+				d.namespace = cmd.Flags().Lookup(namespaceFlag).Value.String()
 				deploy(f, d)
 			}
 		},
@@ -240,6 +241,7 @@ func NewCmdStart(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
 	cmd.PersistentFlags().Bool(openConsoleFlag, true, "Should we wait an open the console?")
+	cmd.PersistentFlags().StringP(namespaceFlag, "n", "", "The namespace to deploy to (which is lazly created). Defaults to the current naemspace")
 	return cmd
 }
 

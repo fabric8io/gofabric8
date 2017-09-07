@@ -273,8 +273,9 @@ func GetDefaultFabric8Deployment() DefaultFabric8Deployment {
 	d.deployConsole = true
 	d.useLoadbalancer = false
 	d.openConsole = false
-	d.packageName = systemPackage
+	d.packageName = platformPackage
 	d.storageclassWait = true
+	d.legacyFlag = true
 	return d
 }
 
