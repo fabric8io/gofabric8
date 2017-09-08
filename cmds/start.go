@@ -26,7 +26,6 @@ import (
 
 	"path/filepath"
 
-	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/kardianos/osext"
 	"github.com/spf13/cobra"
@@ -158,17 +157,17 @@ func NewCmdStart(f cmdutil.Factory) *cobra.Command {
 				doWait = true
 			}
 
-			if isOpenshift {
-				// deploy fabric8
-				e := exec.Command("oc", "login", "--username="+minishiftDefaultUsername, "--password="+minishiftDefaultPassword)
-				e.Stdout = os.Stdout
-				e.Stderr = os.Stderr
-				err = e.Run()
-				if err != nil {
-					util.Errorf("Unable to login %v", err)
-				}
+			// if isOpenshift {
+			// 	// deploy fabric8
+			// 	e := exec.Command("oc", "login", "--username="+minishiftDefaultUsername, "--password="+minishiftDefaultPassword)
+			// 	e.Stdout = os.Stdout
+			// 	e.Stderr = os.Stderr
+			// 	err = e.Run()
+			// 	if err != nil {
+			// 		util.Errorf("Unable to login %v", err)
+			// 	}
 
-			}
+			// }
 
 			// now check that fabric8 is running, if not deploy it
 			c, _, err := keepTryingToGetClient(f)
@@ -176,8 +175,6 @@ func NewCmdStart(f cmdutil.Factory) *cobra.Command {
 				util.Fatalf("Unable to connect to %s %v", kubeBinary, err)
 			}
 
-			// lets create a connection using the traditional way just to be sure
-			c, cfg := client.NewClient(f)
 			ns, _, _ := f.DefaultNamespace()
 
 			// deploy fabric8 if its not already running
@@ -185,27 +182,7 @@ func NewCmdStart(f cmdutil.Factory) *cobra.Command {
 			if err != nil {
 				if doWait {
 					initSchema()
-
-					sleepMillis := 1 * time.Second
-
-					typeOfMaster := util.TypeOfMaster(c)
-					if typeOfMaster == util.OpenShift {
-						oc, _ := client.NewOpenShiftClient(cfg)
-
-						util.Infof("waiting for docker-registry to start in namespace %s\n", ns)
-						watchAndWaitForDeploymentConfig(oc, ns, "docker-registry", 60*time.Minute)
-
-						util.Infof("waiting for all DeploymentConfigs to start in namespace %s\n", ns)
-						waitForDeploymentConfigs(oc, ns, true, []string{}, sleepMillis)
-						util.Info("DeploymentConfigs all started so we can deploy fabric8\n")
-
-					} else {
-						util.Infof("waiting for all Deployments to start in namespace %s\n", ns)
-						waitForDeployments(c, ns, true, []string{}, sleepMillis)
-					}
-					util.Info("\n\n")
 				}
-
 				// deploy fabric8
 				d := GetDefaultFabric8Deployment()
 				flag := cmd.Flags().Lookup(console)
@@ -230,10 +207,10 @@ func NewCmdStart(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().BoolP(minishift, "", false, "start the openshift flavour of Kubernetes")
 	cmd.PersistentFlags().BoolP(console, "", false, "start only the fabric8 console")
 	cmd.PersistentFlags().BoolP(ipaas, "", false, "start the fabric8 iPaaS")
-	cmd.PersistentFlags().StringP(memory, "", "6144", "amount of RAM allocated to the VM")
+	cmd.PersistentFlags().StringP(memory, "", "7168", "amount of RAM allocated to the VM")
 	cmd.PersistentFlags().StringP(vmDriver, "", "", "the VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
 	cmd.PersistentFlags().StringP(diskSize, "", "50g", "the size of the disk allocated to the VM")
-	cmd.PersistentFlags().StringP(cpus, "", "1", "number of CPUs allocated to the VM")
+	cmd.PersistentFlags().StringP(cpus, "", "5", "number of CPUs allocated to the VM")
 	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
 	cmd.PersistentFlags().String(versionPlatformFlag, "latest", "The version to use for the Fabric8 Platform packages")
 	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
