@@ -238,12 +238,15 @@ func downloadMinishift(d downloadProperties) error {
 		return nil
 	}
 
-	semverVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
-	latestVersion := semverVersion.String()
-	if err != nil {
-		util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
-		return err
-	}
+	// hard code until 1.5.0 works better
+	latestVersion := "1.4.1"
+
+	// semverVersion, err := getLatestVersionFromGitHub(d.kubeDistroOrg, d.kubeDistroRepo)
+	// latestVersion := semverVersion.String()
+	// if err != nil {
+	// 	util.Errorf("Unable to get latest version for %s/%s %v", d.kubeDistroOrg, d.kubeDistroRepo, err)
+	// 	return err
+	// }
 
 	kubeURL := fmt.Sprintf(d.downloadURL+d.kubeDistroRepo+"/releases/"+d.extraPath+"v%s/%s-%s-%s-%s%s", latestVersion, d.kubeDistroRepo, latestVersion, os, arch, ext)
 	if runtime.GOOS == "windows" {
