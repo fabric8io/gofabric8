@@ -253,7 +253,7 @@ func NewCmdDeploy(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().Bool(useTLSAcmeFlag, true, "Deploy TLS Acme impl kube-lego to auto generate signed certs for public ingress rules.  Requires tls-acme-email flag also. ")
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
 	cmd.PersistentFlags().Bool(openConsoleFlag, true, "Should we wait an open the console?")
-	cmd.PersistentFlags().Bool(legacyFlag, false, "Should we use the legacy installation mode for versions before 4.x of fabric8?")
+	cmd.PersistentFlags().Bool(legacyFlag, true, "Should we use the legacy installation mode for versions before 4.x of fabric8?")
 	cmd.PersistentFlags().Bool(storageclassWaitFlag, true, "Should we wait for the storageclass resource to be ready on minikube before deploying?")
 
 	return cmd
