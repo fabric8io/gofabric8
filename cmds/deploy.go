@@ -230,7 +230,7 @@ func NewCmdDeploy(f cmdutil.Factory) *cobra.Command {
 	}
 	cmd.PersistentFlags().StringP(domainFlag, "d", defaultDomain(), "The domain name to append to the service name to access web applications")
 	cmd.PersistentFlags().StringP(namespaceFlag, "n", "", "The namespace to deploy to (which is lazly created). Defaults to the current naemspace")
-	cmd.PersistentFlags().String(apiServerFlag, "", "overrides the api server url")
+	cmd.PersistentFlags().String(apiServerFlag, "", "Overrides the api server url")
 	cmd.PersistentFlags().String(archFlag, goruntime.GOARCH, "CPU architecture for referencing Docker images with this as a name suffix")
 	cmd.PersistentFlags().String(versionPlatformFlag, "latest", "The version to use for the Fabric8 Platform packages")
 	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
@@ -245,7 +245,7 @@ func NewCmdDeploy(f cmdutil.Factory) *cobra.Command {
 	//cmd.PersistentFlags().String(packageFlag, systemPackage, "The name of the package to startup such as 'system' for the 4.x version of fabric8 or 'platform' for 3.x. Otherwise specify a URL or local file of the YAML to install")
 	cmd.PersistentFlags().String(packageFlag, platformPackage, "The name of the package to startup such as 'system' for the 4.x version of fabric8 or 'platform' for 3.x. Otherwise specify a URL or local file of the YAML to install")
 
-	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
+	cmd.PersistentFlags().Bool(pvFlag, true, "If false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
 	cmd.PersistentFlags().Bool(consoleFlag, true, "Should the Fabric8 console be deployed?")
 	cmd.PersistentFlags().Bool(httpFlag, false, "Should we generate HTTP rather than HTTPS routes?  Default `true` on minikube or minishift and `false for all else`")
