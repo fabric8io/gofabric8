@@ -122,6 +122,22 @@ Flags:
 Use "gofabric8 [command] --help" for more information about a command.
 ```
 
+## Shell completion
+
+``gofabric8`` provides shell completions, so you can easily complete commands while in the shell.
+
+Simply add this to your ``~/.bashrc`` if you use bash :
+
+```sh
+  source <(gofabric8 completion bash)
+```
+
+or to your ``~/.zshrc`` if you use zsh ::
+
+```sh
+  source <(gofabric8 completion zsh)
+```
+
 ## Development
 
 ### Prerequisites
