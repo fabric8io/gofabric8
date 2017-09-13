@@ -204,21 +204,21 @@ func NewCmdStart(f cmdutil.Factory) *cobra.Command {
 			}
 		},
 	}
-	cmd.PersistentFlags().BoolP(minishift, "", false, "start the openshift flavour of Kubernetes")
-	cmd.PersistentFlags().BoolP(console, "", false, "start only the fabric8 console")
-	cmd.PersistentFlags().BoolP(ipaas, "", false, "start the fabric8 iPaaS")
-	cmd.PersistentFlags().StringP(memory, "", "7168", "amount of RAM allocated to the VM")
-	cmd.PersistentFlags().StringP(vmDriver, "", "", "the VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
-	cmd.PersistentFlags().StringP(diskSize, "", "50g", "the size of the disk allocated to the VM")
-	cmd.PersistentFlags().StringP(cpus, "", "5", "number of CPUs allocated to the VM")
+	cmd.PersistentFlags().BoolP(minishift, "", false, "Start the OpenShift flavour of Kubernetes")
+	cmd.PersistentFlags().BoolP(console, "", false, "Start only the fabric8 console")
+	cmd.PersistentFlags().BoolP(ipaas, "", false, "Start the fabric8 iPaaS")
+	cmd.PersistentFlags().StringP(memory, "", "7168", "Amount of RAM allocated to the VM")
+	cmd.PersistentFlags().StringP(vmDriver, "", "", "The VM driver used to spin up the VM. Possible values (hyperv, xhyve, kvm, virtualbox, vmwarefusion)")
+	cmd.PersistentFlags().StringP(diskSize, "", "50g", "The size of the disk allocated to the VM")
+	cmd.PersistentFlags().StringP(cpus, "", "5", "Number of CPUs allocated to the VM")
 	cmd.PersistentFlags().String(packageFlag, "platform", "The name of the package to startup such as 'platform', 'console', 'ipaas'. Otherwise specify a URL or local file of the YAML to install")
 	cmd.PersistentFlags().String(versionPlatformFlag, "latest", "The version to use for the Fabric8 Platform packages")
 	cmd.PersistentFlags().String(versioniPaaSFlag, "latest", "The version to use for the Fabric8 iPaaS templates")
-	cmd.PersistentFlags().Bool(pvFlag, true, "if false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
+	cmd.PersistentFlags().Bool(pvFlag, true, "If false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(useIngressFlag, true, "Should Ingress NGINX controller be enabled by default when deploying to Kubernetes?")
 	cmd.PersistentFlags().Bool(useLoadbalancerFlag, false, "Should Cloud Provider LoadBalancer be used to expose services when running to Kubernetes? (overrides ingress)")
 	cmd.PersistentFlags().Bool(openConsoleFlag, true, "Should we wait an open the console?")
-	cmd.PersistentFlags().StringP(namespaceFlag, "n", "", "The namespace to deploy to (which is lazly created). Defaults to the current naemspace")
+	cmd.PersistentFlags().StringP(namespaceFlag, "n", "", "The namespace to deploy to (which is lazly created). Defaults to the current namespace")
 	return cmd
 }
 
