@@ -439,7 +439,7 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 			// deploy ingress controller
 			if d.useIngress {
 				// check if we already have an ingress controller running running
-				CheckService("nginx-ingress", "nginx-ingress", c)
+				err = CheckService("nginx-ingress", "nginx-ingress", c)
 				if err != nil {
 					ingressParams := make(map[string]string)
 					err = deployPackage(ingressPackage, mavenRepo, domain, apiserver, legacyPackage, d, typeOfMaster, "nginx-ingress", c, oc, ingressParams)

@@ -187,7 +187,10 @@ func WaitForExternalIPAddress(ns string, serviceName string, c *clientset.Client
 	if err != nil {
 		return "", err
 	}
-	return svc.Status.LoadBalancer.Ingress[0].IP, nil
+	if svc.Status.LoadBalancer.Ingress[0].IP != "" {
+		return svc.Status.LoadBalancer.Ingress[0].IP, nil
+	}
+	return svc.Status.LoadBalancer.Ingress[0].Hostname, nil
 }
 
 //HasExternalIP checks if a service has an external ip address
@@ -196,10 +199,10 @@ func HasExternalIP(ns string, serviceName string, c *clientset.Clientset) error 
 	if err != nil {
 		return err
 	}
-	if len(svc.Status.LoadBalancer.Ingress) > 0 && svc.Status.LoadBalancer.Ingress[0].IP != "" {
+	if len(svc.Status.LoadBalancer.Ingress) > 0 && (svc.Status.LoadBalancer.Ingress[0].IP != "" || svc.Status.LoadBalancer.Ingress[0].Hostname != "") {
 		return nil
 	}
-	return fmt.Errorf("Service has no external ip yet\n")
+	return fmt.Errorf("Service has no external ip or hostname yet\n")
 }
 
 func Retry(attempts int, callback func() error) (err error) {
