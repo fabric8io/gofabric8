@@ -71,7 +71,7 @@ func NewCmdService(f cmdutil.Factory) *cobra.Command {
 
 func openService(ns string, serviceName string, c *clientset.Clientset, printURL bool, retry bool) {
 	if retry {
-		if err := RetryAfter(1200, func() error { return CheckService(ns, serviceName, c) }, 10*time.Second); err != nil {
+		if err := RetryAfter(1200, func() error { return CheckExternalService(ns, serviceName, c) }, 10*time.Second); err != nil {
 			util.Errorf("Could not find finalized endpoint being pointed to by %s: %v", serviceName, err)
 			os.Exit(1)
 		}
@@ -135,19 +135,34 @@ func CheckServiceExists(ns string, service string, c *clientset.Clientset) error
 	return nil
 }
 
-// CheckService waits for the specified service to be ready by returning an error until the service is up
+// CheckExternalService waits for the specified service to be ready by returning an error until the service is up
 // The check is done by polling the endpoint associated with the service and when the endpoint exists, returning no error->service-online
 // Credits: https://github.com/kubernetes/minikube/blob/v0.9.0/cmd/minikube/cmd/service.go#L89
-func CheckService(ns string, service string, c *clientset.Clientset) error {
+func CheckExternalService(ns string, service string, c *clientset.Clientset) error {
 	svc, err := c.Services(ns).Get(service)
 	if err != nil {
 		return err
 	}
 	url := svc.ObjectMeta.Annotations[exposeURLAnnotation]
 	if url == "" {
-		util.Info(".")
-		return errors.New("")
+		return errors.New("No external URL annotation")
 	}
+	endpoints := c.Endpoints(ns)
+	if endpoints == nil {
+		util.Errorf("No endpoints found in namespace %s\n", ns)
+	}
+	endpoint, err := endpoints.Get(service)
+	if err != nil {
+		util.Errorf("No endpoints found for service %s\n", service)
+		return err
+	}
+	return CheckEndpointReady(endpoint)
+}
+
+// CheckService waits for the specified service to be ready by returning an error until the service is up
+// The check is done by polling the endpoint associated with the service and when the endpoint exists, returning no error->service-online
+// Credits: https://github.com/kubernetes/minikube/blob/v0.9.0/cmd/minikube/cmd/service.go#L89
+func CheckService(ns string, service string, c *clientset.Clientset) error {
 	endpoints := c.Endpoints(ns)
 	if endpoints == nil {
 		util.Errorf("No endpoints found in namespace %s\n", ns)
