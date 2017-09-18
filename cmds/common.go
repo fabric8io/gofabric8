@@ -456,6 +456,26 @@ func defaultParameters(c *clientset.Clientset, exposer string, githubClientID st
 	}
 }
 
+func writeStringtoFile(filename, body string) (err error) {
+	// NB(chmou): Do we need to write to TEMPDIR ? (in a portable way)
+	f, err := os.Create(filename)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(body)
+	if err != nil {
+		return
+	}
+	err = f.Sync()
+	if err != nil {
+		return
+	}
+
+	return
+}
+
 func getTLSAcmeEmail(c *clientset.Clientset, tlsAcmeEmail string) map[string]string {
 	if len(tlsAcmeEmail) == 0 {
 		tlsAcmeEmail = os.Getenv("TLS_ACME_EMAIL")
