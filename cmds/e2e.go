@@ -38,8 +38,8 @@ type runTestFlags struct {
 	gitBranch          string
 }
 
-// NewCmdRunTest performs an end to end test in the current cluster in a local pod
-func NewCmdRunTest(f cmdutil.Factory) *cobra.Command {
+// NewCmdE2ETest performs an end to end test in the current cluster in a local pod
+func NewCmdE2ETest(f cmdutil.Factory) *cobra.Command {
 	p := &runTestFlags{}
 	cmd := &cobra.Command{
 		Use:     "e2e",
