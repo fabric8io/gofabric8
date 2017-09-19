@@ -26,6 +26,7 @@ import (
 	k8api "k8s.io/kubernetes/pkg/api/unversioned"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"strings"
 )
 
 type runTestFlags struct {
@@ -34,8 +35,22 @@ type runTestFlags struct {
 	test               string
 	namespace          string
 	image              string
-	gitRepo            string
-	gitBranch          string
+	testGitRepo        string
+	testGitBranch      string
+
+	targetUrl  string
+	platform   string
+	disableChe bool
+
+	// tenant config
+	booster        string
+	boosterGitRef  string
+	boosterGitRepo string
+
+	cheVersion     string
+	jenkinsVersion string
+	teamVersion    string
+	mavenRepo      string
 }
 
 // NewCmdE2ETest performs an end to end test in the current cluster in a local pod
@@ -62,15 +77,30 @@ func NewCmdE2ETest(f cmdutil.Factory) *cobra.Command {
 	flags.StringVarP(&p.test, "test", "", "test", "the name of the test")
 	flags.StringVarP(&p.namespace, "namespace", "n", "", "the namespace to look for the fabric8 installation. Defaults to the current namespace")
 	flags.StringVarP(&p.image, "image", "", "fabric8/fabric8-ui-builder:0.0.8", "the test image to use")
-	flags.StringVarP(&p.gitRepo, "repo", "", "https://github.com/fabric8io/fabric8-test.git", "the test git repository to use")
-	flags.StringVarP(&p.gitBranch, "branch", "", "master", "the test git repository branch, SHA or commit id to use")
+	flags.StringVarP(&p.targetUrl, "url", "", "", "the target URL of the fabric8-ui to test or it defaults to the fabric8 service in the current namespace")
+	flags.StringVarP(&p.platform, "platform", "", "", "the target platform to test against. Defaults to `osio` for a targetUrl of `https://openshift.io/` otherwise `fabric8-openshift`. Use `fabric8-kubernetes` if using kubernetes")
+	flags.StringVarP(&p.testGitRepo, "repo", "", "https://github.com/fabric8io/fabric8-test.git", "the test git repository to use")
+	flags.StringVarP(&p.testGitBranch, "branch", "", "master", "the test git repository branch, SHA or commit id to use")
 	flags.BoolVarP(&p.retryFabric8Lookup, "retry", "", false, "should we wait for the fabric8 service to be ready")
+	flags.BoolVarP(&p.disableChe, "disable-che", "", true, "should we disable the Che E2E tests?")
+
+	// tenant config
+	flags.StringVarP(&p.booster, "booster", "", "", "the booster name to test")
+	flags.StringVarP(&p.boosterGitRef, "booster-git-ref", "", "", "the booster git repository reference (branch, tag, sha)")
+	flags.StringVarP(&p.boosterGitRepo, "booster-git-repo", "", "", "the booster git repository URL to use for the tests - when using a fork or custom catalog")
+
+	flags.StringVarP(&p.cheVersion, "che-version", "", "", "the Che YAML version for the tenant")
+	flags.StringVarP(&p.jenkinsVersion, "jenkins-version", "", "", "the Jenkins YAML version for the tenant")
+	flags.StringVarP(&p.teamVersion, "team-version", "", "", "the Team YAML version for the tenant")
+	flags.StringVarP(&p.mavenRepo, "maven-repo", "", "", "the maven repository used for tenant YAML if using a PR or custom build")
 	return cmd
 }
 
 func (p *runTestFlags) runTest(f cmdutil.Factory) error {
 	c, _ := client.NewClient(f)
 	initSchema()
+
+	typeOfMaster := util.TypeOfMaster(c)
 
 	ns := p.namespace
 	if len(ns) == 0 {
@@ -79,9 +109,12 @@ func (p *runTestFlags) runTest(f cmdutil.Factory) error {
 	if len(ns) == 0 {
 		return fmt.Errorf("No namespace is defined and no namespace specified!")
 	}
-	url := FindServiceURL(ns, "fabric8", c, p.retryFabric8Lookup)
+	url := p.targetUrl
 	if len(url) == 0 {
-		return fmt.Errorf("No fabric8 service found in namespace %s!", ns)
+		url = FindServiceURL(ns, "fabric8", c, p.retryFabric8Lookup)
+	}
+	if len(url) == 0 {
+		return fmt.Errorf("No --url specified and no fabric8 service found in namespace %s!", ns)
 	}
 
 	util.Infof("testing the fabric8 installation at URL: %s\n", url)
@@ -96,13 +129,30 @@ func (p *runTestFlags) runTest(f cmdutil.Factory) error {
 	if err != nil {
 		return fmt.Errorf("Failed to load secrets in namespace %s due to %s", ns, err)
 	}
-	script := "git clone --branch " + p.gitBranch + " " + p.gitRepo + ` /tmp/fabric8-test
+	script := "git clone --branch " + p.testGitBranch + " " + p.testGitRepo + ` /tmp/fabric8-test
 cd /tmp/fabric8-test
 source /opt/env/script
 ./pod_EE_tests.sh
 `
 
 	completeStatus := ""
+
+	cheFlag := "false"
+	if p.disableChe {
+		cheFlag = "true"
+	}
+	platform := p.platform
+	if len(platform) == 0 {
+		if strings.HasPrefix(url, "https://openshift.io") {
+			platform = "osio"
+		} else {
+			if typeOfMaster == util.Kubernetes {
+				platform = "fabric8-kubernetes"
+			} else {
+				platform = "fabric8-openshift"
+			}
+		}
+	}
 
 	for _, secret := range secrets.Items {
 		name := p.test + "-" + secret.Name
@@ -129,6 +179,42 @@ source /opt/env/script
 							{
 								Name:  "TARGET_URL",
 								Value: url,
+							},
+							{
+								Name:  "DISABLE_CHE",
+								Value: cheFlag,
+							},
+							{
+								Name:  "TARGET_PLATFORM",
+								Value: platform,
+							},
+							{
+								Name:  "QUICKSTART",
+								Value: p.booster,
+							},
+							{
+								Name:  "BOOSTER_GIT_REF",
+								Value: p.boosterGitRef,
+							},
+							{
+								Name:  "BOOSTER_GIT_REPO",
+								Value: p.boosterGitRepo,
+							},
+							{
+								Name:  "TENANT_CHE_VERSION",
+								Value: p.cheVersion,
+							},
+							{
+								Name:  "TENANT_JENKINS_VERSION",
+								Value: p.jenkinsVersion,
+							},
+							{
+								Name:  "TENANT_TEAM_VERSION",
+								Value: p.teamVersion,
+							},
+							{
+								Name:  "TENANT_MAVEN_REPO",
+								Value: p.mavenRepo,
 							},
 						},
 						Command: []string{
