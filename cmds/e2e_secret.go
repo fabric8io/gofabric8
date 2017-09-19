@@ -27,13 +27,11 @@ import (
 )
 
 type e2eSecretFlags struct {
-	confirm      bool
-	namespace    string
-	username     string
-	password     string
-	secretName   string
-	platformKind string
-	disableChe   bool
+	confirm    bool
+	namespace  string
+	username   string
+	password   string
+	secretName string
 }
 
 // NewCmdE2ESecret creates/updates a Secret for running E2E tests
@@ -41,8 +39,8 @@ func NewCmdE2ESecret(f cmdutil.Factory) *cobra.Command {
 	p := &e2eSecretFlags{}
 	cmd := &cobra.Command{
 		Use:     "e2e-secret",
-		Short:   "Creates or updates a Secret for the E2E tests",
-		Long:    `Creates or updates a Secret for the E2E tests`,
+		Short:   "Creates or updates a Secret for the user for E2E tests",
+		Long:    `Creates or updates a Secret for the user for E2E tests`,
 		Aliases: []string{"e2e-secrets"},
 
 		Run: func(cmd *cobra.Command, args []string) {
@@ -61,8 +59,6 @@ func NewCmdE2ESecret(f cmdutil.Factory) *cobra.Command {
 	flags.StringVarP(&p.username, "user", "u", "", "the username to test with")
 	flags.StringVarP(&p.password, "password", "p", "", "the password to test with")
 	flags.StringVarP(&p.secretName, "secret", "", "", "the name of the Secret to create/update")
-	flags.StringVarP(&p.platformKind, "platform", "", "fabric8-openshift", "the kind of platform to run against. Either `osio`, `fabric8-openshift` or `fabric8-kubernetes`")
-	flags.BoolVarP(&p.disableChe, "disable-che", "", true, "should we disable che tests in the generated test Secret")
 	return cmd
 }
 
@@ -144,14 +140,8 @@ func (p *e2eSecretFlags) runTest(f cmdutil.Factory) error {
 }
 
 func (p *e2eSecretFlags) createSecretScript() []byte {
-	cheFlag := "false"
-	if p.disableChe {
-		cheFlag = "true"
-	}
 	script := fmt.Sprintf(`export USERNAME=%s
 export PASSWORD=%s
-export DISABLE_CHE=%s
-export TARGET_PLATFORM=%s
-`, p.username, p.password, cheFlag, p.platformKind)
+`, p.username, p.password)
 	return []byte(script)
 }
