@@ -96,8 +96,8 @@ func (p *runTestFlags) runTest(f cmdutil.Factory) error {
 	if err != nil {
 		return fmt.Errorf("Failed to load secrets in namespace %s due to %s", ns, err)
 	}
-	script := "git clone --branch " + p.gitBranch + " " + p.gitRepo + ` fabric8-test
-cd fabric8-test
+	script := "git clone --branch " + p.gitBranch + " " + p.gitRepo + ` /tmp/fabric8-test
+cd /tmp/fabric8-test
 source /opt/env/script
 ./pod_EE_tests.sh
 `
@@ -200,7 +200,10 @@ source /opt/env/script
 	if len(secrets.Items) == 0 {
 		return fmt.Errorf("No Secrets found in namespace %s which have the label: test=e2e", ns)
 	}
-	util.Infof("Completed with overall status: %s\n", completeStatus)
+	if len(completeStatus) > 0 {
+		return fmt.Errorf("FAIL test due to: %s", completeStatus)
+	}
+	util.Infof("OK test completed!\n")
 	return nil
 }
 
