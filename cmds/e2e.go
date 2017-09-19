@@ -198,7 +198,7 @@ source /opt/env/script
 		}
 	}
 	if len(secrets.Items) == 0 {
-		return fmt.Errorf("No Secrets found in namespace %s which have the label: test=e2e", ns)
+		return fmt.Errorf("No Secrets found in namespace %s which have the label: test=e2e\nPlease use the `gofabric8 e2e-secret` command to install a secret for a test user and password\n", ns)
 	}
 	if len(completeStatus) > 0 {
 		return fmt.Errorf("FAIL test due to: %s", completeStatus)
