@@ -430,10 +430,11 @@ func defaultParameters(c *clientset.Clientset, exposer string, githubClientID st
 		githubClientSecret = os.Getenv("GITHUB_OAUTH_CLIENT_SECRET")
 	}
 
-	if len(githubClientID) == 0 {
+	// the basic Jenkins package has no auth so no need to check for setup env vars
+	if appName != "jenkins" && len(githubClientID) == 0 {
 		util.Fatalf("No --%s flag was specified or $GITHUB_OAUTH_CLIENT_ID environment variable supplied!\n", githubClientIDFlag)
 	}
-	if len(githubClientSecret) == 0 {
+	if appName != "jenkins" && len(githubClientSecret) == 0 {
 		util.Fatalf("No --%s flag was specified or $GITHUB_OAUTH_CLIENT_SECRET environment variable supplied!\n", githubClientSecretFlag)
 	}
 
@@ -446,13 +447,15 @@ func defaultParameters(c *clientset.Clientset, exposer string, githubClientID st
 		// this tells exposecontroller to annotate each ingress rule so that kube-lego generates signed certs
 		tlsAcme = "true"
 	}
+
 	return map[string]string{
 		"NAMESPACE":                  ns,
 		"EXPOSER":                    exposer,
 		"GITHUB_OAUTH_CLIENT_SECRET": githubClientSecret,
 		"GITHUB_OAUTH_CLIENT_ID":     githubClientID,
-		"HTTP":     useHTTP,
-		"TLS_ACME": tlsAcme,
+		"HTTP":                  useHTTP,
+		"TLS_ACME":              tlsAcme,
+		"RECOMMENDER_API_TOKEN": "",
 	}
 }
 

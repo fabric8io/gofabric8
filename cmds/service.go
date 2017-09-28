@@ -121,6 +121,14 @@ func FindServiceURL(ns string, serviceName string, c *clientset.Clientset, retry
 	return answer
 }
 
+// WaitForService waits for a service and its endpoint to be ready
+func WaitForService(ns string, serviceName string, c *clientset.Clientset) {
+	if err := RetryAfter(1200, func() error { return CheckService(ns, serviceName, c) }, 10*time.Second); err != nil {
+		util.Errorf("Could not find finalized endpoint being pointed to by %s: %v", serviceName, err)
+		os.Exit(1)
+	}
+}
+
 // CheckServiceExists waits for the specified service to have an external URL
 func CheckServiceExists(ns string, service string, c *clientset.Clientset) error {
 	svc, err := c.Services(ns).Get(service)
