@@ -531,18 +531,21 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 			util.Infof("watch oc get pods -n %s\n", ns)
 		}
 
-		keycloakUrl := strings.TrimSuffix(FindServiceURL(ns, "keycloak", c, true), "/")
-		if len(keycloakUrl) == 0 {
-			util.Warn("\nCould not find keycloak service yet!\n")
-		} else {
-			clientID := params["GITHUB_OAUTH_CLIENT_ID"]
-			callbackURL := keycloakUrl + "/auth/realms/fabric8/broker/github/endpoint"
+		keycloakUrl := ""
+		if packageName != "jenkins" {
+			keycloakUrl := strings.TrimSuffix(FindServiceURL(ns, "keycloak", c, true), "/")
+			if len(keycloakUrl) == 0 {
+				util.Warn("\nCould not find keycloak service yet!\n")
+			} else {
+				clientID := params["GITHUB_OAUTH_CLIENT_ID"]
+				callbackURL := keycloakUrl + "/auth/realms/fabric8/broker/github/endpoint"
 
-			util.Info("\nPlease make sure your github OAuth Application Client ID: ")
-			util.Success(clientID)
-			util.Info(" points to the\nAuthorization callback URL: ")
-			util.Success(callbackURL)
-			util.Info("\n\n")
+				util.Info("\nPlease make sure your github OAuth Application Client ID: ")
+				util.Success(clientID)
+				util.Info(" points to the\nAuthorization callback URL: ")
+				util.Success(callbackURL)
+				util.Info("\n\n")
+			}
 		}
 
 		if !legacyPackage && typeOfMaster != util.Kubernetes {
@@ -575,13 +578,10 @@ oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:in
 			// if the console isn't deployed lets open Jenkins
 			_, err := c.Services(ns).Get("fabric8")
 			if err != nil {
-				// first let's check keycloak is running if it has been deployed
-				// check if we already have an ingress controller running running
-				err = CheckService("nginx-ingress", "nginx-ingress", c)
-				if err == nil {
+				if packageName != "jenkins" {
 					WaitForService(ns, "keycloak", c)
+					util.Success("Keycloak is now running, waiting for Jenkins\n")
 				}
-				util.Success("Keycloak is now running, waiting for Jenkins\n")
 				openService(ns, "jenkins", c, false, true)
 			} else {
 				openService(ns, "fabric8", c, false, true)
