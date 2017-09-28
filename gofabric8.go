@@ -110,6 +110,7 @@ func NewGoFabric8Command(f cmdutil.Factory, in io.Reader, out, err io.Writer) *c
 	cmds.AddCommand(commands.NewCmdDockerEnv(f))
 	cmds.AddCommand(commands.NewCmdIngress(f))
 	cmds.AddCommand(commands.NewCmdInstall(f))
+	cmds.AddCommand(commands.NewCmdIP(f))
 	cmds.AddCommand(commands.NewCmdLog(f))
 	cmds.AddCommand(commands.NewCmdPackages(f))
 	cmds.AddCommand(commands.NewCmdPackageVersions(f))
