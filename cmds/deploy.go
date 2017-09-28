@@ -76,17 +76,21 @@ import (
 )
 
 const (
-	systemMetadataUrl   = "io/fabric8/platform/packages/fabric8-system/maven-metadata.xml"
-	platformMetadataUrl = "io/fabric8/platform/packages/fabric8-platform/maven-metadata.xml"
-	ipaasMetadataUrl    = "io/fabric8/ipaas/platform/packages/ipaas-platform/maven-metadata.xml"
-
-	systemPackageUrlPrefix    = "io/fabric8/platform/packages/fabric8-system/%[1]s/fabric8-system-%[1]s-"
-	platformPackageUrlPrefix  = "io/fabric8/platform/packages/fabric8-platform/%[1]s/fabric8-platform-%[1]s-"
-	consolePackageUrlPrefix   = "io/fabric8/platform/packages/console/%[1]s/console-%[1]s-"
+	systemMetadataUrl         = "io/fabric8/platform/packages/fabric8-system/maven-metadata.xml"
+	platformMetadataUrl       = "io/fabric8/platform/packages/fabric8-platform/maven-metadata.xml"
+	ipaasMetadataUrl          = "io/fabric8/ipaas/platform/packages/ipaas-platform/maven-metadata.xml"
 	consolePackageMetadataUrl = "io/fabric8/platform/packages/console/maven-metadata.xml"
-	ingressPackageUrlPrefix   = "io/fabric8/platform/packages/ingress/%[1]s/ingress-%[1]s-"
-	kubelegoAppUrlPrefix      = "io/fabric8/platform/apps/kube-lego/%[1]s/kube-lego-%[1]s-"
-	ipaasPackageUrlPrefix     = "io/fabric8/ipaas/platform/packages/ipaas-platform/%[1]s/ipaas-platform-%[1]s-"
+	jenkinsMetadataUrl        = "io/fabric8/jenkins/packages/fabric8-jenkins/maven-metadata.xml"
+	jenkinsSSOMetadataUrl     = "io/fabric8/jenkins/packages/fabric8-jenkins-github/maven-metadata.xml"
+
+	systemPackageUrlPrefix   = "io/fabric8/platform/packages/fabric8-system/%[1]s/fabric8-system-%[1]s-"
+	platformPackageUrlPrefix = "io/fabric8/platform/packages/fabric8-platform/%[1]s/fabric8-platform-%[1]s-"
+	consolePackageUrlPrefix  = "io/fabric8/platform/packages/console/%[1]s/console-%[1]s-"
+	ingressPackageUrlPrefix  = "io/fabric8/platform/packages/ingress/%[1]s/ingress-%[1]s-"
+	kubelegoAppUrlPrefix     = "io/fabric8/platform/apps/kube-lego/%[1]s/kube-lego-%[1]s-"
+	ipaasPackageUrlPrefix    = "io/fabric8/ipaas/platform/packages/ipaas-platform/%[1]s/ipaas-platform-%[1]s-"
+	jenkinsUrlPrefix         = "io/fabric8/jenkins/packages/fabric8-jenkins/%[1]s/fabric8-jenkins-%[1]s-"
+	jenkinsSSOUrlPrefix      = "io/fabric8/jenkins/packages/fabric8-jenkins-github/%[1]s/fabric8-jenkins-github-%[1]s-"
 
 	Fabric8SCC    = "fabric8"
 	Fabric8SASSCC = "fabric8-sa-group"
@@ -118,6 +122,8 @@ const (
 	iPaaSPackage    = "ipaas"
 	ingressPackage  = "ingress"
 	kubeLegoApp     = "kube-lego"
+	jenkinsApp      = "jenkins"
+	jenkinsSSOApp   = "jenkins-sso"
 
 	fabric8Environments = "fabric8-environments"
 	exposecontrollerCM  = "exposecontroller"
@@ -516,6 +522,15 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 
 			printSummary(typeOfMaster, externalNodeName, ns, domain, c)
 		}
+
+		util.Warn("If this your first deployment then it may take a while to download the docker images, please be patient.\n")
+		util.Infof("To track progress run the following command in a new terminal session:\n")
+		if typeOfMaster == util.Kubernetes {
+			util.Infof("watch kubectl get pods -n %s\n", ns)
+		} else {
+			util.Infof("watch oc get pods -n %s\n", ns)
+		}
+
 		keycloakUrl := strings.TrimSuffix(FindServiceURL(ns, "keycloak", c, true), "/")
 		if len(keycloakUrl) == 0 {
 			util.Warn("\nCould not find keycloak service yet!\n")
@@ -557,7 +572,20 @@ oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:in
 		}
 
 		if d.openConsole {
-			openService(ns, "fabric8", c, false, true)
+			// if the console isn't deployed lets open Jenkins
+			_, err := c.Services(ns).Get("fabric8")
+			if err != nil {
+				// first let's check keycloak is running if it has been deployed
+				// check if we already have an ingress controller running running
+				err = CheckService("nginx-ingress", "nginx-ingress", c)
+				if err == nil {
+					WaitForService(ns, "keycloak", c)
+				}
+				util.Success("Keycloak is now running, waiting for Jenkins\n")
+				openService(ns, "jenkins", c, false, true)
+			} else {
+				openService(ns, "fabric8", c, false, true)
+			}
 		}
 	}
 }
@@ -604,6 +632,14 @@ func getTemplateURI(packageName, mavenRepo string, legacyPackage bool, d Default
 	case kubeLegoApp:
 		baseUri = kubelegoAppUrlPrefix
 		versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, systemMetadataUrl))
+		logPackageVersion(packageName, versionPlatform)
+	case jenkinsApp:
+		baseUri = jenkinsUrlPrefix
+		versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, jenkinsMetadataUrl))
+		logPackageVersion(packageName, versionPlatform)
+	case jenkinsSSOApp:
+		baseUri = jenkinsSSOUrlPrefix
+		versionPlatform = versionForUrl(d.versionPlatform, urlJoin(mavenRepo, jenkinsSSOMetadataUrl))
 		logPackageVersion(packageName, versionPlatform)
 	default:
 		baseUri = ""
@@ -922,6 +958,9 @@ func runTemplate(c *clientset.Clientset, oc *oclient.Client, appToRun string, ns
 		util.Infof("Creating "+appToRun+" template resources from %d objects\n", objectCount)
 		for _, o := range tmpl.Objects {
 			err = processItem(c, oc, &o, ns, pv, create)
+			if err != nil {
+				util.Warnf("%v\n", err)
+			}
 		}
 	}
 }
@@ -1031,6 +1070,9 @@ func createTemplate(jsonData []byte, format, templateName, ns, domain, apiserver
 		util.Infof("Creating "+templateName+" template resources in namespace %s from %d objects\n", ns, objectCount)
 		for _, o := range tmpl.Objects {
 			err = processItem(c, oc, &o, ns, pv, create)
+			if err != nil {
+				util.Warnf("%v\n", err)
+			}
 		}
 	}
 	if err != nil {
@@ -1503,6 +1545,7 @@ func processResource(c *clientset.Clientset, oc *oclient.Client, b []byte, ns st
 	var err error = nil
 	if res.Error() != nil {
 		err = res.Error()
+		return fmt.Errorf("Failed to create %s: %v", kind, err)
 	}
 	var statusCode int
 	res.StatusCode(&statusCode)

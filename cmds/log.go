@@ -77,5 +77,4 @@ func (p *logFlags) tailLog(f cmdutil.Factory, args []string) error {
 			return nil
 		}
 	}
-	return nil
 }
