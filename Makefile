@@ -22,7 +22,6 @@ OPENSHIFT_TAG := $(shell cat .openshift-version)
 ROOT_PACKAGE := $(shell $(GO) list .)
 GO_VERSION := $(shell $(GO) version | sed -e 's/^[^0-9.]*\([0-9.]*\).*/\1/')
 PACKAGE_DIRS := $(shell $(GO) list ./... | grep -v /vendor/)
-FORMATTED := $(shell $(GO) fmt $(PACKAGE_DIRS))
 
 REV        := $(shell git rev-parse --short HEAD 2> /dev/null  || echo 'unknown')
 BRANCH     := $(shell git rev-parse --abbrev-ref HEAD 2> /dev/null  || echo 'unknown')
@@ -37,10 +36,11 @@ CGO_ENABLED = 0
 
 VENDOR_DIR=vendor
 
-all: build test
- 
-build: *.go */*.go fmt
-	rm -rf build
+all: build
+
+check: fmt build test
+
+build: *.go */*.go
 	CGO_ENABLED=$(CGO_ENABLED) $(GO) build $(BUILDFLAGS) -o build/$(NAME) $(NAME).go
 
 test:
@@ -50,6 +50,7 @@ install: *.go */*.go
 	GOBIN=${GOPATH}/bin $(GO) install $(BUILDFLAGS) $(NAME).go
 
 fmt:
+	@FORMATTED=`$(GO) fmt $(PACKAGE_DIRS)`
 	@([[ ! -z "$(FORMATTED)" ]] && printf "Fixed unformatted files:\n$(FORMATTED)") || true
 
 arm:
@@ -64,7 +65,7 @@ vendoring:
 	$(GO) get -u github.com/Masterminds/glide
 	GO15VENDOREXPERIMENT=1 glide update --strip-vendor
 
-release: all 
+release: check
 	rm -rf build release && mkdir build release
 	for os in linux darwin ; do \
 		CGO_ENABLED=$(CGO_ENABLED) GOOS=$$os GOARCH=amd64 $(GO) build $(BUILDFLAGS) -o build/$(NAME)-$$os-amd64 $(NAME).go ; \
