@@ -397,7 +397,7 @@ func confirmAction(yes bool) bool {
 }
 
 func isVersion3Package(appName string) bool {
-	return appName == platformPackage || appName == consolePackage || appName == iPaaSPackage || appName != systemPackage || appName != jenkinsApp || appName != jenkinsSSOApp
+	return appName == platformPackage || appName == consolePackage || appName == iPaaSPackage && (appName != systemPackage || appName != jenkinsApp || appName != jenkinsSSOApp)
 }
 func showBanner() {
 	if runtime.GOOS == "windows" {
