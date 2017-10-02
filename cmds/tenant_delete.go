@@ -16,6 +16,7 @@ package cmds
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
@@ -23,10 +24,13 @@ import (
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
+const ocCLI = "oc"
+
 type tenantDeleteFlags struct {
 	cmd  *cobra.Command
 	args []string
 
+	as      string
 	confirm bool
 	tenant  string
 }
@@ -39,6 +43,9 @@ func NewCmdTenantDelete(f cmdutil.Factory) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			p.cmd = cmd
 			p.args = args
+			if cmd.Flags().Lookup(asFlag).Value.String() != "" {
+				p.as = cmd.Flags().Lookup(asFlag).Value.String()
+			}
 			if cmd.Flags().Lookup(yesFlag).Value.String() == "true" {
 				p.confirm = true
 			}
@@ -48,6 +55,19 @@ func NewCmdTenantDelete(f cmdutil.Factory) *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringVarP(&p.tenant, "tenant", "t", "", "the name of the tenant to delete. If blank it will be discovered")
 	return cmd
+}
+
+// ocCLI ...
+func runOCLI(executeCMD bool, asuser string, args ...string) (err error) {
+	if asuser != "" {
+		args = append(args, "--as="+asuser)
+	}
+	if executeCMD {
+		_ = runCommand(ocCLI, args...)
+	} else {
+		util.Infof("%s %s\n", ocCLI, strings.Join(args, " "))
+	}
+	return nil
 }
 
 func (p *tenantDeleteFlags) tenantDelete(f cmdutil.Factory) error {
@@ -63,6 +83,9 @@ func (p *tenantDeleteFlags) tenantDelete(f cmdutil.Factory) error {
 		if err != nil {
 			return err
 		}
+		if userNS == "" {
+			userNS = ns
+		}
 	}
 	if !p.confirm {
 		confirm := ""
@@ -77,34 +100,47 @@ func (p *tenantDeleteFlags) tenantDelete(f cmdutil.Factory) error {
 		}
 	}
 
-	util.Info("Deleting tenant: ")
-	util.Successf("%s\n\n", userNS)
+	executeCMD := false
+	mini, err := util.IsMini()
+	if err != nil {
+		util.Failuref("error checking if minikube or minishift %v", err)
+	}
+	// Hack, always set mini=true if we don't impersonate
+	if p.as == "" {
+		mini = true
+	}
 
-	ocCLI := "oc"
+	if mini {
+		executeCMD = true
+		util.Info("Deleting tenant: ")
+		util.Successf("%s\n\n", userNS)
+	} else {
+		util.Info("# Please can you invoke the following commands as a cluster admin\n\n")
+	}
 	stageNS := fmt.Sprintf("%s-stage", userNS)
 	runNS := fmt.Sprintf("%s-run", userNS)
 	cheNS := fmt.Sprintf("%s-che", userNS)
 	jenkinsNS := fmt.Sprintf("%s-jenkins", userNS)
 
 	// zap jenkins resources
-	util.Infof("Removing jenkins namespace resources in %s\n", jenkinsNS)
-	err = runCommand(ocCLI, "delete", "all", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	util.Infof("# Removing jenkins namespace resources in %s\n", jenkinsNS)
+	err = runOCLI(executeCMD, p.as, "delete", "all", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
 	if err != nil {
 		return nil
 	}
-	err = runCommand(ocCLI, "delete", "pvc", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	err = runOCLI(executeCMD, p.as, "delete", "pvc", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
 	if err != nil {
 		return nil
 	}
-	err = runCommand(ocCLI, "delete", "cm", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	err = runOCLI(executeCMD, p.as, "delete", "cm", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
 	if err != nil {
 		return nil
 	}
-	err = runCommand(ocCLI, "delete", "sa", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	err = runOCLI(executeCMD, p.as, "delete", "sa", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
 	if err != nil {
 		return nil
 	}
-	err = runCommand(ocCLI, "delete", "secret", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
+	err = runOCLI(executeCMD, p.as, "delete", "secret", "--all", "-n", jenkinsNS, "--cascade=true", "--grace-period=-50")
 	if err != nil {
 		return nil
 	}
@@ -112,13 +148,15 @@ func (p *tenantDeleteFlags) tenantDelete(f cmdutil.Factory) error {
 	// zap other projects
 	projectsToRemove := []string{stageNS, runNS, cheNS, userNS}
 	for _, ns := range projectsToRemove {
-		util.Infof("Removing project %s\n", ns)
-		err = runCommand(ocCLI, "delete", "project", ns, "--cascade=true", "--grace-period=-50")
+		util.Infof("# Removing project %s\n", ns)
+		err = runOCLI(executeCMD, p.as, "delete", "project", ns, "--cascade=true", "--grace-period=-50")
 		if err != nil {
 			return nil
 		}
 	}
-	util.Infof("Tenant %s now deleted.\n", userNS)
-	util.Infof("Now please Update your Tenant via: https://github.com/openshiftio/openshift.io/wiki/FAQ#how-do-i-update-my-tenant-\n\n")
+	if mini {
+		util.Infof("Tenant %s now deleted.\n", userNS)
+		util.Infof("Now please Update your Tenant via: https://github.com/openshiftio/openshift.io/wiki/FAQ#how-do-i-update-my-tenant-\n\n")
+	}
 	return nil
 }
