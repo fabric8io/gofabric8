@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/openshift/origin/pkg/project/api"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetProject(t *testing.T) {
@@ -64,4 +65,13 @@ func TestGetProject(t *testing.T) {
 	if res != "foo" {
 		t.Fatalf("%s != foo", res)
 	}
+}
+func TestIsVersion3Package(t *testing.T) {
+
+	assert.Equal(t, isVersion3Package("platform"), true)
+	assert.Equal(t, isVersion3Package("console"), true)
+	assert.Equal(t, isVersion3Package("ipaas"), true)
+	assert.Equal(t, isVersion3Package("system"), false)
+	assert.Equal(t, isVersion3Package("jenkins"), false)
+	assert.Equal(t, isVersion3Package("jenkins-sso"), false)
 }
