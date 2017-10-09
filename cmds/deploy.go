@@ -533,7 +533,7 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 
 		keycloakUrl := ""
 		if packageName != "jenkins" {
-			keycloakUrl := strings.TrimSuffix(FindServiceURL(ns, "keycloak", c, true), "/")
+			keycloakUrl = strings.TrimSuffix(FindServiceURL(ns, "keycloak", c, true), "/")
 			if len(keycloakUrl) == 0 {
 				util.Warn("\nCould not find keycloak service yet!\n")
 			} else {
