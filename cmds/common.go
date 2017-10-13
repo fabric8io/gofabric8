@@ -55,6 +55,7 @@ const (
 	apiServerFlag = "api-server"
 	consoleFlag   = "console"
 	templatesFlag = "templates"
+	asFlag        = "as"
 	DefaultDomain = ""
 )
 
