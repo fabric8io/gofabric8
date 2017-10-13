@@ -121,6 +121,20 @@ func FindServiceURL(ns string, serviceName string, c *clientset.Clientset, retry
 	return answer
 }
 
+// GetServiceURL returns the external service URL or returns the empty string if it cannot be found
+func GetServiceURL(ns string, serviceName string, c *clientset.Clientset) string {
+	answer := ""
+	svc, err := c.Services(ns).Get(serviceName)
+	if err != nil {
+		return answer
+	}
+	ann := svc.ObjectMeta.Annotations
+	if ann != nil {
+		return ann[exposeURLAnnotation]
+	}
+	return answer
+}
+
 // WaitForService waits for a service and its endpoint to be ready
 func WaitForService(ns string, serviceName string, c *clientset.Clientset) {
 	if err := RetryAfter(1200, func() error { return CheckService(ns, serviceName, c) }, 10*time.Second); err != nil {

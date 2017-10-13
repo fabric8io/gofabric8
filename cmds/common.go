@@ -257,6 +257,30 @@ func detectCurrentUserNamespace(ns string, c *clientset.Clientset, oc *oclient.C
 	}
 }
 
+func getNamespacesOrProjects(c *clientset.Clientset, oc *oclient.Client) ([]string, error) {
+	answer := []string{}
+	typeOfMaster := util.TypeOfMaster(c)
+	if typeOfMaster == util.OpenShift {
+		projects, err := oc.Projects().List(api.ListOptions{})
+		if err != nil {
+			return answer, err
+		}
+		for _, r := range projects.Items {
+			answer = append(answer, r.Name)
+		}
+		return answer, nil
+	} else {
+		namespaces, err := c.Namespaces().List(api.ListOptions{})
+		if err != nil {
+			return answer, err
+		}
+		for _, r := range namespaces.Items {
+			answer = append(answer, r.Name)
+		}
+		return answer, nil
+	}
+}
+
 // detectCurrentUserProject finds the user namespace name from the given current projects
 func detectCurrentUserNamespaceFromNamespaces(current string, items []api.Namespace, c *clientset.Clientset) (chosenone string) {
 	names := []string{}
