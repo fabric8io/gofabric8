@@ -56,7 +56,10 @@ func NewCmdE2eEnv(f cmdutil.Factory) *cobra.Command {
 }
 
 func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
-	c, cfg := client.NewClient(f)
+	c, cfg, err := client.NewDefaultClient(f)
+	if err != nil {
+		c, cfg = client.NewClient(f)
+	}
 	oc, _ := client.NewOpenShiftClient(cfg)
 
 	initSchema()
