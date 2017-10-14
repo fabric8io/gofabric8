@@ -21,10 +21,12 @@ import (
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+
 )
 
 func NewClient(f cmdutil.Factory) (*clientset.Clientset, *restclient.Config) {
 	var err error
+
 	cfg, err := f.ClientConfig()
 	if err != nil {
 		util.Error("Could not initialise a client - is your server setting correct?\n\n")
@@ -37,6 +39,18 @@ func NewClient(f cmdutil.Factory) (*clientset.Clientset, *restclient.Config) {
 	}
 
 	return c, cfg
+}
+
+func NewDefaultClient(f cmdutil.Factory) (*clientset.Clientset, *restclient.Config, error) {
+	c, err := f.ClientSet()
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg, err := f.ClientConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+	return c, cfg, nil
 }
 
 func NewOpenShiftClient(cfg *restclient.Config) (*oclient.Client, *restclient.Config) {
