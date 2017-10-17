@@ -24,6 +24,7 @@ import (
 
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
+	oclient "github.com/openshift/origin/pkg/client"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 	kubeApi "k8s.io/kubernetes/pkg/api"
@@ -131,6 +132,18 @@ func GetServiceURL(ns string, serviceName string, c *clientset.Clientset) string
 	ann := svc.ObjectMeta.Annotations
 	if ann != nil {
 		return ann[exposeURLAnnotation]
+	}
+	return answer
+}
+
+// GetServiceOrRouteURL returns the external service URL or the route URL returns the empty string if it cannot be found
+func GetServiceOrRouteURL(ns string, serviceName string, c *clientset.Clientset, oc *oclient.Client, protocol string) string {
+	answer := GetServiceURL(ns, serviceName, c)
+	if len(answer) == 0 {
+		r, err := oc.Routes(ns).Get(serviceName)
+		if err == nil {
+			return protocol + r.Spec.Host
+		}
 	}
 	return answer
 }

@@ -21,7 +21,6 @@ import (
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-
 )
 
 func NewClient(f cmdutil.Factory) (*clientset.Clientset, *restclient.Config) {
