@@ -74,28 +74,34 @@ func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
 	if len(ns) == 0 {
 		return fmt.Errorf("No namespace is defined and no namespace specified!")
 	}
-	typeOfMaster := util.TypeOfMaster(c)
 
-	url := GetServiceURL(ns, "fabric8", c)
+	url := ""
+	spaceLink, err := c.ConfigMaps(ns).Get("fabric8-space-link")
+	if err == nil && spaceLink != nil && spaceLink.Data != nil{
+		url = spaceLink.Data["fabric8-console-url"]
+	}
 	if len(url) == 0 {
-		names, err := getNamespacesOrProjects(c, oc)
-		if err != nil {
-			return err
-		}
-		for _, name := range names {
-			url = GetServiceURL(name, "fabric8", c)
-			if len(url) > 0 {
-				break
-			}
-		}
+		url = GetServiceURL(ns, "fabric8", c)
 		if len(url) == 0 {
-			return fmt.Errorf("Could not find a service called fabric8 in any of these namespaces %v", names)
+			names, err := getNamespacesOrProjects(c, oc)
+			if err != nil {
+				return err
+			}
+			for _, name := range names {
+				url = GetServiceURL(name, "fabric8", c)
+				if len(url) > 0 {
+					break
+				}
+			}
+			if len(url) == 0 {
+				return fmt.Errorf("Could not find a service called fabric8 in any of these namespaces %v", names)
+			}
 		}
 	}
 
 
-
 	platform := "osio"
+	typeOfMaster := util.TypeOfMaster(c)
 	if typeOfMaster == util.Kubernetes {
 		platform = "fabric8-kubernetes"
 	} else {
