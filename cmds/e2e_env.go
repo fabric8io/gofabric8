@@ -26,8 +26,8 @@ import (
 )
 
 type e2eEnvFlags struct {
-	confirm    bool
-	namespace  string
+	confirm   bool
+	namespace string
 }
 
 // NewCmdE2eEnv generates the environment variables for an E2E test on a cluster
@@ -77,7 +77,7 @@ func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
 
 	url := ""
 	spaceLink, err := c.ConfigMaps(ns).Get("fabric8-space-link")
-	if err == nil && spaceLink != nil && spaceLink.Data != nil{
+	if err == nil && spaceLink != nil && spaceLink.Data != nil {
 		url = spaceLink.Data["fabric8-console-url"]
 	}
 	if len(url) == 0 {
@@ -98,7 +98,6 @@ func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
 			}
 		}
 	}
-
 
 	platform := "osio"
 	typeOfMaster := util.TypeOfMaster(c)
