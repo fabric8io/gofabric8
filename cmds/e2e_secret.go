@@ -22,16 +22,19 @@ import (
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
 	"k8s.io/kubernetes/pkg/api"
-	k8api "k8s.io/kubernetes/pkg/api/unversioned"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
 type e2eSecretFlags struct {
-	confirm    bool
-	namespace  string
-	username   string
-	password   string
-	secretName string
+	confirm        bool
+	namespace      string
+	username       string
+	password       string
+	secretName     string
+	osUsername     string
+	osToken        string
+	githubUsername string
+	githubPassword string
 }
 
 // NewCmdE2ESecret creates/updates a Secret for running E2E tests
@@ -58,24 +61,70 @@ func NewCmdE2ESecret(f cmdutil.Factory) *cobra.Command {
 	flags.StringVarP(&p.namespace, "namespace", "", "", "the namespace to look for the fabric8 installation. Defaults to the current namespace")
 	flags.StringVarP(&p.username, "user", "u", "", "the username to test with")
 	flags.StringVarP(&p.password, "password", "p", "", "the password to test with")
-	flags.StringVarP(&p.secretName, "secret", "", "", "the name of the Secret to create/update")
+	flags.StringVarP(&p.secretName, "secret", "", "default-test-user", "the name of the Secret to create/update")
+	flags.StringVarP(&p.osUsername, "os-user", "", "", "the name of the OpenShift/Kubernetes Username to use")
+	flags.StringVarP(&p.osToken, "os-token", "", "", "the Kubernetes/OpenShift OAuth token to access to the cluster")
+	flags.StringVarP(&p.githubUsername, "github-user", "", "", "the GitHub username")
+	flags.StringVarP(&p.githubPassword, "github-password", "", "", "the GitHub Personal Access Token or Password")
 	return cmd
 }
 
 func (p *e2eSecretFlags) runTest(f cmdutil.Factory) error {
-	c, _ := client.NewClient(f)
+	c, cfg := client.NewClient(f)
+	oc, _ := client.NewOpenShiftClient(cfg)
+
 	initSchema()
 
 	ns := p.namespace
 	if len(ns) == 0 {
-		ns, _, _ = f.DefaultNamespace()
+		// lets try find the namespace with jenkins inside
+		names, err := getNamespacesOrProjects(c, oc)
+		if err != nil {
+			return err
+		}
+		for _, name := range names {
+			_, err := c.ConfigMaps(name).Get("jenkins")
+			if err == nil {
+				ns = name
+				break
+			}
+		}
 	}
 	if len(ns) == 0 {
-		return fmt.Errorf("No namespace is defined and no namespace specified!")
+		ns, _, _ = f.DefaultNamespace()
+		util.Warnf("No namespace specified and could not find the jenkins namespace (which has a ConfigMap called jenkins) so defaulting to namespace: %s", ns)
 	}
+	typeOfMaster := util.TypeOfMaster(c)
 
 	user := p.username
 	pwd := p.password
+	if len(user) == 0 || len(pwd) == 0 || len(p.osUsername) == 0 {
+		if typeOfMaster == util.OpenShift {
+			mini, err := util.IsMini()
+			if err != nil {
+				util.Failuref("error checking if minikube or minishift %v", err)
+			}
+			if mini {
+				if len(user) == 0 {
+					user = "developer"
+				}
+				if len(pwd) == 0 {
+					pwd = "developer"
+				}
+				if len(p.osUsername) == 0 {
+					p.osUsername = "developer"
+				}
+			}
+		} else {
+			if len(user) == 0 {
+				user = p.githubUsername
+			}
+			if len(pwd) == 0 {
+				pwd = p.githubPassword
+			}
+		}
+	}
+
 	if len(user) == 0 {
 		return fmt.Errorf("No --user parameter specified!")
 	}
@@ -84,16 +133,37 @@ func (p *e2eSecretFlags) runTest(f cmdutil.Factory) error {
 	}
 	name := p.secretName
 	if len(name) == 0 {
-		name = "e2e-for-" + user
+		name = "default-test-user"
 	}
 
-	selector, err := k8api.LabelSelectorAsSelector(
-		&k8api.LabelSelector{MatchLabels: map[string]string{"test": "e2e"}})
-	if err != nil {
-		return err
+	if typeOfMaster == util.Kubernetes {
+		if len(p.githubUsername) == 0 {
+			p.githubUsername = p.username
+		}
+		if len(p.githubPassword) == 0 {
+			p.githubPassword = p.password
+		}
+	} else {
+		if len(p.githubUsername) == 0 {
+			return fmt.Errorf("No --github-user parameter specified!")
+		}
+		if len(p.githubPassword) == 0 {
+			return fmt.Errorf("No --github-password parameter specified!")
+		}
+
+		if len(p.osToken) == 0 {
+			// TODO load from ~/.kube/config?
+		}
+	}
+	if len(p.osUsername) == 0 {
+		p.osUsername = p.githubUsername
+
+		if len(p.osUsername) == 0 {
+			return fmt.Errorf("No --os-user parameter specified!")
+		}
 	}
 
-	secrets, err := c.Secrets(ns).List(api.ListOptions{LabelSelector: selector})
+	secrets, err := c.Secrets(ns).List(api.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("Failed to load secrets in namespace %s due to %s", ns, err)
 	}
@@ -110,7 +180,7 @@ func (p *e2eSecretFlags) runTest(f cmdutil.Factory) error {
 	}
 	for _, secret := range secrets.Items {
 		if secret.Name == name {
-			updatedSecret = secret
+			updatedSecret.ObjectMeta = secret.ObjectMeta
 			create = false
 			break
 		}
@@ -120,7 +190,12 @@ func (p *e2eSecretFlags) runTest(f cmdutil.Factory) error {
 	if updatedSecret.Data == nil {
 		updatedSecret.Data = map[string][]byte{}
 	}
-	updatedSecret.Data["script"] = p.createSecretScript()
+	updatedSecret.Data["user"] = []byte(user)
+	updatedSecret.Data["password"] = []byte(pwd)
+	updatedSecret.Data["os-user"] = []byte(p.osUsername)
+	updatedSecret.Data["github-user"] = []byte(p.githubUsername)
+	updatedSecret.Data["github-password"] = []byte(p.githubPassword)
+	updatedSecret.Data["os-token"] = []byte(p.osToken)
 
 	secretResource := c.Secrets(ns)
 	if create {
