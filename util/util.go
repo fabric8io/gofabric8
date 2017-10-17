@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 )
 
 const (
@@ -80,4 +81,26 @@ func GetCurrentContext() (string, error) {
 		&clientcmd.ConfigOverrides{},
 	).RawConfig()
 	return clientConfig.CurrentContext, err
+}
+
+// GetContextAuthInfo gets the current context from local config
+func GetContextAuthInfo() (*api.AuthInfo, error) {
+	clientConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+		&clientcmd.ConfigOverrides{},
+	).RawConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	key := clientConfig.CurrentContext
+	ctx := clientConfig.Contexts[key]
+	if ctx != nil {
+		authKey := ctx.AuthInfo
+		authInfo := clientConfig.AuthInfos[authKey]
+		if authInfo != nil {
+			return authInfo, nil
+		}
+	}
+	return nil, err
 }
