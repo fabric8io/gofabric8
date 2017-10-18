@@ -17,9 +17,9 @@ package cmds
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
+	"k8s.io/kubernetes/pkg/api"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
@@ -28,7 +28,8 @@ import (
 
 type bddEnvFlags struct {
 	confirm   bool
-	namespace string
+	tenantNamespace string
+	jenkinsNamespace string
 }
 
 // NewCmdBddEnv generates the environment variables for a BDD test on a cluster
@@ -52,7 +53,8 @@ func NewCmdBddEnv(f cmdutil.Factory) *cobra.Command {
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVarP(&p.namespace, "namespace", "", "", "the namespace to look for the fabric8 installation. Defaults to the current namespace")
+	flags.StringVarP(&p.tenantNamespace, "tenant-namespace", "", "", "the tenant namespace to use")
+	flags.StringVarP(&p.jenkinsNamespace, "jenkins-namespace", "", "", "the jenkins namespace to use")
 	return cmd
 }
 
@@ -65,16 +67,13 @@ func (p *bddEnvFlags) runTest(f cmdutil.Factory) error {
 
 	initSchema()
 
-	ns := p.namespace
-	if len(ns) == 0 {
-		ns = os.Getenv("FABRIC8_SYSTEM_NAMESPACE")
+	jenkinsNs := p.jenkinsNamespace
+	names, err := getNamespacesOrProjects(c, oc)
+	if err != nil {
+		return err
 	}
 	url := ""
-	if len(ns) == 0 {
-		names, err := getNamespacesOrProjects(c, oc)
-		if err != nil {
-			return err
-		}
+	if len(jenkinsNs) == 0 {
 		for _, name := range names {
 			url = GetServiceOrRouteURL(name, "jenkins", c, oc, "https://")
 			if len(url) > 0 {
@@ -85,9 +84,9 @@ func (p *bddEnvFlags) runTest(f cmdutil.Factory) error {
 			return fmt.Errorf("Could not find a service called jenkins in any of these namespaces %v", names)
 		}
 	} else {
-		url = GetServiceURL(ns, "jenkins", c)
+		url = GetServiceURL(jenkinsNs, "jenkins", c)
 		if len(url) == 0 {
-			return fmt.Errorf("Could not find a service called jenkins in namespace %s", ns)
+			return fmt.Errorf("Could not find a service called jenkins in namespace %s", jenkinsNs)
 		}
 	}
 
@@ -106,8 +105,47 @@ func (p *bddEnvFlags) runTest(f cmdutil.Factory) error {
 	}
 	username = strings.TrimSpace(username)
 
+
+	githubUser := ""
+	githubPassword := ""
+	tenantNs := p.tenantNamespace
+	if len(tenantNs) == 0 {
+		for _, name := range names {
+			secret, err := c.Secrets(name).Get("cd-github")
+			if err == nil {
+				githubUser = secretDataField(secret, "username")
+				githubPassword = secretDataField(secret, "password")
+			}
+		}
+		if len(url) == 0 {
+			return fmt.Errorf("Could not find a service called jenkins in any of these namespaces %v", names)
+		}
+	} else {
+		secret, err := c.Secrets(tenantNs).Get("cd-github")
+		if err == nil {
+			githubUser = secretDataField(secret, "username")
+			githubPassword = secretDataField(secret, "password")
+		}
+	}
+
 	fmt.Printf("export BDD_JENKINS_URL=\"%s\"\n", url)
 	fmt.Printf("export BDD_JENKINS_USERNAME=\"%s\"\n", username)
 	fmt.Printf("export BDD_JENKINS_BEARER_TOKEN=\"%s\"\n", token)
+	if len(githubUser) > 0 {
+		fmt.Printf("export GITHUB_USER=\"%s\"\n", githubUser)
+	}
+	if len(githubPassword) > 0 {
+		fmt.Printf("export GITHUB_PASSWORD=\"%s\"\n", githubPassword)
+	}
 	return nil
+}
+
+func secretDataField(secret *api.Secret, name string) string {
+	if secret.Data != nil {
+		data := secret.Data[name]
+		if data != nil {
+			return string(data)
+		}
+	}
+	return ""
 }
