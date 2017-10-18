@@ -108,6 +108,6 @@ func (p *bddEnvFlags) runTest(f cmdutil.Factory) error {
 
 	fmt.Printf("export BDD_JENKINS_URL=\"%s\"\n", url)
 	fmt.Printf("export BDD_JENKINS_USERNAME=\"%s\"\n", username)
-	fmt.Printf("export BDD_JENKINS_TOKEN=\"%s\"\n", token)
+	fmt.Printf("export BDD_JENKINS_BEARER_TOKEN=\"%s\"\n", token)
 	return nil
 }
