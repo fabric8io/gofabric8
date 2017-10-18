@@ -30,14 +30,13 @@ const ()
 
 // NewCmdIP returns the IP for the cluster gofabric8 is connected to
 func NewCmdIP(f cmdutil.Factory) *cobra.Command {
-	_, cfg := client.NewClient(f)
 	cmd := &cobra.Command{
 		Use:   "ip",
 		Short: "Returns the IP for the cluster gofabric8 is connected to",
 		Long:  `Returns the IP for the cluster gofabric8 is connected to`,
 
 		Run: func(cmd *cobra.Command, args []string) {
-
+			_, cfg := client.NewClient(f)
 			u, err := url.Parse(cfg.Host)
 			if err != nil {
 				util.Fatalf("%s", err)
