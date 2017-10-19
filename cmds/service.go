@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 	kubeApi "k8s.io/kubernetes/pkg/api"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	restclient "k8s.io/kubernetes/pkg/client/restclient"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -49,18 +50,26 @@ func NewCmdService(f cmdutil.Factory) *cobra.Command {
 		Long:  `Opens the specified Kubernetes service in your browser`,
 
 		Run: func(cmd *cobra.Command, args []string) {
-			c, _ := client.NewClient(f)
+			var err error
+			c, cfg := client.NewClient(f)
 
 			ns := cmd.Flags().Lookup(namespaceCommandFlag).Value.String()
 			if ns == "" {
-				ns, _, _ = f.DefaultNamespace()
+				ns, err = defaultNamespace(cmd, f)
+				cmdutil.CheckErr(err)
 			}
+			typeOfMaster := util.TypeOfMaster(c)
+
 			printURL := cmd.Flags().Lookup(urlCommandFlag).Value.String() == "true"
 			retry := cmd.Flags().Lookup(retryFlag).Value.String() == "true"
-			if len(args) == 1 {
-				openService(ns, args[0], c, printURL, retry)
-			} else {
+			if len(args) != 1 {
 				util.Fatalf("Please choose a service, found %v arguments\n", len(args))
+			}
+
+			if typeOfMaster == util.OpenShift {
+				openServiceWithRoute(ns, args[0], cfg, printURL, retry)
+			} else {
+				openService(ns, args[0], c, printURL, retry)
 			}
 		},
 	}
@@ -68,6 +77,66 @@ func NewCmdService(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().BoolP(urlCommandFlag, "u", false, "Display the kubernetes service exposed URL in the CLI instead of opening it in the default browser")
 	cmd.PersistentFlags().Bool(retryFlag, true, "Retries to find the service if its not available just yet")
 	return cmd
+}
+
+func searchForRouteNameURL(name, ns string, oc *oclient.Client) (url string, err error) {
+	// TODO: why this doesn't work on api.starter-us-east-2.openshift.com ?
+	routes, err := oc.Routes(ns).List(kubeApi.ListOptions{})
+	if err != nil {
+		return
+	}
+
+	for _, item := range routes.Items {
+		url = "http"
+		if item.Spec.TLS != nil {
+			url = "https"
+		}
+		url += fmt.Sprintf("://%s", item.Spec.Host)
+		if item.Spec.Port != nil {
+			url += fmt.Sprintf(":%d", item.Spec.Port.TargetPort.IntValue())
+		}
+		if item.Name == name {
+			//TODO(chmou): Check External Service if ready and then print!
+			return
+		}
+	}
+	return "", nil
+}
+
+func openServiceWithRoute(ns string, serviceName string, cfg *restclient.Config, printURL bool, retry bool) {
+	items := []string{ns}
+	found := false
+	oc, _ := client.NewOpenShiftClient(cfg)
+	initSchema()
+
+	projects, err := oc.Projects().List(kubeApi.ListOptions{})
+	cmdutil.CheckErr(err)
+	for _, todoNS := range projects.Items {
+		items = append(items, todoNS.Name)
+	}
+
+	for _, todoNS := range items {
+		url, err := searchForRouteNameURL(serviceName, todoNS, oc)
+		if err != nil {
+			// NB: Do not fail here as we want the auto detection to go on if we
+			// had the default namespaces
+			util.Info(err.Error())
+		}
+		if url != "" {
+			if printURL {
+				util.Successf("%s\n", url)
+			} else {
+				util.Successf("\nOpening URL %s\n", url)
+				browser.OpenURL(url)
+			}
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		util.Errorf("No service %s in namespace %s\n", serviceName, ns)
+	}
 }
 
 func openService(ns string, serviceName string, c *clientset.Clientset, printURL bool, retry bool) {
