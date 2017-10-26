@@ -568,10 +568,13 @@ func deploy(f cmdutil.Factory, d DefaultFabric8Deployment) {
 				}
 			} else {
 				util.Info("\n\nPlease can you invoke the following commands as a cluster admin\n\n")
-				util.Infof(`oc create --as system:admin -f %s\n
-oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:init-tenant\n
-oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:exposecontroller\n`,
-					oauthClientOnlinePlatformFile, ns)
+				util.Infof(`oc create --as system:admin -f %s
+oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:init-tenant
+oc adm policy add-cluster-role-to-user cluster-admin system:serviceaccount:%s:exposecontroller
+
+
+`,
+					oauthClientOnlinePlatformFile, ns, ns)
 			}
 		}
 
