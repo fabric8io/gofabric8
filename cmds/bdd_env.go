@@ -27,8 +27,8 @@ import (
 )
 
 type bddEnvFlags struct {
-	confirm   bool
-	tenantNamespace string
+	confirm          bool
+	tenantNamespace  string
 	jenkinsNamespace string
 }
 
@@ -90,21 +90,27 @@ func (p *bddEnvFlags) runTest(f cmdutil.Factory) error {
 		}
 	}
 
-	authInfo, err := util.GetContextAuthInfo()
-	if err != nil {
-		return err
-	}
-	if authInfo == nil {
-		return fmt.Errorf("Could not find the auth info in $KUBECONFIG or ~/.kube/config")
-	}
-	token := authInfo.Token
-	//username := authInfo.Username
-	username, err := runCommandWithOutput("oc", "whoami")
-	if err != nil {
-		return err
-	}
-	username = strings.TrimSpace(username)
+	username := ""
+	token := ""
 
+	typeOfMaster := util.TypeOfMaster(c)
+	if typeOfMaster == util.OpenShift {
+		authInfo, err := util.GetContextAuthInfo()
+		if err != nil {
+			return err
+		}
+		if authInfo == nil {
+			return fmt.Errorf("Could not find the auth info in $KUBECONFIG or ~/.kube/config")
+		}
+		token = authInfo.Token
+		//username := authInfo.Username
+
+		username, err = runCommandWithOutput("oc", "whoami")
+		if err != nil {
+			return err
+		}
+		username = strings.TrimSpace(username)
+	}
 
 	githubUser := ""
 	githubPassword := ""
@@ -129,8 +135,12 @@ func (p *bddEnvFlags) runTest(f cmdutil.Factory) error {
 	}
 
 	fmt.Printf("export BDD_JENKINS_URL=\"%s\"\n", url)
-	fmt.Printf("export BDD_JENKINS_USERNAME=\"%s\"\n", username)
-	fmt.Printf("export BDD_JENKINS_BEARER_TOKEN=\"%s\"\n", token)
+	if len(username) > 0 {
+		fmt.Printf("export BDD_JENKINS_USERNAME=\"%s\"\n", username)
+	}
+	if len(token) > 0 {
+		fmt.Printf("export BDD_JENKINS_BEARER_TOKEN=\"%s\"\n", token)
+	}
 	if len(githubUser) > 0 {
 		fmt.Printf("export GITHUB_USER=\"%s\"\n", githubUser)
 	}
