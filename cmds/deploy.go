@@ -259,9 +259,7 @@ func NewCmdDeploy(f cmdutil.Factory) *cobra.Command {
 	cmd.PersistentFlags().String(githubClientIDFlag, "", "The github OAuth Application Client ID. Defaults to $GITHUB_OAUTH_CLIENT_ID if not specified")
 	cmd.PersistentFlags().String(githubClientSecretFlag, "", "The github OAuth Application Client Secret. Defaults to $GITHUB_OAUTH_CLIENT_SECRET if not specified")
 	cmd.PersistentFlags().String(tlsAcmeEmailFlag, "", "Email address used to register and work with CertBot for automated signed cert ingress rules. Defaults to $TLS_ACME_EMAIL if not specified")
-	// TODO re-enable when we're ready for 4.x
-	//cmd.PersistentFlags().String(packageFlag, systemPackage, "The name of the package to startup such as 'system' for the 4.x version of fabric8 or 'platform' for 3.x. Otherwise specify a URL or local file of the YAML to install")
-	cmd.PersistentFlags().String(packageFlag, platformPackage, "The name of the package to startup such as 'system' for the 4.x version of fabric8 or 'platform' for 3.x. Otherwise specify a URL or local file of the YAML to install")
+	cmd.PersistentFlags().String(packageFlag, systemPackage, "The name of the package to startup such as 'system' for the 4.x version of fabric8 or 'platform' for 3.x. Otherwise specify a URL or local file of the YAML to install")
 
 	cmd.PersistentFlags().Bool(pvFlag, true, "If false will convert deployments to use Kubernetes emptyDir and disable persistence for core apps")
 	cmd.PersistentFlags().Bool(templatesFlag, true, "Should the standard Fabric8 templates be installed?")
