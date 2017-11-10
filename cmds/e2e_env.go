@@ -76,6 +76,10 @@ func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
 	}
 
 	url := ""
+	consoleLink, err := c.ConfigMaps(ns).Get("fabric8-console-link")
+	if err == nil && consoleLink != nil && consoleLink.Data != nil {
+		url = consoleLink.Data["fabric8-console-url"]
+	}
 	spaceLink, err := c.ConfigMaps(ns).Get("fabric8-space-link")
 	if err == nil && spaceLink != nil && spaceLink.Data != nil {
 		url = spaceLink.Data["fabric8-console-url"]
@@ -93,9 +97,11 @@ func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
 					break
 				}
 			}
+			/*
 			if len(url) == 0 {
 				return fmt.Errorf("Could not find a service called fabric8 in any of these namespaces %v. Please try run the command `gofabric8 e2e-console` to help populate the fabric8-space-link ConfigMap with a link to the console to test against", names)
 			}
+			*/
 		}
 	}
 
@@ -106,7 +112,9 @@ func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
 	} else {
 		platform = "fabric8-openshift"
 	}
-	fmt.Printf("export TARGET_URL=\"%s\"\n", url)
+	if len(url) > 0 {
+		fmt.Printf("export TARGET_URL=\"%s\"\n", url)
+	}
 	fmt.Printf("export TEST_PLATFORM=\"%s\"\n", platform)
 	return nil
 }

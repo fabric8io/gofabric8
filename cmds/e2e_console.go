@@ -22,6 +22,7 @@ import (
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
+	api "k8s.io/kubernetes/pkg/api"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
@@ -97,6 +98,16 @@ func (p *e2eConsoleFlags) runTest(f cmdutil.Factory) error {
 	if err == nil && spaceLink != nil && spaceLink.Data != nil && len(url) == 0 {
 		url = spaceLink.Data["fabric8-console-url"]
 	}
+	consoleLink, err := c.ConfigMaps(ns).Get("fabric8-console-link")
+	if consoleLink == nil || err != nil {
+		consoleLink, err = c.ConfigMaps(linkNs).Get("fabric8-console-link")
+	}
+	if err != nil {
+		consoleLink = nil
+	}
+	if consoleLink != nil && consoleLink.Data != nil && len(url) == 0 {
+		url = consoleLink.Data["fabric8-console-url"]
+	}
 	if len(url) == 0 {
 		url = GetServiceURL(ns, "fabric8", c)
 		if len(url) == 0 {
@@ -114,10 +125,29 @@ func (p *e2eConsoleFlags) runTest(f cmdutil.Factory) error {
 	if spaceLink == nil {
 		return fmt.Errorf("Could not find a ConfigMap called `fabric8-space-link` in any of these namespaces %v", names)
 	}
-	spaceLink.Data["fabric8-console-url"] = url
-	_, err = c.ConfigMaps(linkNs).Update(spaceLink)
+	consoleLinkCreate := false
+	consoleLinkOperation := "update"
+	if consoleLink == nil {
+		consoleLinkCreate = true
+		consoleLinkOperation = "create"
+		consoleLink = &api.ConfigMap{
+			ObjectMeta: api.ObjectMeta{
+				Name: "fabric8-console-link",
+				Namespace: linkNs,
+			},
+		}
+	}
+	if consoleLink.Data == nil {
+		consoleLink.Data = map[string]string{}
+	}
+	consoleLink.Data["fabric8-console-url"] = url
+	if consoleLinkCreate {
+		_, err = c.ConfigMaps(linkNs).Create(consoleLink)
+	}  else {
+		_, err = c.ConfigMaps(linkNs).Update(consoleLink)
+	}
 	if err != nil {
-		return fmt.Errorf("Could not update a ConfigMap called `fabric8-space-link` in namespace %s due to %v", linkNs, err)
+		return fmt.Errorf("Could not %s a ConfigMap called `fabric8-console-link` in namespace %s due to %v", consoleLinkOperation, linkNs, err)
 	}
 	fmt.Printf("Updated ConfigMap fabric8-space-link in namespace %s to %s\n", linkNs, url)
 	return nil
