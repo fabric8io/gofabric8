@@ -98,9 +98,9 @@ func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
 				}
 			}
 			/*
-			if len(url) == 0 {
-				return fmt.Errorf("Could not find a service called fabric8 in any of these namespaces %v. Please try run the command `gofabric8 e2e-console` to help populate the fabric8-space-link ConfigMap with a link to the console to test against", names)
-			}
+				if len(url) == 0 {
+					return fmt.Errorf("Could not find a service called fabric8 in any of these namespaces %v. Please try run the command `gofabric8 e2e-console` to help populate the fabric8-space-link ConfigMap with a link to the console to test against", names)
+				}
 			*/
 		}
 	}

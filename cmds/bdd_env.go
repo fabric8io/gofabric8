@@ -19,10 +19,10 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/kubernetes/pkg/api"
 	"github.com/fabric8io/gofabric8/client"
 	"github.com/fabric8io/gofabric8/util"
 	"github.com/spf13/cobra"
+	"k8s.io/kubernetes/pkg/api"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 

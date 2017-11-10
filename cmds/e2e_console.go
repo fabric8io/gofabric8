@@ -132,7 +132,7 @@ func (p *e2eConsoleFlags) runTest(f cmdutil.Factory) error {
 		consoleLinkOperation = "create"
 		consoleLink = &api.ConfigMap{
 			ObjectMeta: api.ObjectMeta{
-				Name: "fabric8-console-link",
+				Name:      "fabric8-console-link",
 				Namespace: linkNs,
 			},
 		}
@@ -143,7 +143,7 @@ func (p *e2eConsoleFlags) runTest(f cmdutil.Factory) error {
 	consoleLink.Data["fabric8-console-url"] = url
 	if consoleLinkCreate {
 		_, err = c.ConfigMaps(linkNs).Create(consoleLink)
-	}  else {
+	} else {
 		_, err = c.ConfigMaps(linkNs).Update(consoleLink)
 	}
 	if err != nil {
