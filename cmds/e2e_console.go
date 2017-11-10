@@ -25,19 +25,20 @@ import (
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
-type e2eEnvFlags struct {
+type e2eConsoleFlags struct {
 	confirm   bool
 	namespace string
+	url       string
 }
 
-// NewCmdE2eEnv generates the environment variables for an E2E test on a cluster
-func NewCmdE2eEnv(f cmdutil.Factory) *cobra.Command {
-	p := &e2eEnvFlags{}
+// NewCmdE2eConsole generates the environment variables for an E2E test on a cluster
+func NewCmdE2eConsole(f cmdutil.Factory) *cobra.Command {
+	p := &e2eConsoleFlags{}
 	cmd := &cobra.Command{
-		Use:     "e2e-env",
-		Short:   "Generates the E2E environment variables for use by the E2E test pipeline",
-		Long:    `Generates the E2E environment variables for use by the E2E test pipeline`,
-		Aliases: []string{"e2e-environment"},
+		Use:     "e2e-console",
+		Short:   "Points the jenkins namespace at the console to use for E2E tests",
+		Long:    `Points the jenkins namespace at the console to use for E2E tests`,
+		Aliases: []string{"e2e-console-url"},
 
 		Run: func(cmd *cobra.Command, args []string) {
 			if cmd.Flags().Lookup(yesFlag).Value.String() == "true" {
@@ -52,10 +53,11 @@ func NewCmdE2eEnv(f cmdutil.Factory) *cobra.Command {
 	}
 	flags := cmd.Flags()
 	flags.StringVarP(&p.namespace, "namespace", "", "", "the namespace to look for the fabric8 installation. Defaults to the current namespace")
+	flags.StringVarP(&p.url, "url", "", "", "the console URL to use. If not specified it will be found from the fabric8 service in a namespace")
 	return cmd
 }
 
-func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
+func (p *e2eConsoleFlags) runTest(f cmdutil.Factory) error {
 	c, cfg, err := client.NewDefaultClient(f)
 	if err != nil {
 		c, cfg = client.NewClient(f)
@@ -75,18 +77,29 @@ func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
 		return fmt.Errorf("No namespace is defined and no namespace specified!")
 	}
 
-	url := ""
+	names, err := getNamespacesOrProjects(c, oc)
+	if err != nil {
+		return err
+	}
+
+	url := p.url
+	linkNs := ns
 	spaceLink, err := c.ConfigMaps(ns).Get("fabric8-space-link")
-	if err == nil && spaceLink != nil && spaceLink.Data != nil {
+	if spaceLink == nil || err != nil {
+		for _, name := range names {
+			spaceLink, err = c.ConfigMaps(name).Get("fabric8-space-link")
+			if spaceLink != nil && err == nil {
+				linkNs = name
+				break
+			}
+		}
+	}
+	if err == nil && spaceLink != nil && spaceLink.Data != nil && len(url) == 0 {
 		url = spaceLink.Data["fabric8-console-url"]
 	}
 	if len(url) == 0 {
 		url = GetServiceURL(ns, "fabric8", c)
 		if len(url) == 0 {
-			names, err := getNamespacesOrProjects(c, oc)
-			if err != nil {
-				return err
-			}
 			for _, name := range names {
 				url = GetServiceURL(name, "fabric8", c)
 				if len(url) > 0 {
@@ -94,19 +107,18 @@ func (p *e2eEnvFlags) runTest(f cmdutil.Factory) error {
 				}
 			}
 			if len(url) == 0 {
-				return fmt.Errorf("Could not find a service called fabric8 in any of these namespaces %v. Please try run the command `gofabric8 e2e-console` to help populate the fabric8-space-link ConfigMap with a link to the console to test against", names)
+				return fmt.Errorf("Could not find a service called fabric8 in any of these namespaces %v", names)
 			}
 		}
 	}
-
-	platform := "osio"
-	typeOfMaster := util.TypeOfMaster(c)
-	if typeOfMaster == util.Kubernetes {
-		platform = "fabric8-kubernetes"
-	} else {
-		platform = "fabric8-openshift"
+	if spaceLink == nil {
+		return fmt.Errorf("Could not find a ConfigMap called `fabric8-space-link` in any of these namespaces %v", names)
 	}
-	fmt.Printf("export TARGET_URL=\"%s\"\n", url)
-	fmt.Printf("export TEST_PLATFORM=\"%s\"\n", platform)
+	spaceLink.Data["fabric8-console-url"] = url
+	_, err = c.ConfigMaps(linkNs).Update(spaceLink)
+	if err != nil {
+		return fmt.Errorf("Could not update a ConfigMap called `fabric8-space-link` in namespace %s due to %v", linkNs, err)
+	}
+	fmt.Printf("Updated ConfigMap fabric8-space-link in namespace %s to %s\n", linkNs, url)
 	return nil
 }
