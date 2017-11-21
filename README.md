@@ -62,7 +62,6 @@ gofabric8 install
 
 #### Install minishift
 
-__NOTE__ currently the latest version of minishift that fabric8 currently runs on is 0.9.0
 ```
 gofabric8 install --minishift
 ```
