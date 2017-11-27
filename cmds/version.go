@@ -61,7 +61,6 @@ func NewCmdVersion() *cobra.Command {
 					text := strings.TrimSpace(scanner.Text())
 					if strings.HasPrefix(text, "oc") {
 						text = strings.Replace(text, "oc", "", -1)
-						fmt.Println("foo'" + text + "'")
 						version.Map["ocVersion"] = strings.TrimSpace(text)
 					}
 
