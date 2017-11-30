@@ -1,33 +1,66 @@
-# gofabric8 installer
+# gofabric8
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/fabric8io/gofabric8)](https://goreportcard.com/report/github.com/fabric8io/gofabric8)
 [![APACHEv2 License](https://img.shields.io/badge/license-APACHEv2-blue.svg)](https://github.com/fabric8io/gofabric8/blob/master/LICENSE)
 
-gofabric8 is used to validate &amp; deploy fabric8 components on to your Kubernetes or OpenShift environment
+gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes
+or OpenShift environment
 
 Find more information at http://fabric8.io.
 
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+
+- [Getting started](#getting-started)
+  - [Install gofabric8](#install-gofabric8)
+  - [Install dependencies](#install-dependencies)
+    - [Install minikube](#install-minikube)
+    - [Install minishift](#install-minishift)
+  - [Install the fabric8 microservices platform](#install-the-fabric8-microservices-platform)
+  - [Reusing the Docker daemon](#reusing-the-docker-daemon)
+  - [Run different versions](#run-different-versions)
+  - [Usage](#usage)
+- [Shell completion](#shell-completion)
+- [Development](#development)
+  - [Prerequisites](#prerequisites)
+  - [Developing](#developing)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 ## Getting started
 
-### Install / Update & run
+### Install gofabric8
 
-Get the [latest](https://github.com/fabric8io/gofabric8/releases/latest/) `gofabric8` or use the following script to download it.
+Get the [latest](https://github.com/fabric8io/gofabric8/releases/latest/)
+`gofabric8` or use the following script to download it.
 
 ```
 curl -sS https://get.fabric8.io/download.txt | bash
 ```
-add '~/.fabric8/bin' to your path so you can execute the new binaries, for example:
-edit your ~/.zshrc or ~/.bashrc  and append to the end of the file
+
+Add '~/.fabric8/bin' to your path so you can execute the new binaries, for
+example: edit your ~/.zshrc or ~/.bashrc and append to the end of the file
+
 ```
 export PATH=$PATH:~/.fabric8/bin
 source ~/.zshrc or ~/.bashrc
 ```
 
-#### minikube
+### Install dependencies
+
+The `gofabric8 install` installs the dependencies to locally run the fabric8
+microservices platform - either [minishift][minishift] and [openshift
+client][oc] or [minikube][minikube] and [kubectl][kubectl] along with necessary
+drivers. The binaries are downloaded to `~/.fabric8/bin`.
+
+#### Install minikube
+
 ```
 gofabric8 install
 ```
-#### minishift
+
+#### Install minishift
 
 __NOTE__ currently the latest version of minishift that fabric8 currently runs on is 0.9.0
 ```
@@ -42,30 +75,42 @@ To install the [fabric8 microservices platform](http://fabric8.io/) then run the
 gofabric8 deploy
 ```
 
-If you are deploying to a remote OpenShift instance make sure to set the domain so we can generate Toutes to access applications
+If you are deploying to a remote OpenShift instance make sure to set the domain
+so we can generate routes to access applications
+
 ```
 gofabric8 deploy --domain=your.domain.io
 ```
 
 ### Reusing the Docker daemon
 
-When developing locally and using a single VM its really handy to reuse the Docker daemon inside the VM; as this means you don't have to build on your host machine and push the image into a docker registry - you can just build inside the same docker daemon as minikube which speeds up local experiments.
+When developing locally and using a single VM its really handy to reuse the
+Docker daemon inside the VM; as this means you don't have to build on your host
+machine and push the image into a docker registry - you can just build inside
+the same docker daemon as minikube which speeds up local experiments.
 
-To be able to work with the docker daemon on your mac/linux host use the docker-env command in your shell:
+To be able to work with the docker daemon on your mac/linux host use the
+docker-env command in your shell:
 
 ```
 eval $(gofabric8 docker-env)
 ```
-you should now be able to use docker on the command line on your host mac/linux machine talking to the docker daemon inside the minikube VM:
+
+You should now be able to use docker on the command line on your host mac/linux
+machine talking to the docker daemon inside the minikube VM:
 
 ```
 docker ps
 ```
-Remember to turn off the imagePullPolicy:Always, as otherwise kubernetes won't use images you built locally.
+
+Remember to turn off the `imagePullPolicy:Always`, as otherwise kubernetes won't
+use images you built locally.
 
 ### Run different versions
 
-When deploying, by default the latest release version is used.  In order to deploy a specific version you can use the various`--version-xxxx` flags as detailed under
+When deploying, by default the latest release version is used. In order to
+deploy a specific version you can use the various`--version-xxxx` flags as
+detailed under
 
 ```
 gofabric8 deploy help
@@ -159,3 +204,8 @@ e.g.
 ./build/gofabric8 deploy
 
 ```
+
+[kubectl]: https://kubernetes.io/docs/reference/kubectl/overview/
+[minikube]: https://github.com/kubernetes/minikube
+[minishift]: https://github.com/minishift/minishift
+[oc]: https://docs.openshift.org/latest/cli_reference/index.html
