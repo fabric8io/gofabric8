@@ -180,7 +180,18 @@ func downloadDriver() (err error) {
 		}
 
 	} else if runtime.GOOS == "linux" {
-		return errors.New("Driver install for " + runtime.GOOS + " not yet supported")
+		docs := "https://docs.openshift.org/latest/minishift/getting-started/setting-up-driver-plugin.html#kvm-driver-install"
+		driver := "docker-machine-driver-kvm"
+
+		path, err := exec.LookPath(driver)
+
+		if err != nil {
+			util.Infof("fabric8 recommends linux users use the %v driver\n", driver)
+			util.Infof("See %v for setup instructions\n", docs)
+			return errors.New(driver)
+		} else {
+			util.Successf("KVM driver is already available on your PATH at %s\n", path)
+		}
 	}
 	return nil
 }
