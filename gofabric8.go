@@ -50,8 +50,8 @@ func NewGoFabric8Command(f cmdutil.Factory, in io.Reader, out, err io.Writer) *c
 	cmds := &cobra.Command{
 		Use:   "gofabric8",
 		Short: "gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment",
-		Long: `gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment
-								Find more information at http://fabric8.io.`,
+		Long: `gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment.
+Find more information at http://fabric8.io.`,
 		Run: runHelp,
 	}
 

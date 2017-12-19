@@ -118,9 +118,8 @@ gofabric8 deploy help
 ### Usage
 
 ```
-gofabric8 help
-gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment
-								Find more information at http://fabric8.io.
+gofabric8 is used to validate & deploy fabric8 components on to your Kubernetes or OpenShift environment.
+Find more information at http://fabric8.io.
 
 Usage:
   gofabric8 [flags]
