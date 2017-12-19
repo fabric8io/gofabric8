@@ -107,6 +107,11 @@ use images you built locally.
 
 ### Run different versions
 
+gofabric8 fetches the latest version of [platform][package] from [Maven
+Central][central]. The packages contain the deployment config necessary to
+deploy to an [Openshift][origin] or [Kubernetes][k8s] cluster, which is build by
+the [Fabric8 Maven Plugin][fmp].
+
 When deploying, by default the latest release version is used. In order to
 deploy a specific version you can use the various`--version-xxxx` flags as
 detailed under
@@ -204,7 +209,12 @@ e.g.
 
 ```
 
+[central]: http://central.maven.org/maven2/io/fabric8/
+[fmp]: https://maven.fabric8.io
+[k8s]: https://kubernetes.io
 [kubectl]: https://kubernetes.io/docs/reference/kubectl/overview/
 [minikube]: https://github.com/kubernetes/minikube
 [minishift]: https://github.com/minishift/minishift
 [oc]: https://docs.openshift.org/latest/cli_reference/index.html
+[origin]: https://openshift.org
+[package]: http://central.maven.org/maven2/io/fabric8/platform
