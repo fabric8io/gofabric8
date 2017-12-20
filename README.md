@@ -127,43 +127,68 @@ Usage:
   gofabric8 [command]
 
 Available Commands:
-  console     Open the fabric8 console
-  deploy      Deploy fabric8 to your Kubernetes or OpenShift environment
-  docker-env  Sets up docker env variables; Usage 'eval $(gofabric8 docker-env)'
-  ingress     Creates any missing Ingress resources for services
-  install     Installs the dependencies to locally run the fabric8 microservices platform
-  pull        Pulls the docker images for the given templates
-  routes      Creates any missing Routes for services
-  run         Runs a fabric8 microservice from one of the installed templates
-  secrets     Set up Secrets on your Kubernetes or OpenShift environment
-  service     Opens the specified Kubernetes service in your browser
-  start       Starts a local cloud development environment
-  validate    Validate your Kubernetes or OpenShift environment
-  version     Display version & exit
-  volumes     Creates a persisent volume for any pending persistance volume claims
+  bdd-env          Generates the BDD environment variables for use by the BDD test pipeline
+  che              Opens a shell in a Che workspace pod
+  clean            Clean up a resource type without deleting it
+  completion       Output shell completion code for the given shell (bash or zsh)
+  console          Open the fabric8 console
+  copy-endpoints   Copies endpoints from the current namespace to a target namespace
+  create           Create a resource type
+  delete           Delete a resource type
+  deploy           Deploy fabric8 to your Kubernetes or OpenShift environment
+  docker-env       Sets up docker env variables; Usage 'eval $(gofabric8 docker-env)'
+  e2e              Runs the end to end system tests
+  e2e-console      Points the jenkins namespace at the console to use for E2E tests
+  e2e-env          Generates the E2E environment variables for use by the E2E test pipeline
+  e2e-secret       Creates or updates a Secret for the user for E2E tests
+  erase-pvc        Erase PVC
+  get              Get a resource type
+  ingress          Creates any missing Ingress resources for services
+  install          Installs the dependencies to locally run the fabric8 microservices platform
+  ip               Returns the IP for the cluster gofabric8 is connected to
+  log              Tails the log of the newest pod for the given named Deployment or DeploymentConfig
+  package-versions Displays the versions available for a package
+  packages         Lists the packages that are currently installed
+  pull             Pulls the docker images for the given templates
+  routes           Creates any missing Routes for services
+  run              Runs a fabric8 microservice from one of the installed templates
+  secrets          Set up Secrets on your Kubernetes or OpenShift environment
+  service          Opens the specified Kubernetes service in your browser
+  start            Starts a local cloud development environment
+  status           Gets the status of a local cluster
+  stop             Stops a running local cluster
+  tenant           Commands for working on your tenant
+  test             Runs the end to end system tests
+  upgrade          Upgrades the packages if there is a newer version available
+  validate         Validate your Kubernetes or OpenShift environment
+  version          Display version & exit
+  volumes          Creates a persisent volume for any pending persistance volume claims
+  wait-for         Waits for the listed deployments to be ready - useful for automation and testing
 
 Flags:
-      --as string                      Username to impersonate for the operation.
-  -b, --batch                          Run in batch mode to avoid prompts
-      --certificate-authority string   Path to a cert. file for the certificate authority.
-      --client-certificate string      Path to a client certificate file for TLS.
-      --client-key string              Path to a client key file for TLS.
-      --cluster string                 The name of the kubeconfig cluster to use
-      --context string                 The name of the kubeconfig context to use
-      --fabric8-version string         fabric8 version (default "latest")
-      --insecure-skip-tls-verify       If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure.
-      --kubeconfig string              Path to the kubeconfig file to use for CLI requests.
-      --log-flush-frequency duration   Maximum number of seconds between log flushes (default 5s)
-      --match-server-version           Require server version to match client version
-      --namespace string               If present, the namespace scope for this CLI request.
-      --password string                Password for basic authentication to the API server.
-  -s, --server string                  The address and port of the Kubernetes API server
-      --token string                   Bearer token for authentication to the API server.
-      --user string                    The name of the kubeconfig user to use
-      --username string                Username for basic authentication to the API server.
-  -y, --yes                            assume yes
+      --as string                         Username to impersonate for the operation
+  -b, --batch export FABRIC8_BATCH=true   Run in batch mode to avoid prompts. Can also be enabled via export FABRIC8_BATCH=true
+      --certificate-authority string      Path to a cert. file for the certificate authority
+      --client-certificate string         Path to a client certificate file for TLS
+      --client-key string                 Path to a client key file for TLS
+      --cluster string                    The name of the kubeconfig cluster to use
+      --context string                    The name of the kubeconfig context to use
+      --insecure-skip-tls-verify          If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure
+      --kubeconfig string                 Path to the kubeconfig file to use for CLI requests.
+      --match-server-version              Require server version to match client version
+  -n, --namespace string                  If present, the namespace scope for this CLI request
+      --password string                   Password for basic authentication to the API server
+      --request-timeout string            The length of time to wait before giving up on a single server request. Non-zero values should contain a corresponding time unit (e.g. 1s, 2m, 3h). A value of zero means don't timeout requests. (default "0")
+  -s, --server string                     The address and port of the Kubernetes API server
+      --token string                      Bearer token for authentication to the API server
+      --user string                       The name of the kubeconfig user to use
+      --username string                   Username for basic authentication to the API server
+      --version-console string            fabric8 version (default "latest")
+      --work-project string               The work project (default "autodetect")
+  -y, --yes                               Assume yes
 
 Use "gofabric8 [command] --help" for more information about a command.
+
 ```
 
 ## Shell completion
