@@ -83,20 +83,15 @@ if [[ "${FABRIC8_SKIP_DOWNLOAD-}" ]]; then
 fi 
 
 tmpfile=$(mktemp /tmp/gofabric8-download.XXXXXX)
-exec 3>"$tmpfile"
-rm "$tmpfile"
-  if [[ $(which wget) ]]; then
-    wget -O ${tmpfile} ${release_url}
-  elif [[ $(which curl) ]]; then
-    curl -L -o ${tmpfile} ${release_url}
-  else
-    echo "Couldn't find curl or wget.  Bailing out."
-    exit 1
-  fi
-  mv $tmpfile ${file}
-echo foo >&3
-
-
+if [[ $(which wget) ]]; then
+  wget -O ${tmpfile} ${release_url}
+elif [[ $(which curl) ]]; then
+  curl -L -o ${tmpfile} ${release_url}
+else
+  echo "Couldn't find curl or wget.  Bailing out."
+  exit 1
+fi
+mv $tmpfile ${file}
 chmod +x ${file}
 
 
