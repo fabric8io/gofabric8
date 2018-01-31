@@ -257,9 +257,7 @@ func downloadMinishift(d downloadProperties) error {
 	}
 
 	kubeURL := fmt.Sprintf(d.downloadURL+d.kubeDistroRepo+"/releases/"+d.extraPath+"v%s/%s-%s-%s-%s%s", latestVersion, d.kubeDistroRepo, latestVersion, os, arch, ext)
-	if runtime.GOOS == "windows" {
-		kubeURL += ".exe"
-	}
+
 	util.Infof("Downloading %s...\n", kubeURL)
 
 	fullPath := filepath.Join(getFabric8BinLocation(), d.kubeBinary+ext)
